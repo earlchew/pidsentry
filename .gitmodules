@@ -1,0 +1,6 @@
+[submodule "googletest"]
+	path = googletest
+	url = git@gitbox:googletest.git
+[submodule "automakewild"]
+	path = automakewild
+	url = git@gitbox:automakewild.git

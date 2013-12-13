@@ -1,0 +1,4 @@
+libk9_la_SOURCES_CKSUM_1_ = 1817951502 8
+libk9_la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*.[ch]' -printf '%f\n' | sort | cksum)
+libk9_la_SOURCES = \
+  gtest.h
