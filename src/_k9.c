@@ -392,8 +392,11 @@ parseOptions(int argc, char **argv)
                     {
                         sOptions.mPid = pid;
 
-                        if ( ! (sOptions.mPid - pid))
+                        if ( !   (sOptions.mPid - pid) &&
+                             0 <= sOptions.mPid)
+                        {
                             break;
+                        }
                     }
                     terminate(0, "Badly formed pid - '%s'", optarg);
                 } while (0);
@@ -424,8 +427,11 @@ parseOptions(int argc, char **argv)
                 {
                     sOptions.mTimeout = timeout;
 
-                    if ( ! (sOptions.mTimeout - timeout))
+                    if ( !   (sOptions.mTimeout - timeout) &&
+                         0 <= sOptions.mTimeout)
+                    {
                         break;
+                    }
                 }
                 terminate(0, "Badly formed timeout - '%s'", optarg);
             } while (0);
@@ -918,7 +924,7 @@ readPidFile(const struct PidFile *self)
             if ('\n' == bufptr[ix])
             {
                 /* Parse the value read from the pidfile, but take
-                 * care that it is a number that can fit in the
+                 * care that it is a valid number that can fit in the
                  * representation. */
 
                 bufptr[ix] = 0;
@@ -929,8 +935,11 @@ readPidFile(const struct PidFile *self)
 
                 pid = pid_;
 
-                if (pid_ - pid)
+                if ((pid_ - pid) || 0 >= pid)
+                {
+                    debug(0, "invalid pid representation");
                     return 0;
+                }
 
                 /* Find the name of the proc entry that corresponds
                  * to this pid, and use that to determine when
