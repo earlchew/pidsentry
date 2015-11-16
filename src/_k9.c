@@ -215,7 +215,7 @@ showMessage(
     debug_(__FILE__, __LINE__, ".")
 
 #define debug(aLevel, ...)        \
-    if (sOptions.mDebug > aLevel) \
+    if (aLevel < sOptions.mDebug) \
         debug_(__FILE__, __LINE__, ## __VA_ARGS__)
 
 static void
@@ -295,7 +295,7 @@ testAction(void)
     /* If test mode has been enabled, choose to activate a test action
      * a small percentage of the time. */
 
-    return sOptions.mTest && random() % 10 < 3;
+    return sOptions.mTest && 3 > random() % 10;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -329,7 +329,7 @@ parseUnsigned(const char *aArg)
             errno = 0;
             arg   = strtoull(aArg, &endptr, 10);
 
-            if (!*endptr && (arg != ULLONG_MAX || errno != ERANGE))
+            if (!*endptr && (ULLONG_MAX != arg || ERANGE != errno))
             {
                 errno = 0;
                 break;
@@ -361,7 +361,7 @@ parseOptions(int argc, char **argv)
         int opt = getopt_long(
                 argc, argv, sShortOptions, sLongOptions, &longOptIndex);
 
-        if (opt == -1)
+        if (-1 == opt)
             break;
 
         switch (opt)
@@ -438,7 +438,7 @@ parseOptions(int argc, char **argv)
         }
     }
 
-    if (pidFileOnly <= 0)
+    if (0 >= pidFileOnly)
     {
         if (optind >= argc)
             terminate(0, "Missing command for execution");
@@ -472,7 +472,7 @@ closeFdPair(int *aFd1, int *aFd2)
 static bool
 stdFd(int aFd)
 {
-    return aFd == STDIN_FILENO || aFd == STDOUT_FILENO || aFd == STDERR_FILENO;
+    return STDIN_FILENO == aFd || STDOUT_FILENO == aFd || STDERR_FILENO == aFd;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -510,7 +510,7 @@ purgeFds(const int *aWhiteList, unsigned aWhiteListLen)
 
     for (unsigned fd = 0, wx = 0; ; ++fd)
     {
-        while (whiteList[wx] < 0)
+        while (0 > whiteList[wx])
             ++wx;
 
         if (fd != whiteList[wx])
@@ -521,7 +521,7 @@ purgeFds(const int *aWhiteList, unsigned aWhiteListLen)
         else
         {
             debug(0, "not closing fd %d", fd);
-            if (++wx == NUMBEROF(whiteList))
+            if (NUMBEROF(whiteList) == ++wx)
                 break;
         }
     }
@@ -541,7 +541,7 @@ nonblockingFd(int aFd)
 {
     long flags = fcntl(aFd, F_GETFL, 0);
 
-    return flags == -1 ? -1 : fcntl(aFd, F_SETFL, flags | O_NONBLOCK);
+    return -1 == flags ? -1 : fcntl(aFd, F_SETFL, flags | O_NONBLOCK);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -577,7 +577,7 @@ createSocketPair(struct SocketPair *self)
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds))
         goto Finally;
 
-    if (fds[0] == -1 || fds[1] == -1)
+    if (-1 == fds[0] || -1 == fds[1])
         goto Finally;
 
     self->mParentFd = fds[0];
@@ -611,7 +611,7 @@ createPipe(struct Pipe *self)
     if (pipe(fds))
         return -1;
 
-    if (fds[0] == -1 || fds[1] == -1)
+    if (-1 == fds[0] || -1 == fds[1])
         return -1;
 
     self->mRdFd = fds[0];
@@ -636,7 +636,7 @@ createStdFdFiller(struct StdFdFiller *self)
 {
     int rc = -1;
 
-    for (unsigned ix = 0; ix < NUMBEROF(self->mFd); ++ix)
+    for (unsigned ix = 0; NUMBEROF(self->mFd) > ix; ++ix)
         self->mFd[ix] = -1;
 
     if (pipe(self->mFd))
@@ -658,7 +658,7 @@ Finally:
     ({
         if (rc)
         {
-            for (unsigned ix = 0; ix < NUMBEROF(self->mFd); ++ix)
+            for (unsigned ix = 0; NUMBEROF(self->mFd) > ix; ++ix)
             {
                 if (-1 != self->mFd[ix])
                     close(self->mFd[ix]);
@@ -677,7 +677,7 @@ closeStdFdFiller(struct StdFdFiller *self)
     int rc  = 0;
     int err = 0;
 
-    for (unsigned ix = 0; ix < NUMBEROF(self->mFd); ++ix)
+    for (unsigned ix = 0; NUMBEROF(self->mFd) > ix; ++ix)
     {
         if (close(self->mFd[ix]) && ! rc)
         {
@@ -754,11 +754,11 @@ watchSignals(const struct Pipe *aSigPipe)
     if (nonblockingFd(sSignalFd_))
         goto Finally;
 
-    for (unsigned ix = 0; ix < NUMBEROF(sWatchedSignals_); ++ix)
+    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
     {
         int sigNum = sWatchedSignals_[ix];
 
-        if (signal(sigNum, caughtSignal_) == SIG_ERR)
+        if (SIG_ERR == signal(sigNum, caughtSignal_))
             goto Finally;
     }
 
@@ -791,7 +791,7 @@ watchChildren(const struct Pipe *aTermPipe)
     if (nonblockingFd(sDeadChildFd_))
         goto Finally;
 
-    if (signal(SIGCHLD, deadChild_) == SIG_ERR)
+    if (SIG_ERR == signal(SIGCHLD, deadChild_))
         goto Finally;
 
     rc = 0;
@@ -808,7 +808,7 @@ unwatchChildren()
 {
     sDeadChildFd_ = -1;
 
-    return signal(SIGCHLD, SIG_DFL) == SIG_ERR ? -1 : 0;
+    return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -888,7 +888,7 @@ readPidFile(const struct PidFile *self)
     char *bufptr = buf;
     char *bufend = bufptr + sizeof(buf);
 
-    assert(self->mLock != LOCK_UN);
+    assert(LOCK_UN != self->mLock);
 
     while (true)
     {
@@ -947,11 +947,11 @@ readPidFile(const struct PidFile *self)
                                                         &fdStatus.st_ctim);
                 struct timespec procTime = processStartTime(pid);
 
-                if (procTime.tv_nsec == UTIME_OMIT)
+                if (UTIME_OMIT == procTime.tv_nsec)
                 {
                     return -1;
                 }
-                else if (procTime.tv_nsec == UTIME_NOW)
+                else if (UTIME_NOW == procTime.tv_nsec)
                 {
                     debug(0, "process no longer exists");
                     return 0;
@@ -986,7 +986,7 @@ readPidFile(const struct PidFile *self)
 static int
 releaseLockPidFile(struct PidFile *self)
 {
-    assert(self->mLock != LOCK_UN);
+    assert(LOCK_UN != self->mLock);
 
     int locked = self->mLock;
 
@@ -1009,8 +1009,8 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 {
     debug(0, "lock %s '%s'", aLockType, self->mFileName);
 
-    assert(aLock != LOCK_UN);
-    assert(self->mLock == LOCK_UN);
+    assert(LOCK_UN != aLock);
+    assert(LOCK_UN == self->mLock);
 
     int rc = flock(self->mFd, aLock);
 
@@ -1187,7 +1187,7 @@ Finally:
 static int
 closePidFile(struct PidFile *self)
 {
-    assert(self->mLock != LOCK_UN);
+    assert(LOCK_UN != self->mLock);
 
     int rc = -1;
 
@@ -1196,7 +1196,7 @@ closePidFile(struct PidFile *self)
     if (-1 == flags)
         goto Finally;
 
-    if ((flags & O_ACCMODE) != O_RDONLY)
+    if (O_RDONLY != (flags & O_ACCMODE))
     {
         if (ftruncate(self->mFd, 0))
             goto Finally;
@@ -1235,9 +1235,9 @@ Finally:
 static int
 writePidFile(struct PidFile *self, pid_t aPid)
 {
-    assert(aPid > 0);
+    assert(0 < aPid);
 
-    return dprintf(self->mFd, "%jd\n", (intmax_t) aPid) < 0 ? -1 : 0;
+    return 0 > dprintf(self->mFd, "%jd\n", (intmax_t) aPid) ? -1 : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1309,11 +1309,11 @@ runChild(
         }
         else if (sOptions.mStdout)
         {
-            if (dup2(tetherPipe.mChildFd, STDOUT_FILENO) != STDOUT_FILENO)
+            if (STDOUT_FILENO != dup2(tetherPipe.mChildFd, STDOUT_FILENO))
                 terminate(
                     errno,
                     "Unable to dup tether pipe fd %d", tetherPipe.mChildFd);
-            if (tetherPipe.mChildFd != STDOUT_FILENO || sOptions.mUntethered)
+            if (STDOUT_FILENO != tetherPipe.mChildFd || sOptions.mUntethered)
             {
                 if (closeFd(&tetherPipe.mChildFd))
                     terminate(
@@ -1599,13 +1599,13 @@ cmdRunCommand()
                          * must be less than 1e6. */
 
                         assert(usResolution);
-                        assert(usResolution <= 1000 * 1000);
+                        assert(1000 * 1000 >= usResolution);
 
                         --usResolution;
 
                         debug(0, "delay for %ldus", usResolution);
 
-                        if (usleep(usResolution) && errno != EINTR)
+                        if (usleep(usResolution) && EINTR != errno)
                             terminate(
                                 errno,
                                 "Unable to sleep for %ldus", usResolution);
@@ -1758,7 +1758,7 @@ cmdRunCommand()
          * no matter what the caller has subscribed for. Only pay
          * attention to what was subscribed. */
 
-        for (unsigned ix = 0; ix < NUMBEROF(pollfds); ++ix)
+        for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
             pollfds[ix].revents &= pollfds[ix].events;
 
         if (pollfds[POLL_FD_STDIN].revents)
@@ -1798,7 +1798,7 @@ cmdRunCommand()
             }
             else
             {
-                if (bytes > sizeof(buffer))
+                if (sizeof(buffer) < bytes)
                     terminate(
                         errno,
                         "Read returned value %zd which exceeds buffer size",
@@ -1829,7 +1829,7 @@ cmdRunCommand()
                 (intmax_t) childPid,
                 childSig);
 
-            if (kill(childPid, childSig) && errno != ESRCH)
+            if (kill(childPid, childSig) && ESRCH != errno)
                 terminate(
                     errno,
                     "Unable to kill child pid %jd with signal %d",
