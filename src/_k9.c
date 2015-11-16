@@ -73,7 +73,10 @@
  * Push fd to environment, or argument on command line
  * Do not kill self, and exit 255
  * Under test, pause after fork()
- * Use --stdout semantics by default, instead allow --fd [ N ]
+ * Use --stdout semantics by default,
+ *        instead allow --tether [ { D | D,S | - | -,S } ]
+ *        Verify that D is actually open for writing
+ *        Verify that S is not open
  * Kill SIGTERM on timeout, then SIGKILL
  * cmdRunCommand() is too big, break it up
  */
@@ -128,6 +131,7 @@ static struct
     unsigned short  mTimeout;
     bool            mUntethered;
     int             mTetherChildFd;
+    int             mTetherParentFd;
     pid_t           mPid;
 } sOptions;
 
@@ -353,8 +357,9 @@ parseOptions(int argc, char **argv)
 
     sArg0 = argv[0];
 
-    sOptions.mTimeout       = DEFAULT_TIMEOUT;
-    sOptions.mTetherChildFd = -1;
+    sOptions.mTimeout        = DEFAULT_TIMEOUT;
+    sOptions.mTetherChildFd  = -1;
+    sOptions.mTetherParentFd = -1;
 
     while (1)
     {
@@ -413,7 +418,8 @@ parseOptions(int argc, char **argv)
         case 's':
             pidFileOnly = -1;
             sOptions.mStdout = true;
-            sOptions.mTetherChildFd = STDOUT_FILENO;
+            sOptions.mTetherChildFd  = STDOUT_FILENO;
+            sOptions.mTetherParentFd = STDOUT_FILENO;
             break;
 
         case 'T':
@@ -1687,6 +1693,24 @@ cmdRunCommand()
             errno,
             "Unable to close tether pipe");
 
+    if ( ! sOptions.mUntethered && 0 <= sOptions.mTetherParentFd)
+    {
+        if (STDOUT_FILENO != dup2(sOptions.mTetherParentFd, STDOUT_FILENO))
+            terminate(
+                errno,
+                "Unable to dup fd %d",
+                sOptions.mTetherParentFd);
+
+        /* Non-blocking IO on stdout is required so that the event loop
+         * remains responsive, otherwise the event loop will likely block
+         * writing each buffer in its entirety. */
+
+        if (nonblockingFd(STDOUT_FILENO))
+            terminate(
+                errno,
+                "Unable to enable non-blocking IO");
+    }
+
     const int whiteListFds[] =
     {
         pidFile ? pidFile->mFd : -1,
@@ -1716,14 +1740,15 @@ cmdRunCommand()
 
     struct pollfd pollfds[POLL_FD_COUNT] =
     {
-        [POLL_FD_STDIN] = {
-            .fd = STDIN_FILENO,   .events = 0 },
-        [POLL_FD_STDOUT] = {
-            .fd = STDOUT_FILENO,  .events = 0 },
         [POLL_FD_CHILD] = {
             .fd = termPipe.mRdFd, .events = pollInputEvents },
         [POLL_FD_SIGNAL] = {
             .fd = sigPipe.mRdFd,  .events = pollInputEvents },
+        [POLL_FD_STDOUT] = {
+            .fd = STDOUT_FILENO,  .events = 0 },
+        [POLL_FD_STDIN] = {
+            .fd = STDIN_FILENO,   .events = sOptions.mUntethered
+                                            ? 0 : pollInputEvents },
     };
 
     char buffer[8192];
@@ -1733,25 +1758,6 @@ cmdRunCommand()
 
     bool deadChild  = false;
     int  childSig   = SIGTERM;
-
-    if ( ! sOptions.mUntethered)
-    {
-        pollfds[POLL_FD_STDIN].events = pollInputEvents;
-
-        /* Non-blocking IO on stdout is required so that the event loop
-         * remains responsive. If stdout is not open, disable sOptions.mStdout
-         * so that all input will be discarded. */
-
-        if (nonblockingFd(STDOUT_FILENO))
-        {
-            if (errno == EBADF)
-                sOptions.mStdout = false;
-            else
-                terminate(
-                    errno,
-                    "Unable to set stdout to non-blocking");
-        }
-    }
 
     int timeout = sOptions.mTimeout;
 
@@ -1816,7 +1822,7 @@ cmdRunCommand()
                         "Read returned value %zd which exceeds buffer size",
                         bytes);
 
-                if (sOptions.mStdout)
+                if (0 <= sOptions.mTetherParentFd)
                 {
                     bufptr = buffer;
                     bufend = bufptr + bytes;
