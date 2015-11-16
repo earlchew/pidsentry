@@ -127,6 +127,7 @@ static struct
     bool            mStdout;
     unsigned short  mTimeout;
     bool            mUntethered;
+    int             mTetherChildFd;
     pid_t           mPid;
 } sOptions;
 
@@ -352,7 +353,8 @@ parseOptions(int argc, char **argv)
 
     sArg0 = argv[0];
 
-    sOptions.mTimeout = DEFAULT_TIMEOUT;
+    sOptions.mTimeout       = DEFAULT_TIMEOUT;
+    sOptions.mTetherChildFd = -1;
 
     while (1)
     {
@@ -411,6 +413,7 @@ parseOptions(int argc, char **argv)
         case 's':
             pidFileOnly = -1;
             sOptions.mStdout = true;
+            sOptions.mTetherChildFd = STDOUT_FILENO;
             break;
 
         case 'T':
@@ -1273,6 +1276,26 @@ runChild(
         struct Pipe        termPipe    = *aTermPipe;
         struct Pipe        sigPipe     = *aSigPipe;
 
+        /* Close the StdFdFiller in case this will free up stdin, stdout or
+         * stderr. The remaining operations will close the remaining
+         * unwanted file descriptors. */
+
+        breadcrumb();
+        if (closeStdFdFiller(&stdFdFiller))
+            terminate(
+                errno,
+                "Unable to close stdin, stdout and stderr fillers");
+
+        if (closePipe(&termPipe))
+            terminate(
+                errno,
+                "Unable to close termination pipe");
+
+        if (closePipe(&sigPipe))
+            terminate(
+                errno,
+                "Unable to close signal pipe");
+
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
          * is really associated with the process possessing
@@ -1309,50 +1332,30 @@ runChild(
             break;
         }
 
-        if (sOptions.mUntethered)
+        do
         {
+            if ( ! sOptions.mUntethered)
+            {
+                int tetherFd = sOptions.mTetherChildFd;
+
+                if (0 > tetherFd || tetherFd == tetherPipe.mChildFd)
+                    break;
+
+                if (dup2(tetherPipe.mChildFd, tetherFd) != tetherFd)
+                    terminate(
+                        errno,
+                        "Unable to dup tether pipe fd %d to fd %d",
+                        tetherPipe.mChildFd,
+                        tetherFd);
+            }
+
             if (closeFd(&tetherPipe.mChildFd))
                 terminate(
                     errno,
                     "Unable to close tether pipe fd %d", tetherPipe.mChildFd);
-        }
-        else if (sOptions.mStdout)
-        {
-            if (STDOUT_FILENO != dup2(tetherPipe.mChildFd, STDOUT_FILENO))
-                terminate(
-                    errno,
-                    "Unable to dup tether pipe fd %d", tetherPipe.mChildFd);
-            if (STDOUT_FILENO != tetherPipe.mChildFd || sOptions.mUntethered)
-            {
-                if (closeFd(&tetherPipe.mChildFd))
-                    terminate(
-                        errno,
-                        "Unable to close tether pipe fd %d",
-                        tetherPipe.mChildFd);
-            }
-        }
+        } while (0);
 
         debug(0, "child process synchronised");
-
-        /* Close the StdFdFiller in case this will free up stdin, stdout or
-         * stderr. The remaining operations will close the remaining
-         * unwanted file descriptors. */
-
-        breadcrumb();
-        if (closeStdFdFiller(&stdFdFiller))
-            terminate(
-                errno,
-                "Unable to close stdin, stdout and stderr fillers");
-
-        if (closePipe(&termPipe))
-            terminate(
-                errno,
-                "Unable to close termination pipe");
-
-        if (closePipe(&sigPipe))
-            terminate(
-                errno,
-                "Unable to close signal pipe");
 
         execvp(sCmd[0], sCmd);
         terminate(
