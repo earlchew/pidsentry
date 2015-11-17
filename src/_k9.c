@@ -88,10 +88,13 @@ static const char sUsage[] =
 "options:\n"
 "  --debug | -d\n"
 "      Print debug information.\n"
+"  --fd N | -f N\n"
+"      Tether child using file descriptor N in the child process, and\n"
+"      copy received data to stdout of the watchdog. [Default: N = 1].\n"
 "  --pid N | -P N\n"
 "      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
-"      set N to -1 to use pid of watchdog, otherwise use N as the pid\n"
-"      of the child. [Default: Use pid of child]\n"
+"      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
+"      pid of the child. [Default: Use pid of child]\n"
 "  --pidfile file | -p file\n"
 "      Write the pid of the child to the specified file, and remove the\n"
 "      file when the child terminates. [Default: No pidfile]\n"
@@ -108,11 +111,12 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "dP:p:sTt:u";
+    "df:P:p:sTt:u";
 
 static struct option sLongOptions[] =
 {
     { "debug",      0, 0, 'd' },
+    { "fd",         1, 0, 'f' },
     { "pid",        1, 0, 'P' },
     { "pidfile",    1, 0, 'p' },
     { "stdout",     0, 0, 's' },
@@ -124,13 +128,13 @@ static struct option sLongOptions[] =
 
 static struct
 {
-    char           *mPidFile;
-    unsigned        mDebug;
-    bool            mTest;
-    unsigned short  mTimeout;
-    bool            mUntethered;
-    int             mTetherFd;
-    pid_t           mPid;
+    char     *mPidFile;
+    unsigned  mDebug;
+    bool      mTest;
+    int       mTimeout;
+    bool      mUntethered;
+    int       mTetherFd;
+    pid_t     mPid;
 } sOptions;
 
 static char    *sArg0;
@@ -319,7 +323,7 @@ earliestTime(const struct timespec *aLhs, const struct timespec *aRhs)
 
 /* -------------------------------------------------------------------------- */
 static unsigned long long
-parseUnsigned(const char *aArg)
+parseUnsignedLongLong(const char *aArg)
 {
     unsigned long long arg;
 
@@ -345,6 +349,47 @@ parseUnsigned(const char *aArg)
     } while (0);
 
     return arg;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+parseInt(const char *aArg, int *aValue)
+{
+    int rc = -1;
+
+    unsigned long long value = parseUnsignedLongLong(aArg);
+
+    if ( ! errno)
+    {
+        *aValue = value;
+
+        if ( ! (*aValue - value))
+            rc = 0;
+    }
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+parsePid(const char *aArg, pid_t *aValue)
+{
+    int rc = -1;
+
+    unsigned long long value = parseUnsignedLongLong(aArg);
+
+    if ( ! errno)
+    {
+        *aValue = value;
+
+        if ( !   (*aValue - value) &&
+             0 <= *aValue)
+        {
+            rc = 0;
+        }
+    }
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -382,29 +427,23 @@ parseOptions(int argc, char **argv)
             ++sOptions.mDebug;
             break;
 
+        case 'f':
+            if ( ! strcmp(optarg, "-"))
+                sOptions.mTetherFd = -1;
+            else if (parseInt(
+                        optarg,
+                        &sOptions.mTetherFd) || 0 > sOptions.mTetherFd)
+            {
+                    terminate(0, "Badly formed pid - '%s'", optarg);
+            }
+            break;
+
         case 'P':
             pidFileOnly = -1;
             if ( ! strcmp(optarg, "-1"))
                 sOptions.mPid = -1;
-            else
-            {
-                do
-                {
-                    unsigned long long pid = parseUnsigned(optarg);
-
-                    if ( ! errno)
-                    {
-                        sOptions.mPid = pid;
-
-                        if ( !   (sOptions.mPid - pid) &&
-                             0 <= sOptions.mPid)
-                        {
-                            break;
-                        }
-                    }
-                    terminate(0, "Badly formed pid - '%s'", optarg);
-                } while (0);
-            }
+            else if (parsePid(optarg, &sOptions.mPid))
+                terminate(0, "Badly formed pid - '%s'", optarg);
             break;
 
         case 'p':
@@ -423,22 +462,8 @@ parseOptions(int argc, char **argv)
 
         case 't':
             pidFileOnly = -1;
-            do
-            {
-                unsigned long long timeout = parseUnsigned(optarg);
-
-                if ( ! errno)
-                {
-                    sOptions.mTimeout = timeout;
-
-                    if ( !   (sOptions.mTimeout - timeout) &&
-                         0 <= sOptions.mTimeout)
-                    {
-                        break;
-                    }
-                }
+            if (parseInt(optarg, &sOptions.mTimeout) || 0 > sOptions.mTimeout)
                 terminate(0, "Badly formed timeout - '%s'", optarg);
-            } while (0);
             break;
 
         case 'u':
@@ -935,7 +960,7 @@ readPidFile(const struct PidFile *self)
 
                 debug(0, "examining candidate pid '%s'", buf);
 
-                unsigned long long pid_ = parseUnsigned(buf);
+                unsigned long long pid_ = parseUnsignedLongLong(buf);
 
                 pid = pid_;
 
