@@ -131,7 +131,6 @@ static struct
     unsigned short  mTimeout;
     bool            mUntethered;
     int             mTetherChildFd;
-    int             mTetherParentFd;
     pid_t           mPid;
 } sOptions;
 
@@ -359,7 +358,6 @@ parseOptions(int argc, char **argv)
 
     sOptions.mTimeout        = DEFAULT_TIMEOUT;
     sOptions.mTetherChildFd  = -1;
-    sOptions.mTetherParentFd = -1;
 
     while (1)
     {
@@ -418,8 +416,7 @@ parseOptions(int argc, char **argv)
         case 's':
             pidFileOnly = -1;
             sOptions.mStdout = true;
-            sOptions.mTetherChildFd  = STDOUT_FILENO;
-            sOptions.mTetherParentFd = STDOUT_FILENO;
+            sOptions.mTetherChildFd = STDOUT_FILENO;
             break;
 
         case 'T':
@@ -1693,22 +1690,20 @@ cmdRunCommand()
             errno,
             "Unable to close tether pipe");
 
-    if ( ! sOptions.mUntethered && 0 <= sOptions.mTetherParentFd)
-    {
-        if (STDOUT_FILENO != dup2(sOptions.mTetherParentFd, STDOUT_FILENO))
-            terminate(
-                errno,
-                "Unable to dup fd %d",
-                sOptions.mTetherParentFd);
+    bool captureOutput = false;
 
+    if ( ! sOptions.mUntethered)
+    {
         /* Non-blocking IO on stdout is required so that the event loop
          * remains responsive, otherwise the event loop will likely block
-         * writing each buffer in its entirety. */
+         * when writing each buffer in its entirety. */
 
-        if (nonblockingFd(STDOUT_FILENO))
+        if ( ! nonblockingFd(STDOUT_FILENO))
+            captureOutput = true;
+        else if (EBADF != errno)
             terminate(
                 errno,
-                "Unable to enable non-blocking IO");
+                "Unable to enable non-blocking writes to stdout");
     }
 
     const int whiteListFds[] =
@@ -1822,7 +1817,7 @@ cmdRunCommand()
                         "Read returned value %zd which exceeds buffer size",
                         bytes);
 
-                if (0 <= sOptions.mTetherParentFd)
+                if (captureOutput)
                 {
                     bufptr = buffer;
                     bufend = bufptr + bytes;
