@@ -70,7 +70,7 @@
 
 /* TODO
  *
- * Push fd to environment, or argument on command line
+ * Push tether fd to environment, or argument on command line
  * Do not kill self, and exit 255
  * Under test, pause after fork()
  * Use --stdout semantics by default,
@@ -85,12 +85,15 @@ static const char sUsage[] =
 "usage : %s [ options ] cmd ...\n"
 "        %s { --pidfile file | -p file }\n"
 "\n"
+"Close stdout to prevent data being copied from the tether to stdout.\n"
+"\n"
 "options:\n"
 "  --debug | -d\n"
 "      Print debug information.\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
-"      copy received data to stdout of the watchdog. [Default: N = 1].\n"
+"      copy received data to stdout of the watchdog. Specify N as - to\n"
+"      run the child untethered. [Default: N = open new fd].\n"
 "  --pid N | -P N\n"
 "      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
 "      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
@@ -128,13 +131,14 @@ static struct option sLongOptions[] =
 
 static struct
 {
-    char     *mPidFile;
-    unsigned  mDebug;
-    bool      mTest;
-    int       mTimeout;
-    bool      mUntethered;
-    int       mTetherFd;
-    pid_t     mPid;
+    char      *mPidFile;
+    unsigned   mDebug;
+    bool       mTest;
+    int        mTimeout;
+    bool       mUntethered;
+    int        mTetherFd;
+    const int *mTether;
+    pid_t      mPid;
 } sOptions;
 
 static char    *sArg0;
@@ -402,6 +406,7 @@ parseOptions(int argc, char **argv)
 
     sOptions.mTimeout   = DEFAULT_TIMEOUT;
     sOptions.mTetherFd  = -1;
+    sOptions.mTether    = &sOptions.mTetherFd;
 
     while (1)
     {
@@ -429,12 +434,17 @@ parseOptions(int argc, char **argv)
 
         case 'f':
             if ( ! strcmp(optarg, "-"))
-                sOptions.mTetherFd = -1;
-            else if (parseInt(
+                sOptions.mTether = 0;
+            else
+            {
+                sOptions.mTether = &sOptions.mTetherFd;
+
+                if (parseInt(
                         optarg,
                         &sOptions.mTetherFd) || 0 > sOptions.mTetherFd)
-            {
+                {
                     terminate(0, "Badly formed pid - '%s'", optarg);
+                }
             }
             break;
 
@@ -454,6 +464,7 @@ parseOptions(int argc, char **argv)
         case 's':
             pidFileOnly        = -1;
             sOptions.mTetherFd = STDOUT_FILENO;
+            sOptions.mTether   = &sOptions.mTetherFd;
             break;
 
         case 'T':
@@ -468,6 +479,7 @@ parseOptions(int argc, char **argv)
 
         case 'u':
             pidFileOnly = -1;
+            sOptions.mTether = 0;
             sOptions.mUntethered = true;
             break;
         }
@@ -1360,9 +1372,9 @@ runChild(
 
         do
         {
-            if ( ! sOptions.mUntethered)
+            if (sOptions.mTether)
             {
-                int tetherFd = sOptions.mTetherFd;
+                int tetherFd = *sOptions.mTether;
 
                 if (0 > tetherFd || tetherFd == tetherPipe.mChildFd)
                     break;
@@ -1715,7 +1727,7 @@ cmdRunCommand()
 
     bool captureOutput = false;
 
-    if ( ! sOptions.mUntethered)
+    if (sOptions.mTether)
     {
         /* Non-blocking IO on stdout is required so that the event loop
          * remains responsive, otherwise the event loop will likely block
@@ -1765,7 +1777,7 @@ cmdRunCommand()
         [POLL_FD_STDOUT] = {
             .fd = STDOUT_FILENO,  .events = 0 },
         [POLL_FD_STDIN] = {
-            .fd = STDIN_FILENO,   .events = sOptions.mUntethered
+            .fd = STDIN_FILENO,   .events = ! sOptions.mTether
                                             ? 0 : pollInputEvents },
     };
 
