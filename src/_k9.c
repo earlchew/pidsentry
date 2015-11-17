@@ -127,7 +127,6 @@ static struct
     char           *mPidFile;
     unsigned        mDebug;
     bool            mTest;
-    bool            mStdout;
     unsigned short  mTimeout;
     bool            mUntethered;
     int             mTetherFd;
@@ -414,8 +413,7 @@ parseOptions(int argc, char **argv)
             break;
 
         case 's':
-            pidFileOnly = -1;
-            sOptions.mStdout = true;
+            pidFileOnly        = -1;
             sOptions.mTetherFd = STDOUT_FILENO;
             break;
 
