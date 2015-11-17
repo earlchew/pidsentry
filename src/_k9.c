@@ -130,7 +130,7 @@ static struct
     bool            mStdout;
     unsigned short  mTimeout;
     bool            mUntethered;
-    int             mTetherChildFd;
+    int             mTetherFd;
     pid_t           mPid;
 } sOptions;
 
@@ -356,8 +356,8 @@ parseOptions(int argc, char **argv)
 
     sArg0 = argv[0];
 
-    sOptions.mTimeout        = DEFAULT_TIMEOUT;
-    sOptions.mTetherChildFd  = -1;
+    sOptions.mTimeout   = DEFAULT_TIMEOUT;
+    sOptions.mTetherFd  = -1;
 
     while (1)
     {
@@ -416,7 +416,7 @@ parseOptions(int argc, char **argv)
         case 's':
             pidFileOnly = -1;
             sOptions.mStdout = true;
-            sOptions.mTetherChildFd = STDOUT_FILENO;
+            sOptions.mTetherFd = STDOUT_FILENO;
             break;
 
         case 'T':
@@ -1339,7 +1339,7 @@ runChild(
         {
             if ( ! sOptions.mUntethered)
             {
-                int tetherFd = sOptions.mTetherChildFd;
+                int tetherFd = sOptions.mTetherFd;
 
                 if (0 > tetherFd || tetherFd == tetherPipe.mChildFd)
                     break;
