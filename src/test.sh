@@ -115,6 +115,9 @@ TEST 'Tether using stdout'
 TEST 'Tether using stdout with 8M data'
 [ $(./k9 -T -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
 
+TEST 'Tether quietly using stdout with 8M data'
+[ $(./k9 -T -q -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 0 ]
+
 TEST 'Timeout with data that must be flushed after 6s'
 REPLY=$(
     /usr/bin/time -p ./k9 -T -t 4 -- sh -c 'trap "" 15 ; sleep 6' 2>&1 |
