@@ -84,8 +84,6 @@ static const char sUsage[] =
 "usage : %s [ options ] cmd ...\n"
 "        %s { --pidfile file | -p file }\n"
 "\n"
-"Close stdout to prevent data being copied from the tether to stdout.\n"
-"\n"
 "options:\n"
 "  --debug | -d\n"
 "      Print debug information.\n"
