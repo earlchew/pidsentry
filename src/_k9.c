@@ -71,7 +71,6 @@
 /* TODO
  *
  * Push tether fd to environment, or argument on command line
- * Do not kill self, and exit 255
  * Under test, pause after fork()
  * Use --stdout semantics by default,
  *        instead allow --tether [ { D | D,S | - | -,S } ]
@@ -1415,17 +1414,27 @@ reapChild(pid_t aChildPid)
 static struct ExitCode
 exitProcess(int aStatus)
 {
-    struct ExitCode exitCode = { 127 };
+    /* Taking guidance from OpenGroup:
+     *
+     * http://pubs.opengroup.org/onlinepubs/009695399/
+     *      utilities/xcu_chap02.html#tag_02_08_02
+     *
+     * Use exit codes above 128 to indicate signals, and codes below
+     * 128 to indicate exit status. */
+
+    struct ExitCode exitCode = { 255 };
 
     if (WIFEXITED(aStatus))
-        exitCode.mStatus = WEXITSTATUS(aStatus);
-
-    if (WIFSIGNALED(aStatus))
     {
-        int sigNum = WTERMSIG(aStatus);
-
-        if (kill(sPid, sigNum))
-            warn(errno, "Unable to deliver signal %d'", sigNum);
+        exitCode.mStatus = WEXITSTATUS(aStatus);
+        if (128 < exitCode.mStatus)
+            exitCode.mStatus = 128;
+    }
+    else if (WIFSIGNALED(aStatus))
+    {
+        exitCode.mStatus = 128 + WTERMSIG(aStatus);
+        if (255 < exitCode.mStatus)
+            exitCode.mStatus = 255;
     }
 
     return exitCode;
