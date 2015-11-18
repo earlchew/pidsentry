@@ -91,10 +91,13 @@ static const char sUsage[] =
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
 "      allocate a new file descriptor. [Default: N = 1 (stdout) ].\n"
+"  --identify | -i\n"
+"      Print the pid of the child process on stdout before starting\n"
+"      the child program. [Default: Do not print the pid of the child]\n"
 "  --pid N | -P N\n"
 "      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
 "      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
-"      pid of the child. [Default: Use pid of child]\n"
+"      pid of the child. [Default: Use the pid of child]\n"
 "  --pidfile file | -p file\n"
 "      Write the pid of the child to the specified file, and remove the\n"
 "      file when the child terminates. [Default: No pidfile]\n"
@@ -111,12 +114,13 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "df:P:p:qTt:u";
+    "df:iP:p:qTt:u";
 
 static struct option sLongOptions[] =
 {
     { "debug",      0, 0, 'd' },
     { "fd",         1, 0, 'f' },
+    { "identify",   0, 0, 'i' },
     { "pid",        1, 0, 'P' },
     { "pidfile",    1, 0, 'p' },
     { "quiet",      0, 0, 'q' },
@@ -132,6 +136,7 @@ static struct
     unsigned   mDebug;
     bool       mTest;
     bool       mQuiet;
+    bool       mIdentify;
     int        mTimeout;
     int        mTetherFd;
     const int *mTether;
@@ -445,6 +450,11 @@ parseOptions(int argc, char **argv)
                     terminate(0, "Badly formed fd - '%s'", optarg);
                 }
             }
+            break;
+
+        case 'i':
+            pidFileOnly = -1;
+            sOptions.mIdentify = true;
             break;
 
         case 'P':
@@ -1718,6 +1728,9 @@ cmdRunCommand()
     /* The creation time of the child process is earlier than
      * the creation time of the pidfile. With the pidfile created,
      * release the waiting child process. */
+
+    if (sOptions.mIdentify)
+        dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid);
 
     if (1 != write(tetherPipe.mParentFd, "", 1))
         terminate(
