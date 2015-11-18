@@ -114,7 +114,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "df:P:p:sTt:u";
+    "df:P:p:sTt:";
 
 static struct option sLongOptions[] =
 {
@@ -125,7 +125,6 @@ static struct option sLongOptions[] =
     { "stdout",     0, 0, 's' },
     { "test",       0, 0, 'T' },
     { "timeout",    1, 0, 't' },
-    { "untethered", 0, 0, 'u' },
     { 0 },
 };
 
@@ -135,7 +134,6 @@ static struct
     unsigned   mDebug;
     bool       mTest;
     int        mTimeout;
-    bool       mUntethered;
     int        mTetherFd;
     const int *mTether;
     pid_t      mPid;
@@ -443,7 +441,7 @@ parseOptions(int argc, char **argv)
                         optarg,
                         &sOptions.mTetherFd) || 0 > sOptions.mTetherFd)
                 {
-                    terminate(0, "Badly formed pid - '%s'", optarg);
+                    terminate(0, "Badly formed fd - '%s'", optarg);
                 }
             }
             break;
@@ -475,12 +473,6 @@ parseOptions(int argc, char **argv)
             pidFileOnly = -1;
             if (parseInt(optarg, &sOptions.mTimeout) || 0 > sOptions.mTimeout)
                 terminate(0, "Badly formed timeout - '%s'", optarg);
-            break;
-
-        case 'u':
-            pidFileOnly = -1;
-            sOptions.mTether = 0;
-            sOptions.mUntethered = true;
             break;
         }
     }

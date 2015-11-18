@@ -92,10 +92,10 @@ TEST 'File descriptor propagation'
 [ $(./k9 -T -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 5 ]
 
 TEST 'Untethered child process'
-[ $(./k9 -T -u -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
+[ $(./k9 -T -f - -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
 
 TEST 'Untethered child process with 8M data'
-[ $(./k9 -T -u -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
+[ $(./k9 -T -f - -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
 
 TEST 'Tether using stdout'
 [ $(./k9 -T -s -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
