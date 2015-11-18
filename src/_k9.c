@@ -191,6 +191,24 @@ struct ExitCode
 };
 
 /* -------------------------------------------------------------------------- */
+static pid_t
+getProcessId()
+{
+    /* Lazily cache the pid of this process. This is safe because the pid
+     * returns the same value for all threads in the same process. */
+
+    pid_t pid = sPid;
+
+    if ( ! pid)
+    {
+        pid  = getpid();
+        sPid = pid;
+    }
+
+    return pid;
+}
+
+/* -------------------------------------------------------------------------- */
 static uint64_t monotonicTime(void);
 
 static void
@@ -222,7 +240,7 @@ showMessage(
             "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
             sArg0,
             elapsed_h, elapsed_m, elapsed_s,
-            (intmax_t) sPid,
+            (intmax_t) getProcessId(),
             aFile, aLine);
         vdprintf(STDERR_FILENO, aFmt, aArgs);
         if (aErrCode)
@@ -1379,11 +1397,22 @@ forkProcess(void)
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
      * is an important consideration for propagating signals to
-     * the child process. */
+     * the child process.
+     *
+     * Reset the cached pid before the fork() so that there will not
+     * be a race immediately after the fork() to correct the cached value.
+     * */
 
-    pid_t childPid = fork();
+    pid_t childPid;
 
-    testSleep();
+    RACE
+    ({
+        sPid = 0;
+
+        childPid = fork();
+
+        testSleep();
+    });
 
     return childPid;
 }
@@ -1400,8 +1429,6 @@ runChild(
 
     if ( ! childPid)
     {
-        sPid = getpid();
-
         struct StdFdFiller stdFdFiller = *aStdFdFiller;
         struct SocketPair  tetherPipe  = *aTetherPipe;
         struct Pipe        termPipe    = *aTermPipe;
@@ -1667,7 +1694,7 @@ cmdRunCommand()
         default:
             break;
         case -1:
-            pid = sPid; break;
+            pid = getProcessId(); break;
         case 0:
             pid = childPid; break;
         }
@@ -2143,10 +2170,9 @@ cmdRunCommand()
 /* -------------------------------------------------------------------------- */
 int main(int argc, char **argv)
 {
-    sPid      = getpid();
     sTimeBase = monotonicTime();
 
-    srandom(sPid);
+    srandom(getProcessId());
 
     parseOptions(argc, argv);
 
