@@ -100,6 +100,9 @@ static const char sUsage[] =
 "  --pidfile file | -p file\n"
 "      Write the pid of the child to the specified file, and remove the\n"
 "      file when the child terminates. [Default: No pidfile]\n"
+"  --quiet | -q\n"
+"      Do not copy received data from tether to stdout. This is an\n"
+"      alternative to closing stdout. [Default: Copy data from tether]\n"
 "  --timeout N | -t N\n"
 "      Specify the timeout N in seconds for activity on tether from\n"
 "      the child process. Set N to 0 to avoid imposing any timeout at\n"
@@ -110,7 +113,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "df:P:p:Tt:u";
+    "df:P:p:qTt:u";
 
 static struct option sLongOptions[] =
 {
@@ -118,6 +121,7 @@ static struct option sLongOptions[] =
     { "fd",         1, 0, 'f' },
     { "pid",        1, 0, 'P' },
     { "pidfile",    1, 0, 'p' },
+    { "quiet",      0, 0, 'q' },
     { "test",       0, 0, 'T' },
     { "timeout",    1, 0, 't' },
     { "untethered", 0, 0, 'u' },
@@ -129,6 +133,7 @@ static struct
     char      *mPidFile;
     unsigned   mDebug;
     bool       mTest;
+    bool       mQuiet;
     int        mTimeout;
     int        mTetherFd;
     const int *mTether;
@@ -455,6 +460,11 @@ parseOptions(int argc, char **argv)
         case 'p':
             pidFileOnly = pidFileOnly ? pidFileOnly : 1;
             sOptions.mPidFile = optarg;
+            break;
+
+        case 'q':
+            pidFileOnly = -1;
+            sOptions.mQuiet = true;
             break;
 
         case 'T':
@@ -1736,20 +1746,21 @@ cmdRunCommand()
             errno,
             "Unable to close tether pipe");
 
-    bool captureOutput = false;
-
     if (sOptions.mTether)
     {
         /* Non-blocking IO on stdout is required so that the event loop
          * remains responsive, otherwise the event loop will likely block
          * when writing each buffer in its entirety. */
 
-        if ( ! nonblockingFd(STDOUT_FILENO))
-            captureOutput = true;
-        else if (EBADF != errno)
-            terminate(
-                errno,
-                "Unable to enable non-blocking writes to stdout");
+        if (nonblockingFd(STDOUT_FILENO))
+        {
+            if (EBADF == errno)
+                sOptions.mQuiet = true;
+            else
+                terminate(
+                    errno,
+                    "Unable to enable non-blocking writes to stdout");
+        }
     }
 
     const int whiteListFds[] =
@@ -1863,7 +1874,7 @@ cmdRunCommand()
                         "Read returned value %zd which exceeds buffer size",
                         bytes);
 
-                if (captureOutput)
+                if ( ! sOptions.mQuiet)
                 {
                     bufptr = buffer;
                     bufend = bufptr + bytes;
