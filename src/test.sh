@@ -13,6 +13,18 @@ TEST_EXIT()
     then false ; else [ $? -eq $1 ] ; fi
 }
 
+if false ; then
+TEST 'Signal queueing'
+set -x
+REPLY=$(
+    ./k9 -T -- sh -c 'C=0; trap '\'': $(( ++C ))'\'' 15 ; sleep 5; echo $C' &
+    sleep 1
+    kill $! ; kill $! ; kill $!
+    wait $!)
+[ "$REPLY" -ge 6 ]
+exit 1
+fi
+
 TEST 'Usage'
 TEST_EXIT 1 ./k9 -? -- true
 
@@ -88,20 +100,20 @@ TEST_EXIT 2 ./k9 -T -- sh -c 'exit 2'
 TEST 'Signal propagation'
 TEST_EXIT $((128 + 9)) ./k9 -T -- sh -c 'echo $$ ; kill -9 $$'
 
-TEST 'File descriptor propagation'
-[ $(./k9 -T -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 5 ]
-
 TEST 'Untethered child process'
-[ $(./k9 -T -f - -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
+[ $(./k9 -T -u -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
 
 TEST 'Untethered child process with 8M data'
-[ $(./k9 -T -f - -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
+[ $(./k9 -T -u -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
+
+TEST 'Tether with new file descriptor'
+[ $(./k9 -T -f - -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 5 ]
 
 TEST 'Tether using stdout'
-[ $(./k9 -T -s -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
+[ $(./k9 -T -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
 
 TEST 'Tether using stdout with 8M data'
-[ $(./k9 -T -s -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
+[ $(./k9 -T -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
 
 TEST 'Timeout with data that must be flushed after 6s'
 REPLY=$(

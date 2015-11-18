@@ -92,7 +92,7 @@ static const char sUsage[] =
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
-"      run the child untethered. [Default: N = open new fd].\n"
+"      allocate a new file descriptor. [Default: N = 1 (stdout) ].\n"
 "  --pid N | -P N\n"
 "      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
 "      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
@@ -113,7 +113,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "df:P:p:sTt:";
+    "df:P:p:Tt:u";
 
 static struct option sLongOptions[] =
 {
@@ -121,9 +121,9 @@ static struct option sLongOptions[] =
     { "fd",         1, 0, 'f' },
     { "pid",        1, 0, 'P' },
     { "pidfile",    1, 0, 'p' },
-    { "stdout",     0, 0, 's' },
     { "test",       0, 0, 'T' },
     { "timeout",    1, 0, 't' },
+    { "untethered", 0, 0, 'u' },
     { 0 },
 };
 
@@ -402,7 +402,7 @@ parseOptions(int argc, char **argv)
     sArg0 = argv[0];
 
     sOptions.mTimeout   = DEFAULT_TIMEOUT;
-    sOptions.mTetherFd  = -1;
+    sOptions.mTetherFd  = STDOUT_FILENO;
     sOptions.mTether    = &sOptions.mTetherFd;
 
     while (1)
@@ -430,12 +430,14 @@ parseOptions(int argc, char **argv)
             break;
 
         case 'f':
+            pidFileOnly = -1;
+            sOptions.mTether = &sOptions.mTetherFd;
             if ( ! strcmp(optarg, "-"))
-                sOptions.mTether = 0;
+            {
+                sOptions.mTetherFd = -1;
+            }
             else
             {
-                sOptions.mTether = &sOptions.mTetherFd;
-
                 if (parseInt(
                         optarg,
                         &sOptions.mTetherFd) || 0 > sOptions.mTetherFd)
@@ -458,12 +460,6 @@ parseOptions(int argc, char **argv)
             sOptions.mPidFile = optarg;
             break;
 
-        case 's':
-            pidFileOnly        = -1;
-            sOptions.mTetherFd = STDOUT_FILENO;
-            sOptions.mTether   = &sOptions.mTetherFd;
-            break;
-
         case 'T':
             sOptions.mTest = true;
             break;
@@ -472,6 +468,11 @@ parseOptions(int argc, char **argv)
             pidFileOnly = -1;
             if (parseInt(optarg, &sOptions.mTimeout) || 0 > sOptions.mTimeout)
                 terminate(0, "Badly formed timeout - '%s'", optarg);
+            break;
+
+        case 'u':
+            pidFileOnly = -1;
+            sOptions.mTether = 0;
             break;
         }
     }
