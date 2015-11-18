@@ -1283,11 +1283,7 @@ writePidFile(struct PidFile *self, pid_t aPid)
 
 /* -------------------------------------------------------------------------- */
 static pid_t
-runChild(
-    const struct StdFdFiller *aStdFdFiller,
-    const struct SocketPair  *aTetherPipe,
-    const struct Pipe        *aTermPipe,
-    const struct Pipe        *aSigPipe)
+forkProcess(void)
 {
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
@@ -1295,6 +1291,22 @@ runChild(
      * the child process. */
 
     pid_t childPid = fork();
+
+    if (testAction())
+        usleep(500 * 1000);
+
+    return childPid;
+}
+
+/* -------------------------------------------------------------------------- */
+static pid_t
+runChild(
+    const struct StdFdFiller *aStdFdFiller,
+    const struct SocketPair  *aTetherPipe,
+    const struct Pipe        *aTermPipe,
+    const struct Pipe        *aSigPipe)
+{
+    pid_t childPid = forkProcess();
 
     if ( ! childPid)
     {
