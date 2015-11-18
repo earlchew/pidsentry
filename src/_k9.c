@@ -68,6 +68,14 @@
 
 #define DEFAULT_TIMEOUT 30
 
+#define RACE(...) \
+    do                    \
+    {                     \
+        testSleep();      \
+        __VA_ARGS__;      \
+        testSleep();      \
+    } while (0)
+
 /* TODO
  *
  * Push tether fd to environment, or argument on command line
@@ -200,7 +208,7 @@ showMessage(
 {
     FINALLY
     ({
-        uint64_t elapsed    = monotonicTime() - sTimeBase;
+        uint64_t elapsed   = monotonicTime() - sTimeBase;
         uint64_t elapsed_s = elapsed / (1000 * 1000 * 1000);
         uint64_t elapsed_m;
         uint64_t elapsed_h;
@@ -309,6 +317,17 @@ testAction(void)
      * a small percentage of the time. */
 
     return sOptions.mTest && 3 > random() % 10;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+testSleep(void)
+{
+    /* If test mode has been enabled, choose to sleep a short time
+     * a small percentage of the time. */
+
+    if (testAction())
+        usleep(random() % (500 * 1000));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -751,7 +770,17 @@ closeStdFdFiller(struct StdFdFiller *self)
 static int sDeadChildFd_ = -1;
 static int sSignalFd_    = -1;
 
-static const int sWatchedSignals_[] = { SIGHUP, SIGINT, SIGQUIT, SIGTERM };
+static struct SignalWatch {
+    int          mSigNum;
+    sighandler_t mSigHandler;
+    bool         mWatched;
+} sWatchedSignals_[] =
+{
+    { SIGHUP },
+    { SIGINT },
+    { SIGQUIT },
+    { SIGTERM },
+};
 
 static int
 writeSignal_(int aFd, char aSigNum)
@@ -769,12 +798,8 @@ writeSignal_(int aFd, char aSigNum)
     if (-1 == len)
     {
         if (EWOULDBLOCK == errno)
-        {
             warn(errno, "Dropped signal %d", aSigNum);
-            goto Finally;
-        }
-
-        terminate(errno, "Unable to queue signal %d", aSigNum);
+        goto Finally;
     }
 
     rc = 0;
@@ -789,12 +814,14 @@ Finally:
 static void
 caughtSignal_(int aSigNum)
 {
-    if (writeSignal_(sSignalFd_, aSigNum))
+    int signalFd = sSignalFd_;
+
+    if (writeSignal_(signalFd, aSigNum))
     {
         if (EWOULDBLOCK != errno)
             terminate(
                 errno,
-                "Unable to queue signal %d", aSigNum);
+                "Unable to queue signal %d on fd %d", aSigNum, signalFd);
     }
 }
 
@@ -810,17 +837,63 @@ watchSignals(const struct Pipe *aSigPipe)
 
     for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
     {
-        int sigNum = sWatchedSignals_[ix];
+        int          sigNum     = sWatchedSignals_[ix].mSigNum;
+        sighandler_t sigHandler = signal(sigNum, caughtSignal_);
 
-        if (SIG_ERR == signal(sigNum, caughtSignal_))
+        if (SIG_ERR == sigHandler)
             goto Finally;
+
+        sWatchedSignals_[ix].mSigHandler = sigHandler;
+        sWatchedSignals_[ix].mWatched    = true;
     }
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+        {
+            if (sWatchedSignals_[ix].mWatched)
+            {
+                int          sigNum     = sWatchedSignals_[ix].mSigNum;
+                sighandler_t sigHandler = sWatchedSignals_[ix].mSigHandler;
+
+                signal(sigNum, sigHandler);
+
+                sWatchedSignals_[ix].mWatched = false;
+            }
+        }
+    });
+
+    return rc;
+}
+
+static int
+unwatchSignals(void)
+{
+    int rc  = 0;
+    int err = 0;
+
+    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+    {
+        int          sigNum     = sWatchedSignals_[ix].mSigNum;
+        sighandler_t sigHandler = sWatchedSignals_[ix].mSigHandler;
+
+        if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
+        {
+            rc  = -1;
+            err = errno;
+        }
+
+        sWatchedSignals_[ix].mWatched = false;
+    }
+
+    sSignalFd_ = -1;
+
+    if (rc)
+        errno = err;
 
     return rc;
 }
@@ -828,11 +901,13 @@ Finally:
 static void
 deadChild_(int aSigNum)
 {
-    (void) writeSignal_(sDeadChildFd_, aSigNum);
-
-    /* Ignore any errors here because unwatchChildren() will deregister
-     * the file descriptor immediately before unsubscribing the
-     * signal handler. */
+    if (writeSignal_(sDeadChildFd_, aSigNum))
+    {
+        if (EBADF != errno && EWOULDBLOCK != errno)
+            terminate(
+                errno,
+                "Unable to indicate dead child");
+    }
 }
 
 static int
@@ -1308,8 +1383,7 @@ forkProcess(void)
 
     pid_t childPid = fork();
 
-    if (testAction())
-        usleep(500 * 1000);
+    testSleep();
 
     return childPid;
 }
@@ -1332,6 +1406,11 @@ runChild(
         struct SocketPair  tetherPipe  = *aTetherPipe;
         struct Pipe        termPipe    = *aTermPipe;
         struct Pipe        sigPipe     = *aSigPipe;
+
+        if (unwatchSignals())
+            terminate(
+                errno,
+                "Unable to remove watch from signals");
 
         /* Close the StdFdFiller in case this will free up stdin, stdout or
          * stderr. The remaining operations will close the remaining
@@ -1365,30 +1444,34 @@ runChild(
                 errno,
                 "Unable to close tether pipe fd %d", tetherPipe.mParentFd);
 
-        while (true)
-        {
-            char buf[1];
-
-            switch (read(tetherPipe.mChildFd, buf, 1))
+        RACE
+        ({
+            while (true)
             {
-            default:
-                    break;
-            case -1:
-                if (EINTR == errno)
-                    continue;
-                terminate(
-                    errno,
-                    "Unable to read tether to synchronise child");
-                break;
+                char buf[1];
 
-            case 0:
-                _exit(1);
+                switch (read(tetherPipe.mChildFd, buf, 1))
+                {
+                default:
+                        break;
+                case -1:
+                    if (EINTR == errno)
+                        continue;
+                    terminate(
+                        errno,
+                        "Unable to read tether to synchronise child");
+                    break;
+
+                case 0:
+                    _exit(1);
+                    break;
+                }
+
                 break;
             }
+        });
 
-            break;
-        }
-
+        breadcrumb();
         do
         {
             if (sOptions.mTether)
@@ -1398,6 +1481,7 @@ runChild(
                 if (0 > tetherFd || tetherFd == tetherPipe.mChildFd)
                     break;
 
+                breadcrumb();
                 if (dup2(tetherPipe.mChildFd, tetherFd) != tetherFd)
                     terminate(
                         errno,
@@ -1406,6 +1490,7 @@ runChild(
                         tetherFd);
             }
 
+            breadcrumb();
             if (closeFd(&tetherPipe.mChildFd))
                 terminate(
                     errno,
@@ -1732,10 +1817,13 @@ cmdRunCommand()
     if (sOptions.mIdentify)
         dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid);
 
-    if (1 != write(tetherPipe.mParentFd, "", 1))
-        terminate(
-            errno,
-            "Unable to synchronise child process");
+    RACE
+    ({
+        if (1 != write(tetherPipe.mParentFd, "", 1))
+            terminate(
+                errno,
+                "Unable to synchronise child process");
+    });
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
@@ -1864,9 +1952,14 @@ cmdRunCommand()
             debug(1, "read stdin %zd", bytes);
 
             if (-1 == bytes)
-                terminate(
-                    errno,
-                    "Unable to read from tether pipe");
+            {
+                if (ECONNRESET == errno)
+                    bytes = 0;
+                else
+                    terminate(
+                        errno,
+                        "Unable to read from tether pipe");
+            }
 
             /* If the child has closed its end of the tether, the watchdog
              * will read EOF on the tether. Continue running the event

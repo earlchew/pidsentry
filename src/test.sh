@@ -17,10 +17,13 @@ if false ; then
 TEST 'Signal queueing'
 set -x
 REPLY=$(
-    ./k9 -T -- sh -c 'C=0; trap '\'': $(( ++C ))'\'' 15 ; sleep 5; echo $C' &
-    sleep 1
-    kill $! ; kill $! ; kill $!
-    wait $!)
+  ./k9 -T -d -i -- sh -c 'C=0; trap '\'': $(( ++C ))'\'' 15 ; sleep 5; echo $C' |
+  {
+    read PID
+    kill -- "$PID" ; kill -- "$PID" ; kill -- "$PID"
+    read COUNT
+    echo "$COUNT"
+  })
 [ "$REPLY" -ge 6 ]
 exit 1
 fi
@@ -31,7 +34,6 @@ TEST_EXIT 1 ./k9 -? -- true
 TEST 'Missing -P option value'
 TEST_EXIT 1 ./k9 -P
 
-set -x
 TEST 'Illegal negative -P option value'
 TEST_EXIT 1 ./k9 -P -2 -- true
 
@@ -122,6 +124,21 @@ TEST 'Tether using stdout with 8M data'
 
 TEST 'Tether quietly using stdout with 8M data'
 [ $(./k9 -T -q -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 0 ]
+
+TEST 'Unexpected death of child'
+REPLY=$(
+  exec 3>&1
+  {
+    if ./k9 -T -d -i -- sh -c 'while : ; do : ; done ; exit 0' 3>&- ; then
+      echo 0 >&3
+    else
+      echo $? >&3
+    fi
+  } | {
+    read PID
+    kill -- "$PID"
+  })
+[ x"$REPLY" = x$((128 + 15)) ]
 
 TEST 'Timeout with data that must be flushed after 6s'
 REPLY=$(
