@@ -1869,7 +1869,10 @@ cmdRunCommand()
      * release the waiting child process. */
 
     if (sOptions.mIdentify)
-        dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid);
+        dprintf(STDOUT_FILENO,
+                "%jd\n%jd\n",
+                (intmax_t) getProcessId(),
+                (intmax_t) childPid);
 
     RACE
     ({

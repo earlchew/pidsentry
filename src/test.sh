@@ -81,10 +81,18 @@ rm -f pidfile
 date > pidfile
 TEST_EXIT 1 ./k9 -T -p pidfile
 
-TEST 'Identify child process'
-REPLY=$(./k9 -T -i -- bash -c 'echo $$' | {
-  read FIRST ; read SECOND ; echo "$FIRST $SECOND" ; })
-[ x"${REPLY%% *}" = x"${REPLY#* }" ]
+TEST 'Identify processes'
+for REPLY in $(
+  exec sh -c 'echo $$ ; exec ./k9 -T -i -- sh -c '\''echo $$'\' |
+  {
+    read REALPARENT
+    read PARENT ; read CHILD
+    read REALCHILD
+    echo "$REALPARENT/$PARENT $REALCHILD/$CHILD"
+  }) ; do
+
+  [ x"${REPLY%% *}" = x"${REPLY#* }" ]
+done
 
 TEST 'Exit code propagation'
 TEST_EXIT 2 ./k9 -T -- sh -c 'exit 2'
