@@ -1170,6 +1170,8 @@ releaseLockPidFile(struct PidFile *self)
             self->mLock = locked;
     });
 
+    testSleep();
+
     return rc;
 }
 
@@ -1181,6 +1183,8 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 
     assert(LOCK_UN != aLock);
     assert(LOCK_UN == self->mLock);
+
+    testSleep();
 
     int rc = flock(self->mFd, aLock);
 
@@ -1265,10 +1269,13 @@ createPidFile(struct PidFile *self, const char *aFileName)
 
     breadcrumb();
 
-    self->mFd = openat(self->mDirFd,
-                       self->mBaseName,
-                       O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-                       S_IRUSR | S_IRGRP | S_IROTH);
+    RACE
+    ({
+        self->mFd = openat(self->mDirFd,
+                           self->mBaseName,
+                           O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+                           S_IRUSR | S_IRGRP | S_IROTH);
+    });
     if (-1 == self->mFd)
         goto Finally;
 
