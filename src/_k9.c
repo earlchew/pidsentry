@@ -86,6 +86,7 @@
  *        Verify that S is not open
  * Kill SIGTERM on timeout, then SIGKILL
  * cmdRunCommand() is too big, break it up
+ * Use flock to serialise messages
  */
 
 static const char sUsage[] =
@@ -842,6 +843,8 @@ caughtSignal_(int aSigNum)
 {
     int signalFd = sSignalFd_;
 
+    debug(0, "queued signal %d", aSigNum);
+
     if (writeSignal_(signalFd, aSigNum))
     {
         if (EWOULDBLOCK != errno)
@@ -863,14 +866,16 @@ watchSignals(const struct Pipe *aSigPipe)
 
     for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
     {
-        int          sigNum     = sWatchedSignals_[ix].mSigNum;
+        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+
+        int          sigNum     = watchedSig->mSigNum;
         sighandler_t sigHandler = signal(sigNum, caughtSignal_);
 
         if (SIG_ERR == sigHandler)
             goto Finally;
 
-        sWatchedSignals_[ix].mSigHandler = sigHandler;
-        sWatchedSignals_[ix].mWatched    = true;
+        watchedSig->mSigHandler = sigHandler;
+        watchedSig->mWatched    = true;
     }
 
     rc = 0;
@@ -879,16 +884,21 @@ Finally:
 
     FINALLY
     ({
-        for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+        if (rc)
         {
-            if (sWatchedSignals_[ix].mWatched)
+            for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
             {
-                int          sigNum     = sWatchedSignals_[ix].mSigNum;
-                sighandler_t sigHandler = sWatchedSignals_[ix].mSigHandler;
+                struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
 
-                signal(sigNum, sigHandler);
+                if (watchedSig->mWatched)
+                {
+                    int          sigNum     = watchedSig->mSigNum;
+                    sighandler_t sigHandler = watchedSig->mSigHandler;
 
-                sWatchedSignals_[ix].mWatched = false;
+                    signal(sigNum, sigHandler);
+
+                    watchedSig->mWatched = false;
+                }
             }
         }
     });
@@ -904,8 +914,10 @@ unwatchSignals(void)
 
     for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
     {
-        int          sigNum     = sWatchedSignals_[ix].mSigNum;
-        sighandler_t sigHandler = sWatchedSignals_[ix].mSigHandler;
+        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+
+        int          sigNum     = watchedSig->mSigNum;
+        sighandler_t sigHandler = watchedSig->mSigHandler;
 
         if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
         {
@@ -913,7 +925,7 @@ unwatchSignals(void)
             err = errno;
         }
 
-        sWatchedSignals_[ix].mWatched = false;
+        watchedSig->mWatched = false;
     }
 
     sSignalFd_ = -1;
@@ -1954,9 +1966,14 @@ cmdRunCommand()
         int rc = poll(pollfds, NUMBEROF(pollfds), timeout);
 
         if (-1 == rc)
+        {
+            if (EINTR == errno)
+                continue;
+
             terminate(
                 errno,
                 "Unable to poll for activity");
+        }
 
         /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
          * no matter what the caller has subscribed for. Only pay

@@ -13,21 +13,6 @@ TEST_EXIT()
     then false ; else [ $? -eq $1 ] ; fi
 }
 
-if false ; then
-TEST 'Signal queueing'
-set -x
-REPLY=$(
-  ./k9 -T -d -i -- sh -c 'C=0; trap '\'': $(( ++C ))'\'' 15 ; sleep 5; echo $C' |
-  {
-    read PID
-    kill -- "$PID" ; kill -- "$PID" ; kill -- "$PID"
-    read COUNT
-    echo "$COUNT"
-  })
-[ "$REPLY" -ge 6 ]
-exit 1
-fi
-
 TEST 'Usage'
 TEST_EXIT 1 ./k9 -? -- true
 
@@ -139,6 +124,25 @@ REPLY=$(
     kill -- "$PID"
   })
 [ x"$REPLY" = x$((128 + 15)) ]
+
+TEST 'Signal queueing'
+REPLY=$(
+  sh -c "
+    echo \$\$
+    exec ./k9 -T -d -- sh -c '
+      C=0
+      trap '\\'': \$(( ++C ))'\\'' 15
+      echo \$\$
+      while [ \$C -ne 2 ] ; do sleep 1 ; done
+      echo \$C'" |
+  {
+    read PARENT
+    read CHILD
+    kill -- "$PARENT" ; sleep 3 ; kill -- "$PARENT"
+    read COUNT
+    echo "$COUNT"
+  })
+[ x"$REPLY" = x"2" ]
 
 TEST 'Timeout with data that must be flushed after 6s'
 REPLY=$(
