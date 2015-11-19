@@ -736,9 +736,17 @@ createStdFdFiller(struct StdFdFiller *self)
     if (-1 == self->mFd[0] || -1 == self->mFd[1])
         goto Finally;
 
+    /* Close the writing end of the pipe, leaving only the reading
+     * end of the pipe. Any attempt to write will fail, and any
+     * attempt to read will yield EOF. */
+
+    if (close(self->mFd[1]))
+        goto Finally;
+
+    self->mFd[1] = dup(self->mFd[0]);
     self->mFd[2] = dup(self->mFd[0]);
 
-    if (-1 == self->mFd[2])
+    if (-1 == self->mFd[1] || -1 == self->mFd[2])
         goto Finally;
 
     rc = 0;
