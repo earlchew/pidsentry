@@ -125,24 +125,50 @@ REPLY=$(
   })
 [ x"$REPLY" = x$((128 + 15)) ]
 
-TEST 'Signal queueing'
+TEST 'Fast signal queueing'
 REPLY=$(
+  SIGNALS="1 2 3 15"
   sh -c "
     echo \$\$
     exec ./k9 -T -d -- sh -c '
       C=0
-      trap '\\'': \$(( ++C ))'\\'' 15
+      trap '\\'': \$(( ++C ))'\\'' $SIGNALS
       echo \$\$
-      while [ \$C -ne 2 ] ; do sleep 1 ; done
+      while [ \$C -ne $(echo $SIGNALS | wc -w) ] ; do sleep 1 ; done
       echo \$C'" |
   {
     read PARENT
     read CHILD
-    kill -- "$PARENT" ; sleep 3 ; kill -- "$PARENT"
+    for SIG in $SIGNALS ; do
+        kill -$SIG -- "$PARENT"
+    done
     read COUNT
     echo "$COUNT"
   })
-[ x"$REPLY" = x"2" ]
+[ x"$REPLY" = x"4" ]
+
+TEST 'Slow signal queueing'
+REPLY=$(
+  SIGNALS="1 2 3 15"
+  sh -c "
+    echo \$\$
+    exec ./k9 -T -d -- sh -c '
+      C=0
+      trap '\\'': \$(( ++C ))'\\'' $SIGNALS
+      echo \$\$
+      while [ \$C -ne $(echo $SIGNALS | wc -w) ] ; do sleep 1 ; done
+      echo \$C'" |
+  {
+    read PARENT
+    read CHILD
+    for SIG in $SIGNALS ; do
+        kill -$SIG -- "$PARENT"
+        sleep 1
+    done
+    read COUNT
+    echo "$COUNT"
+  })
+[ x"$REPLY" = x"4" ]
 
 TEST 'Timeout with data that must be flushed after 6s'
 REPLY=$(
