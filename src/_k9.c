@@ -87,6 +87,12 @@
 /* TODO
  *
  * cmdRunCommand() is too big, break it up
+ * EINTR everywhere, especially flock
+ * SIGALARM for occasional EINTR
+ * Stuck flock
+ * cloneProcessLock -- and don't use /proc/self
+ * struct ProcessLock using mPathName and mPathName_
+ * struct PidFile using mPathName and mPathName_
  */
 
 static const char sUsage[] =
@@ -770,7 +776,7 @@ Finally:
 
     FINALLY({});
 
-    return 0;
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1215,7 +1221,7 @@ readPidFile(const struct PidFile *self)
 
         if ( ! len)
         {
-            *bufptr++ = '\n';
+            bufptr[len] = '\n';
             ++len;
         }
 
@@ -1411,8 +1417,6 @@ createPidFile(struct PidFile *self, const char *aFileName)
      * readonly permissions dissuades other processes from modifying
      * the content. */
 
-    breadcrumb();
-
     RACE
     ({
         self->mFd = openPathName(&self->mPathName,
@@ -1449,13 +1453,9 @@ openPidFile(struct PidFile *self, const char *aFileName)
     if (openPidFile_(self, aFileName))
         goto Finally;
 
-    breadcrumb();
-
     self->mFd = openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0);
     if (-1 == self->mFd)
         goto Finally;
-
-    breadcrumb();
 
     rc = 0;
 
@@ -1527,8 +1527,26 @@ closePidFile(struct PidFile *self)
 
     if (O_RDONLY != (flags & O_ACCMODE))
     {
+        /* The pidfile is still locked at this point. If writable,
+         * remove the content from the pidfile first so that any
+         * competing reader will see any empty file. Once emptied,
+         * remove the pidfile so that no other process will be
+         * able to find the file. */
+
         if (ftruncate(self->mFd, 0))
             goto Finally;
+
+        if (unlinkPathName(&self->mPathName, 0))
+        {
+            /* In theory, ENOENT should not occur since the pidfile
+             * is locked, and competing processes need to hold the
+             * lock to remove the pidfile. It might be possible
+             * that the pidfile is deleted from, say, the command
+             * line. */
+
+            if (ENOENT != errno)
+                goto Finally;
+        }
     }
 
     if (close(self->mFd))
@@ -1575,7 +1593,6 @@ createProcessLock(struct ProcessLock *self)
     self->mFd = openPathName(&self->mPathName, O_RDONLY | O_CLOEXEC, 0);
     if (-1 == self->mFd)
         goto Finally;
-    breadcrumb();
 
     rc = 0;
 
@@ -1751,7 +1768,6 @@ runChild(
          * stderr. The remaining operations will close the remaining
          * unwanted file descriptors. */
 
-        breadcrumb();
         if (closeStdFdFiller(&stdFdFiller))
             terminate(
                 errno,
@@ -1886,7 +1902,6 @@ runChild(
                 if (tetherFd == tetherPipe.mChildFd)
                     break;
 
-                breadcrumb();
                 if (dup2(tetherPipe.mChildFd, tetherFd) != tetherFd)
                     terminate(
                         errno,
@@ -1895,7 +1910,6 @@ runChild(
                         tetherFd);
             }
 
-            breadcrumb();
             if (closeFd(&tetherPipe.mChildFd))
                 terminate(
                     errno,
@@ -2011,7 +2025,6 @@ cmdPrintPidFile(const char *aFileName)
 
     FINALLY
     ({
-        breadcrumb();
         if (closePidFile(&pidFile))
             terminate(
                 errno,
@@ -2117,8 +2130,6 @@ cmdRunCommand(char **aCmd)
              * another process might have removed it and replaced it with
              * another. */
 
-            breadcrumb();
-
             if (acquireWriteLockPidFile(pidFile))
                 terminate(
                     errno,
@@ -2223,12 +2234,10 @@ cmdRunCommand(char **aCmd)
          * is completely initialised, it is ok to release
          * the flock. */
 
-        breadcrumb();
         if (releaseLockPidFile(pidFile))
             terminate(
                 errno,
                 "Cannot unlock pid file '%s'", pidFileName);
-        breadcrumb();
     }
 
     /* The creation time of the child process is earlier than
@@ -2253,7 +2262,6 @@ cmdRunCommand(char **aCmd)
      * so that stdin, stdout and stderr become available for manipulation
      * and will not be closed multiple times. */
 
-    breadcrumb();
     if (closeStdFdFiller(&stdFdFiller))
         terminate(
             errno,
@@ -2291,6 +2299,7 @@ cmdRunCommand(char **aCmd)
         pidFile ? pidFile->mFd : -1,
         pidFile ? pidFile->mPathName.mDirFd : -1,
         sProcessLock ? sProcessLock->mFd : -1,
+        sProcessLock ? sProcessLock->mPathName.mDirFd : -1,
         termPipe.mRdFd,
         termPipe.mWrFd,
         sigPipe.mRdFd,
@@ -2541,13 +2550,11 @@ cmdRunCommand(char **aCmd)
 
     if (pidFile)
     {
-        breadcrumb();
         if (acquireWriteLockPidFile(pidFile))
             terminate(
                 errno,
                 "Cannot lock pid file '%s'", pidFile->mPathName.mFileName);
 
-        breadcrumb();
         if (closePidFile(pidFile))
             terminate(
                 errno,
@@ -2585,16 +2592,23 @@ int main(int argc, char **argv)
             errno,
             "Unable to create process lock");
 
-    sProcessLock = &processLock;
-
-    char **cmd = parseOptions(argc, argv);
-
     struct ExitCode exitCode;
 
-    if ( ! cmd && sOptions.mPidFile)
-        exitCode = cmdPrintPidFile(sOptions.mPidFile);
-    else
-        exitCode = cmdRunCommand(cmd);
+    sProcessLock = &processLock;
+    {
+        char **cmd = parseOptions(argc, argv);
+
+        if ( ! cmd && sOptions.mPidFile)
+            exitCode = cmdPrintPidFile(sOptions.mPidFile);
+        else
+            exitCode = cmdRunCommand(cmd);
+    }
+    sProcessLock = 0;
+
+    if (closeProcessLock(&processLock))
+        terminate(
+            errno,
+            "Unable to close process lock");
 
     return exitCode.mStatus;
 }

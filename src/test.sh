@@ -37,21 +37,23 @@ runTests()
     testExit 1 runWait ./k9 -P -2 -- true
 
     testCase 'Valid -P option values'
-    runWait ./k9 -P -1 -- true
-    runWait ./k9 -P 0 -- true
-    runWait ./k9 -P 1 -- true
+    testExit 0 runWait ./k9 -P -1 -- true
+    testExit 0 runWait ./k9 -P 0 -- true
+    testExit 0 runWait ./k9 -P 1 -- true
 
     testCase 'Long --pid option'
-    runWait ./k9 --pid 1 -- true
+    testExit 0 runWait ./k9 --pid 1 -- true
 
     testCase 'Missing -p option value'
     testExit 1 runWait ./k9 -p
 
     testCase 'Valid -p option value'
-    runWait ./k9 -d -p pidfile -- true
+    testExit 0 runWait ./k9 -d -p pidfile -- true
+    [ ! -f pidfile ]
 
     testCase 'Long --pidfile option'
-    runWait ./k9 --pidfile pidfile -- true
+    testExit 0 runWait ./k9 --pidfile pidfile -- true
+    [ ! -f pidfile ]
 
     testCase 'Missing command'
     testExit 1 runWait ./k9
@@ -67,33 +69,39 @@ runTests()
     testCase 'Empty pid file'
     rm -f pidfile
     : > pidfile
-    runWait ./k9 -T -p pidfile -- true
+    testExit 0 runWait ./k9 -T -p pidfile -- true
+    [ ! -f pidfile ]
 
     testCase 'Invalid content in pid file'
     rm -f pidfile
     dd if=/dev/zero bs=1K count=1 > pidfile
-    runWait ./k9 -T -p pidfile -- true
+    testExit 0 runWait ./k9 -T -p pidfile -- true
+    [ ! -f pidfile ]
 
     testCase 'Dead process in pid file'
     rm -f pidfile
     sh -c 'echo $$' > pidfile
-    runWait ./k9 -T -d -p pidfile -- true
+    testExit 0 runWait ./k9 -T -d -p pidfile -- true
+    [ ! -f pidfile ]
 
     testCase 'Aliased process in pid file'
     rm -f pidfile
     ( sh -c 'echo $(( $$ + 1))' > pidfile ; sleep 1 ) &
     sleep 1
-    runWait ./k9 -T -d -p pidfile -- true
+    testExit 0 runWait ./k9 -T -d -p pidfile -- true
     wait
+    [ ! -f pidfile ]
 
     testCase 'Read non-existent pid file'
     rm -f pidfile
     testExit 1 runWait ./k9 -T -p pidfile
+    [ ! -f pidfile ]
 
     testCase 'Read malformed pid file'
     rm -f pidfile
     date > pidfile
     testExit 1 runWait ./k9 -T -p pidfile
+    [ -f pidfile ]
 
     testCase 'Identify processes'
     for REPLY in $(
@@ -111,8 +119,9 @@ runTests()
     testCase 'Exit code propagation'
     testExit 2 runWait ./k9 -T -- sh -c 'exit 2'
 
-    testCase 'Signal propagation'
-    testExit $((128 + 9)) runWait ./k9 -T -- sh -c 'echo $$ ; kill -9 $$'
+    testCase 'Signal exit code propagation'
+    testExit $((128 + 9)) runWait ./k9 -T -- sh -c '
+        echo Killing $$ ; kill -9 $$'
 
     testCase 'Untethered child process'
     [ $(runWait ./k9 -T -u -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
@@ -154,7 +163,7 @@ runTests()
     REPLY=$(
       exec 3>&1
       {
-        if $VALGRIND./k9 -T -d -i -- sh -c '
+        if $VALGRIND ./k9 -T -d -i -- sh -c '
             while : ; do : ; done ; exit 0' 3>&- ; then
           echo 0 >&3
         else
