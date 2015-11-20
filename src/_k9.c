@@ -86,8 +86,6 @@
  *        Verify that S is not open
  * Kill SIGTERM on timeout, then SIGKILL
  * cmdRunCommand() is too big, break it up
- * Use flock to serialise messages
- * Remove sCmd
  */
 
 static const char sUsage[] =
@@ -207,7 +205,6 @@ struct ProcessDirName
 };
 
 static char               *sArg0;
-static char              **sCmd;
 static pid_t               sPid;
 static uint64_t            sTimeBase;
 static struct ProcessLock *sProcessLock;
@@ -465,7 +462,7 @@ parsePid(const char *aArg, pid_t *aValue)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static char **
 parseOptions(int argc, char **argv)
 {
     int pidFileOnly = 0;
@@ -562,8 +559,7 @@ parseOptions(int argc, char **argv)
             terminate(0, "Missing command for execution");
     }
 
-    if (optind < argc)
-        sCmd = argv + optind;
+    return optind < argc ? argv + optind : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1673,6 +1669,7 @@ forkProcess(void)
 /* -------------------------------------------------------------------------- */
 static pid_t
 runChild(
+    char                    **aCmd,
     const struct StdFdFiller *aStdFdFiller,
     const struct SocketPair  *aTetherPipe,
     const struct Pipe        *aTermPipe,
@@ -1814,10 +1811,10 @@ runChild(
          * might need to emit a diagnostic if execvp() fails. Rely on
          * O_CLOEXEC to close the underlying file descriptors. */
 
-        execvp(sCmd[0], sCmd);
+        execvp(aCmd[0], aCmd);
         terminate(
             errno,
-            "Unable to execute '%s'", sCmd[0]);
+            "Unable to execute '%s'", aCmd[0]);
     }
 
     if (closeProcessLock(&processLock))
@@ -1929,8 +1926,10 @@ cmdPrintPidFile(const char *aFileName)
 
 /* -------------------------------------------------------------------------- */
 static struct ExitCode
-cmdRunCommand()
+cmdRunCommand(char **aCmd)
 {
+    assert(aCmd);
+
     /* The instance of the StdFdFiller guarantees that any further file
      * descriptors that are opened will not be mistaken for stdin,
      * stdout or stderr. */
@@ -1970,7 +1969,8 @@ cmdRunCommand()
             errno,
             "Unable to add watch on child process termination");
 
-    pid_t childPid = runChild(&stdFdFiller,
+    pid_t childPid = runChild(aCmd,
+                              &stdFdFiller,
                               &tetherPipe, &termPipe, &sigPipe);
     if (-1 == childPid)
         terminate(
@@ -2490,14 +2490,14 @@ int main(int argc, char **argv)
 
     sProcessLock = &processLock;
 
-    parseOptions(argc, argv);
+    char **cmd = parseOptions(argc, argv);
 
     struct ExitCode exitCode;
 
-    if ( ! sCmd && sOptions.mPidFile)
+    if ( ! cmd && sOptions.mPidFile)
         exitCode = cmdPrintPidFile(sOptions.mPidFile);
     else
-        exitCode = cmdRunCommand();
+        exitCode = cmdRunCommand(cmd);
 
     return exitCode.mStatus;
 }
