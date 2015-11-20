@@ -112,11 +112,29 @@ TEST 'Tether with new file descriptor'
 TEST 'Tether using stdout'
 [ $(./k9 -T -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
 
+TEST 'Tether using named stdout'
+[ $(./k9 -T -f 1 -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
+
 TEST 'Tether using stdout with 8M data'
 [ $(./k9 -T -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
 
 TEST 'Tether quietly using stdout with 8M data'
 [ $(./k9 -T -q -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 0 ]
+
+TEST 'Tether named in environment'
+[ $(./k9 -T -n TETHER -- printenv | grep TETHER) = "TETHER=1" ]
+
+TEST 'Tether named alone in argument'
+[ $(./k9 -T -n @tether@ -- echo @tether@ | grep '1') = "1" ]
+
+TEST 'Tether named as suffix in argument'
+[ $(./k9 -T -n @tether@ -- echo x@tether@ | grep '1' ) = "x1" ]
+
+TEST 'Tether named as prefix argument'
+[ $(./k9 -T -n @tether@ -- echo @tether@x | grep '1' ) = "1x" ]
+
+TEST 'Tether named as infix argument'
+[ $(./k9 -T -n @tether@ -- echo x@tether@x | grep '1' ) = "x1x" ]
 
 TEST 'Unexpected death of child'
 REPLY=$(

@@ -76,15 +76,16 @@
         testSleep();      \
     } while (0)
 
+#define SIGNAL_CONTEXT(...) \
+    do                      \
+    {                       \
+        ++sSignalContext;   \
+        __VA_ARGS__;        \
+        --sSignalContext;   \
+    } while (0)
+
 /* TODO
  *
- * Push tether fd to environment, or argument on command line
- * Under test, pause after fork()
- * Use --stdout semantics by default,
- *        instead allow --tether [ { D | D,S | - | -,S } ]
- *        Verify that D is actually open for writing
- *        Verify that S is not open
- * Kill SIGTERM on timeout, then SIGKILL
  * cmdRunCommand() is too big, break it up
  */
 
@@ -102,6 +103,12 @@ static const char sUsage[] =
 "  --identify | -i\n"
 "      Print the pid of the child process on stdout before starting\n"
 "      the child program. [Default: Do not print the pid of the child]\n"
+"  --name N | -n N\n"
+"      Name the fd of the tether. If N matches [A-Z][A-Z0-9_]*, then\n"
+"      create an environment variable of that name and set is value to\n"
+"      the fd of the tether. Otherwise replace the first command\n"
+"      line argument with a substring that matches N with the fd\n"
+"      of the tether. [Default: Do not advertise fd]\n"
 "  --pid N | -P N\n"
 "      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
 "      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
@@ -122,13 +129,14 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "df:iP:p:qTt:u";
+    "df:in:P:p:qTt:u";
 
 static struct option sLongOptions[] =
 {
     { "debug",      0, 0, 'd' },
     { "fd",         1, 0, 'f' },
     { "identify",   0, 0, 'i' },
+    { "name",       1, 0, 'n' },
     { "pid",        1, 0, 'P' },
     { "pidfile",    1, 0, 'p' },
     { "quiet",      0, 0, 'q' },
@@ -140,15 +148,16 @@ static struct option sLongOptions[] =
 
 static struct
 {
-    char      *mPidFile;
-    unsigned   mDebug;
-    bool       mTest;
-    bool       mQuiet;
-    bool       mIdentify;
-    int        mTimeout;
-    int        mTetherFd;
-    const int *mTether;
-    pid_t      mPid;
+    const char *mName;
+    pid_t       mPid;
+    const char *mPidFile;
+    int         mTimeout;
+    int         mTetherFd;
+    const int  *mTether;
+    unsigned    mDebug;
+    bool        mIdentify;
+    bool        mQuiet;
+    bool        mTest;
 } sOptions;
 
 struct SocketPair
@@ -208,6 +217,7 @@ static char               *sArg0;
 static pid_t               sPid;
 static uint64_t            sTimeBase;
 static struct ProcessLock *sProcessLock;
+static unsigned            sSignalContext;
 
 static int lockProcessLock(struct ProcessLock *);
 static int unlockProcessLock(struct ProcessLock *);
@@ -248,7 +258,8 @@ showMessage(
 {
     FINALLY
     ({
-        lockProcessLock(sProcessLock);
+        if ( ! sSignalContext)
+            lockProcessLock(sProcessLock);
 
         uint64_t elapsed   = monotonicTime() - sTimeBase;
         uint64_t elapsed_s = elapsed / (1000 * 1000 * 1000);
@@ -272,7 +283,8 @@ showMessage(
         else
             dprintf(STDERR_FILENO, "\n");
 
-        unlockProcessLock(sProcessLock);
+        if ( ! sSignalContext)
+            unlockProcessLock(sProcessLock);
     });
 }
 
@@ -524,6 +536,13 @@ parseOptions(int argc, char **argv)
                 sOptions.mPid = -1;
             else if (parsePid(optarg, &sOptions.mPid))
                 terminate(0, "Badly formed pid - '%s'", optarg);
+            break;
+
+        case 'n':
+            pidFileOnly = -1;
+            if ( ! optarg[0])
+                terminate(0, "Empty environment or argument name");
+            sOptions.mName = optarg;
             break;
 
         case 'p':
@@ -978,17 +997,20 @@ Finally:
 static void
 caughtSignal_(int aSigNum)
 {
-    int signalFd = sSignalFd_;
+    SIGNAL_CONTEXT
+    ({
+        int signalFd = sSignalFd_;
 
-    debug(0, "queued signal %d", aSigNum);
+        debug(1, "queued signal %d", aSigNum);
 
-    if (writeSignal_(signalFd, aSigNum))
-    {
-        if (EWOULDBLOCK != errno)
-            terminate(
-                errno,
-                "Unable to queue signal %d on fd %d", aSigNum, signalFd);
-    }
+        if (writeSignal_(signalFd, aSigNum))
+        {
+            if (EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to queue signal %d on fd %d", aSigNum, signalFd);
+        }
+    });
 }
 
 static int
@@ -1076,13 +1098,18 @@ unwatchSignals(void)
 static void
 deadChild_(int aSigNum)
 {
-    if (writeSignal_(sDeadChildFd_, aSigNum))
-    {
-        if (EBADF != errno && EWOULDBLOCK != errno)
-            terminate(
-                errno,
-                "Unable to indicate dead child");
-    }
+    SIGNAL_CONTEXT
+    ({
+        debug(1, "queued dead child");
+
+        if (writeSignal_(sDeadChildFd_, aSigNum))
+        {
+            if (EBADF != errno && EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to indicate dead child");
+        }
+    });
 }
 
 static int
@@ -1779,14 +1806,84 @@ runChild(
             }
         });
 
-        breadcrumb();
+        char tetherArg[sizeof(int) * CHAR_BIT + 1];
+
         do
         {
             if (sOptions.mTether)
             {
                 int tetherFd = *sOptions.mTether;
 
-                if (0 > tetherFd || tetherFd == tetherPipe.mChildFd)
+                if (0 > tetherFd)
+                    tetherFd = tetherPipe.mChildFd;
+
+                sprintf(tetherArg, "%d", tetherFd);
+
+                if (sOptions.mName)
+                {
+                    bool useEnv = isupper(sOptions.mName[0]);
+
+                    for (unsigned ix = 1; useEnv && sOptions.mName[ix]; ++ix)
+                    {
+                        unsigned char ch = sOptions.mName[ix];
+
+                        if ( ! isupper(ch) && ! isdigit(ch) && ch != '_')
+                            useEnv = false;
+                    }
+
+                    if (useEnv)
+                    {
+                        if (setenv(sOptions.mName, tetherArg, 1))
+                            terminate(
+                                errno,
+                                "Unable to set environment variable '%s'",
+                                sOptions.mName);
+                    }
+                    else
+                    {
+                        /* Start scanning from the first argument, leaving
+                         * the command name intact. */
+
+                        char *matchArg = 0;
+
+                        for (unsigned ix = 1; aCmd[ix]; ++ix)
+                        {
+                            matchArg = strstr(aCmd[ix], sOptions.mName);
+
+                            if (matchArg)
+                            {
+                                char replacedArg[
+                                    strlen(aCmd[ix])       -
+                                    strlen(sOptions.mName) +
+                                    strlen(tetherArg)      + 1];
+
+                                sprintf(replacedArg,
+                                        "%.*s%s%s",
+                                        matchArg - aCmd[ix],
+                                        aCmd[ix],
+                                        tetherArg,
+                                        matchArg + strlen(sOptions.mName));
+
+                                aCmd[ix] = strdup(replacedArg);
+
+                                if ( ! aCmd[ix])
+                                    terminate(
+                                        errno,
+                                        "Unable to duplicate '%s'",
+                                        replacedArg);
+                                break;
+                            }
+                        }
+
+                        if ( ! matchArg)
+                            terminate(
+                                0,
+                                "Unable to find matching argument '%s'",
+                                sOptions.mName);
+                    }
+                }
+
+                if (tetherFd == tetherPipe.mChildFd)
                     break;
 
                 breadcrumb();
