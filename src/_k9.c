@@ -87,6 +87,7 @@
  * Kill SIGTERM on timeout, then SIGKILL
  * cmdRunCommand() is too big, break it up
  * Use flock to serialise messages
+ * Remove sCmd
  */
 
 static const char sUsage[] =
@@ -152,11 +153,6 @@ static struct
     pid_t      mPid;
 } sOptions;
 
-static char    *sArg0;
-static char   **sCmd;
-static pid_t    sPid;
-static uint64_t sTimeBase;
-
 struct SocketPair
 {
     int mParentFd;
@@ -174,7 +170,7 @@ struct StdFdFiller
     int mFd[3];
 };
 
-struct PidFile
+struct PathName
 {
     char *mFileName;
     char *mDirName_;
@@ -182,14 +178,42 @@ struct PidFile
     char *mBaseName_;
     char *mBaseName;
     int   mDirFd;
-    int   mFd;
-    int   mLock;
+};
+
+struct PidFile
+{
+    struct PathName mPathName;
+    int             mFd;
+    int             mLock;
+};
+
+struct ProcessLock
+{
+    struct PathName mPathName;
+    int             mFd;
+    int             mLock;
 };
 
 struct ExitCode
 {
     int mStatus;
 };
+
+static const char sProcessDirNameFmt[] = "/proc/%jd";
+
+struct ProcessDirName
+{
+    char mDirName[sizeof(sProcessDirNameFmt) + sizeof(pid_t) * CHAR_BIT];
+};
+
+static char               *sArg0;
+static char              **sCmd;
+static pid_t               sPid;
+static uint64_t            sTimeBase;
+static struct ProcessLock *sProcessLock;
+
+static int lockProcessLock(struct ProcessLock *);
+static int unlockProcessLock(struct ProcessLock *);
 
 /* -------------------------------------------------------------------------- */
 static pid_t
@@ -227,6 +251,8 @@ showMessage(
 {
     FINALLY
     ({
+        lockProcessLock(sProcessLock);
+
         uint64_t elapsed   = monotonicTime() - sTimeBase;
         uint64_t elapsed_s = elapsed / (1000 * 1000 * 1000);
         uint64_t elapsed_m;
@@ -248,6 +274,8 @@ showMessage(
             dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
         else
             dprintf(STDERR_FILENO, "\n");
+
+        unlockProcessLock(sProcessLock);
     });
 }
 
@@ -442,8 +470,6 @@ parseOptions(int argc, char **argv)
 {
     int pidFileOnly = 0;
 
-    sArg0 = argv[0];
-
     sOptions.mTimeout   = DEFAULT_TIMEOUT;
     sOptions.mTetherFd  = STDOUT_FILENO;
     sOptions.mTether    = &sOptions.mTetherFd;
@@ -637,20 +663,135 @@ nonblockingFd(int aFd)
 }
 
 /* -------------------------------------------------------------------------- */
+static void
+initProcessDirName(struct ProcessDirName *self, pid_t aPid)
+{
+    sprintf(self->mDirName, sProcessDirNameFmt, (intmax_t) aPid);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+createPathName(struct PathName *self, const char *aFileName)
+{
+    int rc = -1;
+
+    self->mFileName  = 0;
+    self->mBaseName_ = 0;
+    self->mBaseName  = 0;
+    self->mDirName_  = 0;
+    self->mDirName   = 0;
+    self->mDirFd     = -1;
+
+    self->mFileName = strdup(aFileName);
+    if ( ! self->mFileName)
+        goto Finally;
+
+    self->mDirName_ = strdup(self->mFileName);
+    if ( ! self->mDirName_)
+        goto Finally;
+
+    self->mBaseName_ = strdup(self->mFileName);
+    if ( ! self->mBaseName_)
+        goto Finally;
+
+    self->mDirName  = strdup(dirname(self->mDirName_));
+    if ( ! self->mDirName)
+        goto Finally;
+
+    self->mBaseName = strdup(basename(self->mBaseName_));
+    if ( ! self->mBaseName)
+        goto Finally;
+
+    self->mDirFd = open(self->mDirName, O_RDONLY | O_CLOEXEC);
+    if (-1 == self->mDirFd)
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+        {
+            free(self->mFileName);
+            free(self->mBaseName_);
+            free(self->mBaseName);
+            free(self->mDirName_);
+            free(self->mDirName);
+
+            close(self->mDirFd);
+        }
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+closePathName(struct PathName *self)
+{
+    int rc = -1;
+
+    if (close(self->mDirFd))
+        goto Finally;
+
+    free(self->mFileName);
+    free(self->mBaseName_);
+    free(self->mBaseName);
+    free(self->mDirName_);
+    free(self->mDirName);
+
+    self->mFileName  = 0;
+    self->mBaseName_ = 0;
+    self->mBaseName  = 0;
+    self->mDirName_  = 0;
+    self->mDirName   = 0;
+    self->mDirFd     = -1;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+openPathName(struct PathName *self, int aFlags, mode_t aMode)
+{
+    return openat(self->mDirFd, self->mBaseName, aFlags, aMode);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+unlinkPathName(struct PathName *self, int aFlags)
+{
+    return unlinkat(self->mDirFd, self->mBaseName, aFlags);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags)
+{
+    return fstatat(self->mDirFd, self->mBaseName, aStat, aFlags);
+}
+
+/* -------------------------------------------------------------------------- */
 static struct timespec
 processStartTime(pid_t aPid)
 {
-    static const char procFileFmt[] = "/proc/%jd";
+    struct ProcessDirName processDirName;
 
-    char procFileName[sizeof(procFileFmt) + sizeof(aPid) * CHAR_BIT];
-
-    sprintf(procFileName, procFileFmt, (intmax_t) aPid);
+    initProcessDirName(&processDirName, aPid);
 
     struct timespec startTime = { 0 };
 
     struct stat procStatus;
 
-    if (stat(procFileName, &procStatus))
+    if (stat(processDirName.mDirName, &procStatus))
         startTime.tv_nsec = ENOENT == errno ?  UTIME_NOW : UTIME_OMIT;
     else
         startTime = earliestTime(&procStatus.st_mtim, &procStatus.st_ctim);
@@ -984,37 +1125,10 @@ openPidFile_(struct PidFile *self, const char *aFileName)
 {
     int rc = -1;
 
-    self->mFileName  = 0;
-    self->mDirName_  = 0;
-    self->mBaseName_ = 0;
-    self->mDirFd     = -1;
-    self->mFd        = -1;
-    self->mLock      = LOCK_UN;
+    self->mFd   = -1;
+    self->mLock = LOCK_UN;
 
-    self->mFileName = strdup(aFileName);
-    if ( ! self->mFileName)
-        goto Finally;
-
-    self->mDirName_ = strdup(self->mFileName);
-    if ( ! self->mDirName_)
-        goto Finally;
-
-    self->mBaseName_ = strdup(self->mFileName);
-    if ( ! self->mBaseName_)
-        goto Finally;
-
-    self->mDirName  = strdup(dirname(self->mDirName_));
-    if ( ! self->mDirName)
-        goto Finally;
-
-    self->mBaseName = strdup(basename(self->mBaseName_));
-    if ( ! self->mBaseName)
-        goto Finally;
-
-    breadcrumb();
-
-    self->mDirFd = open(self->mDirName, O_RDONLY);
-    if (-1 == self->mDirFd)
+    if (createPathName(&self->mPathName, aFileName))
         goto Finally;
 
     rc = 0;
@@ -1027,23 +1141,25 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 closePidFile_(struct PidFile *self)
 {
-    FINALLY
-    ({
-        free(self->mDirName_);
-        free(self->mBaseName_);
+    int rc = -1;
 
-        free(self->mDirName);
-        free(self->mBaseName);
-        free(self->mFileName);
+    if (-1 != self->mFd)
+        if (close(self->mFd))
+            goto Finally;
 
-        if (-1 != self->mDirFd)
-            close(self->mDirFd);
-        if (-1 != self->mFd)
-            close(self->mFd);
-    });
+    if (closePathName(&self->mPathName))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1179,7 +1295,7 @@ releaseLockPidFile(struct PidFile *self)
 static int
 lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 {
-    debug(0, "lock %s '%s'", aLockType, self->mFileName);
+    debug(0, "lock %s '%s'", aLockType, self->mPathName.mFileName);
 
     assert(LOCK_UN != aLock);
     assert(LOCK_UN == self->mLock);
@@ -1221,7 +1337,7 @@ createPidFile(struct PidFile *self, const char *aFileName)
      * it names is still running.
      */
 
-    self->mFd = openat(self->mDirFd, self->mBaseName, O_RDONLY | O_NOFOLLOW);
+    self->mFd = openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0);
     if (-1 == self->mFd)
     {
         if (ENOENT != errno)
@@ -1247,10 +1363,15 @@ createPidFile(struct PidFile *self, const char *aFileName)
             break;
         }
 
-        debug(0, "removing existing pidfile '%s'", self->mFileName);
+        debug(
+            0,
+            "removing existing pidfile '%s'", self->mPathName.mFileName);
 
-        if (unlinkat(self->mDirFd, self->mBaseName, 0) && ENOENT != errno)
-            goto Finally;
+        if (unlinkPathName(&self->mPathName, 0))
+        {
+            if (ENOENT != errno)
+                goto Finally;
+        }
 
         if (releaseLockPidFile(self))
             goto Finally;
@@ -1271,10 +1392,9 @@ createPidFile(struct PidFile *self, const char *aFileName)
 
     RACE
     ({
-        self->mFd = openat(self->mDirFd,
-                           self->mBaseName,
-                           O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-                           S_IRUSR | S_IRGRP | S_IROTH);
+        self->mFd = openPathName(&self->mPathName,
+                                 O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+                                 S_IRUSR | S_IRGRP | S_IROTH);
     });
     if (-1 == self->mFd)
         goto Finally;
@@ -1286,7 +1406,12 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closePidFile_(self);
+        {
+            if (closePidFile_(self))
+                warn(
+                    errno,
+                    "Unable to close pidfile '%s'", aFileName);
+        }
     });
 
     return rc;
@@ -1303,7 +1428,7 @@ openPidFile(struct PidFile *self, const char *aFileName)
 
     breadcrumb();
 
-    self->mFd = openat(self->mDirFd, self->mBaseName, O_RDONLY | O_NOFOLLOW);
+    self->mFd = openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0);
     if (-1 == self->mFd)
         goto Finally;
 
@@ -1316,7 +1441,12 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closePidFile_(self);
+        {
+            if (closePidFile_(self))
+                warn(
+                    errno,
+                    "Unable to close pidfile '%s'", aFileName);
+        }
     });
 
     return rc;
@@ -1334,8 +1464,7 @@ zombiePidFile(const struct PidFile *self)
 
     struct stat fileStatus;
 
-    if (fstatat(
-            self->mDirFd, self->mBaseName, &fileStatus, AT_SYMLINK_NOFOLLOW))
+    if (fstatPathName(&self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW))
     {
         if (ENOENT == errno)
             rc = 1;
@@ -1382,22 +1511,11 @@ closePidFile(struct PidFile *self)
     if (close(self->mFd))
         goto Finally;
 
-    if (close(self->mDirFd))
+    if (closePathName(&self->mPathName))
         goto Finally;
 
-    free(self->mBaseName_);
-    free(self->mDirName_);
-
-    free(self->mBaseName);
-    free(self->mDirName);
-    free(self->mFileName);
-
-    self->mBaseName_ = 0;
-    self->mDirName_  = 0;
-
-    self->mFd     = -1;
-    self->mDirFd  = -1;
-    self->mLock   = LOCK_UN;
+    self->mFd   = -1;
+    self->mLock = LOCK_UN;
 
     rc = 0;
 
@@ -1415,6 +1533,114 @@ writePidFile(struct PidFile *self, pid_t aPid)
     assert(0 < aPid);
 
     return 0 > dprintf(self->mFd, "%jd\n", (intmax_t) aPid) ? -1 : 0;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+createProcessLock(struct ProcessLock *self)
+{
+    int rc = -1;
+
+    self->mFd   = -1;
+    self->mLock = LOCK_UN;
+
+    bool havePathName = false;
+    if (createPathName(&self->mPathName, "/proc/self"))
+        goto Finally;
+    havePathName = true;
+
+    self->mFd = openPathName(&self->mPathName, O_RDONLY | O_CLOEXEC, 0);
+    if (-1 == self->mFd)
+        goto Finally;
+    breadcrumb();
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+        {
+            close(self->mFd);
+
+            if (havePathName)
+                closePathName(&self->mPathName);
+        }
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+closeProcessLock(struct ProcessLock *self)
+{
+    int rc = -1;
+
+    if (close(self->mFd))
+        goto Finally;
+
+    if (closePathName(&self->mPathName))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+lockProcessLock(struct ProcessLock *self)
+{
+    int rc = -1;
+
+    if (self)
+    {
+        assert(self->mLock == LOCK_UN);
+
+        if (flock(self->mFd, LOCK_EX))
+            goto Finally;
+
+        self->mLock = LOCK_EX;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+unlockProcessLock(struct ProcessLock *self)
+{
+    int rc = -1;
+
+    if (self)
+    {
+        assert(self->mLock != LOCK_UN);
+
+        if (flock(self->mFd, LOCK_UN))
+            goto Finally;
+
+        self->mLock = LOCK_UN;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1452,6 +1678,19 @@ runChild(
     const struct Pipe        *aTermPipe,
     const struct Pipe        *aSigPipe)
 {
+    pid_t rc = -1;
+
+    /* The child process needs separate process lock. It cannot share
+     * the process lock with the parent because flock(2) distinguishes
+     * locks by file descriptor table entry. Create the process lock
+     * in the parent first so that the child process is guaranteed to
+     * be able to synchronise its messages. */
+
+    struct ProcessLock processLock;
+
+    if (createProcessLock(&processLock))
+        goto Finally;
+
     pid_t childPid = forkProcess();
 
     if ( ! childPid)
@@ -1460,6 +1699,24 @@ runChild(
         struct SocketPair  tetherPipe  = *aTetherPipe;
         struct Pipe        termPipe    = *aTermPipe;
         struct Pipe        sigPipe     = *aSigPipe;
+
+        /* Switch the process lock first in case the child process
+         * needs to emit diagnostic messages so that the messages
+         * will not be garbled. */
+
+        struct ProcessLock *prevProcessLock = sProcessLock;
+
+        sProcessLock = &processLock;
+
+        if (closeProcessLock(prevProcessLock))
+            terminate(
+                errno,
+                "Unable to close process lock");
+
+        /* Unwatch the signals so that the child process will be
+         * responsive to signals from the parent. Note that the parent
+         * will wait for the child to synchronise before sending it
+         * signals, so that there is no race here. */
 
         if (unwatchSignals())
             terminate(
@@ -1553,13 +1810,26 @@ runChild(
 
         debug(0, "child process synchronised");
 
+        /* The child process does not close the process lock because it
+         * might need to emit a diagnostic if execvp() fails. Rely on
+         * O_CLOEXEC to close the underlying file descriptors. */
+
         execvp(sCmd[0], sCmd);
         terminate(
             errno,
             "Unable to execute '%s'", sCmd[0]);
     }
 
-    return childPid;
+    if (closeProcessLock(&processLock))
+        goto Finally;
+
+    rc = childPid;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1922,7 +2192,8 @@ cmdRunCommand()
     const int whiteListFds[] =
     {
         pidFile ? pidFile->mFd : -1,
-        pidFile ? pidFile->mDirFd : -1,
+        pidFile ? pidFile->mPathName.mDirFd : -1,
+        sProcessLock ? sProcessLock->mFd : -1,
         termPipe.mRdFd,
         termPipe.mWrFd,
         sigPipe.mRdFd,
@@ -2177,13 +2448,13 @@ cmdRunCommand()
         if (acquireWriteLockPidFile(pidFile))
             terminate(
                 errno,
-                "Cannot lock pid file '%s'", pidFile->mFileName);
+                "Cannot lock pid file '%s'", pidFile->mPathName.mFileName);
 
         breadcrumb();
         if (closePidFile(pidFile))
             terminate(
                 errno,
-                "Cannot close pid file '%s'", pidFile->mFileName);
+                "Cannot close pid file '%s'", pidFile->mPathName.mFileName);
 
         pidFile = 0;
     }
@@ -2205,9 +2476,19 @@ cmdRunCommand()
 /* -------------------------------------------------------------------------- */
 int main(int argc, char **argv)
 {
+    sArg0     = argv[0];
     sTimeBase = monotonicTime();
 
     srandom(getProcessId());
+
+    struct ProcessLock processLock;
+
+    if (createProcessLock(&processLock))
+        terminate(
+            errno,
+            "Unable to create process lock");
+
+    sProcessLock = &processLock;
 
     parseOptions(argc, argv);
 
