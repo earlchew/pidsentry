@@ -7,16 +7,50 @@ testCase()
     printf '\ntestCase - %s\n' "$1"
 }
 
+testTrace_()
+{
+    {
+        printf '%s:' "$1"
+        shift
+        printf ' %s' "$@" | tr '\n' ' '
+        printf '\n'
+    } >&2
+}
+
+testTrace()
+{
+    testTrace_ TEST "$@"
+}
+
+testFail()
+{
+    testTrace_ FAIL "$@"
+    exit 1
+}
+
 testExit()
 {
-    if [ x$1 = x0 ] ; then
-        shift ; "$@"
-    else
-        if ( shift ; "$@" ) ; then
-            false
+    while : ; do
+        if [ x"$1" = x0 ] ; then
+            shift
+            "$@" && break
         else
-            [ $? -eq $1 ]
+            if ( shift ; "$@" ) ; then
+                shift
+            else
+                [ $? -ne "$1" ] || break
+                shift
+            fi
         fi
+        testFail "$@"
+    done
+}
+
+testOutput()
+{
+    if ! eval \[ x"$1" $2 x"$3" \] ; then
+       eval testTrace \[ x"$1" $2 x"$3" \]
+       testFail "$@"
     fi
 }
 
@@ -124,40 +158,56 @@ runTests()
         echo Killing $$ ; kill -9 $$'
 
     testCase 'Untethered child process'
-    [ $(runWait ./k9 -T -u -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
+    testOutput '$(
+      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
+      runWait ./k9 -T -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Untethered child process with 8M data'
-    [ $(runWait ./k9 -T -u -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
+    testOutput 8192000 = '$(
+      runWait ./k9 -T -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether with new file descriptor'
-    [ $(runWait ./k9 -T -f - -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 5 ]
+    testOutput '$(( 1 + $(
+      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
+      runWait ./k9 -T -f - -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using stdout'
-    [ $(runWait ./k9 -T -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
+    testOutput '$(
+      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
+      runWait ./k9 -T -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using named stdout'
-    [ $(runWait ./k9 -T -f 1 -- ls -l /proc/self/fd | grep '[0-9]-[0-9]' | wc -l) -eq 4 ]
+    testOutput '$(
+      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
+      runWait ./k9 -T -f 1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using stdout with 8M data'
-    [ $(runWait ./k9 -T -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 8192000 ]
+    testOutput 8192000 = '$(
+      runWait ./k9 -T -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether quietly using stdout with 8M data'
-    [ $(runWait ./k9 -T -q -- dd if=/dev/zero bs=8K count=1000 | wc -c) -eq 0 ]
+    testOutput 0 = '$(
+      runWait ./k9 -T -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether named in environment'
-    [ $(runWait ./k9 -T -n TETHER -- printenv | grep TETHER) = "TETHER=1" ]
+    testOutput "TETHER=1" = '$(
+      runWait ./k9 -T -n TETHER -- printenv | grep TETHER)'
 
     testCase 'Tether named alone in argument'
-    [ $(runWait ./k9 -T -n @tether@ -- echo @tether@ | grep '1') = "1" ]
+    testOutput "1" = '$(
+      runWait ./k9 -T -n @tether@ -- echo @tether@ | grep "1")'
 
     testCase 'Tether named as suffix in argument'
-    [ $(runWait ./k9 -T -n @tether@ -- echo x@tether@ | grep '1' ) = "x1" ]
+    testOutput "x1" = '$(
+      runWait ./k9 -T -n @tether@ -- echo x@tether@ | grep "1")'
 
     testCase 'Tether named as prefix argument'
-    [ $(runWait ./k9 -T -n @tether@ -- echo @tether@x | grep '1' ) = "1x" ]
+    testOutput "1x" = '$(
+      runWait ./k9 -T -n @tether@ -- echo @tether@x | grep "1")'
 
     testCase 'Tether named as infix argument'
-    [ $(runWait ./k9 -T -n @tether@ -- echo x@tether@x | grep '1' ) = "x1x" ]
+    testOutput "x1x" = '$(
+      runWait ./k9 -T -n @tether@ -- echo x@tether@x | grep "1")'
 
     testCase 'Unexpected death of child'
     REPLY=$(

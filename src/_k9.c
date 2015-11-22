@@ -93,6 +93,8 @@
  * cloneProcessLock -- and don't use /proc/self
  * struct ProcessLock using mPathName and mPathName_
  * struct PidFile using mPathName and mPathName_
+ * Use splice()
+ * Correctly close socket/pipe on read and write EOF
  */
 
 static const char sUsage[] =
@@ -166,21 +168,33 @@ static struct
     bool        mTest;
 } sOptions;
 
+struct FileDescriptor
+{
+    int                    mFd;
+    struct FileDescriptor *mNext;
+    struct FileDescriptor *mPrev;
+};
+
 struct SocketPair
 {
-    int mParentFd;
-    int mChildFd;
+    struct FileDescriptor  mParentFile_;
+    struct FileDescriptor *mParentFile;
+    struct FileDescriptor  mChildFile_;
+    struct FileDescriptor *mChildFile;
 };
 
 struct Pipe
 {
-    int mRdFd;
-    int mWrFd;
+    struct FileDescriptor  mRdFile_;
+    struct FileDescriptor *mRdFile;
+    struct FileDescriptor  mWrFile_;
+    struct FileDescriptor *mWrFile;
 };
 
 struct StdFdFiller
 {
-    int mFd[3];
+    struct FileDescriptor  mFile_[3];
+    struct FileDescriptor *mFile[3];
 };
 
 struct PathName
@@ -190,21 +204,26 @@ struct PathName
     char *mDirName;
     char *mBaseName_;
     char *mBaseName;
-    int   mDirFd;
+
+    struct FileDescriptor  mDirFile_;
+    struct FileDescriptor *mDirFile;
 };
 
 struct PidFile
 {
-    struct PathName mPathName;
-    int             mFd;
-    int             mLock;
+    struct PathName        mPathName;
+    struct FileDescriptor  mFile_;
+    struct FileDescriptor *mFile;
+    int                    mLock;
 };
 
 struct ProcessLock
 {
-    struct PathName mPathName;
-    int             mFd;
-    int             mLock;
+    struct PathName        mPathName_;
+    struct PathName       *mPathName;
+    struct FileDescriptor  mFile_;
+    struct FileDescriptor *mFile;
+    int                    mLock;
 };
 
 struct ExitCode
@@ -224,6 +243,13 @@ static pid_t               sPid;
 static uint64_t            sTimeBase;
 static struct ProcessLock *sProcessLock;
 static unsigned            sSignalContext;
+
+static struct FileDescriptor sFileDescriptorList =
+{
+    .mFd   = -1,
+    .mNext = &sFileDescriptorList,
+    .mPrev = &sFileDescriptorList,
+};
 
 static int lockProcessLock(struct ProcessLock *);
 static int unlockProcessLock(struct ProcessLock *);
@@ -601,13 +627,6 @@ closeFd(int *aFd)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-closeFdPair(int *aFd1, int *aFd2)
-{
-    return closeFd(aFd1) || closeFd(aFd2) ? -1 : 0;
-}
-
-/* -------------------------------------------------------------------------- */
 static bool
 stdFd(int aFd)
 {
@@ -684,6 +703,134 @@ nonblockingFd(int aFd)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+createFileDescriptor(struct FileDescriptor *self, int aFd)
+{
+    assert(self != &sFileDescriptorList);
+
+    int rc = -1;
+
+    self->mFd = aFd;
+
+    /* If the file descriptor is invalid, take care to have preserved
+     * errno so that the caller can rely on interpreting errno to
+     * discover why the file descriptor is invalid. */
+
+    if (-1 == aFd)
+        goto Finally;
+
+    self->mNext =  sFileDescriptorList.mNext;
+    self->mPrev = &sFileDescriptorList;
+
+    self->mNext->mPrev = self;
+    self->mPrev->mNext = &sFileDescriptorList;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc && -1 != self->mFd)
+            close(self->mFd);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+closeFileDescriptor(struct FileDescriptor *self)
+{
+    assert(self != &sFileDescriptorList);
+
+    int rc = -1;
+
+    if (self)
+    {
+        if (-1 == self->mFd)
+            goto Finally;
+
+        if (close(self->mFd))
+            goto Finally;
+
+        self->mPrev->mNext = self->mNext;
+        self->mNext->mPrev = self->mPrev;
+
+        self->mPrev = 0;
+        self->mNext = 0;
+        self->mFd   = -1;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+dupFileDescriptor(
+        struct FileDescriptor *self,
+        const struct FileDescriptor *aOther)
+{
+    int rc = -1;
+
+    if (createFileDescriptor(self, dup(aOther->mFd)))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            closeFileDescriptor(self);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+closeFileDescriptorPair(struct FileDescriptor **aFile1,
+                        struct FileDescriptor **aFile2)
+{
+    int rc = -1;
+
+    if (closeFileDescriptor(*aFile1))
+        goto Finally;
+    *aFile1 = 0;
+
+    if (closeFileDescriptor(*aFile2))
+        goto Finally;
+    *aFile2 = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+#if 0
+static int
+nonblockingFileDescriptor(struct FileDescriptor *self)
+{
+    long flags = fcntl(self->mFd, F_GETFL, 0);
+
+    return -1 == flags ? -1 : fcntl(self->mFd, F_SETFL, flags | O_NONBLOCK);
+}
+#endif
+
+/* -------------------------------------------------------------------------- */
 static void
 initProcessDirName(struct ProcessDirName *self, pid_t aPid)
 {
@@ -701,7 +848,7 @@ createPathName(struct PathName *self, const char *aFileName)
     self->mBaseName  = 0;
     self->mDirName_  = 0;
     self->mDirName   = 0;
-    self->mDirFd     = -1;
+    self->mDirFile   = 0;
 
     self->mFileName = strdup(aFileName);
     if ( ! self->mFileName)
@@ -723,9 +870,11 @@ createPathName(struct PathName *self, const char *aFileName)
     if ( ! self->mBaseName)
         goto Finally;
 
-    self->mDirFd = open(self->mDirName, O_RDONLY | O_CLOEXEC);
-    if (-1 == self->mDirFd)
+    if (createFileDescriptor(
+            &self->mDirFile_,
+            open(self->mDirName, O_RDONLY | O_CLOEXEC)))
         goto Finally;
+    self->mDirFile = &self->mDirFile_;
 
     rc = 0;
 
@@ -741,7 +890,7 @@ Finally:
             free(self->mDirName_);
             free(self->mDirName);
 
-            close(self->mDirFd);
+            closeFileDescriptor(self->mDirFile);
         }
     });
 
@@ -754,21 +903,24 @@ closePathName(struct PathName *self)
 {
     int rc = -1;
 
-    if (close(self->mDirFd))
-        goto Finally;
+    if (self)
+    {
+        if (closeFileDescriptor(self->mDirFile))
+            goto Finally;
 
-    free(self->mFileName);
-    free(self->mBaseName_);
-    free(self->mBaseName);
-    free(self->mDirName_);
-    free(self->mDirName);
+        free(self->mFileName);
+        free(self->mBaseName_);
+        free(self->mBaseName);
+        free(self->mDirName_);
+        free(self->mDirName);
 
-    self->mFileName  = 0;
-    self->mBaseName_ = 0;
-    self->mBaseName  = 0;
-    self->mDirName_  = 0;
-    self->mDirName   = 0;
-    self->mDirFd     = -1;
+        self->mFileName  = 0;
+        self->mBaseName_ = 0;
+        self->mBaseName  = 0;
+        self->mDirName_  = 0;
+        self->mDirName   = 0;
+        self->mDirFile   = 0;
+    }
 
     rc = 0;
 
@@ -783,21 +935,21 @@ Finally:
 static int
 openPathName(struct PathName *self, int aFlags, mode_t aMode)
 {
-    return openat(self->mDirFd, self->mBaseName, aFlags, aMode);
+    return openat(self->mDirFile->mFd, self->mBaseName, aFlags, aMode);
 }
 
 /* -------------------------------------------------------------------------- */
 static int
 unlinkPathName(struct PathName *self, int aFlags)
 {
-    return unlinkat(self->mDirFd, self->mBaseName, aFlags);
+    return unlinkat(self->mDirFile->mFd, self->mBaseName, aFlags);
 }
 
 /* -------------------------------------------------------------------------- */
 static int
 fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags)
 {
-    return fstatat(self->mDirFd, self->mBaseName, aStat, aFlags);
+    return fstatat(self->mDirFile->mFd, self->mBaseName, aStat, aFlags);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -826,25 +978,49 @@ createSocketPair(struct SocketPair *self)
 {
     int rc = -1;
 
-    int fds[2];
+    self->mParentFile = 0;
+    self->mChildFile  = 0;
 
-    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds))
+    int fd[2];
+
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd))
         goto Finally;
 
-    if (-1 == fds[0] || -1 == fds[1])
+    if (-1 == fd[0] || -1 == fd[1])
         goto Finally;
 
-    self->mParentFd = fds[0];
-    self->mChildFd  = fds[1];
+    assert( ! stdFd(fd[0]));
+    assert( ! stdFd(fd[1]));
 
-    assert( ! stdFd(self->mParentFd));
-    assert( ! stdFd(self->mChildFd));
+    if (createFileDescriptor(&self->mParentFile_, fd[0]))
+        goto Finally;
+    self->mParentFile = &self->mParentFile_;
+
+    fd[0] = -1;
+
+    if (createFileDescriptor(&self->mChildFile_, fd[1]))
+        goto Finally;
+    self->mChildFile = &self->mChildFile_;
+
+    fd[1] = -1;
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        if (-1 != fd[0])
+            close(fd[0]);
+        if (-1 != fd[1])
+            close(fd[1]);
+
+        if (rc)
+        {
+            closeFileDescriptor(self->mParentFile);
+            closeFileDescriptor(self->mChildFile);
+        }
+    });
 
     return rc;
 }
@@ -853,35 +1029,67 @@ Finally:
 static int
 closeSocketPair(struct SocketPair *self)
 {
-    return closeFdPair(&self->mParentFd, &self->mChildFd);
+    return closeFileDescriptorPair(&self->mParentFile, &self->mChildFile);
 }
 
 /* -------------------------------------------------------------------------- */
 static int
 createPipe(struct Pipe *self)
 {
-    int fds[2];
+    int rc = -1;
 
-    if (pipe(fds))
-        return -1;
+    self->mRdFile = 0;
+    self->mWrFile = 0;
 
-    if (-1 == fds[0] || -1 == fds[1])
-        return -1;
+    int fd[2];
 
-    self->mRdFd = fds[0];
-    self->mWrFd = fds[1];
+    if (pipe(fd))
+        goto Finally;
 
-    assert( ! stdFd(self->mRdFd));
-    assert( ! stdFd(self->mWrFd));
+    if (-1 == fd[0] || -1 == fd[1])
+        goto Finally;
 
-    return 0;
+    assert( ! stdFd(fd[0]));
+    assert( ! stdFd(fd[1]));
+
+    if (createFileDescriptor(&self->mRdFile_, fd[0]))
+        goto Finally;
+    self->mRdFile = &self->mRdFile_;
+
+    fd[0] = -1;
+
+    if (createFileDescriptor(&self->mWrFile_, fd[1]))
+        goto Finally;
+    self->mWrFile = &self->mWrFile_;
+
+    fd[1] = -1;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (-1 != fd[0])
+            close(fd[0]);
+        if (-1 != fd[1])
+            close(fd[1]);
+
+        if (rc)
+        {
+            closeFileDescriptor(self->mRdFile);
+            closeFileDescriptor(self->mWrFile);
+        }
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
 static int
 closePipe(struct Pipe *self)
 {
-    return closeFdPair(&self->mRdFd, &self->mWrFd);
+    return closeFileDescriptorPair(&self->mRdFile, &self->mWrFile);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -890,27 +1098,42 @@ createStdFdFiller(struct StdFdFiller *self)
 {
     int rc = -1;
 
-    for (unsigned ix = 0; NUMBEROF(self->mFd) > ix; ++ix)
-        self->mFd[ix] = -1;
+    for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
+        self->mFile[ix] = 0;
 
-    if (pipe(self->mFd))
+    int fd[2];
+
+    if (pipe(fd))
         goto Finally;
 
-    if (-1 == self->mFd[0] || -1 == self->mFd[1])
+    if (-1 == fd[0] || -1 == fd[1])
+    {
+        errno = EBADF;
         goto Finally;
+    }
 
     /* Close the writing end of the pipe, leaving only the reading
      * end of the pipe. Any attempt to write will fail, and any
      * attempt to read will yield EOF. */
 
-    if (close(self->mFd[1]))
+    if (close(fd[1]))
         goto Finally;
 
-    self->mFd[1] = dup(self->mFd[0]);
-    self->mFd[2] = dup(self->mFd[0]);
+    fd[1] = -1;
 
-    if (-1 == self->mFd[1] || -1 == self->mFd[2])
+    if (createFileDescriptor(&self->mFile_[0], fd[0]))
         goto Finally;
+    self->mFile[0] = &self->mFile_[0];
+
+    fd[0] = -1;
+
+    if (dupFileDescriptor(&self->mFile_[1], &self->mFile_[0]))
+        goto Finally;
+    self->mFile[1] = &self->mFile_[1];
+
+    if (dupFileDescriptor(&self->mFile_[2], &self->mFile_[0]))
+        goto Finally;
+    self->mFile[2] = &self->mFile_[2];
 
     rc = 0;
 
@@ -918,13 +1141,17 @@ Finally:
 
     FINALLY
     ({
+        if (-1 != fd[0])
+            close(fd[0]);
+        if (-1 != fd[1])
+            close(fd[1]);
+
         if (rc)
         {
-            for (unsigned ix = 0; NUMBEROF(self->mFd) > ix; ++ix)
+            for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
             {
-                if (-1 != self->mFd[ix])
-                    close(self->mFd[ix]);
-                self->mFd[ix] = -1;
+                closeFileDescriptor(self->mFile[ix]);
+                self->mFile[ix] = 0;
             }
         }
     });
@@ -936,21 +1163,20 @@ Finally:
 static int
 closeStdFdFiller(struct StdFdFiller *self)
 {
-    int rc  = 0;
-    int err = 0;
+    int rc = -1;
 
-    for (unsigned ix = 0; NUMBEROF(self->mFd) > ix; ++ix)
+    for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
     {
-        if (close(self->mFd[ix]) && ! rc)
-        {
-            rc = -1;
-            err = errno;
-        }
-        self->mFd[ix] = -1;
+        if (closeFileDescriptor(self->mFile[ix]))
+            goto Finally;
+        self->mFile[ix] = 0;
     }
 
-    if (rc)
-        errno = err;
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
 
     return rc;
 }
@@ -1024,7 +1250,7 @@ watchSignals(const struct Pipe *aSigPipe)
 {
     int rc = -1;
 
-    sSignalFd_ = aSigPipe->mWrFd;
+    sSignalFd_ = aSigPipe->mWrFile->mFd;
 
     if (nonblockingFd(sSignalFd_))
         goto Finally;
@@ -1123,7 +1349,7 @@ watchChildren(const struct Pipe *aTermPipe)
 {
     int rc = -1;
 
-    sDeadChildFd_ = aTermPipe->mWrFd;
+    sDeadChildFd_ = aTermPipe->mWrFile->mFd;
 
     if (nonblockingFd(sDeadChildFd_))
         goto Finally;
@@ -1154,7 +1380,7 @@ openPidFile_(struct PidFile *self, const char *aFileName)
 {
     int rc = -1;
 
-    self->mFd   = -1;
+    self->mFile = 0;
     self->mLock = LOCK_UN;
 
     if (createPathName(&self->mPathName, aFileName))
@@ -1175,9 +1401,8 @@ closePidFile_(struct PidFile *self)
 {
     int rc = -1;
 
-    if (-1 != self->mFd)
-        if (close(self->mFd))
-            goto Finally;
+    if (closeFileDescriptor(self->mFile))
+        goto Finally;
 
     if (closePathName(&self->mPathName))
         goto Finally;
@@ -1209,7 +1434,7 @@ readPidFile(const struct PidFile *self)
 
         ssize_t len;
 
-        len = read(self->mFd, bufptr, bufend - bufptr);
+        len = read(self->mFile->mFd, bufptr, bufend - bufptr);
 
         if (-1 == len)
         {
@@ -1255,7 +1480,7 @@ readPidFile(const struct PidFile *self)
 
                 struct stat fdStatus;
 
-                if (fstat(self->mFd, &fdStatus))
+                if (fstat(self->mFile->mFd, &fdStatus))
                     return -1;
 
                 struct timespec fdTime   = earliestTime(&fdStatus.st_mtim,
@@ -1307,7 +1532,7 @@ releaseLockPidFile(struct PidFile *self)
 
     self->mLock = LOCK_UN;
 
-    int rc = flock(self->mFd, LOCK_UN);
+    int rc = flock(self->mFile->mFd, LOCK_UN);
 
     FINALLY
     ({
@@ -1331,7 +1556,7 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 
     testSleep();
 
-    int rc = flock(self->mFd, aLock);
+    int rc = flock(self->mFile->mFd, aLock);
 
     if ( ! rc)
         self->mLock = aLock;
@@ -1366,14 +1591,17 @@ createPidFile(struct PidFile *self, const char *aFileName)
      * it names is still running.
      */
 
-    self->mFd = openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0);
-    if (-1 == self->mFd)
+    if (createFileDescriptor(
+            &self->mFile_,
+            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)))
     {
         if (ENOENT != errno)
             goto Finally;
     }
     else
     {
+        self->mFile = &self->mFile_;
+
         if (acquireWriteLockPidFile(self))
             goto Finally;
 
@@ -1405,10 +1633,10 @@ createPidFile(struct PidFile *self, const char *aFileName)
         if (releaseLockPidFile(self))
             goto Finally;
 
-        if (close(self->mFd))
+        if (closeFileDescriptor(self->mFile))
             goto Finally;
 
-        self->mFd = -1;
+        self->mFile = 0;
     }
 
     /* Open the pidfile using lock file semantics for writing, but
@@ -1417,14 +1645,17 @@ createPidFile(struct PidFile *self, const char *aFileName)
      * readonly permissions dissuades other processes from modifying
      * the content. */
 
+    assert( ! self->mFile);
     RACE
     ({
-        self->mFd = openPathName(&self->mPathName,
-                                 O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-                                 S_IRUSR | S_IRGRP | S_IROTH);
+        if (createFileDescriptor(
+                &self->mFile_,
+                openPathName(&self->mPathName,
+                             O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+                             S_IRUSR | S_IRGRP | S_IROTH)))
+            goto Finally;
     });
-    if (-1 == self->mFd)
-        goto Finally;
+    self->mFile = &self->mFile_;
 
     rc = 0;
 
@@ -1453,9 +1684,11 @@ openPidFile(struct PidFile *self, const char *aFileName)
     if (openPidFile_(self, aFileName))
         goto Finally;
 
-    self->mFd = openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0);
-    if (-1 == self->mFd)
+    if (createFileDescriptor(
+            &self->mFile_,
+            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)))
         goto Finally;
+    self->mFile = &self->mFile_;
 
     rc = 0;
 
@@ -1496,7 +1729,7 @@ zombiePidFile(const struct PidFile *self)
 
     struct stat fdStatus;
 
-    if (fstat(self->mFd, &fdStatus))
+    if (fstat(self->mFile->mFd, &fdStatus))
         goto Finally;
 
     rc = ( fdStatus.st_dev != fileStatus.st_dev ||
@@ -1520,7 +1753,7 @@ closePidFile(struct PidFile *self)
 
     int rc = -1;
 
-    int flags = fcntl(self->mFd, F_GETFL, 0);
+    int flags = fcntl(self->mFile->mFd, F_GETFL, 0);
 
     if (-1 == flags)
         goto Finally;
@@ -1533,7 +1766,7 @@ closePidFile(struct PidFile *self)
          * remove the pidfile so that no other process will be
          * able to find the file. */
 
-        if (ftruncate(self->mFd, 0))
+        if (ftruncate(self->mFile->mFd, 0))
             goto Finally;
 
         if (unlinkPathName(&self->mPathName, 0))
@@ -1549,13 +1782,13 @@ closePidFile(struct PidFile *self)
         }
     }
 
-    if (close(self->mFd))
+    if (closeFileDescriptor(self->mFile))
         goto Finally;
 
     if (closePathName(&self->mPathName))
         goto Finally;
 
-    self->mFd   = -1;
+    self->mFile = 0;
     self->mLock = LOCK_UN;
 
     rc = 0;
@@ -1573,7 +1806,7 @@ writePidFile(struct PidFile *self, pid_t aPid)
 {
     assert(0 < aPid);
 
-    return 0 > dprintf(self->mFd, "%jd\n", (intmax_t) aPid) ? -1 : 0;
+    return 0 > dprintf(self->mFile->mFd, "%jd\n", (intmax_t) aPid) ? -1 : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1582,17 +1815,19 @@ createProcessLock(struct ProcessLock *self)
 {
     int rc = -1;
 
-    self->mFd   = -1;
-    self->mLock = LOCK_UN;
+    self->mFile     = 0;
+    self->mLock     = LOCK_UN;
+    self->mPathName = 0;
 
-    bool havePathName = false;
-    if (createPathName(&self->mPathName, "/proc/self"))
+    if (createPathName(&self->mPathName_, "/proc/self"))
         goto Finally;
-    havePathName = true;
+    self->mPathName = &self->mPathName_;
 
-    self->mFd = openPathName(&self->mPathName, O_RDONLY | O_CLOEXEC, 0);
-    if (-1 == self->mFd)
+    if (createFileDescriptor(
+            &self->mFile_,
+            openPathName(self->mPathName, O_RDONLY | O_CLOEXEC, 0)))
         goto Finally;
+    self->mFile = &self->mFile_;
 
     rc = 0;
 
@@ -1602,10 +1837,8 @@ Finally:
     ({
         if (rc)
         {
-            close(self->mFd);
-
-            if (havePathName)
-                closePathName(&self->mPathName);
+            closeFileDescriptor(self->mFile);
+            closePathName(self->mPathName);
         }
     });
 
@@ -1618,10 +1851,10 @@ closeProcessLock(struct ProcessLock *self)
 {
     int rc = -1;
 
-    if (close(self->mFd))
+    if (closeFileDescriptor(self->mFile))
         goto Finally;
 
-    if (closePathName(&self->mPathName))
+    if (closePathName(self->mPathName))
         goto Finally;
 
     rc = 0;
@@ -1643,7 +1876,7 @@ lockProcessLock(struct ProcessLock *self)
     {
         assert(self->mLock == LOCK_UN);
 
-        if (flock(self->mFd, LOCK_EX))
+        if (flock(self->mFile->mFd, LOCK_EX))
             goto Finally;
 
         self->mLock = LOCK_EX;
@@ -1668,7 +1901,7 @@ unlockProcessLock(struct ProcessLock *self)
     {
         assert(self->mLock != LOCK_UN);
 
-        if (flock(self->mFd, LOCK_UN))
+        if (flock(self->mFile->mFd, LOCK_UN))
             goto Finally;
 
         self->mLock = LOCK_UN;
@@ -1790,10 +2023,11 @@ runChild(
 
         debug(0, "synchronising child process");
 
-        if (closeFd(&tetherPipe.mParentFd))
+        if (closeFd(&tetherPipe.mParentFile->mFd))
             terminate(
                 errno,
-                "Unable to close tether pipe fd %d", tetherPipe.mParentFd);
+                "Unable to close tether pipe fd %d",
+                tetherPipe.mParentFile->mFd);
 
         RACE
         ({
@@ -1801,7 +2035,7 @@ runChild(
             {
                 char buf[1];
 
-                switch (read(tetherPipe.mChildFd, buf, 1))
+                switch (read(tetherPipe.mChildFile->mFd, buf, 1))
                 {
                 default:
                         break;
@@ -1831,7 +2065,7 @@ runChild(
                 int tetherFd = *sOptions.mTether;
 
                 if (0 > tetherFd)
-                    tetherFd = tetherPipe.mChildFd;
+                    tetherFd = tetherPipe.mChildFile->mFd;
 
                 sprintf(tetherArg, "%d", tetherFd);
 
@@ -1899,21 +2133,22 @@ runChild(
                     }
                 }
 
-                if (tetherFd == tetherPipe.mChildFd)
+                if (tetherFd == tetherPipe.mChildFile->mFd)
                     break;
 
-                if (dup2(tetherPipe.mChildFd, tetherFd) != tetherFd)
+                if (dup2(tetherPipe.mChildFile->mFd, tetherFd) != tetherFd)
                     terminate(
                         errno,
                         "Unable to dup tether pipe fd %d to fd %d",
-                        tetherPipe.mChildFd,
+                        tetherPipe.mChildFile->mFd,
                         tetherFd);
             }
 
-            if (closeFd(&tetherPipe.mChildFd))
+            if (closeFd(&tetherPipe.mChildFile->mFd))
                 terminate(
                     errno,
-                    "Unable to close tether pipe fd %d", tetherPipe.mChildFd);
+                    "Unable to close tether pipe fd %d",
+                    tetherPipe.mChildFile->mFd);
         } while (0);
 
         debug(0, "child process synchronised");
@@ -2166,7 +2401,7 @@ cmdRunCommand(char **aCmd)
 
             while (true)
             {
-                if (fstat(pidFile->mFd, &pidFileStat))
+                if (fstat(pidFile->mFile->mFd, &pidFileStat))
                     terminate(
                         errno,
                         "Cannot obtain status of pid file '%s'", pidFileName);
@@ -2213,12 +2448,12 @@ cmdRunCommand(char **aCmd)
                 /* Mutate the data in the pidfile so that the mtime
                  * and ctime will be updated. */
 
-                if (1 != write(pidFile->mFd, "\n", 1))
+                if (1 != write(pidFile->mFile->mFd, "\n", 1))
                     terminate(
                         errno,
                         "Unable to write to pid file '%s'", pidFileName);
 
-                if (ftruncate(pidFile->mFd, 0))
+                if (ftruncate(pidFile->mFile->mFd, 0))
                     terminate(
                         errno,
                         "Unable to truncate pid file '%s'", pidFileName);
@@ -2252,7 +2487,7 @@ cmdRunCommand(char **aCmd)
 
     RACE
     ({
-        if (1 != write(tetherPipe.mParentFd, "", 1))
+        if (1 != write(tetherPipe.mParentFile->mFd, "", 1))
             terminate(
                 errno,
                 "Unable to synchronise child process");
@@ -2267,7 +2502,7 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close stdin, stdout and stderr fillers");
 
-    if (STDIN_FILENO != dup2(tetherPipe.mParentFd, STDIN_FILENO))
+    if (STDIN_FILENO != dup2(tetherPipe.mParentFile->mFd, STDIN_FILENO))
         terminate(
             errno,
             "Unable to dup tether pipe to stdin");
@@ -2296,14 +2531,14 @@ cmdRunCommand(char **aCmd)
 
     const int whiteListFds[] =
     {
-        pidFile ? pidFile->mFd : -1,
-        pidFile ? pidFile->mPathName.mDirFd : -1,
-        sProcessLock ? sProcessLock->mFd : -1,
-        sProcessLock ? sProcessLock->mPathName.mDirFd : -1,
-        termPipe.mRdFd,
-        termPipe.mWrFd,
-        sigPipe.mRdFd,
-        sigPipe.mWrFd,
+        pidFile ? pidFile->mFile->mFd : -1,
+        pidFile ? pidFile->mPathName.mDirFile->mFd : -1,
+        sProcessLock ? sProcessLock->mFile->mFd : -1,
+        sProcessLock ? sProcessLock->mPathName->mDirFile->mFd : -1,
+        termPipe.mRdFile->mFd,
+        termPipe.mWrFile->mFd,
+        sigPipe.mRdFile->mFd,
+        sigPipe.mWrFile->mFd,
         STDIN_FILENO,
         STDOUT_FILENO,
         STDERR_FILENO,
@@ -2326,9 +2561,9 @@ cmdRunCommand(char **aCmd)
     struct pollfd pollfds[POLL_FD_COUNT] =
     {
         [POLL_FD_CHILD] = {
-            .fd = termPipe.mRdFd, .events = pollInputEvents },
+            .fd = termPipe.mRdFile->mFd, .events = pollInputEvents },
         [POLL_FD_SIGNAL] = {
-            .fd = sigPipe.mRdFd,  .events = pollInputEvents },
+            .fd = sigPipe.mRdFile->mFd,  .events = pollInputEvents },
         [POLL_FD_STDOUT] = {
             .fd = STDOUT_FILENO,  .events = 0 },
         [POLL_FD_STDIN] = {
@@ -2507,7 +2742,7 @@ cmdRunCommand(char **aCmd)
             unsigned char sigNum;
 
             do
-                len = read(sigPipe.mRdFd, &sigNum, 1);
+                len = read(sigPipe.mRdFile->mFd, &sigNum, 1);
             while (-1 == len && EINTR == errno);
 
             if (-1 == len)
