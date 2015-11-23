@@ -4,3 +4,6 @@
 [submodule "automakewild"]
 	path = automakewild
 	url = git@gitbox:automakewild.git
+[submodule "automakeheadercheck"]
+	path = automakeheadercheck
+	url = git@gitbox:automakeheadercheck.git
