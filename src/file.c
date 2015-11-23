@@ -33,7 +33,6 @@
 
 #include <stdlib.h>
 #include <errno.h>
-#include <assert.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -51,7 +50,7 @@ static struct FileDescriptor sFileDescriptorList =
 int
 createFileDescriptor(struct FileDescriptor *self, int aFd)
 {
-    assert(self != &sFileDescriptorList);
+    ensure(self != &sFileDescriptorList);
 
     int rc = -1;
 
@@ -87,7 +86,7 @@ Finally:
 int
 closeFileDescriptor(struct FileDescriptor *self)
 {
-    assert(self != &sFileDescriptorList);
+    ensure(self != &sFileDescriptorList);
 
     int rc = -1;
 
@@ -175,7 +174,7 @@ cleanseFileDescriptors(void)
     if (getrlimit(RLIMIT_NOFILE, &noFile))
         goto Finally;
 
-    assert(numFds < noFile.rlim_cur);
+    ensure(numFds < noFile.rlim_cur);
 
     whiteList[numFds] = noFile.rlim_cur;
 
@@ -190,11 +189,11 @@ cleanseFileDescriptors(void)
              ++ix)
         {
             fdPtr = fdPtr->mNext;
-            assert(fdPtr != &sFileDescriptorList);
+            ensure(fdPtr != &sFileDescriptorList);
 
             whiteList[ix] = fdPtr->mFd;
 
-            assert(whiteList[ix] < whiteList[numFds]);
+            ensure(whiteList[ix] < whiteList[numFds]);
         }
     }
 

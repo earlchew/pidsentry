@@ -31,6 +31,7 @@
 #include "macros.h"
 #include "process.h"
 
+#include <stdlib.h>
 #include <stdarg.h>
 #include <errno.h>
 #include <stdio.h>
@@ -70,6 +71,25 @@ print_(
             dprintf(STDERR_FILENO, "\n");
 
         unlockProcessLock();
+    });
+}
+
+/* -------------------------------------------------------------------------- */
+void
+ensure_(
+    const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
+{
+    FINALLY
+    ({
+        va_list args;
+
+        va_start(args, aFmt);
+        print_(0, aFile, aLine, "Assertion failure - %s", args);
+        va_end(args);
+
+        while (1)
+            abort();
     });
 }
 

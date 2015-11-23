@@ -45,6 +45,18 @@ debug_(
     const char *aFmt, ...);
 
 /* -------------------------------------------------------------------------- */
+#define ensure(aPredicate)                                      \
+    do                                                          \
+        if ( ! (aPredicate))                                    \
+            ensure_(__FILE__, __LINE__, 0, # aPredicate);       \
+    while (0)
+
+void
+ensure_(
+    const char *aFile, unsigned aLine,
+    const char *aFmt, ...);
+
+/* -------------------------------------------------------------------------- */
 #define warn(aErrCode, ...) \
     warn_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
 

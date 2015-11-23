@@ -45,7 +45,6 @@
 #include <errno.h>
 #include <limits.h>
 #include <inttypes.h>
-#include <assert.h>
 #include <time.h>
 
 #include <getopt.h>
@@ -74,6 +73,8 @@
  * Use splice()
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
+ * Shutdown pipes
+ * Parent and child process groups
  */
 
 struct SocketPair
@@ -153,8 +154,8 @@ createSocketPair(struct SocketPair *self)
     if (-1 == fd[0] || -1 == fd[1])
         goto Finally;
 
-    assert( ! stdFd(fd[0]));
-    assert( ! stdFd(fd[1]));
+    ensure( ! stdFd(fd[0]));
+    ensure( ! stdFd(fd[1]));
 
     if (createFileDescriptor(&self->mParentFile_, fd[0]))
         goto Finally;
@@ -213,8 +214,8 @@ createPipe(struct Pipe *self)
     if (-1 == fd[0] || -1 == fd[1])
         goto Finally;
 
-    assert( ! stdFd(fd[0]));
-    assert( ! stdFd(fd[1]));
+    ensure( ! stdFd(fd[0]));
+    ensure( ! stdFd(fd[1]));
 
     if (createFileDescriptor(&self->mRdFile_, fd[0]))
         goto Finally;
@@ -589,7 +590,7 @@ readPidFile(const struct PidFile *self)
     char *bufptr = buf;
     char *bufend = bufptr + sizeof(buf);
 
-    assert(LOCK_UN != self->mLock);
+    ensure(LOCK_UN != self->mLock);
 
     while (true)
     {
@@ -686,7 +687,7 @@ readPidFile(const struct PidFile *self)
 static int
 releaseLockPidFile(struct PidFile *self)
 {
-    assert(LOCK_UN != self->mLock);
+    ensure(LOCK_UN != self->mLock);
 
     int locked = self->mLock;
 
@@ -711,8 +712,8 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 {
     debug(0, "lock %s '%s'", aLockType, self->mPathName.mFileName);
 
-    assert(LOCK_UN != aLock);
-    assert(LOCK_UN == self->mLock);
+    ensure(LOCK_UN != aLock);
+    ensure(LOCK_UN == self->mLock);
 
     testSleep();
 
@@ -805,7 +806,7 @@ createPidFile(struct PidFile *self, const char *aFileName)
      * readonly permissions dissuades other processes from modifying
      * the content. */
 
-    assert( ! self->mFile);
+    ensure( ! self->mFile);
     RACE
     ({
         if (createFileDescriptor(
@@ -909,7 +910,7 @@ Finally:
 static int
 closePidFile(struct PidFile *self)
 {
-    assert(LOCK_UN != self->mLock);
+    ensure(LOCK_UN != self->mLock);
 
     int rc = -1;
 
@@ -964,7 +965,7 @@ Finally:
 static int
 writePidFile(struct PidFile *self, pid_t aPid)
 {
-    assert(0 < aPid);
+    ensure(0 < aPid);
 
     return 0 > dprintf(self->mFile->mFd, "%jd\n", (intmax_t) aPid) ? -1 : 0;
 }
@@ -1254,7 +1255,7 @@ cmdPrintPidFile(const char *aFileName)
 static struct ExitCode
 cmdRunCommand(char **aCmd)
 {
-    assert(aCmd);
+    ensure(aCmd);
 
     /* The instance of the StdFdFiller guarantees that any further file
      * descriptors that are opened will not be mistaken for stdin,
@@ -1421,8 +1422,8 @@ cmdRunCommand(char **aCmd)
                         /* OpenGroup says that the argument to usleep(3)
                          * must be less than 1e6. */
 
-                        assert(usResolution);
-                        assert(1000 * 1000 >= usResolution);
+                        ensure(usResolution);
+                        ensure(1000 * 1000 >= usResolution);
 
                         --usResolution;
 
@@ -1607,7 +1608,7 @@ cmdRunCommand(char **aCmd)
         {
             debug(1, "poll stdin 0x%x", pollfds[POLL_FD_STDIN].revents);
 
-            assert(pollfds[POLL_FD_STDIN].events);
+            ensure(pollfds[POLL_FD_STDIN].events);
 
             /* The poll(2) call should return positive non-zero if
              * any events are returned. This is a defensive measure
@@ -1690,7 +1691,7 @@ cmdRunCommand(char **aCmd)
         {
             debug(1, "poll stdout 0x%x", pollfds[POLL_FD_STDOUT].revents);
 
-            assert(pollfds[POLL_FD_STDOUT].events);
+            ensure(pollfds[POLL_FD_STDOUT].events);
 
             ssize_t bytes;
 
@@ -1772,7 +1773,7 @@ cmdRunCommand(char **aCmd)
         {
             debug(1, "poll child 0x%x", pollfds[POLL_FD_CHILD].revents);
 
-            assert(pollfds[POLL_FD_CHILD].events);
+            ensure(pollfds[POLL_FD_CHILD].events);
 
             pollfds[POLL_FD_CHILD].events = 0;
             deadChild = true;

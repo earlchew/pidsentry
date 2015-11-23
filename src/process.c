@@ -39,7 +39,6 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <assert.h>
 #include <unistd.h>
 #include <time.h>
 
@@ -174,7 +173,7 @@ lockProcessLock_(struct ProcessLock *self)
 
     if (self)
     {
-        assert(self->mLock == LOCK_UN);
+        ensure(LOCK_UN == self->mLock);
 
         if (flock(self->mFile->mFd, LOCK_EX))
             goto Finally;
@@ -199,7 +198,7 @@ unlockProcessLock_(struct ProcessLock *self)
 
     if (self)
     {
-        assert(self->mLock != LOCK_UN);
+        ensure(LOCK_UN != self->mLock);
 
         if (flock(self->mFile->mFd, LOCK_UN))
             goto Finally;
@@ -220,7 +219,7 @@ Finally:
 int
 initProcess(const char *aArg0)
 {
-    assert( ! sProcessLock[sActiveProcessLock]);
+    ensure( ! sProcessLock[sActiveProcessLock]);
 
     int rc = -1;
 
@@ -248,7 +247,7 @@ exitProcess(void)
 {
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
-    assert(processLock);
+    ensure(processLock);
 
     int rc = -1;
 
@@ -315,7 +314,7 @@ Finally:
 pid_t
 forkProcess(void)
 {
-    assert(
+    ensure(
         sProcessLock[sActiveProcessLock] == &sProcessLock_[sActiveProcessLock]);
 
     pid_t rc = -1;
@@ -329,10 +328,10 @@ forkProcess(void)
     unsigned activeProcessLock   = 0 + sActiveProcessLock;
     unsigned inactiveProcessLock = 1 - activeProcessLock;
 
-    assert(NUMBEROF(sProcessLock_) > activeProcessLock);
-    assert(NUMBEROF(sProcessLock_) > inactiveProcessLock);
+    ensure(NUMBEROF(sProcessLock_) > activeProcessLock);
+    ensure(NUMBEROF(sProcessLock_) > inactiveProcessLock);
 
-    assert( ! sProcessLock[inactiveProcessLock]);
+    ensure( ! sProcessLock[inactiveProcessLock]);
 
     if (createProcessLock_(&sProcessLock_[inactiveProcessLock]))
         goto Finally;
