@@ -202,8 +202,6 @@ cleanseFileDescriptors(void)
      * skipping those mentioned in the whitelist. */
 
     debug(0, "purging %d fds", whiteList[numFds]);
-    for (unsigned ix = 0; ix < NUMBEROF(whiteList); ++ix)
-        debug(0, "whitelist %u %d", ix, whiteList[ix]);
 
     qsort(whiteList, NUMBEROF(whiteList), sizeof(whiteList[0]), rankFd_);
 
