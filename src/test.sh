@@ -220,55 +220,59 @@ runTests()
           echo $? >&3
         fi
       } | {
-        read PID
-        kill -- "$PID"
+        exec >&2
+        read PARENT ; echo "Parent $PARENT"
+        read CHILD  ; echo "Child $CHILD"
+        kill -- "$CHILD"
       })
     [ x"$REPLY" = x$((128 + 15)) ]
 
     testCase 'Fast signal queueing'
-    REPLY=$(
-      SIGNALS="1 2 3 15"
-      sh -c "
-        echo \$\$
-        exec $VALGRIND ./k9 -T -d -- sh -c '
-          C=0
-          trap '\\'': \$(( ++C ))'\\'' $SIGNALS
-          echo \$\$
-          while [ \$C -ne $(echo $SIGNALS | wc -w) ] ; do sleep 1 ; done
-          echo \$C'" |
-      {
-        read PARENT
-        read CHILD
-        for SIG in $SIGNALS ; do
-            kill -$SIG -- "$PARENT"
-        done
-        read COUNT
-        echo "$COUNT"
-      })
-    [ x"$REPLY" = x"4" ]
+    SIGNALS="1 2 3 15"
+    for SIG in $SIGNALS ; do
+        REPLY=$(ps -o ppid,pid | grep '^1 ' | wc -l)
+        sh -c '
+          echo $$
+          exec >/dev/null
+          exec '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+              trap '\''exit 1'\'''"$SIGNALS"'
+              while : ; do sleep 1 ; done"' |
+        {
+           read REPLY
+           while kill -0 "$REPLY" 2>&- ; do
+               kill -"$SIG" "$REPLY"
+               date ; echo kill -"$SIG" "$REPLY" >&2
+               kill -0 "$REPLY" 2>&- || break
+               date
+               sleep 1
+           done
+        }
+        [ x$REPLY = x$(ps -o ppid,pid | grep '^1 ' | wc -l) ]
+    done
 
     testCase 'Slow signal queueing'
-    REPLY=$(
-      SIGNALS="1 2 3 15"
-      sh -c "
-        echo \$\$
-        exec $VALGRIND ./k9 -T -d -- sh -c '
-          C=0
-          trap '\\'': \$(( ++C ))'\\'' $SIGNALS
-          echo \$\$
-          while [ \$C -ne $(echo $SIGNALS | wc -w) ] ; do sleep 1 ; done
-          echo \$C'" |
-      {
-        read PARENT
-        read CHILD
-        for SIG in $SIGNALS ; do
-            kill -$SIG -- "$PARENT"
-            sleep 1
-        done
-        read COUNT
-        echo "$COUNT"
-      })
-    [ x"$REPLY" = x"4" ]
+    SIGNALS="1 2 3 15"
+    for SIG in $SIGNALS ; do
+        REPLY=$(ps -o ppid,pid | grep '^1 ' | wc -l)
+        sh -c '
+          echo $$
+          exec >/dev/null
+          exec '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+              trap '\''exit 1'\'''"$SIGNALS"'
+              while : ; do sleep 1 ; done"' |
+        {
+           read REPLY
+           sleep 1
+           while kill -0 "$REPLY" 2>&- ; do
+               kill -"$SIG" "$REPLY"
+               date ; echo kill -"$SIG" "$REPLY" >&2
+               kill -0 "$REPLY" 2>&- || break
+               date
+               sleep 1
+           done
+        }
+        [ x$REPLY = x$(ps -o ppid,pid | grep '^1 ' | wc -l) ]
+    done
 
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(

@@ -27,6 +27,15 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "macros.h"
+#include "file.h"
+#include "pathname.h"
+#include "error.h"
+#include "options.h"
+#include "timespec.h"
+#include "process.h"
+#include "test.h"
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdarg.h>
@@ -53,37 +62,6 @@
 #include <sys/file.h>
 #include <sys/resource.h>
 
-#define NUMBEROF(x) (sizeof((x))/sizeof((x)[0]))
-
-#define STRINGIFY_(x) #x
-#define STRINGIFY(x)  STRINGIFY_(x)
-
-#define FINALLY(...)      \
-    do                    \
-    {                     \
-        int err_ = errno; \
-        __VA_ARGS__;      \
-        errno = err_;     \
-    } while (0)
-
-#define DEFAULT_TIMEOUT 30
-
-#define RACE(...) \
-    do                    \
-    {                     \
-        testSleep();      \
-        __VA_ARGS__;      \
-        testSleep();      \
-    } while (0)
-
-#define SIGNAL_CONTEXT(...) \
-    do                      \
-    {                       \
-        ++sSignalContext;   \
-        __VA_ARGS__;        \
-        --sSignalContext;   \
-    } while (0)
-
 /* TODO
  *
  * cmdRunCommand() is too big, break it up
@@ -95,85 +73,8 @@
  * struct PidFile using mPathName and mPathName_
  * Use splice()
  * Correctly close socket/pipe on read and write EOF
+ * Check correct operation if child closes tether first, vs stdout close first
  */
-
-static const char sUsage[] =
-"usage : %s [ options ] cmd ...\n"
-"        %s { --pidfile file | -p file }\n"
-"\n"
-"options:\n"
-"  --debug | -d\n"
-"      Print debug information.\n"
-"  --fd N | -f N\n"
-"      Tether child using file descriptor N in the child process, and\n"
-"      copy received data to stdout of the watchdog. Specify N as - to\n"
-"      allocate a new file descriptor. [Default: N = 1 (stdout) ].\n"
-"  --identify | -i\n"
-"      Print the pid of the child process on stdout before starting\n"
-"      the child program. [Default: Do not print the pid of the child]\n"
-"  --name N | -n N\n"
-"      Name the fd of the tether. If N matches [A-Z][A-Z0-9_]*, then\n"
-"      create an environment variable of that name and set is value to\n"
-"      the fd of the tether. Otherwise replace the first command\n"
-"      line argument with a substring that matches N with the fd\n"
-"      of the tether. [Default: Do not advertise fd]\n"
-"  --pid N | -P N\n"
-"      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
-"      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
-"      pid of the child. [Default: Use the pid of child]\n"
-"  --pidfile file | -p file\n"
-"      Write the pid of the child to the specified file, and remove the\n"
-"      file when the child terminates. [Default: No pidfile]\n"
-"  --quiet | -q\n"
-"      Do not copy received data from tether to stdout. This is an\n"
-"      alternative to closing stdout. [Default: Copy data from tether]\n"
-"  --timeout N | -t N\n"
-"      Specify the timeout N in seconds for activity on tether from\n"
-"      the child process. Set N to 0 to avoid imposing any timeout at\n"
-"      all. [Default: N = " STRINGIFY(DEFAULT_TIMEOUT) "]\n"
-"  --untethered | -u\n"
-"      Run child process without a tether and only watch for termination.\n"
-"      [Default: Tether child process]\n"
-"";
-
-static const char sShortOptions[] =
-    "df:in:P:p:qTt:u";
-
-static struct option sLongOptions[] =
-{
-    { "debug",      0, 0, 'd' },
-    { "fd",         1, 0, 'f' },
-    { "identify",   0, 0, 'i' },
-    { "name",       1, 0, 'n' },
-    { "pid",        1, 0, 'P' },
-    { "pidfile",    1, 0, 'p' },
-    { "quiet",      0, 0, 'q' },
-    { "test",       0, 0, 'T' },
-    { "timeout",    1, 0, 't' },
-    { "untethered", 0, 0, 'u' },
-    { 0 },
-};
-
-static struct
-{
-    const char *mName;
-    pid_t       mPid;
-    const char *mPidFile;
-    int         mTimeout;
-    int         mTetherFd;
-    const int  *mTether;
-    unsigned    mDebug;
-    bool        mIdentify;
-    bool        mQuiet;
-    bool        mTest;
-} sOptions;
-
-struct FileDescriptor
-{
-    int                    mFd;
-    struct FileDescriptor *mNext;
-    struct FileDescriptor *mPrev;
-};
 
 struct SocketPair
 {
@@ -197,18 +98,6 @@ struct StdFdFiller
     struct FileDescriptor *mFile[3];
 };
 
-struct PathName
-{
-    char *mFileName;
-    char *mDirName_;
-    char *mDirName;
-    char *mBaseName_;
-    char *mBaseName;
-
-    struct FileDescriptor  mDirFile_;
-    struct FileDescriptor *mDirFile;
-};
-
 struct PidFile
 {
     struct PathName        mPathName;
@@ -216,402 +105,6 @@ struct PidFile
     struct FileDescriptor *mFile;
     int                    mLock;
 };
-
-struct ProcessLock
-{
-    struct PathName        mPathName_;
-    struct PathName       *mPathName;
-    struct FileDescriptor  mFile_;
-    struct FileDescriptor *mFile;
-    int                    mLock;
-};
-
-struct ExitCode
-{
-    int mStatus;
-};
-
-static const char sProcessDirNameFmt[] = "/proc/%jd";
-
-struct ProcessDirName
-{
-    char mDirName[sizeof(sProcessDirNameFmt) + sizeof(pid_t) * CHAR_BIT];
-};
-
-static char               *sArg0;
-static pid_t               sPid;
-static uint64_t            sTimeBase;
-static struct ProcessLock *sProcessLock;
-static unsigned            sSignalContext;
-
-static struct FileDescriptor sFileDescriptorList =
-{
-    .mFd   = -1,
-    .mNext = &sFileDescriptorList,
-    .mPrev = &sFileDescriptorList,
-};
-
-static int lockProcessLock(struct ProcessLock *);
-static int unlockProcessLock(struct ProcessLock *);
-
-/* -------------------------------------------------------------------------- */
-static pid_t
-getProcessId()
-{
-    /* Lazily cache the pid of this process. This is safe because the pid
-     * returns the same value for all threads in the same process. */
-
-    pid_t pid = sPid;
-
-    if ( ! pid)
-    {
-        pid  = getpid();
-        sPid = pid;
-    }
-
-    return pid;
-}
-
-/* -------------------------------------------------------------------------- */
-static uint64_t monotonicTime(void);
-
-static void
-showUsage()
-{
-    dprintf(STDERR_FILENO, sUsage, sArg0, sArg0);
-    _exit(1);
-}
-
-static void
-showMessage(
-    int aErrCode,
-    const char *aFile, unsigned aLine,
-    const char *aFmt, va_list aArgs)
-{
-    FINALLY
-    ({
-        if ( ! sSignalContext)
-            lockProcessLock(sProcessLock);
-
-        uint64_t elapsed   = monotonicTime() - sTimeBase;
-        uint64_t elapsed_s = elapsed / (1000 * 1000 * 1000);
-        uint64_t elapsed_m;
-        uint64_t elapsed_h;
-
-        elapsed_h = elapsed_s / (60 * 60);
-        elapsed_m = elapsed_s % (60 * 60) / 60;
-        elapsed_s = elapsed_s % (60 * 60) % 60;
-
-        dprintf(
-            STDERR_FILENO,
-            "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
-            sArg0,
-            elapsed_h, elapsed_m, elapsed_s,
-            (intmax_t) getProcessId(),
-            aFile, aLine);
-        vdprintf(STDERR_FILENO, aFmt, aArgs);
-        if (aErrCode)
-            dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
-        else
-            dprintf(STDERR_FILENO, "\n");
-
-        if ( ! sSignalContext)
-            unlockProcessLock(sProcessLock);
-    });
-}
-
-#define breadcrumb() \
-    debug_(__FILE__, __LINE__, ".")
-
-#define debug(aLevel, ...)        \
-    if (aLevel < sOptions.mDebug) \
-        debug_(__FILE__, __LINE__, ## __VA_ARGS__)
-
-static void
-debug_(
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...)
-{
-    FINALLY
-    ({
-        va_list args;
-
-        va_start(args, aFmt);
-        showMessage(0, aFile, aLine, aFmt, args);
-        va_end(args);
-    });
-}
-
-#define warn(aErrCode, ...) \
-    warn_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
-
-static void
-warn_(
-    int aErrCode,
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...)
-{
-    FINALLY
-    ({
-        va_list args;
-
-        va_start(args, aFmt);
-        showMessage(aErrCode, aFile, aLine, aFmt, args);
-        va_end(args);
-    });
-}
-
-#define terminate(aErrCode, ...) \
-    terminate_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
-
-static void
-terminate_(
-    int aErrCode,
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...)
-{
-    FINALLY
-    ({
-        va_list args;
-
-        va_start(args, aFmt);
-        showMessage(aErrCode, aFile, aLine, aFmt, args);
-        va_end(args);
-        _exit(1);
-    });
-}
-
-/* -------------------------------------------------------------------------- */
-static uint64_t
-monotonicTime(void)
-{
-    struct timespec ts;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &ts))
-        terminate(
-            errno,
-            "Unable to fetch monotonic time");
-
-    uint64_t ns = ts.tv_sec;
-
-    return ns * 1000 * 1000 * 1000 + ts.tv_nsec;
-}
-
-/* -------------------------------------------------------------------------- */
-static bool
-testAction(void)
-{
-    /* If test mode has been enabled, choose to activate a test action
-     * a small percentage of the time. */
-
-    return sOptions.mTest && 3 > random() % 10;
-}
-
-/* -------------------------------------------------------------------------- */
-static void
-testSleep(void)
-{
-    /* If test mode has been enabled, choose to sleep a short time
-     * a small percentage of the time. */
-
-    if (testAction())
-        usleep(random() % (500 * 1000));
-}
-
-/* -------------------------------------------------------------------------- */
-static struct timespec
-earliestTime(const struct timespec *aLhs, const struct timespec *aRhs)
-{
-    if (aLhs->tv_sec < aRhs->tv_sec)
-        return *aLhs;
-
-    if (aLhs->tv_sec  == aRhs->tv_sec &&
-        aLhs->tv_nsec <  aRhs->tv_nsec)
-    {
-        return *aLhs;
-    }
-
-    return *aRhs;
-}
-
-/* -------------------------------------------------------------------------- */
-static unsigned long long
-parseUnsignedLongLong(const char *aArg)
-{
-    unsigned long long arg;
-
-    do
-    {
-        if (isdigit((unsigned char) *aArg))
-        {
-            char *endptr = 0;
-
-            errno = 0;
-            arg   = strtoull(aArg, &endptr, 10);
-
-            if (!*endptr && (ULLONG_MAX != arg || ERANGE != errno))
-            {
-                errno = 0;
-                break;
-            }
-        }
-
-        errno = ERANGE;
-        arg   = ULLONG_MAX;
-
-    } while (0);
-
-    return arg;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-parseInt(const char *aArg, int *aValue)
-{
-    int rc = -1;
-
-    unsigned long long value = parseUnsignedLongLong(aArg);
-
-    if ( ! errno)
-    {
-        *aValue = value;
-
-        if ( ! (*aValue - value))
-            rc = 0;
-    }
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-parsePid(const char *aArg, pid_t *aValue)
-{
-    int rc = -1;
-
-    unsigned long long value = parseUnsignedLongLong(aArg);
-
-    if ( ! errno)
-    {
-        *aValue = value;
-
-        if ( !   (*aValue - value) &&
-             0 <= *aValue)
-        {
-            rc = 0;
-        }
-    }
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static char **
-parseOptions(int argc, char **argv)
-{
-    int pidFileOnly = 0;
-
-    sOptions.mTimeout   = DEFAULT_TIMEOUT;
-    sOptions.mTetherFd  = STDOUT_FILENO;
-    sOptions.mTether    = &sOptions.mTetherFd;
-
-    while (1)
-    {
-        int longOptIndex = 0;
-
-        int opt = getopt_long(
-                argc, argv, sShortOptions, sLongOptions, &longOptIndex);
-
-        if (-1 == opt)
-            break;
-
-        switch (opt)
-        {
-        default:
-            terminate(0, "Unrecognised option %d ('%c')", opt, opt);
-            break;
-
-        case '?':
-            showUsage();
-            break;
-
-        case 'd':
-            ++sOptions.mDebug;
-            break;
-
-        case 'f':
-            pidFileOnly = -1;
-            sOptions.mTether = &sOptions.mTetherFd;
-            if ( ! strcmp(optarg, "-"))
-            {
-                sOptions.mTetherFd = -1;
-            }
-            else
-            {
-                if (parseInt(
-                        optarg,
-                        &sOptions.mTetherFd) || 0 > sOptions.mTetherFd)
-                {
-                    terminate(0, "Badly formed fd - '%s'", optarg);
-                }
-            }
-            break;
-
-        case 'i':
-            pidFileOnly = -1;
-            sOptions.mIdentify = true;
-            break;
-
-        case 'P':
-            pidFileOnly = -1;
-            if ( ! strcmp(optarg, "-1"))
-                sOptions.mPid = -1;
-            else if (parsePid(optarg, &sOptions.mPid))
-                terminate(0, "Badly formed pid - '%s'", optarg);
-            break;
-
-        case 'n':
-            pidFileOnly = -1;
-            if ( ! optarg[0])
-                terminate(0, "Empty environment or argument name");
-            sOptions.mName = optarg;
-            break;
-
-        case 'p':
-            pidFileOnly = pidFileOnly ? pidFileOnly : 1;
-            sOptions.mPidFile = optarg;
-            break;
-
-        case 'q':
-            pidFileOnly = -1;
-            sOptions.mQuiet = true;
-            break;
-
-        case 'T':
-            sOptions.mTest = true;
-            break;
-
-        case 't':
-            pidFileOnly = -1;
-            if (parseInt(optarg, &sOptions.mTimeout) || 0 > sOptions.mTimeout)
-                terminate(0, "Badly formed timeout - '%s'", optarg);
-            break;
-
-        case 'u':
-            pidFileOnly = -1;
-            sOptions.mTether = 0;
-            break;
-        }
-    }
-
-    if (0 >= pidFileOnly)
-    {
-        if (optind >= argc)
-            terminate(0, "Missing command for execution");
-    }
-
-    return optind < argc ? argv + optind : 0;
-}
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -635,66 +128,6 @@ stdFd(int aFd)
 
 /* -------------------------------------------------------------------------- */
 static int
-rankFd_(const void *aLhs, const void *aRhs)
-{
-    int lhs = * (const int *) aLhs;
-    int rhs = * (const int *) aRhs;
-
-    if (lhs < rhs) return -1;
-    if (lhs > rhs) return +1;
-    return 0;
-}
-
-static int
-purgeFds(const int *aWhiteList, unsigned aWhiteListLen)
-{
-    int rc = -1;
-
-    int whiteList[aWhiteListLen + 1];
-
-    for (unsigned ix = 0; ix < aWhiteListLen; ++ix)
-        whiteList[ix] = aWhiteList[ix];
-
-    struct rlimit noFile;
-
-    if (getrlimit(RLIMIT_NOFILE, &noFile))
-        goto Finally;
-
-    whiteList[aWhiteListLen] = noFile.rlim_cur;
-
-    debug(0, "purging %d fds", whiteList[aWhiteListLen]);
-
-    qsort(whiteList, NUMBEROF(whiteList), sizeof(whiteList[0]), rankFd_);
-
-    for (unsigned fd = 0, wx = 0; ; ++fd)
-    {
-        while (0 > whiteList[wx])
-            ++wx;
-
-        if (fd != whiteList[wx])
-        {
-            if (close(fd) && EBADF != errno)
-                goto Finally;
-        }
-        else
-        {
-            debug(0, "not closing fd %d", fd);
-            if (NUMBEROF(whiteList) == ++wx)
-                break;
-        }
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
 nonblockingFd(int aFd)
 {
     long flags = fcntl(aFd, F_GETFL, 0);
@@ -703,275 +136,6 @@ nonblockingFd(int aFd)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-createFileDescriptor(struct FileDescriptor *self, int aFd)
-{
-    assert(self != &sFileDescriptorList);
-
-    int rc = -1;
-
-    self->mFd = aFd;
-
-    /* If the file descriptor is invalid, take care to have preserved
-     * errno so that the caller can rely on interpreting errno to
-     * discover why the file descriptor is invalid. */
-
-    if (-1 == aFd)
-        goto Finally;
-
-    self->mNext =  sFileDescriptorList.mNext;
-    self->mPrev = &sFileDescriptorList;
-
-    self->mNext->mPrev = self;
-    self->mPrev->mNext = &sFileDescriptorList;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc && -1 != self->mFd)
-            close(self->mFd);
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-closeFileDescriptor(struct FileDescriptor *self)
-{
-    assert(self != &sFileDescriptorList);
-
-    int rc = -1;
-
-    if (self)
-    {
-        if (-1 == self->mFd)
-            goto Finally;
-
-        if (close(self->mFd))
-            goto Finally;
-
-        self->mPrev->mNext = self->mNext;
-        self->mNext->mPrev = self->mPrev;
-
-        self->mPrev = 0;
-        self->mNext = 0;
-        self->mFd   = -1;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-dupFileDescriptor(
-        struct FileDescriptor *self,
-        const struct FileDescriptor *aOther)
-{
-    int rc = -1;
-
-    if (createFileDescriptor(self, dup(aOther->mFd)))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-            closeFileDescriptor(self);
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-closeFileDescriptorPair(struct FileDescriptor **aFile1,
-                        struct FileDescriptor **aFile2)
-{
-    int rc = -1;
-
-    if (closeFileDescriptor(*aFile1))
-        goto Finally;
-    *aFile1 = 0;
-
-    if (closeFileDescriptor(*aFile2))
-        goto Finally;
-    *aFile2 = 0;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-#if 0
-static int
-nonblockingFileDescriptor(struct FileDescriptor *self)
-{
-    long flags = fcntl(self->mFd, F_GETFL, 0);
-
-    return -1 == flags ? -1 : fcntl(self->mFd, F_SETFL, flags | O_NONBLOCK);
-}
-#endif
-
-/* -------------------------------------------------------------------------- */
-static void
-initProcessDirName(struct ProcessDirName *self, pid_t aPid)
-{
-    sprintf(self->mDirName, sProcessDirNameFmt, (intmax_t) aPid);
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-createPathName(struct PathName *self, const char *aFileName)
-{
-    int rc = -1;
-
-    self->mFileName  = 0;
-    self->mBaseName_ = 0;
-    self->mBaseName  = 0;
-    self->mDirName_  = 0;
-    self->mDirName   = 0;
-    self->mDirFile   = 0;
-
-    self->mFileName = strdup(aFileName);
-    if ( ! self->mFileName)
-        goto Finally;
-
-    self->mDirName_ = strdup(self->mFileName);
-    if ( ! self->mDirName_)
-        goto Finally;
-
-    self->mBaseName_ = strdup(self->mFileName);
-    if ( ! self->mBaseName_)
-        goto Finally;
-
-    self->mDirName  = strdup(dirname(self->mDirName_));
-    if ( ! self->mDirName)
-        goto Finally;
-
-    self->mBaseName = strdup(basename(self->mBaseName_));
-    if ( ! self->mBaseName)
-        goto Finally;
-
-    if (createFileDescriptor(
-            &self->mDirFile_,
-            open(self->mDirName, O_RDONLY | O_CLOEXEC)))
-        goto Finally;
-    self->mDirFile = &self->mDirFile_;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-        {
-            free(self->mFileName);
-            free(self->mBaseName_);
-            free(self->mBaseName);
-            free(self->mDirName_);
-            free(self->mDirName);
-
-            closeFileDescriptor(self->mDirFile);
-        }
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-closePathName(struct PathName *self)
-{
-    int rc = -1;
-
-    if (self)
-    {
-        if (closeFileDescriptor(self->mDirFile))
-            goto Finally;
-
-        free(self->mFileName);
-        free(self->mBaseName_);
-        free(self->mBaseName);
-        free(self->mDirName_);
-        free(self->mDirName);
-
-        self->mFileName  = 0;
-        self->mBaseName_ = 0;
-        self->mBaseName  = 0;
-        self->mDirName_  = 0;
-        self->mDirName   = 0;
-        self->mDirFile   = 0;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-openPathName(struct PathName *self, int aFlags, mode_t aMode)
-{
-    return openat(self->mDirFile->mFd, self->mBaseName, aFlags, aMode);
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-unlinkPathName(struct PathName *self, int aFlags)
-{
-    return unlinkat(self->mDirFile->mFd, self->mBaseName, aFlags);
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags)
-{
-    return fstatat(self->mDirFile->mFd, self->mBaseName, aStat, aFlags);
-}
-
-/* -------------------------------------------------------------------------- */
-static struct timespec
-processStartTime(pid_t aPid)
-{
-    struct ProcessDirName processDirName;
-
-    initProcessDirName(&processDirName, aPid);
-
-    struct timespec startTime = { 0 };
-
-    struct stat procStatus;
-
-    if (stat(processDirName.mDirName, &procStatus))
-        startTime.tv_nsec = ENOENT == errno ?  UTIME_NOW : UTIME_OMIT;
-    else
-        startTime = earliestTime(&procStatus.st_mtim, &procStatus.st_ctim);
-
-    return startTime;
-}
-
 /* -------------------------------------------------------------------------- */
 static int
 createSocketPair(struct SocketPair *self)
@@ -1462,11 +626,7 @@ readPidFile(const struct PidFile *self)
 
                 debug(0, "examining candidate pid '%s'", buf);
 
-                unsigned long long pid_ = parseUnsignedLongLong(buf);
-
-                pid = pid_;
-
-                if ((pid_ - pid) || 0 >= pid)
+                if (parsePid(buf, &pid) || 0 >= pid)
                 {
                     debug(0, "invalid pid representation");
                     return 0;
@@ -1485,7 +645,7 @@ readPidFile(const struct PidFile *self)
 
                 struct timespec fdTime   = earliestTime(&fdStatus.st_mtim,
                                                         &fdStatus.st_ctim);
-                struct timespec procTime = processStartTime(pid);
+                struct timespec procTime = findProcessStartTime(pid);
 
                 if (UTIME_OMIT == procTime.tv_nsec)
                 {
@@ -1810,140 +970,6 @@ writePidFile(struct PidFile *self, pid_t aPid)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-createProcessLock(struct ProcessLock *self)
-{
-    int rc = -1;
-
-    self->mFile     = 0;
-    self->mLock     = LOCK_UN;
-    self->mPathName = 0;
-
-    if (createPathName(&self->mPathName_, "/proc/self"))
-        goto Finally;
-    self->mPathName = &self->mPathName_;
-
-    if (createFileDescriptor(
-            &self->mFile_,
-            openPathName(self->mPathName, O_RDONLY | O_CLOEXEC, 0)))
-        goto Finally;
-    self->mFile = &self->mFile_;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-        {
-            closeFileDescriptor(self->mFile);
-            closePathName(self->mPathName);
-        }
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-closeProcessLock(struct ProcessLock *self)
-{
-    int rc = -1;
-
-    if (closeFileDescriptor(self->mFile))
-        goto Finally;
-
-    if (closePathName(self->mPathName))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-lockProcessLock(struct ProcessLock *self)
-{
-    int rc = -1;
-
-    if (self)
-    {
-        assert(self->mLock == LOCK_UN);
-
-        if (flock(self->mFile->mFd, LOCK_EX))
-            goto Finally;
-
-        self->mLock = LOCK_EX;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-unlockProcessLock(struct ProcessLock *self)
-{
-    int rc = -1;
-
-    if (self)
-    {
-        assert(self->mLock != LOCK_UN);
-
-        if (flock(self->mFile->mFd, LOCK_UN))
-            goto Finally;
-
-        self->mLock = LOCK_UN;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static pid_t
-forkProcess(void)
-{
-    /* Note that the fork() will complete and launch the child process
-     * before the child pid is recorded in the local variable. This
-     * is an important consideration for propagating signals to
-     * the child process.
-     *
-     * Reset the cached pid before the fork() so that there will not
-     * be a race immediately after the fork() to correct the cached value.
-     * */
-
-    pid_t childPid;
-
-    RACE
-    ({
-        sPid = 0;
-
-        childPid = fork();
-
-        testSleep();
-    });
-
-    return childPid;
-}
-
-/* -------------------------------------------------------------------------- */
 static pid_t
 runChild(
     char                    **aCmd,
@@ -1954,18 +980,19 @@ runChild(
 {
     pid_t rc = -1;
 
-    /* The child process needs separate process lock. It cannot share
-     * the process lock with the parent because flock(2) distinguishes
-     * locks by file descriptor table entry. Create the process lock
-     * in the parent first so that the child process is guaranteed to
-     * be able to synchronise its messages. */
-
-    struct ProcessLock processLock;
-
-    if (createProcessLock(&processLock))
-        goto Finally;
+    /* Both the parent and child share the same signal handler configuration.
+     * In particular, no custom signal handlers are configured, so
+     * signals delivered to either will likely caused them to terminate.
+     *
+     * This is safe because that would cause one of end the termPipe
+     * to close, and the other end will eventually notice. */
 
     pid_t childPid = forkProcess();
+
+    if (-1 == childPid)
+        goto Finally;
+
+    debug(0, "running child process %d", (int) childPid);
 
     if ( ! childPid)
     {
@@ -1973,19 +1000,6 @@ runChild(
         struct SocketPair  tetherPipe  = *aTetherPipe;
         struct Pipe        termPipe    = *aTermPipe;
         struct Pipe        sigPipe     = *aSigPipe;
-
-        /* Switch the process lock first in case the child process
-         * needs to emit diagnostic messages so that the messages
-         * will not be garbled. */
-
-        struct ProcessLock *prevProcessLock = sProcessLock;
-
-        sProcessLock = &processLock;
-
-        if (closeProcessLock(prevProcessLock))
-            terminate(
-                errno,
-                "Unable to close process lock");
 
         /* Unwatch the signals so that the child process will be
          * responsive to signals from the parent. Note that the parent
@@ -2060,22 +1074,22 @@ runChild(
 
         do
         {
-            if (sOptions.mTether)
+            if (gOptions.mTether)
             {
-                int tetherFd = *sOptions.mTether;
+                int tetherFd = *gOptions.mTether;
 
                 if (0 > tetherFd)
                     tetherFd = tetherPipe.mChildFile->mFd;
 
                 sprintf(tetherArg, "%d", tetherFd);
 
-                if (sOptions.mName)
+                if (gOptions.mName)
                 {
-                    bool useEnv = isupper(sOptions.mName[0]);
+                    bool useEnv = isupper(gOptions.mName[0]);
 
-                    for (unsigned ix = 1; useEnv && sOptions.mName[ix]; ++ix)
+                    for (unsigned ix = 1; useEnv && gOptions.mName[ix]; ++ix)
                     {
-                        unsigned char ch = sOptions.mName[ix];
+                        unsigned char ch = gOptions.mName[ix];
 
                         if ( ! isupper(ch) && ! isdigit(ch) && ch != '_')
                             useEnv = false;
@@ -2083,11 +1097,11 @@ runChild(
 
                     if (useEnv)
                     {
-                        if (setenv(sOptions.mName, tetherArg, 1))
+                        if (setenv(gOptions.mName, tetherArg, 1))
                             terminate(
                                 errno,
                                 "Unable to set environment variable '%s'",
-                                sOptions.mName);
+                                gOptions.mName);
                     }
                     else
                     {
@@ -2098,13 +1112,13 @@ runChild(
 
                         for (unsigned ix = 1; aCmd[ix]; ++ix)
                         {
-                            matchArg = strstr(aCmd[ix], sOptions.mName);
+                            matchArg = strstr(aCmd[ix], gOptions.mName);
 
                             if (matchArg)
                             {
                                 char replacedArg[
                                     strlen(aCmd[ix])       -
-                                    strlen(sOptions.mName) +
+                                    strlen(gOptions.mName) +
                                     strlen(tetherArg)      + 1];
 
                                 sprintf(replacedArg,
@@ -2112,7 +1126,7 @@ runChild(
                                         matchArg - aCmd[ix],
                                         aCmd[ix],
                                         tetherArg,
-                                        matchArg + strlen(sOptions.mName));
+                                        matchArg + strlen(gOptions.mName));
 
                                 aCmd[ix] = strdup(replacedArg);
 
@@ -2129,7 +1143,7 @@ runChild(
                             terminate(
                                 0,
                                 "Unable to find matching argument '%s'",
-                                sOptions.mName);
+                                gOptions.mName);
                     }
                 }
 
@@ -2163,9 +1177,6 @@ runChild(
             "Unable to execute '%s'", aCmd[0]);
     }
 
-    if (closeProcessLock(&processLock))
-        goto Finally;
-
     rc = childPid;
 
 Finally:
@@ -2188,36 +1199,6 @@ reapChild(pid_t aChildPid)
             (intmax_t) aChildPid);
 
     return status;
-}
-
-/* -------------------------------------------------------------------------- */
-static struct ExitCode
-exitProcess(int aStatus)
-{
-    /* Taking guidance from OpenGroup:
-     *
-     * http://pubs.opengroup.org/onlinepubs/009695399/
-     *      utilities/xcu_chap02.html#tag_02_08_02
-     *
-     * Use exit codes above 128 to indicate signals, and codes below
-     * 128 to indicate exit status. */
-
-    struct ExitCode exitCode = { 255 };
-
-    if (WIFEXITED(aStatus))
-    {
-        exitCode.mStatus = WEXITSTATUS(aStatus);
-        if (128 < exitCode.mStatus)
-            exitCode.mStatus = 128;
-    }
-    else if (WIFSIGNALED(aStatus))
-    {
-        exitCode.mStatus = 128 + WTERMSIG(aStatus);
-        if (255 < exitCode.mStatus)
-            exitCode.mStatus = 255;
-    }
-
-    return exitCode;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2314,6 +1295,17 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to add watch on child process termination");
 
+    /* Only identify the watchdog process after all the signal
+     * handlers have been installed. The functional tests can
+     * use this as an indicator that the watchdog is ready to
+     * run the child process. */
+
+    if (gOptions.mIdentify)
+        RACE
+        ({
+            dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid());
+        });
+
     pid_t childPid = runChild(aCmd,
                               &stdFdFiller,
                               &tetherPipe, &termPipe, &sigPipe);
@@ -2325,18 +1317,18 @@ cmdRunCommand(char **aCmd)
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
 
-    if (sOptions.mPidFile)
+    if (gOptions.mPidFile)
     {
-        const char *pidFileName = sOptions.mPidFile;
+        const char *pidFileName = gOptions.mPidFile;
 
-        pid_t pid = sOptions.mPid;
+        pid_t pid = gOptions.mPid;
 
         switch (pid)
         {
         default:
             break;
         case -1:
-            pid = getProcessId(); break;
+            pid = getpid(); break;
         case 0:
             pid = childPid; break;
         }
@@ -2383,7 +1375,7 @@ cmdRunCommand(char **aCmd)
         /* Ensure that the mtime of the pidfile is later than the
          * start time of the child process, if that process exists. */
 
-        struct timespec childStartTime = processStartTime(pid);
+        struct timespec childStartTime = findProcessStartTime(pid);
 
         if (UTIME_OMIT == childStartTime.tv_nsec)
         {
@@ -2479,11 +1471,11 @@ cmdRunCommand(char **aCmd)
      * the creation time of the pidfile. With the pidfile created,
      * release the waiting child process. */
 
-    if (sOptions.mIdentify)
-        dprintf(STDOUT_FILENO,
-                "%jd\n%jd\n",
-                (intmax_t) getProcessId(),
-                (intmax_t) childPid);
+    if (gOptions.mIdentify)
+        RACE
+        ({
+        dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid);
+        });
 
     RACE
     ({
@@ -2512,7 +1504,7 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close tether pipe");
 
-    if (sOptions.mTether)
+    if (gOptions.mTether)
     {
         /* Non-blocking IO on stdout is required so that the event loop
          * remains responsive, otherwise the event loop will likely block
@@ -2521,7 +1513,7 @@ cmdRunCommand(char **aCmd)
         if (nonblockingFd(STDOUT_FILENO))
         {
             if (EBADF == errno)
-                sOptions.mQuiet = true;
+                gOptions.mQuiet = true;
             else
                 terminate(
                     errno,
@@ -2529,6 +1521,12 @@ cmdRunCommand(char **aCmd)
         }
     }
 
+#if 1
+    if (cleanseFileDescriptors())
+        terminate(
+            errno,
+            "Unable to cleanse file descriptors");
+#else
     const int whiteListFds[] =
     {
         pidFile ? pidFile->mFile->mFd : -1,
@@ -2545,6 +1543,7 @@ cmdRunCommand(char **aCmd)
     };
 
     purgeFds(whiteListFds, NUMBEROF(whiteListFds));
+#endif
 
     enum PollFdKind
     {
@@ -2567,7 +1566,7 @@ cmdRunCommand(char **aCmd)
         [POLL_FD_STDOUT] = {
             .fd = STDOUT_FILENO,  .events = 0 },
         [POLL_FD_STDIN] = {
-            .fd = STDIN_FILENO,   .events = ! sOptions.mTether
+            .fd = STDIN_FILENO,   .events = ! gOptions.mTether
                                             ? 0 : pollInputEvents },
     };
 
@@ -2579,7 +1578,7 @@ cmdRunCommand(char **aCmd)
     bool deadChild  = false;
     int  childSig   = SIGTERM;
 
-    int timeout = sOptions.mTimeout;
+    int timeout = gOptions.mTimeout;
 
     timeout = timeout ? timeout * 1000 : -1;
 
@@ -2652,7 +1651,7 @@ cmdRunCommand(char **aCmd)
                         "Read returned value %zd which exceeds buffer size",
                         bytes);
 
-                if ( ! sOptions.mQuiet)
+                if ( ! gOptions.mQuiet)
                 {
                     bufptr = buffer;
                     bufend = bufptr + bytes;
@@ -2783,6 +1782,26 @@ cmdRunCommand(char **aCmd)
                 pollfds[POLL_FD_STDOUT].events ||
                 pollfds[POLL_FD_STDIN].events);
 
+    if (unwatchSignals())
+        terminate(
+            errno,
+            "Unable to remove watch from signals");
+
+    if (unwatchChildren())
+        terminate(
+            errno,
+            "Unable to remove watch on child process termination");
+
+    if (closePipe(&sigPipe))
+        terminate(
+            errno,
+            "Unable to close signal pipe");
+
+    if (closePipe(&termPipe))
+        terminate(
+            errno,
+            "Unable to close termination pipe");
+
     if (pidFile)
     {
         if (acquireWriteLockPidFile(pidFile))
@@ -2800,25 +1819,26 @@ cmdRunCommand(char **aCmd)
 
     debug(0, "reaping child pid %jd", (intmax_t) childPid);
 
-    if (unwatchChildren())
-        terminate(
-            errno,
-            "Unable to remove watch on child process termination");
-
     int status = reapChild(childPid);
 
     debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
 
-    return exitProcess(status);
+    return extractProcessExitStatus(status);
 }
 
 /* -------------------------------------------------------------------------- */
 int main(int argc, char **argv)
 {
+    if (initProcess(argv[0]))
+        terminate(
+            errno,
+            "Unable to initialise process state");
+
+#if 0
     sArg0     = argv[0];
     sTimeBase = monotonicTime();
 
-    srandom(getProcessId());
+    srandom(getpid());
 
     struct ProcessLock processLock;
 
@@ -2827,23 +1847,33 @@ int main(int argc, char **argv)
             errno,
             "Unable to create process lock");
 
+    sProcessLock = &processLock;
+#endif
+
     struct ExitCode exitCode;
 
-    sProcessLock = &processLock;
     {
         char **cmd = parseOptions(argc, argv);
 
-        if ( ! cmd && sOptions.mPidFile)
-            exitCode = cmdPrintPidFile(sOptions.mPidFile);
+        if ( ! cmd && gOptions.mPidFile)
+            exitCode = cmdPrintPidFile(gOptions.mPidFile);
         else
             exitCode = cmdRunCommand(cmd);
     }
+
+    if (exitProcess())
+        terminate(
+            errno,
+            "Unable to finalise process state");
+
+#if 0
     sProcessLock = 0;
 
     if (closeProcessLock(&processLock))
         terminate(
             errno,
             "Unable to close process lock");
+#endif
 
     return exitCode.mStatus;
 }

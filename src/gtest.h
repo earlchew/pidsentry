@@ -1,7 +1,9 @@
-#ifndef MULTICHAIN_GTEST_H
-#define MULTICHAIN_GTEST_H
+#ifndef K9_GTEST_H
+#define K9_GTEST_H
 
+#ifndef HEADERCHECK
 #define GTEST_HAS_PTHREAD 0
 #include "gtest/gtest.h"
+#endif
 
-#endif /* MULTICHAIN_GTEST_H */
+#endif /* K9_GTEST_H */
