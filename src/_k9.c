@@ -27,44 +27,29 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "options.h"
 #include "macros.h"
-#include "file.h"
-#include "fd.h"
 #include "pipe.h"
 #include "socketpair.h"
 #include "stdfdfiller.h"
 #include "pidfile.h"
-#include "pathname.h"
-#include "error.h"
-#include "options.h"
-#include "timespec.h"
 #include "process.h"
+#include "error.h"
 #include "test.h"
 
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdarg.h>
-#include <ctype.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <limits.h>
-#include <inttypes.h>
-#include <time.h>
+#include "fd.h" /* NEED TO REMOVE THIS */
 
-#include <getopt.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
-#include <libgen.h>
 
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/wait.h>
-#include <sys/poll.h>
-#include <sys/fcntl.h>
 #include <sys/stat.h>
-#include <sys/file.h>
-#include <sys/resource.h>
+#include <sys/poll.h>
 
 /* TODO
  *
@@ -81,199 +66,6 @@
  * Shutdown pipes
  * Parent and child process groups
  */
-
-/* -------------------------------------------------------------------------- */
-static int sDeadChildFd_ = -1;
-static int sSignalFd_    = -1;
-
-static struct SignalWatch {
-    int          mSigNum;
-    sighandler_t mSigHandler;
-    bool         mWatched;
-} sWatchedSignals_[] =
-{
-    { SIGHUP },
-    { SIGINT },
-    { SIGQUIT },
-    { SIGTERM },
-};
-
-static int
-writeSignal_(int aFd, char aSigNum)
-{
-    int rc = -1;
-
-    if (-1 == aFd)
-    {
-        errno = EBADF;
-        goto Finally;
-    }
-
-    ssize_t len = write(aFd, &aSigNum, 1);
-
-    if (-1 == len)
-    {
-        if (EWOULDBLOCK == errno)
-            warn(errno, "Dropped signal %d", aSigNum);
-        goto Finally;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-static void
-caughtSignal_(int aSigNum)
-{
-    SIGNAL_CONTEXT
-    ({
-        int signalFd = sSignalFd_;
-
-        debug(1, "queued signal %d", aSigNum);
-
-        if (writeSignal_(signalFd, aSigNum))
-        {
-            if (EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to queue signal %d on fd %d", aSigNum, signalFd);
-        }
-    });
-}
-
-static int
-watchSignals(const struct Pipe *aSigPipe)
-{
-    int rc = -1;
-
-    sSignalFd_ = aSigPipe->mWrFile->mFd;
-
-    if (nonblockingFd(sSignalFd_))
-        goto Finally;
-
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-    {
-        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
-
-        int          sigNum     = watchedSig->mSigNum;
-        sighandler_t sigHandler = signal(sigNum, caughtSignal_);
-
-        if (SIG_ERR == sigHandler)
-            goto Finally;
-
-        watchedSig->mSigHandler = sigHandler;
-        watchedSig->mWatched    = true;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-        {
-            for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-            {
-                struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
-
-                if (watchedSig->mWatched)
-                {
-                    int          sigNum     = watchedSig->mSigNum;
-                    sighandler_t sigHandler = watchedSig->mSigHandler;
-
-                    signal(sigNum, sigHandler);
-
-                    watchedSig->mWatched = false;
-                }
-            }
-        }
-    });
-
-    return rc;
-}
-
-static int
-unwatchSignals(void)
-{
-    int rc  = 0;
-    int err = 0;
-
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-    {
-        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
-
-        int          sigNum     = watchedSig->mSigNum;
-        sighandler_t sigHandler = watchedSig->mSigHandler;
-
-        if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
-        {
-            rc  = -1;
-            err = errno;
-        }
-
-        watchedSig->mWatched = false;
-    }
-
-    sSignalFd_ = -1;
-
-    if (rc)
-        errno = err;
-
-    return rc;
-}
-
-static void
-deadChild_(int aSigNum)
-{
-    SIGNAL_CONTEXT
-    ({
-        debug(1, "queued dead child");
-
-        if (writeSignal_(sDeadChildFd_, aSigNum))
-        {
-            if (EBADF != errno && EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to indicate dead child");
-        }
-    });
-}
-
-static int
-watchChildren(const struct Pipe *aTermPipe)
-{
-    int rc = -1;
-
-    sDeadChildFd_ = aTermPipe->mWrFile->mFd;
-
-    if (nonblockingFd(sDeadChildFd_))
-        goto Finally;
-
-    if (SIG_ERR == signal(SIGCHLD, deadChild_))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-static int
-unwatchChildren()
-{
-    sDeadChildFd_ = -1;
-
-    return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
-}
 
 /* -------------------------------------------------------------------------- */
 static pid_t
@@ -319,7 +111,7 @@ runChild(
          * will wait for the child to synchronise before sending it
          * signals, so that there is no race here. */
 
-        if (unwatchSignals())
+        if (unwatchProcessSignals())
             terminate(
                 errno,
                 "Unable to remove watch from signals");
@@ -598,12 +390,12 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create signal pipe");
 
-    if (watchSignals(&sigPipe))
+    if (watchProcessSignals(&sigPipe))
         terminate(
             errno,
             "Unable to add watch on signals");
 
-    if (watchChildren(&termPipe))
+    if (watchProcessChildren(&termPipe))
         terminate(
             errno,
             "Unable to add watch on child process termination");
@@ -1128,12 +920,12 @@ cmdRunCommand(char **aCmd)
                 pollfds[POLL_FD_STDOUT].events ||
                 pollfds[POLL_FD_STDIN].events);
 
-    if (unwatchSignals())
+    if (unwatchProcessSignals())
         terminate(
             errno,
             "Unable to remove watch from signals");
 
-    if (unwatchChildren())
+    if (unwatchProcessChildren())
         terminate(
             errno,
             "Unable to remove watch on child process termination");

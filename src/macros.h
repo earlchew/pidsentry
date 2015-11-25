@@ -50,12 +50,4 @@
         testSleep();      \
     } while (0)
 
-#define SIGNAL_CONTEXT(...)                     \
-    do                                          \
-    {                                           \
-        initProcessSignalHandler();             \
-        __VA_ARGS__;                            \
-        exitProcessSignalHandler();             \
-    } while (0)
-
 #endif /* MACROS_H */

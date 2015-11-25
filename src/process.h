@@ -35,6 +35,8 @@
 
 struct timespec;
 
+struct Pipe;
+
 struct ExitCode
 {
     int mStatus;
@@ -58,11 +60,17 @@ void
 initProcessDirName(struct ProcessDirName *self, pid_t aPid);
 
 /* -------------------------------------------------------------------------- */
-void
-initProcessSignalHandler(void);
+int
+watchProcessChildren(const struct Pipe *aTermPipe);
 
-void
-exitProcessSignalHandler(void);
+int
+unwatchProcessChildren(void);
+
+int
+watchProcessSignals(const struct Pipe *aSigPipe);
+
+int
+unwatchProcessSignals(void);
 
 /* -------------------------------------------------------------------------- */
 int
