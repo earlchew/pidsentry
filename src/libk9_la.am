@@ -1,8 +1,10 @@
-libk9_la_SOURCES_CKSUM_1_ = 2339489410 145
+libk9_la_SOURCES_CKSUM_1_ = 2737595221 243
 libk9_la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*.[ch]' -printf '%f\n' | sort | cksum)
 libk9_la_SOURCES = \
   error.c \
   error.h \
+  fd.c \
+  fd.h \
   file.c \
   file.h \
   gtest.h \
@@ -11,8 +13,16 @@ libk9_la_SOURCES = \
   options.h \
   pathname.c \
   pathname.h \
+  pidfile.c \
+  pidfile.h \
+  pipe.c \
+  pipe.h \
   process.c \
   process.h \
+  socketpair.c \
+  socketpair.h \
+  stdfdfiller.c \
+  stdfdfiller.h \
   test.c \
   test.h \
   timespec.c \
