@@ -312,7 +312,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 pid_t
-forkProcess(void)
+forkProcess(enum ForkProcessOption aOption)
 {
     ensure(
         sProcessLock[sActiveProcessLock] == &sProcessLock_[sActiveProcessLock]);
@@ -349,14 +349,39 @@ forkProcess(void)
         childPid = fork();
     });
 
-    if ( ! childPid)
+    switch (childPid)
     {
+    default:
+        /* Forcibly set the process group of the child to avoid
+         * the race that would occur if only the child attempts
+         * to set its own process group */
+
+        if (ForkProcessSetProcessGroup == aOption)
+        {
+            if (setpgid(childPid, childPid))
+                goto Finally;
+        }
+        break;
+
+    case -1:
+        break;
+
+    case 0:
         /* Switch the process lock first in case the child process
          * needs to emit diagnostic messages so that the messages
          * will not be garbled. */
 
         sActiveProcessLock  = inactiveProcessLock;
         inactiveProcessLock = activeProcessLock;
+
+        if (ForkProcessSetProcessGroup == aOption)
+        {
+            if (setpgid(0, 0))
+                terminate(
+                    errno,
+                    "Unable to set process group");
+        }
+        break;
     }
 
     rc = childPid;

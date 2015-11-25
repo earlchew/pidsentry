@@ -40,6 +40,12 @@ struct ExitCode
     int mStatus;
 };
 
+enum ForkProcessOption
+{
+    ForkProcessShareProcessGroup,
+    ForkProcessSetProcessGroup,
+};
+
 /* -------------------------------------------------------------------------- */
 #define PROCESS_DIRNAME_FMT_  "/proc/%jd"
 
@@ -66,7 +72,7 @@ int
 exitProcess(void);
 
 pid_t
-forkProcess(void);
+forkProcess(enum ForkProcessOption aOption);
 
 int
 lockProcessLock(void);

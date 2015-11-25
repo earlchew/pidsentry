@@ -988,15 +988,22 @@ runChild(
      * This is safe because that would cause one of end the termPipe
      * to close, and the other end will eventually notice. */
 
-    pid_t childPid = forkProcess();
+    pid_t childPid = forkProcess(
+        gOptions.mSetPgid
+        ? ForkProcessSetProcessGroup
+        : ForkProcessShareProcessGroup);
 
     if (-1 == childPid)
         goto Finally;
 
-    debug(0, "running child process %d", (int) childPid);
-
-    if ( ! childPid)
+    if (childPid)
     {
+        debug(0, "running child process %jd", (intmax_t) childPid);
+    }
+    else
+    {
+        debug(0, "starting child process");
+
         struct StdFdFiller stdFdFiller = *aStdFdFiller;
         struct SocketPair  tetherPipe  = *aTetherPipe;
         struct Pipe        termPipe    = *aTermPipe;
@@ -1304,7 +1311,10 @@ cmdRunCommand(char **aCmd)
     if (gOptions.mIdentify)
         RACE
         ({
-            dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid());
+            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid()))
+                terminate(
+                    errno,
+                    "Unable to print parent pid");
         });
 
     pid_t childPid = runChild(aCmd,
@@ -1475,7 +1485,10 @@ cmdRunCommand(char **aCmd)
     if (gOptions.mIdentify)
         RACE
         ({
-        dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid);
+            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid))
+                terminate(
+                    errno,
+                    "Unable to print child pid");
         });
 
     RACE
@@ -1576,8 +1589,31 @@ cmdRunCommand(char **aCmd)
     char *bufend = buffer;
     char *bufptr = buffer;
 
-    bool deadChild  = false;
-    int  childSig   = SIGTERM;
+    bool deadChild = false;
+
+    struct ChildSignalPlan
+    {
+        pid_t mPid;
+        int   mSig;
+    };
+
+    struct ChildSignalPlan sharedPgrpPlan[] =
+    {
+        { childPid, SIGTERM },
+        { childPid, SIGKILL },
+        { 0 }
+    };
+
+    struct ChildSignalPlan ownPgrpPlan[] =
+    {
+        {  childPid, SIGTERM },
+        { -childPid, SIGTERM },
+        { -childPid, SIGKILL },
+        { 0 }
+    };
+
+    const struct ChildSignalPlan *childSignalPlan =
+        gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan;
 
     int timeout = gOptions.mTimeout;
 
@@ -1671,20 +1707,24 @@ cmdRunCommand(char **aCmd)
         {
             debug(0, "timeout after %d", timeout);
 
+            pid_t pidNum = childSignalPlan->mPid;
+            int   sigNum = childSignalPlan->mSig;
+
+            if (childSignalPlan[1].mPid)
+                ++childSignalPlan;
+
             warn(
                 0,
                 "Killing unresponsive child pid %jd with signal %d",
-                (intmax_t) childPid,
-                childSig);
+                (intmax_t) pidNum,
+                sigNum);
 
-            if (kill(childPid, childSig) && ESRCH != errno)
+            if (kill(pidNum, sigNum) && ESRCH != errno)
                 terminate(
                     errno,
                     "Unable to kill child pid %jd with signal %d",
-                    (intmax_t) childPid,
-                    childSig);
-
-            childSig = SIGKILL;
+                    (intmax_t) pidNum,
+                    sigNum);
         }
 
         if (pollfds[POLL_FD_STDOUT].revents)

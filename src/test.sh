@@ -157,6 +157,47 @@ runTests()
     testExit $((128 + 9)) runWait ./k9 -T -- sh -c '
         echo Killing $$ ; kill -9 $$'
 
+    testCase 'Child shares process group'
+    runWait ./k9 -i -- ps -o pid,pgid,cmd | {
+        read PARENT
+        read CHILD
+        read HEADING
+        PARENTPGID=
+        CHILDPGID=
+        while read PID PGID CMD ; do
+            echo "$PARENT - $CHILD - $PID $PGID $CMD" >&2
+            if [ x"$PARENT" = x"$PID" ] ; then
+                CHILDPGID=$PGID
+            elif [ x"$CHILD" = x"$PID" ] ; then
+                PARENTPGID=$PGID
+            fi
+        done
+        [ -n "$PARENTPGID" ]
+        [ -n "$CHILDPGID" ]
+        [ x"$PARENTPGID" = x"$CHILDPGID" ]
+    }
+
+    testCase 'Child sets own process group'
+    runWait ./k9 -i -s -- ps -o pid,pgid,cmd | {
+        read PARENT
+        read CHILD
+        read HEADING
+        PARENTPGID=
+        CHILDPGID=
+        while read PID PGID CMD ; do
+            echo "$PARENT - $CHILD - $PID $PGID $CMD" >&2
+            if [ x"$PARENT" = x"$PID" ] ; then
+                CHILDPGID=$PGID
+            elif [ x"$CHILD" = x"$PID" ] ; then
+                PARENTPGID=$PGID
+            fi
+        done
+        [ -n "$PARENTPGID" ]
+        [ -n "$CHILDPGID" ]
+        [ x"$PARENTPGID" != x"$CHILDPGID" ]
+        [ x"$CHILD" != x"$CHILDPGID" ]
+    }
+
     testCase 'Untethered child process'
     testOutput '$(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
@@ -230,34 +271,37 @@ runTests()
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-        REPLY=$(ps -o ppid,pid | grep '^1 ' | wc -l)
         sh -c '
           echo $$
           exec >/dev/null
-          exec '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+          exec setsid '"$VALGRIND"' ./k9 -T -dd -- sh -c "
               trap '\''exit 1'\'''"$SIGNALS"'
               while : ; do sleep 1 ; done"' |
         {
            read REPLY
            while kill -0 "$REPLY" 2>&- ; do
                kill -"$SIG" "$REPLY"
-               date ; echo kill -"$SIG" "$REPLY" >&2
+               date ; echo kill -"$SIG" "$REPLY"
                kill -0 "$REPLY" 2>&- || break
                date
                sleep 1
-           done
+           done >&2
+           ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
+           kill -9 -"$REPLY" 2>&- || :
+           echo OK
+        } | {
+            read REPLY
+            [ x"$REPLY" = x"OK" ]
         }
-        [ x$REPLY = x$(ps -o ppid,pid | grep '^1 ' | wc -l) ]
     done
 
     testCase 'Slow signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-        REPLY=$(ps -o ppid,pid | grep '^1 ' | wc -l)
         sh -c '
           echo $$
           exec >/dev/null
-          exec '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+          exec setsid '"$VALGRIND"' ./k9 -T -dd -- sh -c "
               trap '\''exit 1'\'''"$SIGNALS"'
               while : ; do sleep 1 ; done"' |
         {
@@ -265,13 +309,18 @@ runTests()
            sleep 1
            while kill -0 "$REPLY" 2>&- ; do
                kill -"$SIG" "$REPLY"
-               date ; echo kill -"$SIG" "$REPLY" >&2
+               date ; echo kill -"$SIG" "$REPLY"
                kill -0 "$REPLY" 2>&- || break
                date
                sleep 1
-           done
+           done >&2
+           ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
+           kill -9 -"$REPLY" 2>&- || :
+           echo OK
+        } | {
+            read REPLY
+            [ x"$REPLY" = x"OK" ]
         }
-        [ x$REPLY = x$(ps -o ppid,pid | grep '^1 ' | wc -l) ]
     done
 
     testCase 'Timeout with data that must be flushed after 6s'

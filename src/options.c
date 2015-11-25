@@ -57,6 +57,11 @@ static const char sUsage[] =
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
 "      allocate a new file descriptor. [Default: N = 1 (stdout) ].\n"
+"  --setpgid | -s\n"
+"      Place the child process into its own process group. This is\n"
+"      useful if the child will create its own family of processes\n"
+"      and the watchdog is not itself being supervised.\n"
+"      [Default: Do not place child in its own process group\n"
 "  --identify | -i\n"
 "      Print the pid of the child process on stdout before starting\n"
 "      the child program. [Default: Do not print the pid of the child]\n"
@@ -86,7 +91,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "df:in:P:p:qTt:u";
+    "df:in:P:p:qsTt:u";
 
 static struct option sLongOptions[] =
 {
@@ -263,6 +268,11 @@ parseOptions(int argc, char **argv)
         case 'q':
             pidFileOnly = -1;
             gOptions.mQuiet = true;
+            break;
+
+        case 's':
+            pidFileOnly = -1;
+            gOptions.mSetPgid = true;
             break;
 
         case 'T':

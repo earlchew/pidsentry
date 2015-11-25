@@ -43,6 +43,7 @@ struct Options
     const int  *mTether;
     unsigned    mDebug;
     bool        mIdentify;
+    bool        mSetPgid;
     bool        mQuiet;
     bool        mTest;
 };
