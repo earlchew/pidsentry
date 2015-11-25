@@ -46,6 +46,9 @@ createSocketPair(struct SocketPair *self);
 int
 closeSocketPair(struct SocketPair *self);
 
+int
+closeSocketPairParent(struct SocketPair *self);
+
 /* -------------------------------------------------------------------------- */
 
 #endif /* SOCKETPAIR_H */

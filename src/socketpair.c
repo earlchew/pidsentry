@@ -93,6 +93,25 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+closeSocketPairParent(struct SocketPair *self)
+{
+    int rc = -1;
+
+    if (closeFileDescriptor(self->mParentFile))
+        goto Finally;
+    self->mParentFile = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 closeSocketPair(struct SocketPair *self)
 {
     return closeFileDescriptorPair(&self->mParentFile, &self->mChildFile);

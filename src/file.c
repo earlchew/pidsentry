@@ -267,13 +267,19 @@ closeFileDescriptorPair(struct FileDescriptor **aFile1,
 {
     int rc = -1;
 
-    if (closeFileDescriptor(*aFile1))
-        goto Finally;
-    *aFile1 = 0;
+    if (*aFile1)
+    {
+        if (closeFileDescriptor(*aFile1))
+            goto Finally;
+        *aFile1 = 0;
+    }
 
-    if (closeFileDescriptor(*aFile2))
-        goto Finally;
-    *aFile2 = 0;
+    if (*aFile2)
+    {
+        if (closeFileDescriptor(*aFile2))
+            goto Finally;
+        *aFile2 = 0;
+    }
 
     rc = 0;
 

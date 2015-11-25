@@ -36,8 +36,7 @@
 #include "process.h"
 #include "error.h"
 #include "test.h"
-
-#include "fd.h" /* NEED TO REMOVE THIS */
+#include "fd.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -70,11 +69,11 @@
 /* -------------------------------------------------------------------------- */
 static pid_t
 runChild(
-    char                    **aCmd,
-    const struct StdFdFiller *aStdFdFiller,
-    const struct SocketPair  *aTetherPipe,
-    const struct Pipe        *aTermPipe,
-    const struct Pipe        *aSigPipe)
+    char              **aCmd,
+    struct StdFdFiller *aStdFdFiller,
+    struct SocketPair  *aTetherPipe,
+    struct Pipe        *aTermPipe,
+    struct Pipe        *aSigPipe)
 {
     pid_t rc = -1;
 
@@ -101,11 +100,6 @@ runChild(
     {
         debug(0, "starting child process");
 
-        struct StdFdFiller stdFdFiller = *aStdFdFiller;
-        struct SocketPair  tetherPipe  = *aTetherPipe;
-        struct Pipe        termPipe    = *aTermPipe;
-        struct Pipe        sigPipe     = *aSigPipe;
-
         /* Unwatch the signals so that the child process will be
          * responsive to signals from the parent. Note that the parent
          * will wait for the child to synchronise before sending it
@@ -120,17 +114,17 @@ runChild(
          * stderr. The remaining operations will close the remaining
          * unwanted file descriptors. */
 
-        if (closeStdFdFiller(&stdFdFiller))
+        if (closeStdFdFiller(aStdFdFiller))
             terminate(
                 errno,
                 "Unable to close stdin, stdout and stderr fillers");
 
-        if (closePipe(&termPipe))
+        if (closePipe(aTermPipe))
             terminate(
                 errno,
                 "Unable to close termination pipe");
 
-        if (closePipe(&sigPipe))
+        if (closePipe(aSigPipe))
             terminate(
                 errno,
                 "Unable to close signal pipe");
@@ -142,11 +136,10 @@ runChild(
 
         debug(0, "synchronising child process");
 
-        if (closeFd(&tetherPipe.mParentFile->mFd))
+        if (closeSocketPairParent(aTetherPipe))
             terminate(
                 errno,
-                "Unable to close tether pipe fd %d",
-                tetherPipe.mParentFile->mFd);
+                "Unable to close tether pipe parent");
 
         RACE
         ({
@@ -154,7 +147,7 @@ runChild(
             {
                 char buf[1];
 
-                switch (read(tetherPipe.mChildFile->mFd, buf, 1))
+                switch (read(aTetherPipe->mChildFile->mFd, buf, 1))
                 {
                 default:
                         break;
@@ -184,7 +177,7 @@ runChild(
                 int tetherFd = *gOptions.mTether;
 
                 if (0 > tetherFd)
-                    tetherFd = tetherPipe.mChildFile->mFd;
+                    tetherFd = aTetherPipe->mChildFile->mFd;
 
                 sprintf(tetherArg, "%d", tetherFd);
 
@@ -252,22 +245,21 @@ runChild(
                     }
                 }
 
-                if (tetherFd == tetherPipe.mChildFile->mFd)
+                if (tetherFd == aTetherPipe->mChildFile->mFd)
                     break;
 
-                if (dup2(tetherPipe.mChildFile->mFd, tetherFd) != tetherFd)
+                if (dup2(aTetherPipe->mChildFile->mFd, tetherFd) != tetherFd)
                     terminate(
                         errno,
                         "Unable to dup tether pipe fd %d to fd %d",
-                        tetherPipe.mChildFile->mFd,
+                        aTetherPipe->mChildFile->mFd,
                         tetherFd);
             }
 
-            if (closeFd(&tetherPipe.mChildFile->mFd))
+            if (closeSocketPair(aTetherPipe))
                 terminate(
                     errno,
-                    "Unable to close tether pipe fd %d",
-                    tetherPipe.mChildFile->mFd);
+                    "Unable to close tether pipe");
         } while (0);
 
         debug(0, "child process synchronised");
