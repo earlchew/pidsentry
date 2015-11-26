@@ -624,29 +624,10 @@ cmdRunCommand(char **aCmd)
         }
     }
 
-#if 1
     if (cleanseFileDescriptors())
         terminate(
             errno,
             "Unable to cleanse file descriptors");
-#else
-    const int whiteListFds[] =
-    {
-        pidFile ? pidFile->mFile->mFd : -1,
-        pidFile ? pidFile->mPathName.mDirFile->mFd : -1,
-        sProcessLock ? sProcessLock->mFile->mFd : -1,
-        sProcessLock ? sProcessLock->mPathName->mDirFile->mFd : -1,
-        termPipe.mRdFile->mFd,
-        termPipe.mWrFile->mFd,
-        sigPipe.mRdFile->mFd,
-        sigPipe.mWrFile->mFd,
-        STDIN_FILENO,
-        STDOUT_FILENO,
-        STDERR_FILENO,
-    };
-
-    purgeFds(whiteListFds, NUMBEROF(whiteListFds));
-#endif
 
     enum PollFdKind
     {
@@ -964,22 +945,6 @@ int main(int argc, char **argv)
             errno,
             "Unable to initialise process state");
 
-#if 0
-    sArg0     = argv[0];
-    sTimeBase = monotonicTime();
-
-    srandom(getpid());
-
-    struct ProcessLock processLock;
-
-    if (createProcessLock(&processLock))
-        terminate(
-            errno,
-            "Unable to create process lock");
-
-    sProcessLock = &processLock;
-#endif
-
     struct ExitCode exitCode;
 
     {
@@ -995,15 +960,6 @@ int main(int argc, char **argv)
         terminate(
             errno,
             "Unable to finalise process state");
-
-#if 0
-    sProcessLock = 0;
-
-    if (closeProcessLock(&processLock))
-        terminate(
-            errno,
-            "Unable to close process lock");
-#endif
 
     return exitCode.mStatus;
 }

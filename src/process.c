@@ -61,6 +61,7 @@ static struct ProcessLock *sProcessLock[2];
 static unsigned            sActiveProcessLock;
 
 static unsigned    sSigContext;
+static sigset_t    sSigSet;
 static const char *sArg0;
 static uint64_t    sTimeBase;
 
@@ -92,6 +93,183 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int sDeadChildFd_ = -1;
+
+static void
+deadChild_(int aSigNum)
+{
+    ++sSigContext;
+    {
+        debug(1, "queued dead child");
+
+        if (writeSignal_(sDeadChildFd_, aSigNum))
+        {
+            if (EBADF != errno && EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to indicate dead child");
+        }
+    }
+    --sSigContext;
+}
+
+int
+watchProcessChildren(const struct Pipe *aTermPipe)
+{
+    int rc = -1;
+
+    sDeadChildFd_ = aTermPipe->mWrFile->mFd;
+
+    if (nonblockingFd(sDeadChildFd_))
+        goto Finally;
+
+    if (SIG_ERR == signal(SIGCHLD, deadChild_))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+unwatchProcessChildren()
+{
+    sDeadChildFd_ = -1;
+
+    return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
+}
+
+/* -------------------------------------------------------------------------- */
+static int sSignalFd_ = -1;
+
+static struct SignalWatch {
+    int          mSigNum;
+    sighandler_t mSigHandler;
+    bool         mWatched;
+} sWatchedSignals_[] =
+{
+    { SIGHUP },
+    { SIGINT },
+    { SIGQUIT },
+    { SIGTERM },
+};
+
+static void
+caughtSignal_(int aSigNum)
+{
+    ++sSigContext;
+    {
+        int signalFd = sSignalFd_;
+
+        debug(1, "queued signal %d", aSigNum);
+
+        if (writeSignal_(signalFd, aSigNum))
+        {
+            if (EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to queue signal %d on fd %d", aSigNum, signalFd);
+        }
+    }
+    --sSigContext;
+}
+
+static int
+resetSignals_(void)
+{
+    int rc  = 0;
+    int err = 0;
+
+    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+    {
+        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+
+        if (watchedSig->mWatched)
+        {
+            int          sigNum     = watchedSig->mSigNum;
+            sighandler_t sigHandler = watchedSig->mSigHandler;
+
+            if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
+            {
+                rc  = -1;
+                err = errno;
+            }
+
+            watchedSig->mWatched = false;
+        }
+    }
+
+    sSignalFd_ = -1;
+
+    if (rc)
+        errno = err;
+
+    return rc;
+}
+
+int
+watchProcessSignals(const struct Pipe *aSigPipe)
+{
+    int rc = -1;
+
+    sSignalFd_ = aSigPipe->mWrFile->mFd;
+
+    if (nonblockingFd(sSignalFd_))
+        goto Finally;
+
+    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+    {
+        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+
+        int          sigNum     = watchedSig->mSigNum;
+        sighandler_t sigHandler = signal(sigNum, caughtSignal_);
+
+        if (SIG_ERR == sigHandler)
+            goto Finally;
+
+        watchedSig->mSigHandler = sigHandler;
+        watchedSig->mWatched    = true;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+        {
+            for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+            {
+                struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+
+                if (watchedSig->mWatched)
+                {
+                    int          sigNum     = watchedSig->mSigNum;
+                    sighandler_t sigHandler = watchedSig->mSigHandler;
+
+                    signal(sigNum, sigHandler);
+
+                    watchedSig->mWatched = false;
+                }
+            }
+        }
+    });
+
+    return rc;
+}
+
+int
+unwatchProcessSignals(void)
+{
+    return resetSignals_();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -260,6 +438,9 @@ initProcess(const char *aArg0)
 
     srandom(getpid());
 
+    if (sigprocmask(SIG_SETMASK, 0, &sSigSet))
+        goto Finally;
+
     if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
         goto Finally;
     sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
@@ -369,6 +550,17 @@ forkProcess(enum ForkProcessOption aOption)
         goto Finally;
     sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
 
+    /* Temporarily block all signals so that the child will not receive
+     * signals which it cannot handle. */
+
+    sigset_t signalSet;
+    if (sigfillset(&signalSet))
+        goto Finally;
+
+    sigset_t prevSignalSet;
+    if (sigprocmask(SIG_BLOCK, &signalSet, &prevSignalSet))
+        goto Finally;
+
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
      * is an important consideration for propagating signals to
@@ -393,6 +585,9 @@ forkProcess(enum ForkProcessOption aOption)
             if (setpgid(childPid, childPid))
                 goto Finally;
         }
+
+        if (sigprocmask(SIG_SETMASK, &prevSignalSet, 0))
+            goto Finally;
         break;
 
     case -1:
@@ -413,6 +608,20 @@ forkProcess(enum ForkProcessOption aOption)
                     errno,
                     "Unable to set process group");
         }
+
+        /* Reset all the signals so that the child will not attempt
+         * to catch signals. After that, reset the signal mask so
+         * that the child will receive signals. */
+
+        if (resetSignals_())
+            terminate(
+                errno,
+                "Unable to reset signal handlers");
+
+        if (sigprocmask(SIG_SETMASK, &sSigSet, 0))
+            terminate(
+                errno,
+                "Unable to reset signal set");
         break;
     }
 
@@ -474,174 +683,6 @@ uint64_t
 ownProcessElapsedTime(void)
 {
     return monotonicTime_() - sTimeBase;
-}
-
-/* -------------------------------------------------------------------------- */
-static int sDeadChildFd_ = -1;
-
-static void
-deadChild_(int aSigNum)
-{
-    ++sSigContext;
-    {
-        debug(1, "queued dead child");
-
-        if (writeSignal_(sDeadChildFd_, aSigNum))
-        {
-            if (EBADF != errno && EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to indicate dead child");
-        }
-    }
-    --sSigContext;
-}
-
-int
-watchProcessChildren(const struct Pipe *aTermPipe)
-{
-    int rc = -1;
-
-    sDeadChildFd_ = aTermPipe->mWrFile->mFd;
-
-    if (nonblockingFd(sDeadChildFd_))
-        goto Finally;
-
-    if (SIG_ERR == signal(SIGCHLD, deadChild_))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-int
-unwatchProcessChildren()
-{
-    sDeadChildFd_ = -1;
-
-    return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
-}
-
-/* -------------------------------------------------------------------------- */
-static int sSignalFd_ = -1;
-
-static struct SignalWatch {
-    int          mSigNum;
-    sighandler_t mSigHandler;
-    bool         mWatched;
-} sWatchedSignals_[] =
-{
-    { SIGHUP },
-    { SIGINT },
-    { SIGQUIT },
-    { SIGTERM },
-};
-
-static void
-caughtSignal_(int aSigNum)
-{
-    ++sSigContext;
-    {
-        int signalFd = sSignalFd_;
-
-        debug(1, "queued signal %d", aSigNum);
-
-        if (writeSignal_(signalFd, aSigNum))
-        {
-            if (EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to queue signal %d on fd %d", aSigNum, signalFd);
-        }
-    }
-    --sSigContext;
-}
-
-int
-watchProcessSignals(const struct Pipe *aSigPipe)
-{
-    int rc = -1;
-
-    sSignalFd_ = aSigPipe->mWrFile->mFd;
-
-    if (nonblockingFd(sSignalFd_))
-        goto Finally;
-
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-    {
-        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
-
-        int          sigNum     = watchedSig->mSigNum;
-        sighandler_t sigHandler = signal(sigNum, caughtSignal_);
-
-        if (SIG_ERR == sigHandler)
-            goto Finally;
-
-        watchedSig->mSigHandler = sigHandler;
-        watchedSig->mWatched    = true;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-        {
-            for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-            {
-                struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
-
-                if (watchedSig->mWatched)
-                {
-                    int          sigNum     = watchedSig->mSigNum;
-                    sighandler_t sigHandler = watchedSig->mSigHandler;
-
-                    signal(sigNum, sigHandler);
-
-                    watchedSig->mWatched = false;
-                }
-            }
-        }
-    });
-
-    return rc;
-}
-
-int
-unwatchProcessSignals(void)
-{
-    int rc  = 0;
-    int err = 0;
-
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-    {
-        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
-
-        int          sigNum     = watchedSig->mSigNum;
-        sighandler_t sigHandler = watchedSig->mSigHandler;
-
-        if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
-        {
-            rc  = -1;
-            err = errno;
-        }
-
-        watchedSig->mWatched = false;
-    }
-
-    sSignalFd_ = -1;
-
-    if (rc)
-        errno = err;
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
