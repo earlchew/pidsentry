@@ -299,336 +299,9 @@ reapChild(pid_t aChildPid)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct ExitCode
-cmdPrintPidFile(const char *aFileName)
+static void
+monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 {
-    struct ExitCode exitCode = { 1 };
-
-    struct PidFile pidFile;
-
-    if (openPidFile(&pidFile, aFileName))
-    {
-        if (ENOENT != errno)
-            terminate(
-                errno,
-                "Unable to open pid file '%s'", aFileName);
-        return exitCode;
-    }
-
-    if (acquireReadLockPidFile(&pidFile))
-        terminate(
-            errno,
-            "Unable to acquire read lock on pid file '%s'", aFileName);
-
-    pid_t pid = readPidFile(&pidFile);
-
-    switch (pid)
-    {
-    default:
-        if (-1 != dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) pid))
-            exitCode.mStatus = 0;
-        break;
-    case 0:
-        break;
-    case -1:
-        terminate(
-            errno,
-            "Unable to read pid file '%s'", aFileName);
-    }
-
-    FINALLY
-    ({
-        if (closePidFile(&pidFile))
-            terminate(
-                errno,
-                "Unable to close pid file '%s'", aFileName);
-    });
-
-    return exitCode;
-}
-
-/* -------------------------------------------------------------------------- */
-static struct ExitCode
-cmdRunCommand(char **aCmd)
-{
-    ensure(aCmd);
-
-    /* The instance of the StdFdFiller guarantees that any further file
-     * descriptors that are opened will not be mistaken for stdin,
-     * stdout or stderr. */
-
-    struct StdFdFiller stdFdFiller;
-
-    if (createStdFdFiller(&stdFdFiller))
-        terminate(
-            errno,
-            "Unable to create stdin, stdout, stderr filler");
-
-    struct SocketPair tetherPipe;
-    if (createSocketPair(&tetherPipe))
-        terminate(
-            errno,
-            "Unable to create tether pipe");
-
-    struct Pipe termPipe;
-    if (createPipe(&termPipe))
-        terminate(
-            errno,
-            "Unable to create termination pipe");
-
-    struct Pipe sigPipe;
-    if (createPipe(&sigPipe))
-        terminate(
-            errno,
-            "Unable to create signal pipe");
-
-    if (watchProcessSignals(&sigPipe))
-        terminate(
-            errno,
-            "Unable to add watch on signals");
-
-    if (watchProcessChildren(&termPipe))
-        terminate(
-            errno,
-            "Unable to add watch on child process termination");
-
-    /* Only identify the watchdog process after all the signal
-     * handlers have been installed. The functional tests can
-     * use this as an indicator that the watchdog is ready to
-     * run the child process. */
-
-    if (gOptions.mIdentify)
-        RACE
-        ({
-            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid()))
-                terminate(
-                    errno,
-                    "Unable to print parent pid");
-        });
-
-    pid_t childPid = runChild(aCmd,
-                              &stdFdFiller,
-                              &tetherPipe, &termPipe, &sigPipe);
-    if (-1 == childPid)
-        terminate(
-            errno,
-            "Unable to fork child");
-
-    struct PidFile  pidFile_;
-    struct PidFile *pidFile = 0;
-
-    if (gOptions.mPidFile)
-    {
-        const char *pidFileName = gOptions.mPidFile;
-
-        pid_t pid = gOptions.mPid;
-
-        switch (pid)
-        {
-        default:
-            break;
-        case -1:
-            pid = getpid(); break;
-        case 0:
-            pid = childPid; break;
-        }
-
-        pidFile = &pidFile_;
-
-        for (int zombie = -1; zombie; )
-        {
-            if (0 < zombie)
-            {
-                if (closePidFile(pidFile))
-                    terminate(
-                        errno,
-                        "Cannot close pid file '%s'", pidFileName);
-            }
-
-            if (createPidFile(pidFile, pidFileName))
-                terminate(
-                    errno,
-                    "Cannot create pid file '%s'", pidFileName);
-
-            /* It is not possible to create the pidfile and acquire a flock
-             * as an atomic operation. The flock can only be acquired after
-             * the pidfile exists. Since this newly created pidfile is empty,
-             * it resembles an closed pidfile, and in the intervening time,
-             * another process might have removed it and replaced it with
-             * another. */
-
-            if (acquireWriteLockPidFile(pidFile))
-                terminate(
-                    errno,
-                    "Cannot acquire write lock on pid file '%s'", pidFileName);
-
-            zombie = zombiePidFile(pidFile);
-
-            if (0 > zombie)
-                terminate(
-                    errno,
-                    "Unable to obtain status of pid file '%s'", pidFileName);
-
-            debug(0, "discarding zombie pid file '%s'", pidFileName);
-        }
-
-        /* Ensure that the mtime of the pidfile is later than the
-         * start time of the child process, if that process exists. */
-
-        struct timespec childStartTime = findProcessStartTime(pid);
-
-        if (UTIME_OMIT == childStartTime.tv_nsec)
-        {
-            terminate(
-                errno,
-                "Unable to obtain status of pid %jd", (intmax_t) pid);
-        }
-        else if (UTIME_NOW != childStartTime.tv_nsec)
-        {
-            debug(0,
-                "child process mtime %jd.%09ld",
-                (intmax_t) childStartTime.tv_sec, childStartTime.tv_nsec);
-
-            struct stat pidFileStat;
-
-            while (true)
-            {
-                if (fstat(pidFile->mFile->mFd, &pidFileStat))
-                    terminate(
-                        errno,
-                        "Cannot obtain status of pid file '%s'", pidFileName);
-
-                struct timespec pidFileTime = pidFileStat.st_mtim;
-
-                debug(0,
-                    "pid file mtime %jd.%09ld",
-                    (intmax_t) pidFileTime.tv_sec, pidFileTime.tv_nsec);
-
-                if (pidFileTime.tv_sec > childStartTime.tv_sec)
-                    break;
-
-                if (pidFileTime.tv_sec  == childStartTime.tv_sec &&
-                    pidFileTime.tv_nsec >  childStartTime.tv_nsec)
-                    break;
-
-                if ( ! pidFileTime.tv_nsec)
-                    pidFileTime.tv_nsec = 900 * 1000 * 1000;
-
-                for (long usResolution = 1; ; usResolution *= 10)
-                {
-                    if (pidFileTime.tv_nsec % (1000 * usResolution))
-                    {
-                        /* OpenGroup says that the argument to usleep(3)
-                         * must be less than 1e6. */
-
-                        ensure(usResolution);
-                        ensure(1000 * 1000 >= usResolution);
-
-                        --usResolution;
-
-                        debug(0, "delay for %ldus", usResolution);
-
-                        if (usleep(usResolution) && EINTR != errno)
-                            terminate(
-                                errno,
-                                "Unable to sleep for %ldus", usResolution);
-
-                        break;
-                    }
-                }
-
-                /* Mutate the data in the pidfile so that the mtime
-                 * and ctime will be updated. */
-
-                if (1 != write(pidFile->mFile->mFd, "\n", 1))
-                    terminate(
-                        errno,
-                        "Unable to write to pid file '%s'", pidFileName);
-
-                if (ftruncate(pidFile->mFile->mFd, 0))
-                    terminate(
-                        errno,
-                        "Unable to truncate pid file '%s'", pidFileName);
-            }
-        }
-
-        if (writePidFile(pidFile, pid))
-            terminate(
-                errno,
-                "Cannot write to pid file '%s'", pidFileName);
-
-        /* The pidfile was locked on creation, and now that it
-         * is completely initialised, it is ok to release
-         * the flock. */
-
-        if (releaseLockPidFile(pidFile))
-            terminate(
-                errno,
-                "Cannot unlock pid file '%s'", pidFileName);
-    }
-
-    /* The creation time of the child process is earlier than
-     * the creation time of the pidfile. With the pidfile created,
-     * release the waiting child process. */
-
-    if (gOptions.mIdentify)
-        RACE
-        ({
-            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid))
-                terminate(
-                    errno,
-                    "Unable to print child pid");
-        });
-
-    RACE
-    ({
-        if (1 != write(tetherPipe.mParentFile->mFd, "", 1))
-            terminate(
-                errno,
-                "Unable to synchronise child process");
-    });
-
-    /* With the child process launched, close the instance of StdFdFiller
-     * so that stdin, stdout and stderr become available for manipulation
-     * and will not be closed multiple times. */
-
-    if (closeStdFdFiller(&stdFdFiller))
-        terminate(
-            errno,
-            "Unable to close stdin, stdout and stderr fillers");
-
-    if (STDIN_FILENO != dup2(tetherPipe.mParentFile->mFd, STDIN_FILENO))
-        terminate(
-            errno,
-            "Unable to dup tether pipe to stdin");
-
-    if (closeSocketPair(&tetherPipe))
-        warn(
-            errno,
-            "Unable to close tether pipe");
-
-    if (gOptions.mTether)
-    {
-        /* Non-blocking IO on stdout is required so that the event loop
-         * remains responsive, otherwise the event loop will likely block
-         * when writing each buffer in its entirety. */
-
-        if (nonblockingFd(STDOUT_FILENO))
-        {
-            if (EBADF == errno)
-                gOptions.mQuiet = true;
-            else
-                terminate(
-                    errno,
-                    "Unable to enable non-blocking writes to stdout");
-        }
-    }
-
-    if (cleanseFileDescriptors())
-        terminate(
-            errno,
-            "Unable to cleanse file descriptors");
-
     enum PollFdKind
     {
         POLL_FD_STDIN,
@@ -644,9 +317,9 @@ cmdRunCommand(char **aCmd)
     struct pollfd pollfds[POLL_FD_COUNT] =
     {
         [POLL_FD_CHILD] = {
-            .fd = termPipe.mRdFile->mFd, .events = pollInputEvents },
+            .fd = aTermPipe->mRdFile->mFd, .events = pollInputEvents },
         [POLL_FD_SIGNAL] = {
-            .fd = sigPipe.mRdFile->mFd,  .events = pollInputEvents },
+            .fd = aSigPipe->mRdFile->mFd,  .events = pollInputEvents },
         [POLL_FD_STDOUT] = {
             .fd = STDOUT_FILENO,  .events = 0 },
         [POLL_FD_STDIN] = {
@@ -669,16 +342,16 @@ cmdRunCommand(char **aCmd)
 
     struct ChildSignalPlan sharedPgrpPlan[] =
     {
-        { childPid, SIGTERM },
-        { childPid, SIGKILL },
+        { aChildPid, SIGTERM },
+        { aChildPid, SIGKILL },
         { 0 }
     };
 
     struct ChildSignalPlan ownPgrpPlan[] =
     {
-        {  childPid, SIGTERM },
-        { -childPid, SIGTERM },
-        { -childPid, SIGKILL },
+        {  aChildPid, SIGTERM },
+        { -aChildPid, SIGTERM },
+        { -aChildPid, SIGKILL },
         { 0 }
     };
 
@@ -846,13 +519,13 @@ cmdRunCommand(char **aCmd)
 
         if (pollfds[POLL_FD_SIGNAL].revents)
         {
-            debug(1, "poll signal 0x%x", pollfds[POLL_FD_CHILD].revents);
+            debug(1, "poll signal 0x%x", pollfds[POLL_FD_SIGNAL].revents);
 
             ssize_t       len;
             unsigned char sigNum;
 
             do
-                len = read(sigPipe.mRdFile->mFd, &sigNum, 1);
+                len = read(aSigPipe->mRdFile->mFd, &sigNum, 1);
             while (-1 == len && EINTR == errno);
 
             if (-1 == len)
@@ -865,14 +538,14 @@ cmdRunCommand(char **aCmd)
                     0,
                     "Signal queue closed unexpectedly");
 
-            if (kill(childPid, sigNum))
+            if (kill(aChildPid, sigNum))
             {
-                if (ESRCH != childPid)
+                if (ESRCH != errno)
                     warn(
                         errno,
                         "Unable to deliver signal %d to child pid %jd",
                         sigNum,
-                        (intmax_t) childPid);
+                        (intmax_t) aChildPid);
             }
         }
 
@@ -892,6 +565,351 @@ cmdRunCommand(char **aCmd)
     } while ( ! deadChild ||
                 pollfds[POLL_FD_STDOUT].events ||
                 pollfds[POLL_FD_STDIN].events);
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
+{
+    for (int zombie = -1; zombie; )
+    {
+        if (0 < zombie)
+        {
+            if (closePidFile(aPidFile))
+                terminate(
+                    errno,
+                    "Cannot close pid file '%s'", aPidFileName);
+        }
+
+        if (createPidFile(aPidFile, aPidFileName))
+            terminate(
+                errno,
+                "Cannot create pid file '%s'", aPidFileName);
+
+        /* It is not possible to create the pidfile and acquire a flock
+         * as an atomic operation. The flock can only be acquired after
+         * the pidfile exists. Since this newly created pidfile is empty,
+         * it resembles an closed pidfile, and in the intervening time,
+         * another process might have removed it and replaced it with
+         * another. */
+
+        if (acquireWriteLockPidFile(aPidFile))
+            terminate(
+                errno,
+                "Cannot acquire write lock on pid file '%s'", aPidFileName);
+
+        zombie = zombiePidFile(aPidFile);
+
+        if (0 > zombie)
+            terminate(
+                errno,
+                "Unable to obtain status of pid file '%s'", aPidFileName);
+
+        debug(0, "discarding zombie pid file '%s'", aPidFileName);
+    }
+
+    /* Ensure that the mtime of the pidfile is later than the
+     * start time of the child process, if that process exists. */
+
+    struct timespec childStartTime = findProcessStartTime(aPid);
+
+    if (UTIME_OMIT == childStartTime.tv_nsec)
+    {
+        terminate(
+            errno,
+            "Unable to obtain status of pid %jd", (intmax_t) aPid);
+    }
+    else if (UTIME_NOW != childStartTime.tv_nsec)
+    {
+        debug(0,
+              "child process mtime %jd.%09ld",
+              (intmax_t) childStartTime.tv_sec, childStartTime.tv_nsec);
+
+        struct stat pidFileStat;
+
+        while (true)
+        {
+            if (fstat(aPidFile->mFile->mFd, &pidFileStat))
+                terminate(
+                    errno,
+                    "Cannot obtain status of pid file '%s'", aPidFileName);
+
+            struct timespec pidFileTime = pidFileStat.st_mtim;
+
+            debug(0,
+                  "pid file mtime %jd.%09ld",
+                  (intmax_t) pidFileTime.tv_sec, pidFileTime.tv_nsec);
+
+            if (pidFileTime.tv_sec > childStartTime.tv_sec)
+                break;
+
+            if (pidFileTime.tv_sec  == childStartTime.tv_sec &&
+                pidFileTime.tv_nsec >  childStartTime.tv_nsec)
+                break;
+
+            if ( ! pidFileTime.tv_nsec)
+                pidFileTime.tv_nsec = 900 * 1000 * 1000;
+
+            for (long usResolution = 1; ; usResolution *= 10)
+            {
+                if (pidFileTime.tv_nsec % (1000 * usResolution))
+                {
+                    /* OpenGroup says that the argument to usleep(3)
+                     * must be less than 1e6. */
+
+                    ensure(usResolution);
+                    ensure(1000 * 1000 >= usResolution);
+
+                    --usResolution;
+
+                    debug(0, "delay for %ldus", usResolution);
+
+                    if (usleep(usResolution) && EINTR != errno)
+                        terminate(
+                            errno,
+                            "Unable to sleep for %ldus", usResolution);
+
+                    break;
+                }
+            }
+
+            /* Mutate the data in the pidfile so that the mtime
+             * and ctime will be updated. */
+
+            if (1 != write(aPidFile->mFile->mFd, "\n", 1))
+                terminate(
+                    errno,
+                    "Unable to write to pid file '%s'", aPidFileName);
+
+            if (ftruncate(aPidFile->mFile->mFd, 0))
+                terminate(
+                    errno,
+                    "Unable to truncate pid file '%s'", aPidFileName);
+        }
+    }
+
+    if (writePidFile(aPidFile, aPid))
+        terminate(
+            errno,
+            "Cannot write to pid file '%s'", aPidFileName);
+
+    /* The pidfile was locked on creation, and now that it
+     * is completely initialised, it is ok to release
+     * the flock. */
+
+    if (releaseLockPidFile(aPidFile))
+        terminate(
+            errno,
+            "Cannot unlock pid file '%s'", aPidFileName);
+}
+
+/* -------------------------------------------------------------------------- */
+static struct ExitCode
+cmdPrintPidFile(const char *aFileName)
+{
+    struct ExitCode exitCode = { 1 };
+
+    struct PidFile pidFile;
+
+    if (openPidFile(&pidFile, aFileName))
+    {
+        if (ENOENT != errno)
+            terminate(
+                errno,
+                "Unable to open pid file '%s'", aFileName);
+        return exitCode;
+    }
+
+    if (acquireReadLockPidFile(&pidFile))
+        terminate(
+            errno,
+            "Unable to acquire read lock on pid file '%s'", aFileName);
+
+    pid_t pid = readPidFile(&pidFile);
+
+    switch (pid)
+    {
+    default:
+        if (-1 != dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) pid))
+            exitCode.mStatus = 0;
+        break;
+    case 0:
+        break;
+    case -1:
+        terminate(
+            errno,
+            "Unable to read pid file '%s'", aFileName);
+    }
+
+    FINALLY
+    ({
+        if (closePidFile(&pidFile))
+            terminate(
+                errno,
+                "Unable to close pid file '%s'", aFileName);
+    });
+
+    return exitCode;
+}
+
+/* -------------------------------------------------------------------------- */
+static struct ExitCode
+cmdRunCommand(char **aCmd)
+{
+    ensure(aCmd);
+
+    /* The instance of the StdFdFiller guarantees that any further file
+     * descriptors that are opened will not be mistaken for stdin,
+     * stdout or stderr. */
+
+    struct StdFdFiller stdFdFiller;
+
+    if (createStdFdFiller(&stdFdFiller))
+        terminate(
+            errno,
+            "Unable to create stdin, stdout, stderr filler");
+
+    struct SocketPair tetherPipe;
+    if (createSocketPair(&tetherPipe))
+        terminate(
+            errno,
+            "Unable to create tether pipe");
+
+    struct Pipe termPipe;
+    if (createPipe(&termPipe))
+        terminate(
+            errno,
+            "Unable to create termination pipe");
+
+    struct Pipe sigPipe;
+    if (createPipe(&sigPipe))
+        terminate(
+            errno,
+            "Unable to create signal pipe");
+
+    if (watchProcessSignals(&sigPipe))
+        terminate(
+            errno,
+            "Unable to add watch on signals");
+
+    if (watchProcessChildren(&termPipe))
+        terminate(
+            errno,
+            "Unable to add watch on child process termination");
+
+    /* Only identify the watchdog process after all the signal
+     * handlers have been installed. The functional tests can
+     * use this as an indicator that the watchdog is ready to
+     * run the child process. */
+
+    if (gOptions.mIdentify)
+        RACE
+        ({
+            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid()))
+                terminate(
+                    errno,
+                    "Unable to print parent pid");
+        });
+
+    pid_t childPid = runChild(aCmd,
+                              &stdFdFiller,
+                              &tetherPipe, &termPipe, &sigPipe);
+    if (-1 == childPid)
+        terminate(
+            errno,
+            "Unable to fork child");
+
+    struct PidFile  pidFile_;
+    struct PidFile *pidFile = 0;
+
+    if (gOptions.mPidFile)
+    {
+        const char *pidFileName = gOptions.mPidFile;
+
+        pid_t pid = gOptions.mPid;
+
+        switch (pid)
+        {
+        default:
+            break;
+        case -1:
+            pid = getpid(); break;
+        case 0:
+            pid = childPid; break;
+        }
+
+        pidFile = &pidFile_;
+
+        announceChild(pid, pidFile, pidFileName);
+    }
+
+    /* The creation time of the child process is earlier than
+     * the creation time of the pidfile. With the pidfile created,
+     * release the waiting child process. */
+
+    if (gOptions.mIdentify)
+        RACE
+        ({
+            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid))
+                terminate(
+                    errno,
+                    "Unable to print child pid");
+        });
+
+    RACE
+    ({
+        if (1 != write(tetherPipe.mParentFile->mFd, "", 1))
+            terminate(
+                errno,
+                "Unable to synchronise child process");
+    });
+
+    /* With the child process launched, close the instance of StdFdFiller
+     * so that stdin, stdout and stderr become available for manipulation
+     * and will not be closed multiple times. */
+
+    if (closeStdFdFiller(&stdFdFiller))
+        terminate(
+            errno,
+            "Unable to close stdin, stdout and stderr fillers");
+
+    if (STDIN_FILENO != dup2(tetherPipe.mParentFile->mFd, STDIN_FILENO))
+        terminate(
+            errno,
+            "Unable to dup tether pipe to stdin");
+
+    if (closeSocketPair(&tetherPipe))
+        warn(
+            errno,
+            "Unable to close tether pipe");
+
+    if (gOptions.mTether)
+    {
+        /* Non-blocking IO on stdout is required so that the event loop
+         * remains responsive, otherwise the event loop will likely block
+         * when writing each buffer in its entirety. */
+
+        if (nonblockingFd(STDOUT_FILENO))
+        {
+            if (EBADF == errno)
+                gOptions.mQuiet = true;
+            else
+                terminate(
+                    errno,
+                    "Unable to enable non-blocking writes to stdout");
+        }
+    }
+
+    if (cleanseFileDescriptors())
+        terminate(
+            errno,
+            "Unable to cleanse file descriptors");
+
+    /* Monitor the running child until it has either completed of
+     * its own accord, or terminated. Once the child has stopped
+     * running, release the pid file if one was allocated. */
+
+    monitorChild(childPid, &termPipe, &sigPipe);
 
     if (unwatchProcessSignals())
         terminate(
@@ -927,6 +945,10 @@ cmdRunCommand(char **aCmd)
 
         pidFile = 0;
     }
+
+    /* Reap the child only after the pid file is released. This ensures
+     * that any competing reader that manages to sucessfully lock and
+     * read the pid file will see that the process exists. */
 
     debug(0, "reaping child pid %jd", (intmax_t) childPid);
 
