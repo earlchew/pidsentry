@@ -48,7 +48,7 @@ TESTS              = $(check_PROGRAMS) $(check_SCRIPTS)
 k9dir       = $(datadir)/k9
 k9_PROGRAMS         = k9
 check_SCRIPTS       = test.sh
-check_PROGRAMS      = #_strtoul _memmgr _args _getopt _getopt_long _string
+check_PROGRAMS      = _splicetest
 noinst_PROGRAMS     = #bioscall-asm
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9.la
@@ -58,6 +58,8 @@ k9_CFLAGS    = $(COMMON_CFLAGS)
 k9_LDFLAGS   = #-Wl,-Ttext=0x100000
 k9_LDADD     = libk9.la -lrt
 k9_SOURCES   = _k9.c
+
+_splicetest_SOURCES = _splicetest.c
 
 include libk9_la.am
 $(call WILDCARD,libk9_la,libk9_la_SOURCES,[a-z]*.[ch])
