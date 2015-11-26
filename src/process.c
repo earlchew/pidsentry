@@ -116,6 +116,14 @@ deadChild_(int aSigNum)
     --sSigContext;
 }
 
+static int
+resetProcessChildrenWatch_(void)
+{
+    sDeadChildFd_ = -1;
+
+    return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
+}
+
 int
 watchProcessChildren(const struct Pipe *aTermPipe)
 {
@@ -139,11 +147,9 @@ Finally:
 }
 
 int
-unwatchProcessChildren()
+unwatchProcessChildren(void)
 {
-    sDeadChildFd_ = -1;
-
-    return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
+    return resetProcessChildrenWatch_();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -179,39 +185,6 @@ caughtSignal_(int aSigNum)
         }
     }
     --sSigContext;
-}
-
-static int
-resetSignals_(void)
-{
-    int rc  = 0;
-    int err = 0;
-
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-    {
-        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
-
-        if (watchedSig->mWatched)
-        {
-            int          sigNum     = watchedSig->mSigNum;
-            sighandler_t sigHandler = watchedSig->mSigHandler;
-
-            if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
-            {
-                rc  = -1;
-                err = errno;
-            }
-
-            watchedSig->mWatched = false;
-        }
-    }
-
-    sSignalFd_ = -1;
-
-    if (rc)
-        errno = err;
-
-    return rc;
 }
 
 int
@@ -266,10 +239,64 @@ Finally:
     return rc;
 }
 
+static int
+resetProcessSignalsWatch_(void)
+{
+    int rc  = 0;
+    int err = 0;
+
+    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+    {
+        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+
+        if (watchedSig->mWatched)
+        {
+            int          sigNum     = watchedSig->mSigNum;
+            sighandler_t sigHandler = watchedSig->mSigHandler;
+
+            if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
+            {
+                rc  = -1;
+                err = errno;
+            }
+
+            watchedSig->mWatched = false;
+        }
+    }
+
+    sSignalFd_ = -1;
+
+    if (rc)
+        errno = err;
+
+    return rc;
+}
+
 int
 unwatchProcessSignals(void)
 {
-    return resetSignals_();
+    return resetProcessSignalsWatch_();
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+resetSignals_(void)
+{
+    int rc = -1;
+
+    if (resetProcessSignalsWatch_())
+        goto Finally;
+
+    if (resetProcessChildrenWatch_())
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -550,14 +577,18 @@ forkProcess(enum ForkProcessOption aOption)
         goto Finally;
     sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
 
-    /* Temporarily block all signals so that the child will not receive
-     * signals which it cannot handle. */
+    /* If required, temporarily block all signals so that the child will not
+     * receive signals which it cannot handle. */
 
     sigset_t signalSet;
+    sigset_t prevSignalSet;
+
     if (sigfillset(&signalSet))
         goto Finally;
 
-    sigset_t prevSignalSet;
+    if (sigemptyset(&prevSignalSet))
+        goto Finally;
+
     if (sigprocmask(SIG_BLOCK, &signalSet, &prevSignalSet))
         goto Finally;
 
@@ -588,6 +619,7 @@ forkProcess(enum ForkProcessOption aOption)
 
         if (sigprocmask(SIG_SETMASK, &prevSignalSet, 0))
             goto Finally;
+
         break;
 
     case -1:
@@ -622,6 +654,7 @@ forkProcess(enum ForkProcessOption aOption)
             terminate(
                 errno,
                 "Unable to reset signal set");
+
         break;
     }
 
