@@ -72,6 +72,7 @@ runChild(
     char              **aCmd,
     struct StdFdFiller *aStdFdFiller,
     struct SocketPair  *aTetherPipe,
+    struct Pipe        *aSyncPipe,
     struct Pipe        *aTermPipe,
     struct Pipe        *aSigPipe)
 {
@@ -147,7 +148,7 @@ runChild(
             {
                 char buf[1];
 
-                switch (read(aTetherPipe->mChildFile->mFd, buf, 1))
+                switch (read(aSyncPipe->mRdFile->mFd, buf, 1))
                 {
                 default:
                         break;
@@ -156,7 +157,7 @@ runChild(
                         continue;
                     terminate(
                         errno,
-                        "Unable to read tether to synchronise child");
+                        "Unable to synchronise child");
                     break;
 
                 case 0:
@@ -167,6 +168,11 @@ runChild(
                 break;
             }
         });
+
+        if (closePipe(aSyncPipe))
+            terminate(
+                errno,
+                "Unable to close sync pipe");
 
         char tetherArg[sizeof(int) * CHAR_BIT + 1];
 
@@ -811,9 +817,15 @@ cmdRunCommand(char **aCmd)
                     "Unable to print parent pid");
         });
 
+    struct Pipe syncPipe;
+    if (createPipe(&syncPipe))
+        terminate(
+            errno,
+            "Unable to create sync pipe");
+
     pid_t childPid = runChild(aCmd,
                               &stdFdFiller,
-                              &tetherPipe, &termPipe, &sigPipe);
+                              &tetherPipe, &syncPipe, &termPipe, &sigPipe);
     if (-1 == childPid)
         terminate(
             errno,
@@ -858,11 +870,16 @@ cmdRunCommand(char **aCmd)
 
     RACE
     ({
-        if (1 != write(tetherPipe.mParentFile->mFd, "", 1))
+        if (1 != write(syncPipe.mWrFile->mFd, "", 1))
             terminate(
                 errno,
                 "Unable to synchronise child process");
     });
+
+    if (closePipe(&syncPipe))
+        terminate(
+            errno,
+            "Unable to close sync pipe");
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
