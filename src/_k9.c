@@ -30,7 +30,6 @@
 #include "options.h"
 #include "macros.h"
 #include "pipe.h"
-#include "socketpair.h"
 #include "stdfdfiller.h"
 #include "pidfile.h"
 #include "process.h"
@@ -71,7 +70,7 @@ static pid_t
 runChild(
     char              **aCmd,
     struct StdFdFiller *aStdFdFiller,
-    struct SocketPair  *aTetherPipe,
+    struct Pipe        *aTetherPipe,
     struct Pipe        *aSyncPipe,
     struct Pipe        *aTermPipe,
     struct Pipe        *aSigPipe)
@@ -137,11 +136,6 @@ runChild(
 
         debug(0, "synchronising child process");
 
-        if (closeSocketPairParent(aTetherPipe))
-            terminate(
-                errno,
-                "Unable to close tether pipe parent");
-
         RACE
         ({
             while (true)
@@ -178,12 +172,21 @@ runChild(
 
         do
         {
+            /* Close the reading end of the tether pipe separately
+             * because it might turn out that the writing end
+             * will not need to be duplicated. */
+
+            if (closePipeReader(aTetherPipe))
+                terminate(
+                    errno,
+                    "Unable to close tether pipe reader");
+
             if (gOptions.mTether)
             {
                 int tetherFd = *gOptions.mTether;
 
                 if (0 > tetherFd)
-                    tetherFd = aTetherPipe->mChildFile->mFd;
+                    tetherFd = aTetherPipe->mWrFile->mFd;
 
                 sprintf(tetherArg, "%d", tetherFd);
 
@@ -251,21 +254,22 @@ runChild(
                     }
                 }
 
-                if (tetherFd == aTetherPipe->mChildFile->mFd)
+                if (tetherFd == aTetherPipe->mWrFile->mFd)
                     break;
 
-                if (dup2(aTetherPipe->mChildFile->mFd, tetherFd) != tetherFd)
+                if (dup2(aTetherPipe->mWrFile->mFd, tetherFd) != tetherFd)
                     terminate(
                         errno,
                         "Unable to dup tether pipe fd %d to fd %d",
-                        aTetherPipe->mChildFile->mFd,
+                        aTetherPipe->mWrFile->mFd,
                         tetherFd);
             }
 
-            if (closeSocketPair(aTetherPipe))
+            if (closePipe(aTetherPipe))
                 terminate(
                     errno,
                     "Unable to close tether pipe");
+
         } while (0);
 
         debug(0, "child process synchronised");
@@ -317,8 +321,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         POLL_FD_COUNT
     };
 
-    unsigned pollInputEvents  = POLLPRI | POLLRDHUP | POLLIN;
-    unsigned pollOutputEvents = POLLOUT | POLLHUP   | POLLNVAL;
+    unsigned pollInputEvents  = POLLHUP | POLLPRI | POLLIN;
+    unsigned pollOutputEvents = POLLHUP | POLLOUT;
 
     struct pollfd pollfds[POLL_FD_COUNT] =
     {
@@ -775,11 +779,14 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create stdin, stdout, stderr filler");
 
-    struct SocketPair tetherPipe;
-    if (createSocketPair(&tetherPipe))
+    struct Pipe tetherPipe;
+    if (createPipe(&tetherPipe))
         terminate(
             errno,
             "Unable to create tether pipe");
+    debug(0, "Tether pipe rd %d wr %d",
+          tetherPipe.mRdFile->mFd,
+          tetherPipe.mWrFile->mFd);
 
     struct Pipe termPipe;
     if (createPipe(&termPipe))
@@ -890,12 +897,12 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close stdin, stdout and stderr fillers");
 
-    if (STDIN_FILENO != dup2(tetherPipe.mParentFile->mFd, STDIN_FILENO))
+    if (STDIN_FILENO != dup2(tetherPipe.mRdFile->mFd, STDIN_FILENO))
         terminate(
             errno,
             "Unable to dup tether pipe to stdin");
 
-    if (closeSocketPair(&tetherPipe))
+    if (closePipe(&tetherPipe))
         warn(
             errno,
             "Unable to close tether pipe");
