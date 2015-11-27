@@ -90,6 +90,44 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+closePipeReader(struct Pipe *self)
+{
+    int rc = -1;
+
+    if (closeFileDescriptor(self->mRdFile))
+        goto Finally;
+    self->mRdFile = 0;
+
+    rc = 0;
+
+ Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+closePipeWriter(struct Pipe *self)
+{
+    int rc = -1;
+
+    if (closeFileDescriptor(self->mWrFile))
+        goto Finally;
+    self->mWrFile = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 closePipe(struct Pipe *self)
 {
     return closeFileDescriptorPair(&self->mRdFile, &self->mWrFile);

@@ -46,6 +46,12 @@ createPipe(struct Pipe *self);
 int
 closePipe(struct Pipe *self);
 
+int
+closePipeReader(struct Pipe *self);
+
+int
+closePipeWriter(struct Pipe *self);
+
 /* -------------------------------------------------------------------------- */
 
 #endif /* PIPE_H */
