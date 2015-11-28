@@ -103,14 +103,16 @@ deadChild_(int aSigNum)
 {
     ++sSigContext;
     {
-        debug(1, "queued dead child");
+        int deadChildFd = sDeadChildFd_;
 
-        if (writeSignal_(sDeadChildFd_, aSigNum))
+        debug(1, "queued dead child to fd %d", deadChildFd);
+
+        if (writeSignal_(deadChildFd, aSigNum))
         {
             if (EBADF != errno && EWOULDBLOCK != errno)
                 terminate(
                     errno,
-                    "Unable to indicate dead child");
+                    "Unable to indicate dead child to fd %d", deadChildFd);
         }
     }
     --sSigContext;
@@ -128,6 +130,9 @@ int
 watchProcessChildren(const struct Pipe *aTermPipe)
 {
     int rc = -1;
+
+    /* It is ok to mark the termination pipe non-blocking because this
+     * file descriptor is not shared with any other process. */
 
     sDeadChildFd_ = aTermPipe->mWrFile->mFd;
 
@@ -191,6 +196,9 @@ int
 watchProcessSignals(const struct Pipe *aSigPipe)
 {
     int rc = -1;
+
+    /* It is ok to mark the signal pipe non-blocking because this
+     * file descriptor is not shared with any other process. */
 
     sSignalFd_ = aSigPipe->mWrFile->mFd;
 

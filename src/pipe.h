@@ -52,6 +52,9 @@ closePipeReader(struct Pipe *self);
 int
 closePipeWriter(struct Pipe *self);
 
+int
+closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec);
+
 /* -------------------------------------------------------------------------- */
 
 #endif /* PIPE_H */

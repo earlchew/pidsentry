@@ -56,11 +56,115 @@ stdFd(int aFd)
 
 /* -------------------------------------------------------------------------- */
 int
+closeFdOnExec(int aFd, unsigned aCloseOnExec)
+{
+    int rc = -1;
+
+    unsigned closeOnExec = 0;
+
+    if (aCloseOnExec)
+    {
+        if (aCloseOnExec != O_CLOEXEC)
+        {
+            errno = EINVAL;
+            goto Finally;
+        }
+
+        /* Take care. O_CLOEXEC is the flag for obtaining close-on-exec
+         * semantics when using open(), but fcntl() requires FD_CLOEXEC. */
+
+        closeOnExec = FD_CLOEXEC;
+    }
+
+    long flags = fcntl(aFd, F_GETFD);
+
+    if (-1 == flags)
+        goto Finally;
+
+    rc = fcntl(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 nonblockingFd(int aFd)
 {
-    long flags = fcntl(aFd, F_GETFL, 0);
+    int rc = -1;
 
-    return -1 == flags ? -1 : fcntl(aFd, F_SETFL, flags | O_NONBLOCK);
+    long statusFlags = fcntl(aFd, F_GETFL);
+    int  descriptorFlags = fcntl(aFd, F_GETFD);
+
+    if (-1 == statusFlags || -1 == descriptorFlags)
+        goto Finally;
+
+    /* Because O_NONBLOCK affects the underlying open file, to get some
+     * peace of mind, only allow non-blocking mode on file descriptors
+     * that are not going to be shared. This is not a water-tight
+     * defense, but seeks to prevent some careless mistakes. */
+
+    if ( ! (descriptorFlags & FD_CLOEXEC))
+    {
+        errno = EBADF;
+        goto Finally;
+    }
+
+    rc = (statusFlags & O_NONBLOCK) ? 0 : fcntl(aFd, F_SETFL,
+                                                statusFlags | O_NONBLOCK);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFdNonBlocking(int aFd)
+{
+    int rc = -1;
+
+    int flags = fcntl(aFd, F_GETFL);
+
+    if (-1 == flags)
+        goto Finally;
+
+    rc = flags & O_NONBLOCK ? 1 : 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFdValid(int aFd)
+{
+    int rc = -1;
+
+    int valid = 1;
+
+    if (-1 == fcntl(aFd, F_GETFL))
+    {
+        if (EBADF != errno)
+            goto Finally;
+        valid = 0;
+    }
+
+    rc = valid;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

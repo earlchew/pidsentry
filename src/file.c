@@ -30,6 +30,7 @@
 #include "file.h"
 #include "macros.h"
 #include "error.h"
+#include "fd.h"
 
 #include <stdlib.h>
 #include <errno.h>
@@ -294,9 +295,14 @@ Finally:
 int
 nonblockingFileDescriptor(struct FileDescriptor *self)
 {
-    long flags = fcntl(self->mFd, F_GETFL, 0);
+    return nonblockingFd(self->mFd);
+}
 
-    return -1 == flags ? -1 : fcntl(self->mFd, F_SETFL, flags | O_NONBLOCK);
+/* -------------------------------------------------------------------------- */
+int
+closeFileDescriptorOnExec(struct FileDescriptor *self, unsigned aCloseOnExec)
+{
+    return closeFdOnExec(self->mFd, aCloseOnExec);
 }
 
 /* -------------------------------------------------------------------------- */

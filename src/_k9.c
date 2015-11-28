@@ -43,6 +43,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -61,9 +62,11 @@
  * Use splice()
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
- * Shutdown pipes
- * Parent and child process groups
  */
+
+#define DEVNULLPATH "/dev/null"
+
+static const char sDevNullPath[] = DEVNULLPATH;
 
 /* -------------------------------------------------------------------------- */
 static pid_t
@@ -340,6 +343,8 @@ pollEventText(unsigned aPollEventMask)
 static void
 monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 {
+    debug(0, "start monitoring child");
+
     enum PollFdKind
     {
         POLL_FD_STDIN,
@@ -365,7 +370,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
      * the documentation suggests that POLLHUP might also be reasonable
      * in this context. */
 
-    const unsigned pollInputEvents     = POLLHUP | POLLPRI | POLLIN;
+    const unsigned pollInputEvents     = POLLHUP | POLLERR | POLLPRI | POLLIN;
     const unsigned pollOutputEvents    = POLLHUP | POLLERR | POLLOUT;
     const unsigned pollDisconnectEvent = POLLHUP | POLLERR;
 
@@ -381,11 +386,6 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             .fd = STDIN_FILENO,   .events = ! gOptions.mTether
                                             ? 0 : pollInputEvents },
     };
-
-    char buffer[8192];
-
-    char *bufend = buffer;
-    char *bufptr = buffer;
 
     bool deadChild = false;
 
@@ -420,6 +420,12 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     int closedStdout = 0;
     int closedStdin  = 0;
 
+    /* It would be so much easier to use non-blocking IO, but O_NONBLOCK
+     * is an attribute of the underlying open file, not of each
+     * file descriptor. Since stdin and stdout are typically inherited
+     * from the parent, setting O_NONBLOCK affects all file descriptors
+     * referring to the same open file. */
+
     do
     {
         ensure(closedStdin == closedStdout);
@@ -444,8 +450,9 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         {
             debug(
                 1,
-                "poll fd %d 0x%x",
+                "poll fd %d 0x%x 0x%x",
                 pollfds[ix].fd,
+                pollfds[ix].events,
                 pollfds[ix].revents);
             pollfds[ix].revents &= pollfds[ix].events;
         }
@@ -454,6 +461,9 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if (pollfds[POLL_FD_STDIN].revents)
         {
+            ensure(rc);
+            ensure(STDIN_FILENO == pollfds[POLL_FD_STDIN].fd);
+
             ++eventCount;
 
             debug(
@@ -463,56 +473,17 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
             ensure(pollfds[POLL_FD_STDIN].events);
 
-            /* The poll(2) call should return positive non-zero if
-             * any events are returned. This is a defensive measure
-             * against buggy implementations since the next if-clause
-             * depends on this being right. */
-
-            rc = 1;
-
-            ssize_t bytes;
-
-            do
-                bytes = read(STDIN_FILENO, buffer, sizeof(buffer));
-            while (-1 == bytes && EINTR == errno);
-
-            debug(1, "read stdin %zd", bytes);
-
-            if (-1 == bytes)
-            {
-                if (ECONNRESET == errno)
-                    bytes = 0;
-                else
-                    terminate(
-                        errno,
-                        "Unable to read from tether pipe");
-            }
-
-            /* If the child has closed its end of the tether, the watchdog
-             * will read EOF on the tether. Continue running the event
-             * loop until the child terminates. */
-
-            if ( ! bytes)
+            if ( ! (pollfds[POLL_FD_STDIN].revents & POLLIN))
             {
                 ensure( ! closedStdin);
                 closedStdin = -1;
             }
             else
             {
-                if (sizeof(buffer) < bytes)
-                    terminate(
-                        errno,
-                        "Read returned value %zd which exceeds buffer size",
-                        bytes);
+                pollfds[POLL_FD_STDIN].fd = nullPipe.mRdFile->mFd;
 
-                if ( ! gOptions.mQuiet)
-                {
-                    bufptr = buffer;
-                    bufend = bufptr + bytes;
-
-                    pollfds[POLL_FD_STDOUT].events = pollOutputEvents;
-                    pollfds[POLL_FD_STDIN].events  = 0;
-                }
+                pollfds[POLL_FD_STDOUT].events = pollOutputEvents;
+                pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
             }
         }
 
@@ -550,6 +521,9 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if (pollfds[POLL_FD_STDOUT].revents)
         {
+            ensure(rc);
+            ensure(STDOUT_FILENO == pollfds[POLL_FD_STDOUT].fd);
+
             ++eventCount;
 
             debug(
@@ -569,28 +543,37 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
                 ssize_t bytes;
 
                 do
-                    bytes = write(STDOUT_FILENO, bufptr, bufend - bufptr);
+                    bytes = splice(
+                        STDIN_FILENO, 0,
+                        STDOUT_FILENO, 0,
+                        1,
+                        SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
                 while (-1 == bytes && EINTR == errno);
 
-                debug(1, "wrote stdout %zd", bytes);
+                debug(1, "spliced stdin to stdout %zd", bytes);
 
-                if (-1 == bytes)
+                /* If the child has closed its end of the tether, the watchdog
+                 * will read EOF on the tether. Continue running the event
+                 * loop until the child terminates. */
+
+                if ( ! bytes)
                 {
-                    if (EWOULDBLOCK != errno)
-                        terminate(
-                            errno,
-                            "Unable to write to stdout");
-                    bytes = 0;
+                    ensure( ! closedStdin);
+                    closedStdin = -1;
                 }
-
-                /* Once all the data that was previously read has been
-                 * transferred, switch the event loop to waiting for
-                 * more input. */
-
-                bufptr += bytes;
-
-                if (bufptr == bufend)
+                else
                 {
+                    if (-1 == bytes)
+                    {
+                        if (EWOULDBLOCK != errno)
+                            terminate(
+                                errno,
+                                "Unable to write to stdout");
+                        bytes = 0;
+                    }
+
+                    pollfds[POLL_FD_STDIN].fd = STDIN_FILENO;
+
                     pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
                     pollfds[POLL_FD_STDIN].events  = pollInputEvents;
                 }
@@ -621,8 +604,11 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
                     errno,
                     "Unable to dup null pipe to stdout");
 
+            pollfds[POLL_FD_STDIN].fd  = STDIN_FILENO;
+            pollfds[POLL_FD_STDOUT].fd = STDOUT_FILENO;
+
             pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
-            pollfds[POLL_FD_STDIN].events  = 0;
+            pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
         }
 
         /* Propagate signals to the child process. Signals are queued
@@ -638,6 +624,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if (pollfds[POLL_FD_SIGNAL].revents)
         {
+            ensure(rc);
+
             ++eventCount;
 
             debug(
@@ -678,6 +666,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if (pollfds[POLL_FD_CHILD].revents)
         {
+            ensure(rc);
+
             ++eventCount;
 
             debug(
@@ -704,6 +694,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         terminate(
             errno,
             "Unable to close null pipe");
+
+    debug(0, "stop monitoring child");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -919,12 +911,20 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to create termination pipe");
+    if (closePipeOnExec(&termPipe, O_CLOEXEC))
+        terminate(
+            errno,
+            "Unable to set close on exec for termination pipe");
 
     struct Pipe sigPipe;
     if (createPipe(&sigPipe))
         terminate(
             errno,
             "Unable to create signal pipe");
+    if (closePipeOnExec(&sigPipe, O_CLOEXEC))
+        terminate(
+            errno,
+            "Unable to set close on exec for signal pipe");
 
     if (watchProcessSignals(&sigPipe))
         terminate(
@@ -935,6 +935,10 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to add watch on child process termination");
+    debug(1,
+          "child termination pipe fds %d %d",
+          termPipe.mRdFile->mFd,
+          termPipe.mWrFile->mFd);
 
     /* Only identify the watchdog process after all the signal
      * handlers have been installed. The functional tests can
@@ -1033,27 +1037,50 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close tether pipe");
 
-    if (gOptions.mTether)
-    {
-        /* Non-blocking IO on stdout is required so that the event loop
-         * remains responsive, otherwise the event loop will likely block
-         * when writing each buffer in its entirety. */
-
-        if (nonblockingFd(STDOUT_FILENO))
-        {
-            if (EBADF == errno)
-                gOptions.mQuiet = true;
-            else
-                terminate(
-                    errno,
-                    "Unable to enable non-blocking writes to stdout");
-        }
-    }
-
     if (cleanseFileDescriptors())
         terminate(
             errno,
             "Unable to cleanse file descriptors");
+
+    /* If stdout is not open, then provide a default sink for the
+     * data transmitted through the tether. */
+
+    if (gOptions.mTether)
+    {
+        switch (ownFdValid(STDOUT_FILENO))
+        {
+        default:
+            break;
+
+        case -1:
+            terminate(
+                errno,
+                "Unable to check validity of stdout");
+
+        case 0:
+            {
+                int nullfd = open(sDevNullPath, O_WRONLY);
+
+                if (-1 == nullfd)
+                    terminate(
+                        errno,
+                        "Unable to open %s", sDevNullPath);
+
+                if (STDOUT_FILENO != nullfd)
+                {
+                    if (STDOUT_FILENO != dup2(nullfd, STDOUT_FILENO))
+                        terminate(
+                            errno,
+                            "Unable to dup %s to stdout", sDevNullPath);
+                    if (closeFd(&nullfd))
+                        terminate(
+                            errno,
+                            "Unable to close %s", sDevNullPath);
+                }
+            }
+            break;
+        }
+    }
 
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped

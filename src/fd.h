@@ -41,6 +41,14 @@ stdFd(int aFd);
 int
 nonblockingFd(int aFd);
 
+int
+ownFdNonBlocking(int aFd);
+
+int
+ownFdValid(int aFd);
+
+int
+closeFdOnExec(int aFd, unsigned aCloseOnExec);
 
 /* -------------------------------------------------------------------------- */
 

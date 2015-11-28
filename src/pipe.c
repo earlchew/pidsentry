@@ -128,6 +128,27 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec)
+{
+    int rc = -1;
+
+    if (closeFileDescriptorOnExec(self->mRdFile, aCloseOnExec) ||
+        closeFileDescriptorOnExec(self->mWrFile, aCloseOnExec))
+    {
+        goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 closePipe(struct Pipe *self)
 {
     return closeFileDescriptorPair(&self->mRdFile, &self->mWrFile);

@@ -57,6 +57,9 @@ closeFileDescriptorPair(struct FileDescriptor **aFile1,
 int
 nonblockingFileDescriptor(struct FileDescriptor *self);
 
+int
+closeFileDescriptorOnExec(struct FileDescriptor *self, unsigned aCloseOnExec);
+
 /* -------------------------------------------------------------------------- */
 
 #endif /* FILE_H */
