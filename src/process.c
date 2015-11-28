@@ -697,16 +697,20 @@ extractProcessExitStatus(int aStatus)
 
     if (WIFEXITED(aStatus))
     {
+        debug(0, "child exited %d", WEXITSTATUS(aStatus));
+
         exitCode.mStatus = WEXITSTATUS(aStatus);
-        if (128 < exitCode.mStatus)
-            exitCode.mStatus = 128;
     }
     else if (WIFSIGNALED(aStatus))
     {
+        debug(0, "child terminated by signal %d", WTERMSIG(aStatus));
+
         exitCode.mStatus = 128 + WTERMSIG(aStatus);
         if (255 < exitCode.mStatus)
             exitCode.mStatus = 255;
     }
+
+    debug(0, "exit code %d", exitCode.mStatus);
 
     return exitCode;
 }
