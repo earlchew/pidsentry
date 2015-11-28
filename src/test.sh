@@ -48,8 +48,11 @@ testExit()
 
 testOutput()
 {
-    if ! eval \[ x"$1" $2 x"$3" \] ; then
-       eval testTrace \[ x"$1" $2 x"$3" \]
+    eval set -- '"$@"' "$1"
+    eval set -- '"$@"' "$3"
+    if ! [ x"$4" "$2" x"$5" ] ; then
+       testTrace [ x"$4" "$2" x"$5" ]
+       set -- "$1" "$2" "$3"
        testFail "$@"
     fi
 }
@@ -57,6 +60,11 @@ testOutput()
 runWait()
 {
     $VALGRIND "$@"
+}
+
+runTest()
+{
+    :
 }
 
 runTests()
@@ -323,17 +331,30 @@ runTests()
         }
     done
 
+    testCase 'Test SIGPIPE propagates from child'
+    testOutput "X-$((128 + 13))" = '$(
+        exec 3>&1
+        if ./k9 -T -d -d -- sh -cx "
+            while : ; do /bin/echo X || exit \$?; sleep 1 ; done " ; then
+            /bin/echo "X-$?" >&3
+        else
+            /bin/echo "X-$?" >&3
+        fi | read
+    )'
+
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
         /usr/bin/time -p $VALGRIND ./k9 -T -t 4 -- sh -c '
             trap "" 15 ; sleep 6' 2>&1 | grep real)
+    echo "Outcome $REPLY"
     REPLY=${REPLY%%.*}
     REPLY=${REPLY##* }
     [ "$REPLY" -ge 6 ]
 }
 
-VALGRIND=
-runTests
-
-VALGRIND="valgrind --error-exitcode=128 --leak-check=yes"
-runTests
+for TEST in runTest runTests ; do
+    VALGRIND=
+    $TEST
+    VALGRIND="valgrind --error-exitcode=128 --leak-check=yes"
+    $TEST
+done
