@@ -309,6 +309,34 @@ reapChild(pid_t aChildPid)
 }
 
 /* -------------------------------------------------------------------------- */
+const char *
+pollEventText(unsigned aPollEventMask)
+{
+    switch (aPollEventMask)
+    {
+    default:                           return "POLLUNKNOWN";
+
+    case POLLIN:                       return "POLLIN";
+    case POLLPRI:                      return "POLLPRI";
+    case POLLPRI | POLLIN:             return "POLLPRI, POLLIN";
+
+    case POLLHUP | POLLPRI:            return "POLLHUP, POLLPRI";
+    case POLLHUP | POLLIN:             return "POLLHUP, POLLIN";
+    case POLLHUP | POLLPRI | POLLIN:   return "POLLHUP, POLLPRI, POLLIN";
+
+    case POLLOUT:                      return "POLLOUT";
+    case POLLERR:                      return "POLLERR";
+    case POLLERR | POLLOUT:            return "POLLERR, POLLOUT";
+
+    case POLLHUP | POLLOUT:            return "POLLHUP, POLLOUT";
+    case POLLHUP | POLLERR:            return "POLLHUP, POLLERR";
+    case POLLHUP | POLLERR | POLLOUT:  return "POLLHUP, POLLERR, POLLOUT";
+
+    case POLLHUP:                      return "POLLHUP";
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 {
@@ -321,8 +349,25 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         POLL_FD_COUNT
     };
 
-    unsigned pollInputEvents  = POLLHUP | POLLPRI | POLLIN;
-    unsigned pollOutputEvents = POLLHUP | POLLOUT;
+    struct Pipe nullPipe;
+    if (createPipe(&nullPipe))
+        terminate(
+            errno,
+            "Unable to create null pipe");
+
+    /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
+     * that it is best not to put too much trust in POLLHUP vs POLLIN,
+     * and to treat the presence of either as a trigger to attempt to
+     * read from the file descriptor.
+     *
+     * For the writing end of the pipe, Linux returns POLLERR if the
+     * far end reader is no longer available (to match EPIPE), but
+     * the documentation suggests that POLLHUP might also be reasonable
+     * in this context. */
+
+    const unsigned pollInputEvents     = POLLHUP | POLLPRI | POLLIN;
+    const unsigned pollOutputEvents    = POLLHUP | POLLERR | POLLOUT;
+    const unsigned pollDisconnectEvent = POLLHUP | POLLERR;
 
     struct pollfd pollfds[POLL_FD_COUNT] =
     {
@@ -331,7 +376,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         [POLL_FD_SIGNAL] = {
             .fd = aSigPipe->mRdFile->mFd,  .events = pollInputEvents },
         [POLL_FD_STDOUT] = {
-            .fd = STDOUT_FILENO,  .events = 0 },
+            .fd = STDOUT_FILENO,  .events = pollDisconnectEvent },
         [POLL_FD_STDIN] = {
             .fd = STDIN_FILENO,   .events = ! gOptions.mTether
                                             ? 0 : pollInputEvents },
@@ -372,8 +417,13 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
     timeout = timeout ? timeout * 1000 : -1;
 
+    int closedStdout = 0;
+    int closedStdin  = 0;
+
     do
     {
+        ensure(closedStdin == closedStdout);
+
         int rc = poll(pollfds, NUMBEROF(pollfds), timeout);
 
         if (-1 == rc)
@@ -391,11 +441,25 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
          * attention to what was subscribed. */
 
         for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
+        {
+            debug(
+                1,
+                "poll fd %d 0x%x",
+                pollfds[ix].fd,
+                pollfds[ix].revents);
             pollfds[ix].revents &= pollfds[ix].events;
+        }
+
+        unsigned eventCount = 0;
 
         if (pollfds[POLL_FD_STDIN].revents)
         {
-            debug(1, "poll stdin 0x%x", pollfds[POLL_FD_STDIN].revents);
+            ++eventCount;
+
+            debug(
+                1,
+                "poll stdin %s",
+                pollEventText(pollfds[POLL_FD_STDIN].revents));
 
             ensure(pollfds[POLL_FD_STDIN].events);
 
@@ -430,8 +494,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
             if ( ! bytes)
             {
-                pollfds[POLL_FD_STDOUT].events = 0;
-                pollfds[POLL_FD_STDIN].events  = 0;
+                ensure( ! closedStdin);
+                closedStdin = -1;
             }
             else
             {
@@ -456,8 +520,12 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
          * event loop was waiting for data from the child process,
          * then declare the child terminated. */
 
-        if ( ! rc && -1 == timeout)
+        if ( ! rc)
         {
+            ensure(-1 != timeout);
+
+            ++eventCount;
+
             debug(0, "timeout after %d", timeout);
 
             pid_t pidNum = childSignalPlan->mPid;
@@ -482,38 +550,79 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if (pollfds[POLL_FD_STDOUT].revents)
         {
-            debug(1, "poll stdout 0x%x", pollfds[POLL_FD_STDOUT].revents);
+            ++eventCount;
+
+            debug(
+                1,
+                "poll stdout %s",
+                pollEventText(pollfds[POLL_FD_STDOUT].revents));
 
             ensure(pollfds[POLL_FD_STDOUT].events);
 
-            ssize_t bytes;
-
-            do
-                bytes = write(STDOUT_FILENO, bufptr, bufend - bufptr);
-            while (-1 == bytes && EINTR == errno);
-
-            debug(1, "wrote stdout %zd", bytes);
-
-            if (-1 == bytes)
+            if ( ! (pollfds[POLL_FD_STDOUT].revents & POLLOUT))
             {
-                if (EWOULDBLOCK != errno)
-                    terminate(
-                        errno,
-                        "Unable to write to stdout");
-                bytes = 0;
+                ensure( ! closedStdout);
+                closedStdout = -1;
             }
-
-            /* Once all the data that was previously read has been
-             * transferred, switch the event loop to waiting for
-             * more input. */
-
-            bufptr += bytes;
-
-            if (bufptr == bufend)
+            else
             {
-                pollfds[POLL_FD_STDOUT].events = 0;
-                pollfds[POLL_FD_STDIN].events  = pollInputEvents;
+                ssize_t bytes;
+
+                do
+                    bytes = write(STDOUT_FILENO, bufptr, bufend - bufptr);
+                while (-1 == bytes && EINTR == errno);
+
+                debug(1, "wrote stdout %zd", bytes);
+
+                if (-1 == bytes)
+                {
+                    if (EWOULDBLOCK != errno)
+                        terminate(
+                            errno,
+                            "Unable to write to stdout");
+                    bytes = 0;
+                }
+
+                /* Once all the data that was previously read has been
+                 * transferred, switch the event loop to waiting for
+                 * more input. */
+
+                bufptr += bytes;
+
+                if (bufptr == bufend)
+                {
+                    pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
+                    pollfds[POLL_FD_STDIN].events  = pollInputEvents;
+                }
             }
+        }
+
+        if (0 > closedStdout || 0 > closedStdin)
+        {
+            closedStdout = 1;
+            closedStdin  = 1;
+
+            debug(0, "closing stdin and stdout");
+
+            /* If the far end of stdout has been closed, close stdin
+             * using the side-effect of dup2. Use of dup2 ensures
+             * that the watchdog continues to have a valid stdin.
+             *
+             * Also duplicating the file descriptors allows nullPipe
+             * to be cleaned up while leaving a valid stdin and stdout. */
+
+            if (STDIN_FILENO != dup2(nullPipe.mRdFile->mFd, STDIN_FILENO))
+                terminate(
+                    errno,
+                    "Unable to dup null pipe to stdin");
+
+            if (STDOUT_FILENO != dup2(nullPipe.mWrFile->mFd, STDOUT_FILENO))
+                terminate(
+                    errno,
+                    "Unable to dup null pipe to stdout");
+
+            pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
+            pollfds[POLL_FD_STDIN].events  = 0;
         }
 
         /* Propagate signals to the child process. Signals are queued
@@ -529,7 +638,12 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if (pollfds[POLL_FD_SIGNAL].revents)
         {
-            debug(1, "poll signal 0x%x", pollfds[POLL_FD_SIGNAL].revents);
+            ++eventCount;
+
+            debug(
+                1,
+                "poll signal %s",
+                pollEventText(pollfds[POLL_FD_SIGNAL].revents));
 
             ssize_t       len;
             unsigned char sigNum;
@@ -564,7 +678,12 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if (pollfds[POLL_FD_CHILD].revents)
         {
-            debug(1, "poll child 0x%x", pollfds[POLL_FD_CHILD].revents);
+            ++eventCount;
+
+            debug(
+                1,
+                "poll child %s",
+                pollEventText(pollfds[POLL_FD_CHILD].revents));
 
             ensure(pollfds[POLL_FD_CHILD].events);
 
@@ -572,9 +691,19 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             deadChild = true;
         }
 
+        /* Ensure that the interpretation of the poll events is being
+         * correctly handled, to avoid a busy-wait poll loop. */
+
+        ensure(eventCount);
+
     } while ( ! deadChild ||
-                pollfds[POLL_FD_STDOUT].events ||
-                pollfds[POLL_FD_STDIN].events);
+                pollOutputEvents == pollfds[POLL_FD_STDOUT].events ||
+                pollInputEvents  == pollfds[POLL_FD_STDIN].events);
+
+    if (closePipe(&nullPipe))
+        terminate(
+            errno,
+            "Unable to close null pipe");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -784,9 +913,6 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to create tether pipe");
-    debug(0, "Tether pipe rd %d wr %d",
-          tetherPipe.mRdFile->mFd,
-          tetherPipe.mWrFile->mFd);
 
     struct Pipe termPipe;
     if (createPipe(&termPipe))
