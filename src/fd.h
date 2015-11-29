@@ -31,6 +31,8 @@
 
 #include <stdbool.h>
 
+#include <sys/types.h>
+
 /* -------------------------------------------------------------------------- */
 int
 closeFd(int *aFd);
@@ -49,6 +51,9 @@ ownFdValid(int aFd);
 
 int
 closeFdOnExec(int aFd, unsigned aCloseOnExec);
+
+ssize_t
+spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 
 /* -------------------------------------------------------------------------- */
 

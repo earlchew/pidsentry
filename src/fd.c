@@ -34,6 +34,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <valgrind/valgrind.h>
+
 /* -------------------------------------------------------------------------- */
 int
 closeFd(int *aFd)
@@ -163,6 +165,65 @@ ownFdValid(int aFd)
 Finally:
 
     FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
+{
+    int rc = -1;
+
+    if ( ! RUNNING_ON_VALGRIND)
+        rc = splice(aSrcFd, 0, aDstFd, 0, aLen, aFlags);
+    else
+    {
+        /* Early versions of valgrind do not support splice(), so
+         * provide a workaround here. This implementation of splice()
+         * does not mimic the kernel implementation exactly, but is
+         * enough for testing. */
+
+        char buffer[8192];
+
+        size_t len = sizeof(buffer);
+
+        if (len > aLen)
+            len = aLen;
+
+        ssize_t bytes;
+
+        do
+            bytes = read(aSrcFd, buffer, len);
+        while (-1 == bytes && EINTR == errno);
+
+        if (-1 == bytes)
+            goto Finally;
+
+        if (bytes)
+        {
+            char *bufptr = buffer;
+            char *bufend = bufptr + bytes;
+
+            while (bufptr != bufend)
+            {
+                ssize_t wrote;
+
+                do
+                    wrote = write(aDstFd, bufptr, bufend - bufptr);
+                while (-1 == wrote  && EINTR == errno);
+
+                if (-1 == wrote)
+                    goto Finally;
+
+                bufptr += wrote;
+            }
+        }
+
+        rc = bytes;
+    }
+
+Finally:
 
     return rc;
 }

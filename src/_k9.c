@@ -49,6 +49,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/poll.h>
+#include <sys/ioctl.h>
 
 /* TODO
  *
@@ -62,6 +63,8 @@
  * Use splice()
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
+ * Shouldn't SIGPIPE be delivered to the watchdog ?
+ * Bracket splice() with SIGALARM (setitimer() and getitimer())
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -540,13 +543,25 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             }
             else
             {
+                int available;
+
+                if (ioctl(STDIN_FILENO, FIONREAD, &available))
+                    terminate(
+                        errno,
+                        "Unable to determine amount of readable data in stdin");
+
+                ensure(available);
+
+                if (testAction() && available)
+                    available = 1 + random() % available;
+
                 ssize_t bytes;
 
                 do
-                    bytes = splice(
-                        STDIN_FILENO, 0,
-                        STDOUT_FILENO, 0,
-                        1,
+                    bytes = spliceFd(
+                        STDIN_FILENO,
+                        STDOUT_FILENO,
+                        available,
                         SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
                 while (-1 == bytes && EINTR == errno);
 
@@ -1042,8 +1057,11 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to cleanse file descriptors");
 
-    /* If stdout is not open, then provide a default sink for the
-     * data transmitted through the tether. */
+    /* If stdout is not open, or data sent to stdout is to be discarded,
+     * then provide a default sink for the data transmitted through
+     * the tether. */
+
+    bool discardStdout = gOptions.mQuiet;
 
     if (gOptions.mTether)
     {
@@ -1058,27 +1076,30 @@ cmdRunCommand(char **aCmd)
                 "Unable to check validity of stdout");
 
         case 0:
-            {
-                int nullfd = open(sDevNullPath, O_WRONLY);
-
-                if (-1 == nullfd)
-                    terminate(
-                        errno,
-                        "Unable to open %s", sDevNullPath);
-
-                if (STDOUT_FILENO != nullfd)
-                {
-                    if (STDOUT_FILENO != dup2(nullfd, STDOUT_FILENO))
-                        terminate(
-                            errno,
-                            "Unable to dup %s to stdout", sDevNullPath);
-                    if (closeFd(&nullfd))
-                        terminate(
-                            errno,
-                            "Unable to close %s", sDevNullPath);
-                }
-            }
+            discardStdout = true;
             break;
+        }
+    }
+
+    if (discardStdout)
+    {
+        int nullfd = open(sDevNullPath, O_WRONLY);
+
+        if (-1 == nullfd)
+            terminate(
+                errno,
+                "Unable to open %s", sDevNullPath);
+
+        if (STDOUT_FILENO != nullfd)
+        {
+            if (STDOUT_FILENO != dup2(nullfd, STDOUT_FILENO))
+                terminate(
+                    errno,
+                    "Unable to dup %s to stdout", sDevNullPath);
+            if (closeFd(&nullfd))
+                terminate(
+                    errno,
+                    "Unable to close %s", sDevNullPath);
         }
     }
 
