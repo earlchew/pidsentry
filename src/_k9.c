@@ -63,8 +63,9 @@
  * Use splice()
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
- * Shouldn't SIGPIPE be delivered to the watchdog ?
  * Bracket splice() with SIGALARM (setitimer() and getitimer())
+ * Partition monitorChild() -- it's too big
+ * Use memopen() for error.c to issue messages in a complete line
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -315,31 +316,61 @@ reapChild(pid_t aChildPid)
 }
 
 /* -------------------------------------------------------------------------- */
-const char *
-pollEventText(unsigned aPollEventMask)
+struct PollEventText
 {
-    switch (aPollEventMask)
+    char mText[
+        sizeof(unsigned) * CHAR_BIT +
+        sizeof(
+            " "
+            "0x "
+            "IN "
+            "PRI "
+            "OUT "
+            "ERR "
+            "HUP "
+            "NVAL ")];
+};
+
+static char *
+pollEventTextBit_(char *aBuf, unsigned *aMask, unsigned aBit, const char *aText)
+{
+    char *buf = aBuf;
+
+    if (*aMask & aBit)
     {
-    default:                           return "POLLUNKNOWN";
-
-    case POLLIN:                       return "POLLIN";
-    case POLLPRI:                      return "POLLPRI";
-    case POLLPRI | POLLIN:             return "POLLPRI, POLLIN";
-
-    case POLLHUP | POLLPRI:            return "POLLHUP, POLLPRI";
-    case POLLHUP | POLLIN:             return "POLLHUP, POLLIN";
-    case POLLHUP | POLLPRI | POLLIN:   return "POLLHUP, POLLPRI, POLLIN";
-
-    case POLLOUT:                      return "POLLOUT";
-    case POLLERR:                      return "POLLERR";
-    case POLLERR | POLLOUT:            return "POLLERR, POLLOUT";
-
-    case POLLHUP | POLLOUT:            return "POLLHUP, POLLOUT";
-    case POLLHUP | POLLERR:            return "POLLHUP, POLLERR";
-    case POLLHUP | POLLERR | POLLOUT:  return "POLLHUP, POLLERR, POLLOUT";
-
-    case POLLHUP:                      return "POLLHUP";
+        *aMask ^= aBit;
+        *buf++ = ' ';
+        buf = stpcpy(buf, aText + sizeof("POLL") - 1);
     }
+
+    return buf;
+}
+
+#define pollEventTextBit_(aBuf, aMask, aBit) \
+    pollEventTextBit_((aBuf), (aMask), (aBit), # aBit)
+
+static const char *
+createPollEventText(
+    struct PollEventText *aPollEventText, unsigned aPollEventMask)
+{
+    unsigned mask = aPollEventMask;
+
+    char *buf = aPollEventText->mText;
+
+    buf[0] = 0;
+    buf[1] = 0;
+
+    buf = pollEventTextBit_(buf, &mask, POLLIN);
+    buf = pollEventTextBit_(buf, &mask, POLLPRI);
+    buf = pollEventTextBit_(buf, &mask, POLLOUT);
+    buf = pollEventTextBit_(buf, &mask, POLLERR);
+    buf = pollEventTextBit_(buf, &mask, POLLHUP);
+    buf = pollEventTextBit_(buf, &mask, POLLNVAL);
+
+    if (mask)
+        sprintf(buf, " 0x%x", mask);
+
+    return aPollEventText->mText + 1;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -347,6 +378,9 @@ static void
 monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 {
     debug(0, "start monitoring child");
+
+    struct PollEventText pollEventText;
+    struct PollEventText pollRcvdEventText;
 
     enum PollFdKind
     {
@@ -376,6 +410,14 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     const unsigned pollInputEvents     = POLLHUP | POLLERR | POLLPRI | POLLIN;
     const unsigned pollOutputEvents    = POLLHUP | POLLERR | POLLOUT;
     const unsigned pollDisconnectEvent = POLLHUP | POLLERR;
+
+    static const char *pollfdNames[POLL_FD_COUNT] =
+    {
+        [POLL_FD_CHILD]  = "child",
+        [POLL_FD_SIGNAL] = "signal",
+        [POLL_FD_STDOUT] = "stdout",
+        [POLL_FD_STDIN]  = "stdin",
+    };
 
     struct pollfd pollfds[POLL_FD_COUNT] =
     {
@@ -433,6 +475,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     {
         ensure(closedStdin == closedStdout);
 
+        debug(1, "poll wait");
+
         int rc = poll(pollfds, NUMBEROF(pollfds), timeout);
 
         if (-1 == rc)
@@ -449,16 +493,24 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
          * no matter what the caller has subscribed for. Only pay
          * attention to what was subscribed. */
 
+        debug(1, "poll scan of %d fds", rc);
+
         for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
         {
             debug(
                 1,
-                "poll fd %d 0x%x 0x%x",
+                "poll %s %d (%s) (%s)",
+                pollfdNames[ix],
                 pollfds[ix].fd,
-                pollfds[ix].events,
-                pollfds[ix].revents);
+                createPollEventText(&pollEventText, pollfds[ix].events),
+                createPollEventText(&pollRcvdEventText, pollfds[ix].revents));
             pollfds[ix].revents &= pollfds[ix].events;
         }
+
+        /* When processing file descriptor events, do not loop in EINTR
+         * but instead allow the polling cycle to be re-run so that
+         * the event loop will not remain stuck processing a single
+         * file descriptor. */
 
         unsigned eventCount = 0;
 
@@ -466,21 +518,21 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         {
             ensure(rc);
             ensure(STDIN_FILENO == pollfds[POLL_FD_STDIN].fd);
+            ensure( ! closedStdin);
 
             ++eventCount;
 
             debug(
                 1,
                 "poll stdin %s",
-                pollEventText(pollfds[POLL_FD_STDIN].revents));
+                createPollEventText(
+                    &pollEventText,
+                    pollfds[POLL_FD_STDIN].revents));
 
             ensure(pollfds[POLL_FD_STDIN].events);
 
             if ( ! (pollfds[POLL_FD_STDIN].revents & POLLIN))
-            {
-                ensure( ! closedStdin);
                 closedStdin = -1;
-            }
             else
             {
                 pollfds[POLL_FD_STDIN].fd = nullPipe.mRdFile->mFd;
@@ -526,22 +578,20 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         {
             ensure(rc);
             ensure(STDOUT_FILENO == pollfds[POLL_FD_STDOUT].fd);
+            ensure( ! closedStdout);
 
             ++eventCount;
 
             debug(
                 1,
                 "poll stdout %s",
-                pollEventText(pollfds[POLL_FD_STDOUT].revents));
+                createPollEventText(
+                    &pollEventText,
+                    pollfds[POLL_FD_STDOUT].revents));
 
             ensure(pollfds[POLL_FD_STDOUT].events);
 
-            if ( ! (pollfds[POLL_FD_STDOUT].revents & POLLOUT))
-            {
-                ensure( ! closedStdout);
-                closedStdout = -1;
-            }
-            else
+            while (pollfds[POLL_FD_STDOUT].revents & POLLOUT)
             {
                 int available;
 
@@ -555,43 +605,59 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
                 if (testAction() && available)
                     available = 1 + random() % available;
 
-                ssize_t bytes;
+                ssize_t bytes = spliceFd(
+                    STDIN_FILENO,
+                    STDOUT_FILENO,
+                    available,
+                    SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
 
-                do
-                    bytes = spliceFd(
-                        STDIN_FILENO,
-                        STDOUT_FILENO,
-                        available,
-                        SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
-                while (-1 == bytes && EINTR == errno);
-
-                debug(1, "spliced stdin to stdout %zd", bytes);
+                debug(1,
+                      "spliced stdin to stdout %zd out of %d",
+                      bytes,
+                      available);
 
                 /* If the child has closed its end of the tether, the watchdog
                  * will read EOF on the tether. Continue running the event
                  * loop until the child terminates. */
 
-                if ( ! bytes)
+                if (-1 == bytes)
                 {
-                    ensure( ! closedStdin);
-                    closedStdin = -1;
-                }
-                else
-                {
-                    if (-1 == bytes)
+                    if (EPIPE != errno)
                     {
-                        if (EWOULDBLOCK != errno)
+                        switch (errno)
+                        {
+                        default:
                             terminate(
                                 errno,
                                 "Unable to write to stdout");
-                        bytes = 0;
+
+                        case EWOULDBLOCK:
+                        case EINTR:
+                            break;
+                        }
+
+                        break;
                     }
-
-                    pollfds[POLL_FD_STDIN].fd = STDIN_FILENO;
-
-                    pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
-                    pollfds[POLL_FD_STDIN].events  = pollInputEvents;
                 }
+                else if (bytes)
+                {
+                    /* Continue polling stdout unless all the available
+                     * data on stdin was transferred because this might
+                     * be the last chunk of data on stdin before it was
+                     * closed so there will be no more available. */
+
+                    if (bytes >= available)
+                    {
+                        pollfds[POLL_FD_STDIN].fd = STDIN_FILENO;
+
+                        pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
+                        pollfds[POLL_FD_STDIN].events  = pollInputEvents;
+                    }
+                    break;
+                }
+
+                closedStdout = -1;
+                break;
             }
         }
 
@@ -646,26 +712,28 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             debug(
                 1,
                 "poll signal %s",
-                pollEventText(pollfds[POLL_FD_SIGNAL].revents));
+                createPollEventText(
+                    &pollEventText,
+                    pollfds[POLL_FD_SIGNAL].revents));
 
-            ssize_t       len;
             unsigned char sigNum;
 
-            do
-                len = read(aSigPipe->mRdFile->mFd, &sigNum, 1);
-            while (-1 == len && EINTR == errno);
+            ssize_t len = read(aSigPipe->mRdFile->mFd, &sigNum, 1);
 
             if (-1 == len)
-                terminate(
-                    errno,
-                    "Unable to read signal from queue");
-
-            if ( ! len)
-                terminate(
-                    0,
-                    "Signal queue closed unexpectedly");
-
-            if (kill(aChildPid, sigNum))
+            {
+                if (EINTR != errno)
+                    terminate(
+                        errno,
+                        "Unable to read signal from queue");
+            }
+            else if ( ! len)
+            {
+                    terminate(
+                        0,
+                        "Signal queue closed unexpectedly");
+            }
+            else if (kill(aChildPid, sigNum))
             {
                 if (ESRCH != errno)
                     warn(
@@ -688,7 +756,9 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             debug(
                 1,
                 "poll child %s",
-                pollEventText(pollfds[POLL_FD_CHILD].revents));
+                createPollEventText(
+                    &pollEventText,
+                    pollfds[POLL_FD_CHILD].revents));
 
             ensure(pollfds[POLL_FD_CHILD].events);
 
@@ -950,10 +1020,11 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to add watch on child process termination");
-    debug(1,
-          "child termination pipe fds %d %d",
-          termPipe.mRdFile->mFd,
-          termPipe.mWrFile->mFd);
+
+    if (ignoreProcessSigPipe())
+        terminate(
+            errno,
+            "Unable to ignore pipe signal");
 
     /* Only identify the watchdog process after all the signal
      * handlers have been installed. The functional tests can
@@ -1108,6 +1179,11 @@ cmdRunCommand(char **aCmd)
      * running, release the pid file if one was allocated. */
 
     monitorChild(childPid, &termPipe, &sigPipe);
+
+    if (resetProcessSigPipe())
+        terminate(
+            errno,
+            "Unable to reset pipe signal");
 
     if (unwatchProcessSignals())
         terminate(
