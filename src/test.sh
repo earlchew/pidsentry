@@ -2,6 +2,10 @@
 
 set -eu
 
+# Use explicit call to /bin/echo to ensure that echo is run as a separate
+# process from the shell. This is important because SIGPIPE will be
+# delivered to the separate echo process, rather than to the shell.
+
 testCase()
 {
     printf '\ntestCase - %s\n' "$1"
@@ -65,6 +69,43 @@ runWait()
 runTest()
 {
     :
+    : testCase 'Test flock times out'
+    : testCase 'Test stdout is non blocking'
+
+    return 0
+
+    # Use SIGTERM delivery to child to verify that the watchdog is
+    # not blocked.
+    exec 3>&1
+    {
+        /bin/echo "Filling" >&2
+        dd if=/dev/zero bs=$((64 * 1024)) count=1
+        ( sleep 2
+          /bin/echo "Competing" >&2
+          dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
+        if ./k9 -dd -- sh -c "
+               sleep 2
+               dd if=/dev/zero bs=$((64 * 1024)) count=1
+               sleep 5" ; then
+            /bin/echo @@@A >&3
+        else
+            /bin/echo @@@A >&3
+        fi
+        wait
+    } | {
+        sleep 3
+        dd of=/dev/null bs=$((32 * 1024)) count=1
+        sleep 2
+        exec 0>&-
+        sleep 5
+        echo @@@B
+    }
+    exit 0
+
+
+    exit 0
+
+
 }
 
 runTests()
@@ -101,11 +142,11 @@ runTests()
     testExit 1 runWait ./k9
 
     testCase 'Simple command'
-    REPLY=$(runWait ./k9 -dd echo test)
+    REPLY=$(runWait ./k9 -dd /bin/echo test)
     [ x"$REPLY" = x"test" ]
 
     testCase 'Simple command in test mode'
-    REPLY=$(runWait ./k9 -dd -T echo test)
+    REPLY=$(runWait ./k9 -dd -T /bin/echo test)
     [ x"$REPLY" = x"test" ]
 
     testCase 'Empty pid file'
@@ -122,13 +163,13 @@ runTests()
 
     testCase 'Dead process in pid file'
     rm -f pidfile
-    sh -c 'echo $$' > pidfile
+    sh -c '/bin/echo $$' > pidfile
     testExit 0 runWait ./k9 -T -d -p pidfile -- true
     [ ! -f pidfile ]
 
     testCase 'Aliased process in pid file'
     rm -f pidfile
-    ( sh -c 'echo $(( $$ + 1))' > pidfile ; sleep 1 ) &
+    ( sh -c '/bin/echo $(( $$ + 1))' > pidfile ; sleep 1 ) &
     sleep 1
     testExit 0 runWait ./k9 -T -d -p pidfile -- true
     wait
@@ -147,12 +188,12 @@ runTests()
 
     testCase 'Identify processes'
     for REPLY in $(
-      exec sh -c 'echo $$ ; exec ./k9 -T -i -- sh -c '\''echo $$'\' |
+      exec sh -c '/bin/echo $$ ; exec ./k9 -T -i -- sh -c '\''/bin/echo $$'\' |
       {
         read REALPARENT
         read PARENT ; read CHILD
         read REALCHILD
-        echo "$REALPARENT/$PARENT $REALCHILD/$CHILD"
+        /bin/echo "$REALPARENT/$PARENT $REALCHILD/$CHILD"
       }) ; do
 
       [ x"${REPLY%% *}" = x"${REPLY#* }" ]
@@ -163,7 +204,7 @@ runTests()
 
     testCase 'Signal exit code propagation'
     testExit $((128 + 9)) runWait ./k9 -T -- sh -c '
-        echo Killing $$ ; kill -9 $$'
+        /bin/echo Killing $$ ; kill -9 $$'
 
     testCase 'Child shares process group'
     runWait ./k9 -i -dd -- ps -o pid,pgid,cmd | {
@@ -173,7 +214,7 @@ runTests()
         PARENTPGID=
         CHILDPGID=
         while read PID PGID CMD ; do
-            echo "$PARENT - $CHILD - $PID $PGID $CMD"
+            /bin/echo "$PARENT - $CHILD - $PID $PGID $CMD"
             if [ x"$PARENT" = x"$PID" ] ; then
                 CHILDPGID=$PGID
             elif [ x"$CHILD" = x"$PID" ] ; then
@@ -193,7 +234,7 @@ runTests()
         PARENTPGID=
         CHILDPGID=
         while read PID PGID CMD ; do
-            echo "$PARENT - $CHILD - $PID $PGID $CMD" >&2
+            /bin/echo "$PARENT - $CHILD - $PID $PGID $CMD" >&2
             if [ x"$PARENT" = x"$PID" ] ; then
                 CHILDPGID=$PGID
             elif [ x"$CHILD" = x"$PID" ] ; then
@@ -244,19 +285,19 @@ runTests()
 
     testCase 'Tether named alone in argument'
     testOutput "1" = '$(
-      runWait ./k9 -T -n @tether@ -- echo @tether@ | grep "1")'
+      runWait ./k9 -T -n @tether@ -- /bin/echo @tether@ | grep "1")'
 
     testCase 'Tether named as suffix in argument'
     testOutput "x1" = '$(
-      runWait ./k9 -T -n @tether@ -- echo x@tether@ | grep "1")'
+      runWait ./k9 -T -n @tether@ -- /bin/echo x@tether@ | grep "1")'
 
     testCase 'Tether named as prefix argument'
     testOutput "1x" = '$(
-      runWait ./k9 -T -n @tether@ -- echo @tether@x | grep "1")'
+      runWait ./k9 -T -n @tether@ -- /bin/echo @tether@x | grep "1")'
 
     testCase 'Tether named as infix argument'
     testOutput "x1x" = '$(
-      runWait ./k9 -T -n @tether@ -- echo x@tether@x | grep "1")'
+      runWait ./k9 -T -n @tether@ -- /bin/echo x@tether@x | grep "1")'
 
     testCase 'Unexpected death of child'
     REPLY=$(
@@ -264,14 +305,14 @@ runTests()
       {
         if $VALGRIND ./k9 -T -d -i -- sh -c '
             while : ; do : ; done ; exit 0' 3>&- ; then
-          echo 0 >&3
+          /bin/echo 0 >&3
         else
-          echo $? >&3
+          /bin/echo $? >&3
         fi
       } | {
         exec >&2
-        read PARENT ; echo "Parent $PARENT"
-        read CHILD  ; echo "Child $CHILD"
+        read PARENT ; /bin/echo "Parent $PARENT"
+        read CHILD  ; /bin/echo "Child $CHILD"
         kill -9 -- "$CHILD"
       })
     [ x"$REPLY" = x$((128 + 9)) ]
@@ -280,7 +321,7 @@ runTests()
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
         sh -c '
-          echo $$
+          /bin/echo $$
           exec >/dev/null
           exec setsid '"$VALGRIND"' ./k9 -T -dd -- sh -c "
               trap '\''exit 1'\'''"$SIGNALS"'
@@ -289,14 +330,14 @@ runTests()
            read REPLY
            while kill -0 "$REPLY" 2>&- ; do
                kill -"$SIG" "$REPLY"
-               date ; echo kill -"$SIG" "$REPLY"
+               date ; /bin/echo kill -"$SIG" "$REPLY"
                kill -0 "$REPLY" 2>&- || break
                date
                sleep 1
            done >&2
            ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
            kill -9 -"$REPLY" 2>&- || :
-           echo OK
+           /bin/echo OK
         } | {
             read REPLY
             [ x"$REPLY" = x"OK" ]
@@ -307,7 +348,7 @@ runTests()
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
         sh -c '
-          echo $$
+          /bin/echo $$
           exec >/dev/null
           exec setsid '"$VALGRIND"' ./k9 -T -dd -- sh -c "
               trap '\''exit 1'\'''"$SIGNALS"'
@@ -317,14 +358,14 @@ runTests()
            sleep 1
            while kill -0 "$REPLY" 2>&- ; do
                kill -"$SIG" "$REPLY"
-               date ; echo kill -"$SIG" "$REPLY"
+               date ; /bin/echo kill -"$SIG" "$REPLY"
                kill -0 "$REPLY" 2>&- || break
                date
                sleep 1
            done >&2
            ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
            kill -9 -"$REPLY" 2>&- || :
-           echo OK
+           /bin/echo OK
         } | {
             read REPLY
             [ x"$REPLY" = x"OK" ]
@@ -335,18 +376,33 @@ runTests()
     testOutput "X-$((128 + 13))" = '$(
         exec 3>&1
         if ./k9 -T -d -d -- sh -cx "
-            while : ; do echo X || exit \$?; sleep 1 ; done " ; then
-            echo "X-$?" >&3
+            while : ; do /bin/echo X || exit \$?; sleep 1 ; done " ; then
+            /bin/echo "X-$?" >&3
         else
-            echo "X-$?" >&3
+            /bin/echo "X-$?" >&3
         fi | read
+    )'
+
+    testCase 'Test EPIPE propagates to child'
+    testOutput "X-2" = '$(
+        exec 3>&1
+        if ./k9 -dd -- sh -c "
+            sleep 1 ;
+            while : ; do
+                /bin/echo X || exit 2
+            done"
+        then
+            /bin/echo "X-$?" >&3
+        else
+            /bin/echo "X-$?" >&3
+        fi | dd of=/dev/null bs=1 count=$((1 + RANDOM % 128))
     )'
 
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
         /usr/bin/time -p $VALGRIND ./k9 -T -t 4 -- sh -c '
             trap "" 15 ; sleep 6' 2>&1 | grep real)
-    echo "Outcome $REPLY"
+    /bin/echo "Outcome $REPLY"
     REPLY=${REPLY%%.*}
     REPLY=${REPLY##* }
     [ "$REPLY" -ge 6 ]
