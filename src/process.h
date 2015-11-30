@@ -72,6 +72,12 @@ watchProcessSignals(const struct Pipe *aSigPipe);
 int
 unwatchProcessSignals(void);
 
+int
+ignoreProcessSigPipe(void);
+
+int
+resetProcessSigPipe(void);
+
 /* -------------------------------------------------------------------------- */
 int
 initProcess(const char *aArg0);

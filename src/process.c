@@ -66,6 +66,60 @@ static const char *sArg0;
 static uint64_t    sTimeBase;
 
 /* -------------------------------------------------------------------------- */
+static sighandler_t sSigPipeHandler = SIG_ERR;
+
+int
+ignoreProcessSigPipe(void)
+{
+    int rc = -1;
+
+    sighandler_t prevHandler = signal(SIGPIPE, SIG_IGN);
+
+    if (SIG_ERR == prevHandler)
+        goto Finally;
+
+    sSigPipeHandler = prevHandler;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+resetProcessSigPipe_(void)
+{
+    int rc = -1;
+
+    sighandler_t prevHandler = sSigPipeHandler;
+
+    if (SIG_ERR != prevHandler)
+    {
+        if (SIG_ERR == signal(SIGPIPE, prevHandler))
+            goto Finally;
+
+        sSigPipeHandler = SIG_ERR;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+resetProcessSigPipe(void)
+{
+    return resetProcessSigPipe_();
+}
+
+/* -------------------------------------------------------------------------- */
 static int
 writeSignal_(int aFd, char aSigNum)
 {
@@ -96,23 +150,27 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int sDeadChildFd_ = -1;
+static int sDeadChildRdFd_ = -1;
+static int sDeadChildWrFd_ = -1;
 
 static void
 deadChild_(int aSigNum)
 {
     ++sSigContext;
     {
-        int deadChildFd = sDeadChildFd_;
+        int deadChildRdFd = sDeadChildRdFd_;
+        int deadChildWrFd = sDeadChildWrFd_;
 
-        debug(1, "queued dead child to fd %d", deadChildFd);
+        debug(1,
+              "queued dead child to fd %d from fd %d",
+              deadChildRdFd, deadChildWrFd);
 
-        if (writeSignal_(deadChildFd, aSigNum))
+        if (writeSignal_(deadChildWrFd, aSigNum))
         {
             if (EBADF != errno && EWOULDBLOCK != errno)
                 terminate(
                     errno,
-                    "Unable to indicate dead child to fd %d", deadChildFd);
+                    "Unable to indicate dead child to fd %d", deadChildWrFd);
         }
     }
     --sSigContext;
@@ -121,7 +179,8 @@ deadChild_(int aSigNum)
 static int
 resetProcessChildrenWatch_(void)
 {
-    sDeadChildFd_ = -1;
+    sDeadChildWrFd_ = -1;
+    sDeadChildRdFd_ = -1;
 
     return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
 }
@@ -134,9 +193,13 @@ watchProcessChildren(const struct Pipe *aTermPipe)
     /* It is ok to mark the termination pipe non-blocking because this
      * file descriptor is not shared with any other process. */
 
-    sDeadChildFd_ = aTermPipe->mWrFile->mFd;
+    sDeadChildRdFd_ = aTermPipe->mRdFile->mFd;
+    sDeadChildWrFd_ = aTermPipe->mWrFile->mFd;
 
-    if (nonblockingFd(sDeadChildFd_))
+    if (nonblockingFd(sDeadChildRdFd_))
+        goto Finally;
+
+    if (nonblockingFd(sDeadChildWrFd_))
         goto Finally;
 
     if (SIG_ERR == signal(SIGCHLD, deadChild_))
@@ -158,7 +221,8 @@ unwatchProcessChildren(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int sSignalFd_ = -1;
+static int sSignalRdFd_ = -1;
+static int sSignalWrFd_ = -1;
 
 static struct SignalWatch {
     int          mSigNum;
@@ -177,16 +241,21 @@ caughtSignal_(int aSigNum)
 {
     ++sSigContext;
     {
-        int signalFd = sSignalFd_;
+        int signalRdFd = sSignalRdFd_;
+        int signalWrFd = sSignalWrFd_;
 
-        debug(1, "queued signal %d", aSigNum);
+        debug(1,
+              "queued signal %d from fd %d to fd %d",
+              aSigNum,
+              signalWrFd,
+              signalRdFd);
 
-        if (writeSignal_(signalFd, aSigNum))
+        if (writeSignal_(signalWrFd, aSigNum))
         {
             if (EWOULDBLOCK != errno)
                 terminate(
                     errno,
-                    "Unable to queue signal %d on fd %d", aSigNum, signalFd);
+                    "Unable to queue signal %d on fd %d", aSigNum, signalWrFd);
         }
     }
     --sSigContext;
@@ -200,9 +269,13 @@ watchProcessSignals(const struct Pipe *aSigPipe)
     /* It is ok to mark the signal pipe non-blocking because this
      * file descriptor is not shared with any other process. */
 
-    sSignalFd_ = aSigPipe->mWrFile->mFd;
+    sSignalRdFd_ = aSigPipe->mRdFile->mFd;
+    sSignalWrFd_ = aSigPipe->mWrFile->mFd;
 
-    if (nonblockingFd(sSignalFd_))
+    if (nonblockingFd(sSignalRdFd_))
+        goto Finally;
+
+    if (nonblockingFd(sSignalWrFd_))
         goto Finally;
 
     for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
@@ -272,7 +345,8 @@ resetProcessSignalsWatch_(void)
         }
     }
 
-    sSignalFd_ = -1;
+    sSignalWrFd_ = -1;
+    sSignalRdFd_ = -1;
 
     if (rc)
         errno = err;
@@ -296,6 +370,9 @@ resetSignals_(void)
         goto Finally;
 
     if (resetProcessChildrenWatch_())
+        goto Finally;
+
+    if (resetProcessSigPipe_())
         goto Finally;
 
     rc = 0;
