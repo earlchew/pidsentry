@@ -36,6 +36,11 @@ struct FileDescriptor
     struct FileDescriptor *mPrev;
 };
 
+struct FileDescriptorLockTimeout
+{
+    unsigned mMilliSeconds;
+};
+
 /* -------------------------------------------------------------------------- */
 int
 createFileDescriptor(struct FileDescriptor *self,
@@ -59,6 +64,18 @@ nonblockingFileDescriptor(struct FileDescriptor *self);
 
 int
 closeFileDescriptorOnExec(struct FileDescriptor *self, unsigned aCloseOnExec);
+
+/* -------------------------------------------------------------------------- */
+int
+lockFileDescriptor(struct FileDescriptor *self,
+                   int aType,
+                   const struct FileDescriptorLockTimeout *aTimeout);
+
+int
+unlockFileDescriptor(struct FileDescriptor *self);
+
+#define FILE_DESCRIPTOR_LOCK_MILLISECONDS(aTimeout) \
+    ( & ((struct FileDescriptorLockTimeout) { .mMilliSeconds = (aTimeout) }))
 
 /* -------------------------------------------------------------------------- */
 

@@ -43,10 +43,11 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
-#include <signal.h>
 
 #include <sys/file.h>
 #include <sys/wait.h>
+
+#include <signal.h>
 #include <sys/time.h>
 
 struct ProcessLock
@@ -416,13 +417,6 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid)
 
 /* -------------------------------------------------------------------------- */
 static uint64_t
-milliSeconds(uint64_t aMilliSeconds)
-{
-    return aMilliSeconds * 1000 * 1000;
-}
-
-/* -------------------------------------------------------------------------- */
-static uint64_t
 monotonicTime_(void)
 {
     struct timespec ts;
@@ -518,10 +512,6 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static void
-lockProcessTimer_(int aSigNum)
-{ }
-
 static int
 lockProcessLock_(struct ProcessLock *self)
 {
@@ -531,87 +521,7 @@ lockProcessLock_(struct ProcessLock *self)
     {
         ensure(LOCK_UN == self->mLock);
 
-        /* Disable the timer and SIGALRM action so that a new
-         * timer and action can be installed to provide some
-         * protection against deadlocks.
-         *
-         * Take care to disable the timer, before resetting the
-         * signal handler, then re-configuring the timer. */
-
-        struct itimerval prevTimer;
-
-        struct itimerval disableTimer =
-        {
-            .it_value    = { .tv_sec = 0 },
-            .it_interval = { .tv_sec = 0 },
-        };
-
-        if (setitimer(ITIMER_REAL, &disableTimer, &prevTimer))
-            goto Finally;
-
-        struct sigaction prevTimerAction;
-
-        struct sigaction timerAction =
-        {
-            .sa_handler = lockProcessTimer_,
-        };
-
-        if (sigaction(SIGALRM, &timerAction, &prevTimerAction))
-            goto Finally;
-
-        struct itimerval flockTimer =
-        {
-            .it_value    = { .tv_sec = 1 },
-            .it_interval = { .tv_sec = 1 },
-        };
-
-        if (setitimer(ITIMER_REAL, &flockTimer, 0))
-            goto Finally;
-
-        /* The installed timer will inject periodic SIGALRM signals
-         * and cause flock() to return with EINTR. This allows
-         * the deadline to be checked periodically. */
-
-        for (uint64_t deadlineTime =
-                 monotonicTime_() + milliSeconds(30 * 1000); ; )
-        {
-            if (deadlineTime < monotonicTime_())
-            {
-                errno = EDEADLOCK;
-                goto Finally;
-            }
-
-            /* Very infrequently block here to exercise the EINTR
-             * functionality of the delivered SIGALRM signal. */
-
-            if (testAction() && 1 > random() % 10)
-            {
-                struct timeval timeout =
-                {
-                    .tv_sec = 24 * 60 * 60,
-                };
-
-                ensure(-1 == select(0, 0, 0, 0, &timeout) && EINTR == errno);
-            }
-
-            if ( ! flock(self->mFile->mFd, LOCK_EX))
-                break;
-
-            if (EINTR != errno)
-                goto Finally;
-        }
-
-        /* Restore the previous setting of the timer and SIGALRM handler.
-         * Take care to disable the timer, before restoring the
-         * signal handler, then restoring the setting of the timer. */
-
-        if (setitimer(ITIMER_REAL, &disableTimer, 0))
-            goto Finally;
-
-        if (sigaction(SIGALRM, &prevTimerAction, 0))
-            goto Finally;
-
-        if (setitimer(ITIMER_REAL, &prevTimer, 0))
+        if (lockFileDescriptor(self->mFile, LOCK_EX, 0))
             goto Finally;
 
         self->mLock = LOCK_EX;
@@ -636,7 +546,7 @@ unlockProcessLock_(struct ProcessLock *self)
     {
         ensure(LOCK_UN != self->mLock);
 
-        if (flock(self->mFile->mFd, LOCK_UN))
+        if (unlockFileDescriptor(self->mFile))
             goto Finally;
 
         self->mLock = LOCK_UN;
@@ -670,6 +580,9 @@ initProcess(const char *aArg0)
     if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
         goto Finally;
     sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
+
+    if (initErrorPrinter())
+        goto Finally;
 
     rc = 0;
 
@@ -709,13 +622,16 @@ lockProcessLock(void)
 {
     int rc = -1;
 
-    if ( ! sSigContext)
+    if (sSigContext)
     {
-        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
-
-        if (processLock && lockProcessLock_(processLock))
-            goto Finally;
+        errno = EWOULDBLOCK;
+        goto Finally;
     }
+
+    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+
+    if (processLock && lockProcessLock_(processLock))
+        goto Finally;
 
     rc = 0;
 
@@ -732,13 +648,16 @@ unlockProcessLock(void)
 {
     int rc = -1;
 
-    if ( ! sSigContext)
+    if (sSigContext)
     {
-        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
-
-        if (processLock && unlockProcessLock_(processLock))
-            goto Finally;
+        errno = EWOULDBLOCK;
+        goto Finally;
     }
+
+    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+
+    if (processLock && unlockProcessLock_(processLock))
+        goto Finally;
 
     rc = 0;
 

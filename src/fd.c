@@ -29,10 +29,20 @@
 
 #include "fd.h"
 #include "macros.h"
+#include "test.h"
+#include "error.h"
+#include "timekeeping.h"
 
+#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <signal.h>
+#include <inttypes.h>
+#include <process.h>
+
+#include <sys/time.h>
+#include <sys/file.h>
 
 #include <valgrind/valgrind.h>
 
@@ -224,6 +234,168 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
     }
 
 Finally:
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+writeFd(int aFd, const char *aBuf, size_t aLen)
+{
+    const char *bufPtr = aBuf;
+    const char *bufEnd = bufPtr + aLen;
+
+    while (bufPtr != bufEnd)
+    {
+        ssize_t len;
+
+        len = write(aFd, bufPtr, bufEnd - bufPtr);
+
+        if (-1 == len)
+        {
+            if (EINTR == errno)
+                continue;
+
+            if (bufPtr != aBuf)
+                break;
+
+            return -1;
+        }
+
+        if ( ! len)
+        {
+            errno = EWOULDBLOCK;
+            return -1;
+        }
+
+        bufPtr += len;
+    }
+
+    return bufPtr - aBuf;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+lockFdTimer_(int aSigNum)
+{ }
+
+int
+lockFd(int aFd, int aType, unsigned aMilliSeconds)
+{
+    int rc = -1;
+
+    if (LOCK_EX != aType && LOCK_SH != aType)
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    /* Disable the timer and SIGALRM action so that a new
+     * timer and action can be installed to provide some
+     * protection against deadlocks.
+     *
+     * Take care to disable the timer, before resetting the
+     * signal handler, then re-configuring the timer. */
+
+    struct itimerval prevTimer;
+
+    static const struct itimerval disableTimer =
+    {
+        .it_value    = { .tv_sec = 0 },
+        .it_interval = { .tv_sec = 0 },
+    };
+
+    if (setitimer(ITIMER_REAL, &disableTimer, &prevTimer))
+        goto Finally;
+
+    struct sigaction prevTimerAction;
+
+    struct sigaction timerAction =
+    {
+        .sa_handler = lockFdTimer_,
+    };
+
+    if (sigaction(SIGALRM, &timerAction, &prevTimerAction))
+        goto Finally;
+
+    static const struct itimerval flockTimer =
+    {
+        .it_value    = { .tv_sec = 1 },
+        .it_interval = { .tv_sec = 1 },
+    };
+
+    if (setitimer(ITIMER_REAL, &flockTimer, 0))
+        goto Finally;
+
+    /* The installed timer will inject periodic SIGALRM signals
+     * and cause flock() to return with EINTR. This allows
+     * the deadline to be checked periodically. */
+
+    for (uint64_t deadlineTime =
+             ownProcessElapsedTime() + milliSeconds(aMilliSeconds); ; )
+    {
+        if (deadlineTime < ownProcessElapsedTime())
+        {
+            errno = EDEADLOCK;
+            goto Finally;
+        }
+
+        /* Very infrequently block here to exercise the EINTR
+         * functionality of the delivered SIGALRM signal. */
+
+        if (testAction() && 1 > random() % 10)
+        {
+            struct timeval timeout =
+            {
+                .tv_sec = 24 * 60 * 60,
+            };
+
+            ensure(-1 == select(0, 0, 0, 0, &timeout) && EINTR == errno);
+        }
+
+        if ( ! flock(aFd, aType))
+            break;
+
+        if (EINTR != errno)
+            goto Finally;
+    }
+
+    /* Restore the previous setting of the timer and SIGALRM handler.
+     * Take care to disable the timer, before restoring the
+     * signal handler, then restoring the setting of the timer. */
+
+    if (setitimer(ITIMER_REAL, &disableTimer, 0))
+        goto Finally;
+
+    if (sigaction(SIGALRM, &prevTimerAction, 0))
+        goto Finally;
+
+    if (setitimer(ITIMER_REAL, &prevTimer, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+unlockFd(int aFd)
+{
+    int rc = -1;
+
+    if (flock(aFd, LOCK_UN))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
 
     return rc;
 }

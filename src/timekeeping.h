@@ -26,60 +26,18 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef ERROR_H
-#define ERROR_H
+#ifndef TIMEKEEPING_H
+#define TIMEKEEPING_H
 
-#include "options.h"
-
-/* -------------------------------------------------------------------------- */
-#define breadcrumb() \
-    debug_(__FILE__, __LINE__, ".")
-
-#define debug(aLevel, ...)                              \
-    if ((aLevel) < gOptions.mDebug)                     \
-        debug_(__FILE__, __LINE__, ## __VA_ARGS__)
-
-void
-debug_(
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
+#include <inttypes.h>
 
 /* -------------------------------------------------------------------------- */
-#define ensure(aPredicate)                                      \
-    do                                                          \
-        if ( ! (aPredicate))                                    \
-            ensure_(__FILE__, __LINE__, 0, # aPredicate);       \
-    while (0)
-
-void
-ensure_(
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
-
-/* -------------------------------------------------------------------------- */
-#define warn(aErrCode, ...) \
-    warn_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
-
-void
-warn_(
-    int aErrCode,
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
-
-/* -------------------------------------------------------------------------- */
-#define terminate(aErrCode, ...) \
-    terminate_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
-
-void
-terminate_(
-    int aErrCode,
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
-
-/* -------------------------------------------------------------------------- */
-int
-initErrorPrinter(void);
+static inline uint64_t
+milliSeconds(uint64_t aMilliSeconds)
+{
+    return aMilliSeconds * 1000 * 1000;
+}
 
 /* -------------------------------------------------------------------------- */
 
-#endif /* ERROR_H */
+#endif /* TIMEKEEPING_H */

@@ -306,3 +306,19 @@ closeFileDescriptorOnExec(struct FileDescriptor *self, unsigned aCloseOnExec)
 }
 
 /* -------------------------------------------------------------------------- */
+int
+lockFileDescriptor(struct FileDescriptor *self,
+                   int aType,
+                   const struct FileDescriptorLockTimeout *aTimeout)
+{
+    return lockFd(self->mFd, aType, aTimeout ? aTimeout->mMilliSeconds : 30000);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+unlockFileDescriptor(struct FileDescriptor *self)
+{
+    return unlockFd(self->mFd);
+}
+
+/* -------------------------------------------------------------------------- */

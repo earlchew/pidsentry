@@ -56,11 +56,9 @@
  * cmdRunCommand() is too big, break it up
  * EINTR everywhere, especially flock
  * SIGALARM for occasional EINTR
- * Stuck flock
  * cloneProcessLock -- and don't use /proc/self
  * struct ProcessLock using mPathName and mPathName_
  * struct PidFile using mPathName and mPathName_
- * Use splice()
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
  * Bracket splice() with SIGALARM (setitimer() and getitimer())

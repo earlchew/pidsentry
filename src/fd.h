@@ -55,6 +55,15 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec);
 ssize_t
 spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 
+ssize_t
+writeFd(int aFd, const char *aBuf, size_t aLen);
+
+int
+lockFd(int aFd, int aType, unsigned aMilliSeconds);
+
+int
+unlockFd(int aFd);
+
 /* -------------------------------------------------------------------------- */
 
 #endif /* FD_H */

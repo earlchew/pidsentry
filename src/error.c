@@ -30,6 +30,7 @@
 #include "error.h"
 #include "macros.h"
 #include "process.h"
+#include "fd.h"
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -38,6 +39,12 @@
 #include <unistd.h>
 
 /* -------------------------------------------------------------------------- */
+static struct {
+    char  *mBuf;
+    size_t mSize;
+    FILE  *mFile;
+} sPrintBuf;
+
 static void
 print_(
     int aErrCode,
@@ -46,8 +53,6 @@ print_(
 {
     FINALLY
     ({
-        lockProcessLock();
-
         uint64_t elapsed   = ownProcessElapsedTime();
         uint64_t elapsed_s = elapsed / (1000 * 1000 * 1000);
         uint64_t elapsed_m;
@@ -57,20 +62,47 @@ print_(
         elapsed_m = elapsed_s % (60 * 60) / 60;
         elapsed_s = elapsed_s % (60 * 60) % 60;
 
-        dprintf(
-            STDERR_FILENO,
-            "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
-            ownProcessName(),
-            elapsed_h, elapsed_m, elapsed_s,
-            (intmax_t) getpid(),
-            aFile, aLine);
-        vdprintf(STDERR_FILENO, aFmt, aArgs);
-        if (aErrCode)
-            dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
-        else
-            dprintf(STDERR_FILENO, "\n");
+        if (lockProcessLock())
+        {
+            int err = errno;
 
-        unlockProcessLock();
+            dprintf(
+                STDERR_FILENO,
+                "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
+                ownProcessName(),
+                elapsed_h, elapsed_m, elapsed_s,
+                (intmax_t) getpid(),
+                aFile, aLine);
+
+            if (EWOULDBLOCK != err)
+                dprintf(STDERR_FILENO, " - lock error %d - ", err);
+
+            vdprintf(STDERR_FILENO, aFmt, aArgs);
+            if (aErrCode)
+                dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
+            else
+                dprintf(STDERR_FILENO, "\n");
+        }
+        else
+        {
+            fprintf(
+                sPrintBuf.mFile,
+                "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
+                ownProcessName(),
+                elapsed_h, elapsed_m, elapsed_s,
+                (intmax_t) getpid(),
+                aFile, aLine);
+            vfprintf(sPrintBuf.mFile, aFmt, aArgs);
+            if (aErrCode)
+                fprintf(sPrintBuf.mFile, " - errno %d\n", aErrCode);
+            else
+                fprintf(sPrintBuf.mFile, "\n");
+            fflush(sPrintBuf.mFile);
+
+            writeFd(STDERR_FILENO, sPrintBuf.mBuf, sPrintBuf.mSize);
+
+            unlockProcessLock();
+        }
     });
 }
 
@@ -142,6 +174,26 @@ terminate_(
         va_end(args);
         _exit(1);
     });
+}
+
+/* -------------------------------------------------------------------------- */
+int
+initErrorPrinter(void)
+{
+    int rc = -1;
+
+    sPrintBuf.mFile = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize);
+
+    if ( ! sPrintBuf.mFile)
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
