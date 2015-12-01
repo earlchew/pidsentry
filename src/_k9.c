@@ -305,12 +305,21 @@ static int
 reapChild(pid_t aChildPid)
 {
     int status;
+    pid_t pid;
 
-    if (wait(&status) != aChildPid)
-        terminate(
-            errno,
-            "Unable to reap child pid '%jd'",
-            (intmax_t) aChildPid);
+    ensure(-1 != aChildPid && aChildPid);
+
+    do
+    {
+        pid = waitpid(aChildPid, &status, 0);
+
+        if (-1 == pid && EINTR != errno)
+            terminate(
+                errno,
+                "Unable to reap child pid '%jd'",
+                (intmax_t) aChildPid);
+
+    } while (pid != aChildPid);
 
     return status;
 }
@@ -591,74 +600,83 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
             ensure(pollfds[POLL_FD_STDOUT].events);
 
-            while (pollfds[POLL_FD_STDOUT].revents & POLLOUT)
+            do
             {
-                int available;
-
-                if (ioctl(STDIN_FILENO, FIONREAD, &available))
-                    terminate(
-                        errno,
-                        "Unable to determine amount of readable data in stdin");
-
-                ensure(available);
-
-                if (testAction() && available)
-                    available = 1 + random() % available;
-
-                ssize_t bytes = spliceFd(
-                    STDIN_FILENO,
-                    STDOUT_FILENO,
-                    available,
-                    SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
-
-                debug(1,
-                      "spliced stdin to stdout %zd out of %d",
-                      bytes,
-                      available);
-
-                /* If the child has closed its end of the tether, the watchdog
-                 * will read EOF on the tether. Continue running the event
-                 * loop until the child terminates. */
-
-                if (-1 == bytes)
+                if (pollfds[POLL_FD_STDOUT].revents & POLLOUT)
                 {
-                    if (EPIPE != errno)
-                    {
-                        switch (errno)
-                        {
-                        default:
-                            terminate(
-                                errno,
-                                "Unable to write to stdout");
+                    int available;
 
-                        case EWOULDBLOCK:
-                        case EINTR:
+                    /* Use FIONREAD to dynamically determine the amount
+                     * of data in stdin, remembering that the child
+                     * process could change the capacity of the pipe
+                     * at runtime. */
+
+                    if (ioctl(STDIN_FILENO, FIONREAD, &available))
+                        terminate(
+                            errno,
+                            "Unable to find amount of readable data in stdin");
+
+                    ensure(available);
+
+                    if (testAction() && available)
+                        available = 1 + random() % available;
+
+                    ssize_t bytes = spliceFd(
+                        STDIN_FILENO,
+                        STDOUT_FILENO,
+                        available,
+                        SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
+
+                    debug(1,
+                          "spliced stdin to stdout %zd out of %d",
+                          bytes,
+                          available);
+
+                    /* If the child has closed its end of the tether, the
+                     * watchdog will read EOF on the tether. Continue running
+                     * the event loop until the child terminates. */
+
+                    if (-1 == bytes)
+                    {
+                        if (EPIPE != errno)
+                        {
+                            switch (errno)
+                            {
+                            default:
+                                terminate(
+                                    errno,
+                                    "Unable to write to stdout");
+
+                            case EWOULDBLOCK:
+                            case EINTR:
+                                break;
+                            }
+
                             break;
                         }
+                    }
+                    else if (bytes)
+                    {
+                        /* Continue polling stdout unless all the available
+                         * data on stdin was transferred because this might
+                         * be the last chunk of data on stdin before it was
+                         * closed so there will be no more available. */
 
+                        if (bytes >= available)
+                        {
+                            pollfds[POLL_FD_STDIN].fd = STDIN_FILENO;
+
+                            pollfds[POLL_FD_STDOUT].events= pollDisconnectEvent;
+                            pollfds[POLL_FD_STDIN].events = pollInputEvents;
+                        }
                         break;
                     }
-                }
-                else if (bytes)
-                {
-                    /* Continue polling stdout unless all the available
-                     * data on stdin was transferred because this might
-                     * be the last chunk of data on stdin before it was
-                     * closed so there will be no more available. */
-
-                    if (bytes >= available)
-                    {
-                        pollfds[POLL_FD_STDIN].fd = STDIN_FILENO;
-
-                        pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
-                        pollfds[POLL_FD_STDIN].events  = pollInputEvents;
-                    }
-                    break;
                 }
 
                 closedStdout = -1;
                 break;
-            }
+
+            } while (0);
         }
 
         if (0 > closedStdout || 0 > closedStdin)
@@ -733,14 +751,22 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
                         0,
                         "Signal queue closed unexpectedly");
             }
-            else if (kill(aChildPid, sigNum))
+            else
             {
-                if (ESRCH != errno)
-                    warn(
-                        errno,
-                        "Unable to deliver signal %d to child pid %jd",
-                        sigNum,
-                        (intmax_t) aChildPid);
+                debug(1,
+                      "deliver signal %d to child pid %jd",
+                      sigNum,
+                      (intmax_t) aChildPid);
+
+                if (kill(aChildPid, sigNum))
+                {
+                    if (ESRCH != errno)
+                        warn(
+                            errno,
+                            "Unable to deliver signal %d to child pid %jd",
+                            sigNum,
+                            (intmax_t) aChildPid);
+                }
             }
         }
 
