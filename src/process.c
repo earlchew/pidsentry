@@ -66,19 +66,26 @@ static const char *sArg0;
 static uint64_t    sTimeBase;
 
 /* -------------------------------------------------------------------------- */
-static sighandler_t sSigPipeHandler = SIG_ERR;
+static struct sigaction sSigPipeAction =
+{
+    .sa_handler = SIG_ERR,
+};
 
 int
 ignoreProcessSigPipe(void)
 {
     int rc = -1;
 
-    sighandler_t prevHandler = signal(SIGPIPE, SIG_IGN);
+    struct sigaction prevAction;
+    struct sigaction pipeAction =
+    {
+        .sa_handler = SIG_IGN,
+    };
 
-    if (SIG_ERR == prevHandler)
+    if (sigaction(SIGPIPE, &pipeAction, &prevAction))
         goto Finally;
 
-    sSigPipeHandler = prevHandler;
+    sSigPipeAction = prevAction;
 
     rc = 0;
 
@@ -94,14 +101,14 @@ resetProcessSigPipe_(void)
 {
     int rc = -1;
 
-    sighandler_t prevHandler = sSigPipeHandler;
-
-    if (SIG_ERR != prevHandler)
+    if (SIG_ERR != sSigPipeAction.sa_handler ||
+        (sSigPipeAction.sa_flags & SA_SIGINFO))
     {
-        if (SIG_ERR == signal(SIGPIPE, prevHandler))
+        if (sigaction(SIGPIPE, &sSigPipeAction, 0))
             goto Finally;
 
-        sSigPipeHandler = SIG_ERR;
+        sSigPipeAction.sa_handler = SIG_ERR;
+        sSigPipeAction.sa_flags = 0;
     }
 
     rc = 0;
@@ -182,7 +189,12 @@ resetProcessChildrenWatch_(void)
     sDeadChildWrFd_ = -1;
     sDeadChildRdFd_ = -1;
 
-    return SIG_ERR == signal(SIGCHLD, SIG_DFL) ? -1 : 0;
+    struct sigaction childAction =
+    {
+        .sa_handler = SIG_DFL,
+    };
+
+    return sigaction(SIGCHLD, &childAction, 0);
 }
 
 int
@@ -202,7 +214,12 @@ watchProcessChildren(const struct Pipe *aTermPipe)
     if (nonblockingFd(sDeadChildWrFd_))
         goto Finally;
 
-    if (SIG_ERR == signal(SIGCHLD, deadChild_))
+    struct sigaction childAction =
+    {
+        .sa_handler = deadChild_,
+    };
+
+    if (sigaction(SIGCHLD, &childAction, 0))
         goto Finally;
 
     rc = 0;
@@ -225,9 +242,9 @@ static int sSignalRdFd_ = -1;
 static int sSignalWrFd_ = -1;
 
 static struct SignalWatch {
-    int          mSigNum;
-    sighandler_t mSigHandler;
-    bool         mWatched;
+    int              mSigNum;
+    struct sigaction mSigAction;
+    bool             mWatched;
 } sWatchedSignals_[] =
 {
     { SIGHUP },
@@ -282,14 +299,17 @@ watchProcessSignals(const struct Pipe *aSigPipe)
     {
         struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
 
-        int          sigNum     = watchedSig->mSigNum;
-        sighandler_t sigHandler = signal(sigNum, caughtSignal_);
+        struct sigaction watchAction =
+        {
+            .sa_handler = caughtSignal_,
+        };
 
-        if (SIG_ERR == sigHandler)
+        if (sigaction(watchedSig->mSigNum,
+                      &watchAction,
+                      &watchedSig->mSigAction))
             goto Finally;
 
-        watchedSig->mSigHandler = sigHandler;
-        watchedSig->mWatched    = true;
+        watchedSig->mWatched = true;
     }
 
     rc = 0;
@@ -306,10 +326,9 @@ Finally:
 
                 if (watchedSig->mWatched)
                 {
-                    int          sigNum     = watchedSig->mSigNum;
-                    sighandler_t sigHandler = watchedSig->mSigHandler;
-
-                    signal(sigNum, sigHandler);
+                    sigaction(watchedSig->mSigNum,
+                              &watchedSig->mSigAction,
+                              0);
 
                     watchedSig->mWatched = false;
                 }
@@ -332,16 +351,18 @@ resetProcessSignalsWatch_(void)
 
         if (watchedSig->mWatched)
         {
-            int          sigNum     = watchedSig->mSigNum;
-            sighandler_t sigHandler = watchedSig->mSigHandler;
-
-            if (SIG_ERR == signal(sigNum, sigHandler) && ! rc)
+            if (sigaction(watchedSig->mSigNum,
+                          &watchedSig->mSigAction,
+                          0))
             {
-                rc  = -1;
-                err = errno;
-            }
+                if ( ! rc)
+                {
+                    rc  = -1;
+                    err = errno;
+                }
 
-            watchedSig->mWatched = false;
+                watchedSig->mWatched = false;
+            }
         }
     }
 
