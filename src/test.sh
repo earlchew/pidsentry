@@ -70,42 +70,6 @@ runTest()
 {
     :
     : testCase 'Test flock times out'
-    : testCase 'Test stdout is non blocking'
-
-    return 0
-
-    # Use SIGTERM delivery to child to verify that the watchdog is
-    # not blocked.
-    exec 3>&1
-    {
-        /bin/echo "Filling" >&2
-        dd if=/dev/zero bs=$((64 * 1024)) count=1
-        ( sleep 2
-          /bin/echo "Competing" >&2
-          dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
-        if ./k9 -dd -- sh -c "
-               sleep 2
-               dd if=/dev/zero bs=$((64 * 1024)) count=1
-               sleep 5" ; then
-            /bin/echo @@@A >&3
-        else
-            /bin/echo @@@A >&3
-        fi
-        wait
-    } | {
-        sleep 3
-        dd of=/dev/null bs=$((32 * 1024)) count=1
-        sleep 2
-        exec 0>&-
-        sleep 5
-        echo @@@B
-    }
-    exit 0
-
-
-    exit 0
-
-
 }
 
 runTests()
@@ -398,11 +362,41 @@ runTests()
         fi | dd of=/dev/null bs=1 count=$((1 + RANDOM % 128))
     )'
 
+    testCase 'Test output is non-blocking even when pipe buffer is filled'
+    testOutput AABB = '$(
+        exec 3>&1
+        {
+            sh -c '\''/bin/echo $PPID'\''
+            dd if=/dev/zero bs=$((64 * 1024)) count=1
+            ( sleep 2
+                dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
+            exec ./k9 -dd -- sh -c "
+               trap '\''/bin/echo -n AA >&3; exit 2'\'' 15
+               sleep 2
+               dd if=/dev/zero bs=$((64 * 1024)) count=1 &
+               while : ; do sleep 1 ; done" || :
+        } | {
+            read PARENT
+
+            # Wait a little time before making some space in the pipe. The
+            # two pipe writers will compete to fill the space.
+            sleep 3
+            dd of=/dev/null bs=$((32 * 1024)) count=1
+
+            # Provide some time to let the competitors fill the pipe, then
+            # try to have the watchdoog propagate a signal to the child.
+
+            sleep 2
+            kill $PARENT
+            sleep 2
+            /bin/echo -n BB
+        }
+    )'
+
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
         /usr/bin/time -p $VALGRIND ./k9 -T -t 4 -- sh -c '
             trap "" 15 ; sleep 6' 2>&1 | grep real)
-    /bin/echo "Outcome $REPLY"
     REPLY=${REPLY%%.*}
     REPLY=${REPLY##* }
     [ "$REPLY" -ge 6 ]
