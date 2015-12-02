@@ -70,7 +70,7 @@ createPathName(struct PathName *self, const char *aFileName)
     if ( ! self->mBaseName)
         goto Finally;
 
-    if (createFileDescriptor(
+    if (createFile(
             &self->mDirFile_,
             open(self->mDirName, O_RDONLY | O_CLOEXEC)))
         goto Finally;
@@ -90,7 +90,7 @@ Finally:
             free(self->mDirName_);
             free(self->mDirName);
 
-            closeFileDescriptor(self->mDirFile);
+            closeFile(self->mDirFile);
         }
     });
 
@@ -105,7 +105,7 @@ closePathName(struct PathName *self)
 
     if (self)
     {
-        if (closeFileDescriptor(self->mDirFile))
+        if (closeFile(self->mDirFile))
             goto Finally;
 
         free(self->mFileName);

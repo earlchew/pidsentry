@@ -62,17 +62,17 @@ createStdFdFiller(struct StdFdFiller *self)
 
     fd[1] = -1;
 
-    if (createFileDescriptor(&self->mFile_[0], fd[0]))
+    if (createFile(&self->mFile_[0], fd[0]))
         goto Finally;
     self->mFile[0] = &self->mFile_[0];
 
     fd[0] = -1;
 
-    if (dupFileDescriptor(&self->mFile_[1], &self->mFile_[0]))
+    if (dupFile(&self->mFile_[1], &self->mFile_[0]))
         goto Finally;
     self->mFile[1] = &self->mFile_[1];
 
-    if (dupFileDescriptor(&self->mFile_[2], &self->mFile_[0]))
+    if (dupFile(&self->mFile_[2], &self->mFile_[0]))
         goto Finally;
     self->mFile[2] = &self->mFile_[2];
 
@@ -91,7 +91,7 @@ Finally:
         {
             for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
             {
-                closeFileDescriptor(self->mFile[ix]);
+                closeFile(self->mFile[ix]);
                 self->mFile[ix] = 0;
             }
         }
@@ -108,7 +108,7 @@ closeStdFdFiller(struct StdFdFiller *self)
 
     for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
     {
-        if (closeFileDescriptor(self->mFile[ix]))
+        if (closeFile(self->mFile[ix]))
             goto Finally;
         self->mFile[ix] = 0;
     }

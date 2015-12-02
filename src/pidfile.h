@@ -34,10 +34,10 @@
 
 struct PidFile
 {
-    struct PathName        mPathName;
-    struct FileDescriptor  mFile_;
-    struct FileDescriptor *mFile;
-    int                    mLock;
+    struct PathName  mPathName;
+    struct File      mFile_;
+    struct File     *mFile;
+    int              mLock;
 };
 
 /* -------------------------------------------------------------------------- */

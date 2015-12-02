@@ -33,10 +33,10 @@
 
 struct SocketPair
 {
-    struct FileDescriptor  mParentFile_;
-    struct FileDescriptor *mParentFile;
-    struct FileDescriptor  mChildFile_;
-    struct FileDescriptor *mChildFile;
+    struct File  mParentFile_;
+    struct File *mParentFile;
+    struct File  mChildFile_;
+    struct File *mChildFile;
 };
 
 /* -------------------------------------------------------------------------- */

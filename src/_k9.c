@@ -63,7 +63,8 @@
  * Check correct operation if child closes tether first, vs stdout close first
  * Bracket splice() with SIGALARM (setitimer() and getitimer())
  * Partition monitorChild() -- it's too big
- * Use memopen() for error.c to issue messages in a complete line
+ * Move pidfile flock() to use lockFile()
+ * Rename FileDescriptor class to File
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -1147,10 +1148,10 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close tether pipe");
 
-    if (cleanseFileDescriptors())
+    if (cleanseFiles())
         terminate(
             errno,
-            "Unable to cleanse file descriptors");
+            "Unable to cleanse files");
 
     /* If stdout is not open, or data sent to stdout is to be discarded,
      * then provide a default sink for the data transmitted through

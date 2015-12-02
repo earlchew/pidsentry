@@ -58,13 +58,13 @@ createSocketPair(struct SocketPair *self)
     ensure( ! stdFd(fd[0]));
     ensure( ! stdFd(fd[1]));
 
-    if (createFileDescriptor(&self->mParentFile_, fd[0]))
+    if (createFile(&self->mParentFile_, fd[0]))
         goto Finally;
     self->mParentFile = &self->mParentFile_;
 
     fd[0] = -1;
 
-    if (createFileDescriptor(&self->mChildFile_, fd[1]))
+    if (createFile(&self->mChildFile_, fd[1]))
         goto Finally;
     self->mChildFile = &self->mChildFile_;
 
@@ -83,8 +83,8 @@ Finally:
 
         if (rc)
         {
-            closeFileDescriptor(self->mParentFile);
-            closeFileDescriptor(self->mChildFile);
+            closeFile(self->mParentFile);
+            closeFile(self->mChildFile);
         }
     });
 
@@ -97,7 +97,7 @@ closeSocketPairParent(struct SocketPair *self)
 {
     int rc = -1;
 
-    if (closeFileDescriptor(self->mParentFile))
+    if (closeFile(self->mParentFile))
         goto Finally;
     self->mParentFile = 0;
 
@@ -114,7 +114,7 @@ Finally:
 int
 closeSocketPair(struct SocketPair *self)
 {
-    return closeFileDescriptorPair(&self->mParentFile, &self->mChildFile);
+    return closeFilePair(&self->mParentFile, &self->mChildFile);
 }
 
 /* -------------------------------------------------------------------------- */

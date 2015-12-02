@@ -69,7 +69,7 @@ closePidFile_(struct PidFile *self)
 {
     int rc = -1;
 
-    if (closeFileDescriptor(self->mFile))
+    if (closeFile(self->mFile))
         goto Finally;
 
     if (closePathName(&self->mPathName))
@@ -255,7 +255,7 @@ createPidFile(struct PidFile *self, const char *aFileName)
      * it names is still running.
      */
 
-    if (createFileDescriptor(
+    if (createFile(
             &self->mFile_,
             openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)))
     {
@@ -297,7 +297,7 @@ createPidFile(struct PidFile *self, const char *aFileName)
         if (releaseLockPidFile(self))
             goto Finally;
 
-        if (closeFileDescriptor(self->mFile))
+        if (closeFile(self->mFile))
             goto Finally;
 
         self->mFile = 0;
@@ -312,7 +312,7 @@ createPidFile(struct PidFile *self, const char *aFileName)
     ensure( ! self->mFile);
     RACE
     ({
-        if (createFileDescriptor(
+        if (createFile(
                 &self->mFile_,
                 openPathName(&self->mPathName,
                              O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
@@ -348,7 +348,7 @@ openPidFile(struct PidFile *self, const char *aFileName)
     if (openPidFile_(self, aFileName))
         goto Finally;
 
-    if (createFileDescriptor(
+    if (createFile(
             &self->mFile_,
             openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)))
         goto Finally;
@@ -446,7 +446,7 @@ closePidFile(struct PidFile *self)
         }
     }
 
-    if (closeFileDescriptor(self->mFile))
+    if (closeFile(self->mFile))
         goto Finally;
 
     if (closePathName(&self->mPathName))

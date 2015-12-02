@@ -33,8 +33,8 @@
 
 struct StdFdFiller
 {
-    struct FileDescriptor  mFile_[3];
-    struct FileDescriptor *mFile[3];
+    struct File  mFile_[3];
+    struct File *mFile[3];
 };
 
 /* -------------------------------------------------------------------------- */

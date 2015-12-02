@@ -55,13 +55,13 @@ createPipe(struct Pipe *self)
     ensure( ! stdFd(fd[0]));
     ensure( ! stdFd(fd[1]));
 
-    if (createFileDescriptor(&self->mRdFile_, fd[0]))
+    if (createFile(&self->mRdFile_, fd[0]))
         goto Finally;
     self->mRdFile = &self->mRdFile_;
 
     fd[0] = -1;
 
-    if (createFileDescriptor(&self->mWrFile_, fd[1]))
+    if (createFile(&self->mWrFile_, fd[1]))
         goto Finally;
     self->mWrFile = &self->mWrFile_;
 
@@ -80,8 +80,8 @@ Finally:
 
         if (rc)
         {
-            closeFileDescriptor(self->mRdFile);
-            closeFileDescriptor(self->mWrFile);
+            closeFile(self->mRdFile);
+            closeFile(self->mWrFile);
         }
     });
 
@@ -94,7 +94,7 @@ closePipeReader(struct Pipe *self)
 {
     int rc = -1;
 
-    if (closeFileDescriptor(self->mRdFile))
+    if (closeFile(self->mRdFile))
         goto Finally;
     self->mRdFile = 0;
 
@@ -113,7 +113,7 @@ closePipeWriter(struct Pipe *self)
 {
     int rc = -1;
 
-    if (closeFileDescriptor(self->mWrFile))
+    if (closeFile(self->mWrFile))
         goto Finally;
     self->mWrFile = 0;
 
@@ -132,8 +132,8 @@ closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec)
 {
     int rc = -1;
 
-    if (closeFileDescriptorOnExec(self->mRdFile, aCloseOnExec) ||
-        closeFileDescriptorOnExec(self->mWrFile, aCloseOnExec))
+    if (closeFileOnExec(self->mRdFile, aCloseOnExec) ||
+        closeFileOnExec(self->mWrFile, aCloseOnExec))
     {
         goto Finally;
     }
@@ -151,7 +151,7 @@ Finally:
 int
 closePipe(struct Pipe *self)
 {
-    return closeFileDescriptorPair(&self->mRdFile, &self->mWrFile);
+    return closeFilePair(&self->mRdFile, &self->mWrFile);
 }
 
 /* -------------------------------------------------------------------------- */

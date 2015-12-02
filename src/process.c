@@ -52,11 +52,11 @@
 
 struct ProcessLock
 {
-    struct PathName        mPathName_;
-    struct PathName       *mPathName;
-    struct FileDescriptor  mFile_;
-    struct FileDescriptor *mFile;
-    int                    mLock;
+    struct PathName  mPathName_;
+    struct PathName *mPathName;
+    struct File      mFile_;
+    struct File     *mFile;
+    int              mLock;
 };
 
 static struct ProcessLock  sProcessLock_[2];
@@ -465,7 +465,7 @@ createProcessLock_(struct ProcessLock *self)
         goto Finally;
     self->mPathName = &self->mPathName_;
 
-    if (createFileDescriptor(
+    if (createFile(
             &self->mFile_,
             openPathName(self->mPathName, O_RDONLY | O_CLOEXEC, 0)))
         goto Finally;
@@ -479,7 +479,7 @@ Finally:
     ({
         if (rc)
         {
-            closeFileDescriptor(self->mFile);
+            closeFile(self->mFile);
             closePathName(self->mPathName);
         }
     });
@@ -495,7 +495,7 @@ closeProcessLock_(struct ProcessLock *self)
 
     if (self)
     {
-        if (closeFileDescriptor(self->mFile))
+        if (closeFile(self->mFile))
             goto Finally;
 
         if (closePathName(self->mPathName))
@@ -521,7 +521,7 @@ lockProcessLock_(struct ProcessLock *self)
     {
         ensure(LOCK_UN == self->mLock);
 
-        if (lockFileDescriptor(self->mFile, LOCK_EX, 0))
+        if (lockFile(self->mFile, LOCK_EX, 0))
             goto Finally;
 
         self->mLock = LOCK_EX;
@@ -546,7 +546,7 @@ unlockProcessLock_(struct ProcessLock *self)
     {
         ensure(LOCK_UN != self->mLock);
 
-        if (unlockFileDescriptor(self->mFile))
+        if (unlockFile(self->mFile))
             goto Finally;
 
         self->mLock = LOCK_UN;

@@ -43,8 +43,8 @@ struct PathName
     char *mBaseName_;
     char *mBaseName;
 
-    struct FileDescriptor  mDirFile_;
-    struct FileDescriptor *mDirFile;
+    struct File  mDirFile_;
+    struct File *mDirFile;
 };
 
 /* -------------------------------------------------------------------------- */

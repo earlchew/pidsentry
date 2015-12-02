@@ -40,18 +40,18 @@
 #include <sys/resource.h>
 
 /* -------------------------------------------------------------------------- */
-static struct FileDescriptor sFileDescriptorList =
+static struct File sFileList =
 {
     .mFd   = -1,
-    .mNext = &sFileDescriptorList,
-    .mPrev = &sFileDescriptorList,
+    .mNext = &sFileList,
+    .mPrev = &sFileList,
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createFileDescriptor(struct FileDescriptor *self, int aFd)
+createFile(struct File *self, int aFd)
 {
-    ensure(self != &sFileDescriptorList);
+    ensure(self != &sFileList);
 
     int rc = -1;
 
@@ -64,8 +64,8 @@ createFileDescriptor(struct FileDescriptor *self, int aFd)
     if (-1 == aFd)
         goto Finally;
 
-    self->mNext =  sFileDescriptorList.mNext;
-    self->mPrev = &sFileDescriptorList;
+    self->mNext =  sFileList.mNext;
+    self->mPrev = &sFileList;
 
     self->mNext->mPrev = self;
     self->mPrev->mNext = self;
@@ -85,9 +85,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-closeFileDescriptor(struct FileDescriptor *self)
+closeFile(struct File *self)
 {
-    ensure(self != &sFileDescriptorList);
+    ensure(self != &sFileList);
 
     int rc = -1;
 
@@ -135,7 +135,7 @@ rankFd_(const void *aLhs, const void *aRhs)
 }
 
 int
-cleanseFileDescriptors(void)
+cleanseFiles(void)
 {
     int rc = -1;
 
@@ -158,10 +158,10 @@ cleanseFileDescriptors(void)
 
     unsigned numFds = NUMBEROF(stdfds);
 
-    for (const struct FileDescriptor *fdPtr = &sFileDescriptorList; ; ++numFds)
+    for (const struct File *fdPtr = &sFileList; ; ++numFds)
     {
         fdPtr = fdPtr->mNext;
-        if (fdPtr == &sFileDescriptorList)
+        if (fdPtr == &sFileList)
             break;
     }
 
@@ -185,12 +185,12 @@ cleanseFileDescriptors(void)
         for (unsigned jx = 0; NUMBEROF(stdfds) > jx; ++jx, ++ix)
             whiteList[ix] = stdfds[jx];
 
-        for (const struct FileDescriptor *fdPtr = &sFileDescriptorList;
+        for (const struct File *fdPtr = &sFileList;
              numFds > ix;
              ++ix)
         {
             fdPtr = fdPtr->mNext;
-            ensure(fdPtr != &sFileDescriptorList);
+            ensure(fdPtr != &sFileList);
 
             whiteList[ix] = fdPtr->mFd;
 
@@ -239,13 +239,11 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-dupFileDescriptor(
-        struct FileDescriptor *self,
-        const struct FileDescriptor *aOther)
+dupFile(struct File *self, const struct File *aOther)
 {
     int rc = -1;
 
-    if (createFileDescriptor(self, dup(aOther->mFd)))
+    if (createFile(self, dup(aOther->mFd)))
         goto Finally;
 
     rc = 0;
@@ -255,7 +253,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closeFileDescriptor(self);
+            closeFile(self);
     });
 
     return rc;
@@ -263,21 +261,20 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-closeFileDescriptorPair(struct FileDescriptor **aFile1,
-                        struct FileDescriptor **aFile2)
+closeFilePair(struct File **aFile1, struct File **aFile2)
 {
     int rc = -1;
 
     if (*aFile1)
     {
-        if (closeFileDescriptor(*aFile1))
+        if (closeFile(*aFile1))
             goto Finally;
         *aFile1 = 0;
     }
 
     if (*aFile2)
     {
-        if (closeFileDescriptor(*aFile2))
+        if (closeFile(*aFile2))
             goto Finally;
         *aFile2 = 0;
     }
@@ -293,30 +290,28 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-nonblockingFileDescriptor(struct FileDescriptor *self)
+nonblockingFile(struct File *self)
 {
     return nonblockingFd(self->mFd);
 }
 
 /* -------------------------------------------------------------------------- */
 int
-closeFileDescriptorOnExec(struct FileDescriptor *self, unsigned aCloseOnExec)
+closeFileOnExec(struct File *self, unsigned aCloseOnExec)
 {
     return closeFdOnExec(self->mFd, aCloseOnExec);
 }
 
 /* -------------------------------------------------------------------------- */
 int
-lockFileDescriptor(struct FileDescriptor *self,
-                   int aType,
-                   const struct FileDescriptorLockTimeout *aTimeout)
+lockFile(struct File *self, int aType, const struct FileLockTimeout *aTimeout)
 {
     return lockFd(self->mFd, aType, aTimeout ? aTimeout->mMilliSeconds : 30000);
 }
 
 /* -------------------------------------------------------------------------- */
 int
-unlockFileDescriptor(struct FileDescriptor *self)
+unlockFile(struct File *self)
 {
     return unlockFd(self->mFd);
 }

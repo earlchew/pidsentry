@@ -29,53 +29,49 @@
 #ifndef FILE_H
 #define FILE_H
 
-struct FileDescriptor
+struct File
 {
-    int                    mFd;
-    struct FileDescriptor *mNext;
-    struct FileDescriptor *mPrev;
+    int          mFd;
+    struct File *mNext;
+    struct File *mPrev;
 };
 
-struct FileDescriptorLockTimeout
+struct FileLockTimeout
 {
     unsigned mMilliSeconds;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createFileDescriptor(struct FileDescriptor *self,
-                     int aFd);
+createFile(struct File *self, int aFd);
 
 int
-closeFileDescriptor(struct FileDescriptor *self);
+closeFile(struct File *self);
 
 int
-cleanseFileDescriptors(void);
+cleanseFiles(void);
 
-int dupFileDescriptor(struct FileDescriptor *self,
-                      const struct FileDescriptor *aOther);
-
-int
-closeFileDescriptorPair(struct FileDescriptor **aFile1,
-                        struct FileDescriptor **aFile2);
+int dupFile(struct File *self, const struct File *aOther);
 
 int
-nonblockingFileDescriptor(struct FileDescriptor *self);
+closeFilePair(struct File **aFile1,
+                        struct File **aFile2);
 
 int
-closeFileDescriptorOnExec(struct FileDescriptor *self, unsigned aCloseOnExec);
+nonblockingFile(struct File *self);
+
+int
+closeFileOnExec(struct File *self, unsigned aCloseOnExec);
 
 /* -------------------------------------------------------------------------- */
 int
-lockFileDescriptor(struct FileDescriptor *self,
-                   int aType,
-                   const struct FileDescriptorLockTimeout *aTimeout);
+lockFile(struct File *self, int aType, const struct FileLockTimeout *aTimeout);
 
 int
-unlockFileDescriptor(struct FileDescriptor *self);
+unlockFile(struct File *self);
 
 #define FILE_DESCRIPTOR_LOCK_MILLISECONDS(aTimeout) \
-    ( & ((struct FileDescriptorLockTimeout) { .mMilliSeconds = (aTimeout) }))
+    ( & ((struct FileLockTimeout) { .mMilliSeconds = (aTimeout) }))
 
 /* -------------------------------------------------------------------------- */
 

@@ -33,10 +33,10 @@
 
 struct Pipe
 {
-    struct FileDescriptor  mRdFile_;
-    struct FileDescriptor *mRdFile;
-    struct FileDescriptor  mWrFile_;
-    struct FileDescriptor *mWrFile;
+    struct File  mRdFile_;
+    struct File *mRdFile;
+    struct File  mWrFile_;
+    struct File *mWrFile;
 };
 
 /* -------------------------------------------------------------------------- */
