@@ -88,6 +88,8 @@ Finally:
 static int
 lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 {
+    int rc = -1;
+
     debug(0, "lock %s '%s'", aLockType, self->mPathName.mFileName);
 
     ensure(LOCK_UN != aLock);
@@ -95,10 +97,16 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 
     testSleep();
 
-    int rc = flock(self->mFile->mFd, aLock);
+    if (lockFile(self->mFile, aLock, 0))
+        goto Finally;
 
-    if ( ! rc)
-        self->mLock = aLock;
+    self->mLock = aLock;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
 
     return rc;
 }
@@ -209,21 +217,23 @@ readPidFile(const struct PidFile *self)
 int
 releaseLockPidFile(struct PidFile *self)
 {
+    int rc = -1;
+
     ensure(LOCK_UN != self->mLock);
 
-    int locked = self->mLock;
+    if (unlockFile(self->mFile))
+        goto Finally;
 
     self->mLock = LOCK_UN;
 
-    int rc = flock(self->mFile->mFd, LOCK_UN);
+    rc = 0;
+
+Finally:
 
     FINALLY
     ({
-        if (rc)
-            self->mLock = locked;
+        testSleep();
     });
-
-    testSleep();
 
     return rc;
 }
