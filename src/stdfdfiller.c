@@ -29,6 +29,7 @@
 
 #include "stdfdfiller.h"
 #include "macros.h"
+#include "fd.h"
 
 #include <unistd.h>
 #include <errno.h>
@@ -57,7 +58,7 @@ createStdFdFiller(struct StdFdFiller *self)
      * end of the pipe. Any attempt to write will fail, and any
      * attempt to read will yield EOF. */
 
-    if (close(fd[1]))
+    if (closeFd(&fd[1]))
         goto Finally;
 
     fd[1] = -1;
@@ -82,10 +83,8 @@ Finally:
 
     FINALLY
     ({
-        if (-1 != fd[0])
-            close(fd[0]);
-        if (-1 != fd[1])
-            close(fd[1]);
+        closeFd(&fd[0]);
+        closeFd(&fd[1]);
 
         if (rc)
         {

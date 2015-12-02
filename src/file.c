@@ -77,7 +77,7 @@ Finally:
     FINALLY
     ({
         if (rc && -1 != self->mFd)
-            close(self->mFd);
+            closeFd(&self->mFd);
     });
 
     return rc;
@@ -205,14 +205,16 @@ cleanseFiles(void)
 
     qsort(whiteList, NUMBEROF(whiteList), sizeof(whiteList[0]), rankFd_);
 
-    for (unsigned fd = 0, wx = 0; ; ++fd)
+    for (int fd = 0, wx = 0; ; ++fd)
     {
         while (0 > whiteList[wx])
             ++wx;
 
         if (fd != whiteList[wx])
         {
-            if (close(fd) && EBADF != errno)
+            int closedFd = fd;
+
+            if (closeFd(&closedFd) && EBADF != errno)
                 goto Finally;
         }
         else

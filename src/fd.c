@@ -50,9 +50,18 @@
 int
 closeFd(int *aFd)
 {
-    int rc = close(*aFd);
+    int rc = -1;
 
-    *aFd = -1;
+    if (-1 != *aFd)
+    {
+        if (close(*aFd))
+            goto Finally;
+        *aFd = -1;
+    }
+
+    rc = 0;
+
+Finally:
 
     FINALLY({});
 

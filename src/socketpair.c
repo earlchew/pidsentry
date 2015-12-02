@@ -76,10 +76,8 @@ Finally:
 
     FINALLY
     ({
-        if (-1 != fd[0])
-            close(fd[0]);
-        if (-1 != fd[1])
-            close(fd[1]);
+        closeFd(&fd[0]);
+        closeFd(&fd[1]);
 
         if (rc)
         {
