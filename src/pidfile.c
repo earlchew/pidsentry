@@ -32,7 +32,7 @@
 #include "error.h"
 #include "test.h"
 #include "process.h"
-#include "timespec.h"
+#include "timekeeping.h"
 
 #include <stdio.h>
 #include <fcntl.h>

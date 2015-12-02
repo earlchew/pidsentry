@@ -27,9 +27,27 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "timespec.h"
+#include "timekeeping.h"
+#include "error.h"
 
 #include <time.h>
+#include <errno.h>
+
+/* -------------------------------------------------------------------------- */
+uint64_t
+monotonicTime(void)
+{
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &ts))
+        terminate(
+            errno,
+            "Unable to fetch monotonic time");
+
+    uint64_t ns = ts.tv_sec;
+
+    return ns * 1000 * 1000 * 1000 + ts.tv_nsec;
+}
 
 /* -------------------------------------------------------------------------- */
 struct timespec

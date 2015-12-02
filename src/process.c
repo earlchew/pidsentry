@@ -35,7 +35,7 @@
 #include "pipe.h"
 #include "test.h"
 #include "error.h"
-#include "timespec.h"
+#include "timekeeping.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -416,22 +416,6 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid)
 }
 
 /* -------------------------------------------------------------------------- */
-static uint64_t
-monotonicTime_(void)
-{
-    struct timespec ts;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &ts))
-        terminate(
-            errno,
-            "Unable to fetch monotonic time");
-
-    uint64_t ns = ts.tv_sec;
-
-    return ns * 1000 * 1000 * 1000 + ts.tv_nsec;
-}
-
-/* -------------------------------------------------------------------------- */
 struct timespec
 findProcessStartTime(pid_t aPid)
 {
@@ -570,7 +554,7 @@ initProcess(const char *aArg0)
     int rc = -1;
 
     sArg0     = aArg0;
-    sTimeBase = monotonicTime_();
+    sTimeBase = monotonicTime();
 
     srandom(getpid());
 
@@ -840,7 +824,7 @@ extractProcessExitStatus(int aStatus)
 uint64_t
 ownProcessElapsedTime(void)
 {
-    return monotonicTime_() - sTimeBase;
+    return monotonicTime() - sTimeBase;
 }
 
 /* -------------------------------------------------------------------------- */

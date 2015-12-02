@@ -31,12 +31,22 @@
 
 #include <inttypes.h>
 
+struct timespec;
+
 /* -------------------------------------------------------------------------- */
 static inline uint64_t
 milliSeconds(uint64_t aMilliSeconds)
 {
     return aMilliSeconds * 1000 * 1000;
 }
+
+/* -------------------------------------------------------------------------- */
+uint64_t
+monotonicTime(void);
+
+/* -------------------------------------------------------------------------- */
+struct timespec
+earliestTime(const struct timespec *aLhs, const struct timespec *aRhs);
 
 /* -------------------------------------------------------------------------- */
 
