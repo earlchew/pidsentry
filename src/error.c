@@ -178,7 +178,7 @@ terminate_(
 
 /* -------------------------------------------------------------------------- */
 int
-initErrorPrinter(void)
+Error_init(void)
 {
     int rc = -1;
 
@@ -186,6 +186,30 @@ initErrorPrinter(void)
 
     if ( ! sPrintBuf.mFile)
         goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+Error_exit(void)
+{
+    int rc = -1;
+
+    if (fclose(sPrintBuf.mFile))
+        goto Finally;
+
+    free(sPrintBuf.mBuf);
+
+    sPrintBuf.mFile = 0;
+    sPrintBuf.mBuf  = 0;
+    sPrintBuf.mSize = 0;
 
     rc = 0;
 

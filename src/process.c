@@ -581,7 +581,7 @@ initProcess(const char *aArg0)
         goto Finally;
     sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
 
-    if (initErrorPrinter())
+    if (Error_init())
         goto Finally;
 
     rc = 0;
@@ -602,6 +602,9 @@ exitProcess(void)
     ensure(processLock);
 
     int rc = -1;
+
+    if (Error_exit())
+        goto Finally;
 
     if (closeProcessLock_(processLock))
         goto Finally;
