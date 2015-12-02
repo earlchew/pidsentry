@@ -314,13 +314,10 @@ writeFd(int aFd, const char *aBuf, size_t aLen)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
-lockFdTimer_(int aSigNum)
-{ }
-
 int
 lockFd(int aFd, int aType, unsigned aMilliSeconds)
 {
+    int err = 0;
     int rc = -1;
 
     if (LOCK_EX != aType && LOCK_SH != aType)
@@ -331,31 +328,7 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
 
     /* Disable the timer and SIGALRM action so that a new
      * timer and action can be installed to provide some
-     * protection against deadlocks.
-     *
-     * Take care to disable the timer, before resetting the
-     * signal handler, then re-configuring the timer. */
-
-    struct itimerval prevTimer;
-
-    static const struct itimerval disableTimer =
-    {
-        .it_value    = { .tv_sec = 0 },
-        .it_interval = { .tv_sec = 0 },
-    };
-
-    if (setitimer(ITIMER_REAL, &disableTimer, &prevTimer))
-        goto Finally;
-
-    struct sigaction prevTimerAction;
-
-    struct sigaction timerAction =
-    {
-        .sa_handler = lockFdTimer_,
-    };
-
-    if (sigaction(SIGALRM, &timerAction, &prevTimerAction))
-        goto Finally;
+     * protection against deadlocks. */
 
     static const struct itimerval flockTimer =
     {
@@ -363,20 +336,23 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
         .it_interval = { .tv_sec = 1 },
     };
 
-    if (setitimer(ITIMER_REAL, &flockTimer, 0))
+    struct PushedIntervalTimer pushedTimer;
+
+    if (pushIntervalTimer(&pushedTimer, ITIMER_REAL, &flockTimer))
         goto Finally;
 
     /* The installed timer will inject periodic SIGALRM signals
      * and cause flock() to return with EINTR. This allows
      * the deadline to be checked periodically. */
 
-    for (uint64_t deadlineTime =
-             ownProcessElapsedTime() + milliSeconds(aMilliSeconds); ; )
+    uint64_t deadlineTime = 0;
+
+    do
     {
-        if (deadlineTime < ownProcessElapsedTime())
+        if (deadlineTimeExpired(&deadlineTime, milliSeconds(aMilliSeconds)))
         {
-            errno = EDEADLOCK;
-            goto Finally;
+            err = EDEADLOCK;
+            break;
         }
 
         /* Very infrequently block here to exercise the EINTR
@@ -396,20 +372,14 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
             break;
 
         if (EINTR != errno)
-            goto Finally;
-    }
+        {
+            err = errno ? errno : EPERM;
+            break;
+        }
 
-    /* Restore the previous setting of the timer and SIGALRM handler.
-     * Take care to disable the timer, before restoring the
-     * signal handler, then restoring the setting of the timer. */
+    } while (1);
 
-    if (setitimer(ITIMER_REAL, &disableTimer, 0))
-        goto Finally;
-
-    if (sigaction(SIGALRM, &prevTimerAction, 0))
-        goto Finally;
-
-    if (setitimer(ITIMER_REAL, &prevTimer, 0))
+    if (popIntervalTimer(&pushedTimer))
         goto Finally;
 
     rc = 0;
@@ -417,6 +387,9 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
 Finally:
 
     FINALLY({});
+
+    if (err)
+        errno = err;
 
     return rc;
 }

@@ -29,9 +29,12 @@
 
 #include "timekeeping.h"
 #include "error.h"
+#include "macros.h"
 
 #include <time.h>
 #include <errno.h>
+
+#include <sys/time.h>
 
 /* -------------------------------------------------------------------------- */
 uint64_t
@@ -50,6 +53,35 @@ monotonicTime(void)
 }
 
 /* -------------------------------------------------------------------------- */
+bool
+deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration)
+{
+    bool expired;
+
+    if (*aSince)
+        expired = monotonicTime() - *aSince >= aDuration;
+    else
+    {
+        /* Initialise the mark time from which the duration will be
+         * measured until the deadline, and then ensure that the
+         * caller gets to execute at least once before the deadline
+         * expires. */
+
+        uint64_t since;
+
+        do
+            since = monotonicTime();
+        while ( ! since);
+
+        *aSince = since;
+
+        expired = false;
+    }
+
+    return expired;
+}
+
+/* -------------------------------------------------------------------------- */
 struct timespec
 earliestTime(const struct timespec *aLhs, const struct timespec *aRhs)
 {
@@ -63,6 +95,143 @@ earliestTime(const struct timespec *aLhs, const struct timespec *aRhs)
     }
 
     return *aRhs;
+}
+
+/* -------------------------------------------------------------------------- */
+uint64_t
+timeValToTime(const struct timeval *aTimeVal)
+{
+    uint64_t ns = aTimeVal->tv_sec;
+
+    return (ns * 1000 * 1000 + aTimeVal->tv_usec) * 1000;
+}
+
+/* -------------------------------------------------------------------------- */
+struct timeval
+timeValFromTime(uint64_t aNanoSeconds)
+{
+    return (struct timeval) {
+        .tv_sec  = aNanoSeconds / (1000 * 1000 * 1000),
+        .tv_usec = aNanoSeconds % (1000 * 1000 * 1000),
+    };
+}
+
+/* -------------------------------------------------------------------------- */
+struct itimerval
+shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsedTime)
+{
+    struct itimerval shortenedTimer = *aTimer;
+
+    uint64_t alarmTime   = timeValToTime(&aTimer->it_value);
+    uint64_t alarmPeriod = timeValToTime(&aTimer->it_interval);
+
+    if (alarmTime > aElapsedTime)
+    {
+        alarmTime -= aElapsedTime;
+
+        shortenedTimer.it_value = timeValFromTime(alarmTime - aElapsedTime);
+    }
+    else if ( ! alarmPeriod)
+        shortenedTimer.it_value = shortenedTimer.it_interval;
+    else
+    {
+        shortenedTimer.it_value = timeValFromTime(
+            alarmPeriod - (aElapsedTime - alarmTime) % alarmPeriod);
+    }
+
+    return shortenedTimer;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+pushIntervalTimer_(int aSigNum)
+{ }
+
+static const struct itimerval sPauseDisableTimer;
+
+int
+pushIntervalTimer(struct PushedIntervalTimer *aPushedTimer,
+                  int                         aType,
+                  const struct itimerval     *aTimer)
+{
+    int rc = -1;
+
+    switch (aType)
+    {
+    default:
+        errno = EINVAL;
+        goto Finally;
+
+    case ITIMER_REAL:    aPushedTimer->mSignal = SIGALRM;   break;
+    case ITIMER_VIRTUAL: aPushedTimer->mSignal = SIGVTALRM; break;
+    case ITIMER_PROF:    aPushedTimer->mSignal = SIGPROF;   break;
+    }
+
+    aPushedTimer->mType = aType;
+    aPushedTimer->mMark = monotonicTime();
+
+    /* Disable the timer and signal action so that a new
+     * timer and action can be installed.
+     *
+     * Take care to disable the timer, before resetting the
+     * signal handler, then re-configuring the timer. */
+
+    if (setitimer(aType, &sPauseDisableTimer, &aPushedTimer->mTimer))
+        goto Finally;
+
+    struct sigaction timerAction =
+    {
+        .sa_handler = pushIntervalTimer_,
+    };
+
+    if (sigaction(aPushedTimer->mSignal, &timerAction, &aPushedTimer->mAction))
+        goto Finally;
+
+    if (aTimer && (aTimer->it_value.tv_sec || aTimer->it_value.tv_usec))
+    {
+        if (setitimer(aType, aTimer, 0))
+            goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+popIntervalTimer(struct PushedIntervalTimer *aPushedTimer)
+{
+    int rc = -1;
+
+    /* Restore the previous setting of the timer and signal handler.
+     * Take care to disable the timer, before restoring the
+     * signal handler, then restoring the setting of the timer. */
+
+    if (setitimer(aPushedTimer->mType, &sPauseDisableTimer, 0))
+        goto Finally;
+
+    if (sigaction(aPushedTimer->mSignal, &aPushedTimer->mAction, 0))
+        goto Finally;
+
+    struct itimerval shortenedInterval =
+        shortenIntervalTime(&aPushedTimer->mTimer,
+                            monotonicTime() - aPushedTimer->mMark);
+
+    if (setitimer(aPushedTimer->mType, &shortenedInterval, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

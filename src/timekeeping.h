@@ -30,8 +30,19 @@
 #define TIMEKEEPING_H
 
 #include <inttypes.h>
+#include <stdbool.h>
+#include <signal.h>
 
-struct timespec;
+#include <sys/time.h>
+
+struct PushedIntervalTimer
+{
+    int              mType;
+    int              mSignal;
+    uint64_t         mMark;
+    struct sigaction mAction;
+    struct itimerval mTimer;
+};
 
 /* -------------------------------------------------------------------------- */
 static inline uint64_t
@@ -42,11 +53,35 @@ milliSeconds(uint64_t aMilliSeconds)
 
 /* -------------------------------------------------------------------------- */
 uint64_t
+timeValToTime(const struct timeval *aTimeVal);
+
+struct timeval
+timeValFromTime(uint64_t aNanoSeconds);
+
+/* -------------------------------------------------------------------------- */
+uint64_t
 monotonicTime(void);
+
+/* -------------------------------------------------------------------------- */
+bool
+deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration);
 
 /* -------------------------------------------------------------------------- */
 struct timespec
 earliestTime(const struct timespec *aLhs, const struct timespec *aRhs);
+
+/* -------------------------------------------------------------------------- */
+int
+pushIntervalTimer(struct PushedIntervalTimer *aPause,
+                   int                         aType,
+                   const struct itimerval     *aTimer);
+
+int
+popIntervalTimer(struct PushedIntervalTimer *aPause);
+
+/* -------------------------------------------------------------------------- */
+struct itimerval
+shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsed);
 
 /* -------------------------------------------------------------------------- */
 

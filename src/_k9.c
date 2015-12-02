@@ -60,7 +60,8 @@
  * Check correct operation if child closes tether first, vs stdout close first
  * Bracket splice() with SIGALARM (setitimer() and getitimer())
  * Partition monitorChild() -- it's too big
- * Add test for flock timeout
+ * Add test for flock timeout (Use -T to shorten timeout value)
+ * Add unit test for timekeeping
  */
 
 #define DEVNULLPATH "/dev/null"
