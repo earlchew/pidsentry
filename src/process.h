@@ -79,12 +79,6 @@ int
 resetProcessSigPipe(void);
 
 /* -------------------------------------------------------------------------- */
-int
-initProcess(const char *aArg0);
-
-int
-exitProcess(void);
-
 pid_t
 forkProcess(enum ForkProcessOption aOption);
 
@@ -105,6 +99,13 @@ findProcessStartTime(pid_t aPid);
 
 struct ExitCode
 extractProcessExitStatus(int aStatus);
+
+/* -------------------------------------------------------------------------- */
+int
+Process_init(const char *aArg0);
+
+int
+Process_exit(void);
 
 /* -------------------------------------------------------------------------- */
 

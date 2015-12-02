@@ -60,6 +60,7 @@
  * Check correct operation if child closes tether first, vs stdout close first
  * Bracket splice() with SIGALARM (setitimer() and getitimer())
  * Partition monitorChild() -- it's too big
+ * Add test for flock timeout
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -1258,7 +1259,7 @@ cmdRunCommand(char **aCmd)
 /* -------------------------------------------------------------------------- */
 int main(int argc, char **argv)
 {
-    if (initProcess(argv[0]))
+    if (Process_init(argv[0]))
         terminate(
             errno,
             "Unable to initialise process state");
@@ -1274,7 +1275,7 @@ int main(int argc, char **argv)
             exitCode = cmdRunCommand(cmd);
     }
 
-    if (exitProcess())
+    if (Process_exit())
         terminate(
             errno,
             "Unable to finalise process state");

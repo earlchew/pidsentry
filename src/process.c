@@ -547,7 +547,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-initProcess(const char *aArg0)
+Process_init(const char *aArg0)
 {
     ensure( ! sProcessLock[sActiveProcessLock]);
 
@@ -579,7 +579,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-exitProcess(void)
+Process_exit(void)
 {
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
