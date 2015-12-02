@@ -48,7 +48,7 @@ int
 openPidFile(struct PidFile *self, const char *aFileName);
 
 int
-zombiePidFile(const struct PidFile *self);
+detectPidFileZombie(const struct PidFile *self);
 
 int
 closePidFile(struct PidFile *self);

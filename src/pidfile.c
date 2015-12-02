@@ -384,13 +384,17 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-zombiePidFile(const struct PidFile *self)
+detectPidFileZombie(const struct PidFile *self)
 {
     int rc = -1;
 
-    /* The pidfile has become a zombie if it was deleted, and no longer
-     * exists, or replaced by a different file different file in the
-     * same directory. */
+    /* The pidfile has become a zombie if it was deleted, and either
+     * no longer exists, or replaced by a different file in the
+     * same directory.
+     *
+     * Return -1 on error, 0 if the pidfile is not a zombie, or 1 if
+     * the pidfile is zombie.
+     */
 
     struct stat fileStatus;
 

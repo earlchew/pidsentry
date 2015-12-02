@@ -816,6 +816,8 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
     {
         if (0 < zombie)
         {
+            debug(0, "discarding zombie pid file '%s'", aPidFileName);
+
             if (closePidFile(aPidFile))
                 terminate(
                     errno,
@@ -839,15 +841,15 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
                 errno,
                 "Cannot acquire write lock on pid file '%s'", aPidFileName);
 
-        zombie = zombiePidFile(aPidFile);
+        zombie = detectPidFileZombie(aPidFile);
 
         if (0 > zombie)
             terminate(
                 errno,
                 "Unable to obtain status of pid file '%s'", aPidFileName);
-
-        debug(0, "discarding zombie pid file '%s'", aPidFileName);
     }
+
+    debug(0, "created pid file '%s'", aPidFileName);
 
     /* Ensure that the mtime of the pidfile is later than the
      * start time of the child process, if that process exists. */
