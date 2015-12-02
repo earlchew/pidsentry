@@ -249,16 +249,19 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 ssize_t
-writeFd(int aFd, const char *aBuf, size_t aLen)
+readFd(int aFd, char *aBuf, size_t aLen)
 {
-    const char *bufPtr = aBuf;
-    const char *bufEnd = bufPtr + aLen;
+    char *bufPtr = aBuf;
+    char *bufEnd = bufPtr + aLen;
 
     while (bufPtr != bufEnd)
     {
         ssize_t len;
 
-        len = write(aFd, bufPtr, bufEnd - bufPtr);
+        len = read(aFd, bufPtr, bufEnd - bufPtr);
+
+        if ( ! len)
+            break;
 
         if (-1 == len)
         {
@@ -271,9 +274,36 @@ writeFd(int aFd, const char *aBuf, size_t aLen)
             return -1;
         }
 
+        bufPtr += len;
+    }
+
+    return bufPtr - aBuf;
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+writeFd(int aFd, const char *aBuf, size_t aLen)
+{
+    const char *bufPtr = aBuf;
+    const char *bufEnd = bufPtr + aLen;
+
+    while (bufPtr != bufEnd)
+    {
+        ssize_t len;
+
+        len = write(aFd, bufPtr, bufEnd - bufPtr);
+
         if ( ! len)
+            break;
+
+        if (-1 == len)
         {
-            errno = EWOULDBLOCK;
+            if (EINTR == errno)
+                continue;
+
+            if (bufPtr != aBuf)
+                break;
+
             return -1;
         }
 

@@ -56,15 +56,10 @@
  * cmdRunCommand() is too big, break it up
  * EINTR everywhere, especially flock
  * SIGALARM for occasional EINTR
- * cloneProcessLock -- and don't use /proc/self
- * struct ProcessLock using mPathName and mPathName_
- * struct PidFile using mPathName and mPathName_
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
  * Bracket splice() with SIGALARM (setitimer() and getitimer())
  * Partition monitorChild() -- it's too big
- * Move pidfile flock() to use lockFile()
- * Rename FileDescriptor class to File
  */
 
 #define DEVNULLPATH "/dev/null"

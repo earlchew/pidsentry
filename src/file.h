@@ -29,6 +29,10 @@
 #ifndef FILE_H
 #define FILE_H
 
+#include <sys/types.h>
+
+struct stat;
+
 struct File
 {
     int          mFd;
@@ -62,6 +66,21 @@ nonblockingFile(struct File *self);
 
 int
 closeFileOnExec(struct File *self, unsigned aCloseOnExec);
+
+ssize_t
+writeFile(struct File *self, const char *aBuf, size_t aLen);
+
+ssize_t
+readFile(struct File *self, char *aBuf, size_t aLen);
+
+int
+fstatFile(struct File *self, struct stat *aStat);
+
+int
+fcntlFileGetFlags(struct File *self);
+
+int
+ftruncateFile(struct File *self, off_t aLength);
 
 /* -------------------------------------------------------------------------- */
 int

@@ -58,6 +58,9 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 ssize_t
 writeFd(int aFd, const char *aBuf, size_t aLen);
 
+ssize_t
+readFd(int aFd, char *aBuf, size_t aLen);
+
 int
 lockFd(int aFd, int aType, unsigned aMilliSeconds);
 

@@ -33,6 +33,7 @@
 #include "test.h"
 #include "process.h"
 #include "timekeeping.h"
+#include "fd.h"
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -127,17 +128,10 @@ readPidFile(const struct PidFile *self)
         if (bufptr == bufend)
             return 0;
 
-        ssize_t len;
-
-        len = read(self->mFile->mFd, bufptr, bufend - bufptr);
+        ssize_t len = readFile(self->mFile, bufptr, bufend - bufptr);
 
         if (-1 == len)
-        {
-            if (EINTR == errno)
-                continue;
-
             return -1;
-        }
 
         if ( ! len)
         {
@@ -171,7 +165,7 @@ readPidFile(const struct PidFile *self)
 
                 struct stat fdStatus;
 
-                if (fstat(self->mFile->mFd, &fdStatus))
+                if (fstatFile(self->mFile, &fdStatus))
                     return -1;
 
                 struct timespec fdTime   = earliestTime(&fdStatus.st_mtim,
@@ -407,7 +401,7 @@ detectPidFileZombie(const struct PidFile *self)
 
     struct stat fdStatus;
 
-    if (fstat(self->mFile->mFd, &fdStatus))
+    if (fstatFile(self->mFile, &fdStatus))
         goto Finally;
 
     rc = ( fdStatus.st_dev != fileStatus.st_dev ||
@@ -431,7 +425,7 @@ closePidFile(struct PidFile *self)
 
     int rc = -1;
 
-    int flags = fcntl(self->mFile->mFd, F_GETFL, 0);
+    int flags = fcntlFileGetFlags(self->mFile);
 
     if (-1 == flags)
         goto Finally;
@@ -444,7 +438,7 @@ closePidFile(struct PidFile *self)
          * remove the pidfile so that no other process will be
          * able to find the file. */
 
-        if (ftruncate(self->mFile->mFd, 0))
+        if (ftruncateFile(self->mFile, 0))
             goto Finally;
 
         if (unlinkPathName(&self->mPathName, 0))

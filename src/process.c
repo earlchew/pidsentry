@@ -445,7 +445,7 @@ createProcessLock_(struct ProcessLock *self)
     self->mLock     = LOCK_UN;
     self->mPathName = 0;
 
-    if (createPathName(&self->mPathName_, "/proc/self"))
+    if (createPathName(&self->mPathName_, "/proc/self/."))
         goto Finally;
     self->mPathName = &self->mPathName_;
 

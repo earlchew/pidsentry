@@ -319,3 +319,38 @@ unlockFile(struct File *self)
 }
 
 /* -------------------------------------------------------------------------- */
+ssize_t
+writeFile(struct File *self, const char *aBuf, size_t aLen)
+{
+    return writeFd(self->mFd, aBuf, aLen);
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+readFile(struct File *self, char *aBuf, size_t aLen)
+{
+    return readFd(self->mFd, aBuf, aLen);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+fstatFile(struct File *self, struct stat *aStat)
+{
+    return fstat(self->mFd, aStat);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+fcntlFileGetFlags(struct File *self)
+{
+    return fcntl(self->mFd, F_GETFL);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ftruncateFile(struct File *self, off_t aLength)
+{
+    return ftruncate(self->mFd, aLength);
+}
+
+/* -------------------------------------------------------------------------- */
