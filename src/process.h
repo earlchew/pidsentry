@@ -61,6 +61,10 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid);
 
 /* -------------------------------------------------------------------------- */
 int
+purgeProcessOrphanedFds(void);
+
+/* -------------------------------------------------------------------------- */
+int
 watchProcessChildren(const struct Pipe *aTermPipe);
 
 int

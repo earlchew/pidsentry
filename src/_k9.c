@@ -62,6 +62,7 @@
  * Partition monitorChild() -- it's too big
  * Add test for flock timeout (Use -T to shorten timeout value)
  * Add unit test for timekeeping
+ * Create purgeProcessOrphanedFiles()
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -1147,7 +1148,7 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close tether pipe");
 
-    if (cleanseFiles())
+    if (purgeProcessOrphanedFds())
         terminate(
             errno,
             "Unable to cleanse files");

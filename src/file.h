@@ -52,6 +52,10 @@ createFile(struct File *self, int aFd);
 int
 closeFile(struct File *self);
 
+void
+walkFileList(void *aOther,
+             int (*aVisitor)(void *aOther, const struct File *aFile));
+
 int
 cleanseFiles(void);
 

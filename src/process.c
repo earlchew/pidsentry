@@ -828,3 +828,145 @@ ownProcessElapsedTime(void)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+rankProcessFd_(const void *aLhs, const void *aRhs)
+{
+    int lhs = * (const int *) aLhs;
+    int rhs = * (const int *) aRhs;
+
+    if (lhs < rhs) return -1;
+    if (lhs > rhs) return +1;
+    return 0;
+}
+
+struct ProcessFdWhiteList
+{
+    int     *mList;
+    unsigned mLen;
+};
+
+static int
+countProcessFds_(void *aNumFds, const struct File *aFile)
+{
+    unsigned *numFds = aNumFds;
+
+    ++(*numFds);
+
+    return 0;
+}
+
+static int
+enumerateProcessFds_(void *aWhiteList, const struct File *aFile)
+{
+    struct ProcessFdWhiteList *whiteList = aWhiteList;
+
+    whiteList->mList[whiteList->mLen++] = aFile->mFd;
+
+    return 0;
+}
+
+int
+purgeProcessOrphanedFds(void)
+{
+    /* Remove all the file descriptors that were not created explicitly by the
+     * process itself, with the exclusion of stdin, stdout and stderr. */
+
+    int rc = -1;
+
+    /* Count the number of file descriptors explicitly created by the
+     * process itself in order to correctly size the array to whitelist
+     * the explicitly created file dsscriptors. Include stdin, stdout
+     * and stderr in the whitelist by default.
+     *
+     * Note that stdin, stdout and stderr might in fact already be
+     * represented in the file descriptor list, so the resulting
+     * algorithms must be capable of handing duplicates. Force that
+     * scenario to be covered by explicitly repeating each of them here. */
+
+    int stdfds[] =
+    {
+        STDIN_FILENO,  STDIN_FILENO,
+        STDOUT_FILENO, STDOUT_FILENO,
+        STDERR_FILENO, STDERR_FILENO,
+    };
+
+    unsigned numFds = NUMBEROF(stdfds);
+
+    walkFileList(&numFds, countProcessFds_);
+
+    /* Create the whitelist of file descriptors by copying the fds
+     * from each of the explicitly created file descriptors. */
+
+    int whiteList[numFds + 1];
+
+    {
+        struct ProcessFdWhiteList fdWhiteList =
+        {
+            .mList = whiteList,
+            .mLen  = 0,
+        };
+
+        struct rlimit noFile;
+
+        if (getrlimit(RLIMIT_NOFILE, &noFile))
+            goto Finally;
+
+        ensure(numFds < noFile.rlim_cur);
+
+        fdWhiteList.mList[numFds] = noFile.rlim_cur;
+
+        {
+            for (unsigned jx = 0; NUMBEROF(stdfds) > jx; ++jx)
+                fdWhiteList.mList[fdWhiteList.mLen++] = stdfds[jx];
+
+            walkFileList(&fdWhiteList, enumerateProcessFds_);
+
+            ensure(fdWhiteList.mLen == numFds);
+
+            for (unsigned jx = 0; numFds > jx; ++jx)
+                ensure(fdWhiteList.mList[jx] < fdWhiteList.mList[numFds]);
+        }
+    }
+
+    /* Walk the file descriptor space and close all the file descriptors,
+     * skipping those mentioned in the whitelist. */
+
+    debug(0, "purging %d fds", whiteList[numFds]);
+
+    qsort(whiteList, NUMBEROF(whiteList), sizeof(whiteList[0]), rankProcessFd_);
+
+    for (int fd = 0, wx = 0; ; ++fd)
+    {
+        while (0 > whiteList[wx])
+            ++wx;
+
+        if (fd != whiteList[wx])
+        {
+            int closedFd = fd;
+
+            if (closeFd(&closedFd) && EBADF != errno)
+                goto Finally;
+        }
+        else
+        {
+            debug(0, "not closing fd %d", fd);
+
+            if (NUMBEROF(whiteList) == ++wx)
+                break;
+
+            while (whiteList[wx] == fd)
+                ++wx;
+
+        }
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */

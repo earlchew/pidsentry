@@ -117,126 +117,20 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-/* Cleanse process of file descriptors
- *
- * Remove all the file descriptors that were not created explicitly by the
- * process itself, with the exclusion of stdin, stdout and stderr.
- */
-
-static int
-rankFd_(const void *aLhs, const void *aRhs)
+void
+walkFileList(void *aOther,
+             int aVisitor(void *aOther, const struct File *aFile))
 {
-    int lhs = * (const int *) aLhs;
-    int rhs = * (const int *) aRhs;
+    const struct File *fdPtr = &sFileList;
 
-    if (lhs < rhs) return -1;
-    if (lhs > rhs) return +1;
-    return 0;
-}
-
-int
-cleanseFiles(void)
-{
-    int rc = -1;
-
-    /* Count the number of file descriptors explicitly created by the
-     * process itself in order to correctly size the array to whitelist
-     * the explicitly created file dsscriptors. Include stdin, stdout
-     * and stderr in the whitelist by default.
-     *
-     * Note that stdin, stdout and stderr might in fact already be
-     * represented in the file descriptor list, so the resulting
-     * algorithms must be capable of handing duplicates. Force that
-     * scenario to be covered by explicitly repeating each of them here. */
-
-    int stdfds[] =
-    {
-        STDIN_FILENO,  STDIN_FILENO,
-        STDOUT_FILENO, STDOUT_FILENO,
-        STDERR_FILENO, STDERR_FILENO,
-    };
-
-    unsigned numFds = NUMBEROF(stdfds);
-
-    for (const struct File *fdPtr = &sFileList; ; ++numFds)
+    do
     {
         fdPtr = fdPtr->mNext;
+
         if (fdPtr == &sFileList)
             break;
-    }
 
-    /* Create the whitelist of file descriptors by copying the fds
-     * from each of the explicitly created file descriptors. */
-
-    int whiteList[numFds + 1];
-
-    struct rlimit noFile;
-
-    if (getrlimit(RLIMIT_NOFILE, &noFile))
-        goto Finally;
-
-    ensure(numFds < noFile.rlim_cur);
-
-    whiteList[numFds] = noFile.rlim_cur;
-
-    {
-        unsigned ix = 0;
-
-        for (unsigned jx = 0; NUMBEROF(stdfds) > jx; ++jx, ++ix)
-            whiteList[ix] = stdfds[jx];
-
-        for (const struct File *fdPtr = &sFileList;
-             numFds > ix;
-             ++ix)
-        {
-            fdPtr = fdPtr->mNext;
-            ensure(fdPtr != &sFileList);
-
-            whiteList[ix] = fdPtr->mFd;
-
-            ensure(whiteList[ix] < whiteList[numFds]);
-        }
-    }
-
-    /* Walk the file descriptor space and close all the file descriptors,
-     * skipping those mentioned in the whitelist. */
-
-    debug(0, "purging %d fds", whiteList[numFds]);
-
-    qsort(whiteList, NUMBEROF(whiteList), sizeof(whiteList[0]), rankFd_);
-
-    for (int fd = 0, wx = 0; ; ++fd)
-    {
-        while (0 > whiteList[wx])
-            ++wx;
-
-        if (fd != whiteList[wx])
-        {
-            int closedFd = fd;
-
-            if (closeFd(&closedFd) && EBADF != errno)
-                goto Finally;
-        }
-        else
-        {
-            debug(0, "not closing fd %d", fd);
-
-            if (NUMBEROF(whiteList) == ++wx)
-                break;
-
-            while (whiteList[wx] == fd)
-                ++wx;
-
-        }
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+    } while ( ! aVisitor(aOther, fdPtr));
 }
 
 /* -------------------------------------------------------------------------- */
