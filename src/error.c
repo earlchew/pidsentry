@@ -85,6 +85,7 @@ print_(
         }
         else
         {
+            rewind(sPrintBuf.mFile);
             fprintf(
                 sPrintBuf.mFile,
                 "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
