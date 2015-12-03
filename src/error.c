@@ -75,7 +75,7 @@ print_(
                 aFile, aLine);
 
             if (EWOULDBLOCK != err)
-                dprintf(STDERR_FILENO, " - lock error %d - ", err);
+                dprintf(STDERR_FILENO, "- lock error %d - ", err);
 
             vdprintf(STDERR_FILENO, aFmt, aArgs);
             if (aErrCode)
