@@ -31,6 +31,10 @@
 
 #include "file.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct StdFdFiller
 {
     struct File  mFile_[3];
@@ -45,5 +49,9 @@ int
 closeStdFdFiller(struct StdFdFiller *self);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* STDFDFILLER_H */

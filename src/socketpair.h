@@ -31,6 +31,10 @@
 
 #include "file.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct SocketPair
 {
     struct File  mParentFile_;
@@ -50,5 +54,9 @@ int
 closeSocketPairParent(struct SocketPair *self);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SOCKETPAIR_H */

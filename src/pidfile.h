@@ -32,6 +32,10 @@
 #include "file.h"
 #include "pathname.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct PidFile
 {
     struct PathName  mPathName;
@@ -69,5 +73,9 @@ int
 writePidFile(struct PidFile *self, pid_t aPid);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* PIDFILE_H */

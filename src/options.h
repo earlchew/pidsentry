@@ -32,6 +32,10 @@
 #include <sys/types.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* -------------------------------------------------------------------------- */
 struct Options
 {
@@ -61,5 +65,9 @@ int
 parsePid(const char *aArg, pid_t *aValue);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* OPTIONS_H */

@@ -33,6 +33,10 @@
 #include <sys/types.h>
 #include <limits.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct timespec;
 
 struct Pipe;
@@ -119,5 +123,9 @@ int
 Process_exit(void);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* PROCESS_H */

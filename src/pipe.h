@@ -31,6 +31,10 @@
 
 #include "file.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct Pipe
 {
     struct File  mRdFile_;
@@ -56,5 +60,9 @@ int
 closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* PIPE_H */

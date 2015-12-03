@@ -33,6 +33,10 @@
 
 #include <sys/types.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* -------------------------------------------------------------------------- */
 int
 closeFd(int *aFd);
@@ -68,5 +72,9 @@ int
 unlockFd(int aFd);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FD_H */

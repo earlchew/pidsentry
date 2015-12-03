@@ -35,6 +35,10 @@
 
 #include <sys/time.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct PushedIntervalTimer
 {
     int              mType;
@@ -84,5 +88,9 @@ struct itimerval
 shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsed);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TIMEKEEPING_H */

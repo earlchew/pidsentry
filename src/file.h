@@ -31,6 +31,10 @@
 
 #include <sys/types.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct stat;
 
 struct File
@@ -97,5 +101,9 @@ unlockFile(struct File *self);
     ( & ((struct FileLockTimeout) { .mMilliSeconds = (aTimeout) }))
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FILE_H */

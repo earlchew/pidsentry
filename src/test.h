@@ -31,6 +31,10 @@
 
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* -------------------------------------------------------------------------- */
 void
 testSleep(void);
@@ -39,5 +43,9 @@ bool
 testAction(void);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TEST_H */

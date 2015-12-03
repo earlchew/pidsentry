@@ -31,6 +31,10 @@
 
 #include "options.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* -------------------------------------------------------------------------- */
 #define breadcrumb() \
     debug_(__FILE__, __LINE__, ".")
@@ -84,5 +88,9 @@ int
 Error_exit(void);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* ERROR_H */
