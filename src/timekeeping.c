@@ -112,7 +112,7 @@ timeValFromTime(uint64_t aNanoSeconds)
 {
     return (struct timeval) {
         .tv_sec  = aNanoSeconds / (1000 * 1000 * 1000),
-        .tv_usec = aNanoSeconds % (1000 * 1000 * 1000),
+        .tv_usec = aNanoSeconds % (1000 * 1000 * 1000) / 1000,
     };
 }
 
@@ -122,21 +122,22 @@ shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsedTime)
 {
     struct itimerval shortenedTimer = *aTimer;
 
-    uint64_t alarmTime   = timeValToTime(&aTimer->it_value);
-    uint64_t alarmPeriod = timeValToTime(&aTimer->it_interval);
+    uint64_t alarmTime   = timeValToTime(&shortenedTimer.it_value);
+    uint64_t alarmPeriod = timeValToTime(&shortenedTimer.it_interval);
 
     if (alarmTime > aElapsedTime)
     {
-        alarmTime -= aElapsedTime;
-
         shortenedTimer.it_value = timeValFromTime(alarmTime - aElapsedTime);
     }
-    else if ( ! alarmPeriod)
-        shortenedTimer.it_value = shortenedTimer.it_interval;
-    else
+    else if (alarmTime)
     {
-        shortenedTimer.it_value = timeValFromTime(
-            alarmPeriod - (aElapsedTime - alarmTime) % alarmPeriod);
+        if ( ! alarmPeriod)
+            shortenedTimer.it_value = shortenedTimer.it_interval;
+        else
+        {
+            shortenedTimer.it_value = timeValFromTime(
+                alarmPeriod - (aElapsedTime - alarmTime) % alarmPeriod);
+        }
     }
 
     return shortenedTimer;

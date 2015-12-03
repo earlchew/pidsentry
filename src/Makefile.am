@@ -40,6 +40,7 @@ COMMON_FLAGS       = -D_GNU_SOURCE -Wall -Werror -pedantic -O2 -Wno-parentheses
 COMMON_CFLAGS      = $(COMMON_FLAGS) -std=gnu99
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x \
 		     -Wno-variadic-macros -Wno-long-long
+TEST_LIBS          = libk9.la libgoogletest.la -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
 TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
 TEST_CXXFLAGS      = $(TEST_FLAGS) $(COMMON_CXXFLAGS)
@@ -48,7 +49,7 @@ TESTS              = $(check_PROGRAMS) $(check_SCRIPTS)
 k9dir       = $(datadir)/k9
 k9_PROGRAMS         = k9
 check_SCRIPTS       = test.sh
-check_PROGRAMS      = _splicetest
+check_PROGRAMS      = _splicetest _timekeepingtest
 noinst_PROGRAMS     = #bioscall-asm
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9.la
@@ -60,6 +61,9 @@ k9_LDADD     = libk9.la -lrt
 k9_SOURCES   = _k9.c
 
 _splicetest_SOURCES = _splicetest.c
+
+_timekeepingtest_SOURCES = _timekeepingtest.cc
+_timekeepingtest_LDADD   = $(TEST_LIBS)
 
 include libk9_la.am
 $(call WILDCARD,libk9_la,libk9_la_SOURCES,[a-z]*.[ch])
