@@ -62,7 +62,6 @@
  * Partition monitorChild() -- it's too big
  * Add test for flock timeout (Use -T to shorten timeout value)
  * Add unit test for timekeeping
- * Create purgeProcessOrphanedFiles()
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -394,6 +393,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         POLL_FD_STDOUT,
         POLL_FD_CHILD,
         POLL_FD_SIGNAL,
+        POLL_FD_CLOCK,
         POLL_FD_COUNT
     };
 
@@ -402,6 +402,23 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         terminate(
             errno,
             "Unable to create null pipe");
+
+    struct Pipe clockPipe;
+    if (createPipe(&clockPipe))
+        terminate(
+            errno,
+            "Unable to create clock pipe");
+    if (closePipeOnExec(&clockPipe, O_CLOEXEC))
+        terminate(
+            errno,
+            "Unable to set close on exec for clock pipe");
+
+    struct timeval clockPeriod = { .tv_sec = 3 };
+
+    if (watchProcessClock(&clockPipe, &clockPeriod))
+        terminate(
+            errno,
+            "Unable to install process clock watch");
 
     /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
      * that it is best not to put too much trust in POLLHUP vs POLLIN,
@@ -423,10 +440,13 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         [POLL_FD_SIGNAL] = "signal",
         [POLL_FD_STDOUT] = "stdout",
         [POLL_FD_STDIN]  = "stdin",
+        [POLL_FD_CLOCK]  = "clock",
     };
 
     struct pollfd pollfds[POLL_FD_COUNT] =
     {
+        [POLL_FD_CLOCK] = {
+            .fd = clockPipe.mRdFile->mFd,  .events = pollInputEvents },
         [POLL_FD_CHILD] = {
             .fd = aTermPipe->mRdFile->mFd, .events = pollInputEvents },
         [POLL_FD_SIGNAL] = {
@@ -519,6 +539,43 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
          * file descriptor. */
 
         unsigned eventCount = 0;
+
+        if (pollfds[POLL_FD_CLOCK].revents)
+        {
+            ensure(rc);
+
+            ++eventCount;
+
+            /* The clock is used to deliver SIGALRM to the process
+             * periodically to ensure that blocking operations will
+             * return with EINTR so that the event loop remains
+             * responsive. */
+
+            debug(
+                1,
+                "clock tick %s",
+                createPollEventText(
+                    &pollEventText,
+                    pollfds[POLL_FD_CLOCK].revents));
+
+            unsigned char clockTick;
+
+            ssize_t len = read(clockPipe.mRdFile->mFd, &clockTick, 1);
+
+            if (-1 == len)
+            {
+                if (EINTR != errno)
+                    terminate(
+                        errno,
+                        "Unable to read clock tick from queue");
+            }
+            else if ( ! len)
+            {
+                    terminate(
+                        0,
+                        "Clock tick queue closed unexpectedly");
+            }
+        }
 
         if (pollfds[POLL_FD_STDIN].revents)
         {
@@ -797,6 +854,16 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     } while ( ! deadChild ||
                 pollOutputEvents == pollfds[POLL_FD_STDOUT].events ||
                 pollInputEvents  == pollfds[POLL_FD_STDIN].events);
+
+    if (unwatchProcessClock())
+        terminate(
+            errno,
+            "Unable to remove process clock watch");
+
+    if (closePipe(&clockPipe))
+        terminate(
+            errno,
+            "Unable to close clock pipe");
 
     if (closePipe(&nullPipe))
         terminate(

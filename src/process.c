@@ -241,6 +241,140 @@ unwatchProcessChildren(void)
 }
 
 /* -------------------------------------------------------------------------- */
+static int sClockTickRdFd_ = -1;
+static int sClockTickWrFd_ = -1;
+
+static void
+clockTick_(int aSigNum)
+{
+    ++sSigContext;
+    {
+        int clockTickRdFd = sClockTickRdFd_;
+        int clockTickWrFd = sClockTickWrFd_;
+
+        debug(1,
+              "queued clock tick to fd %d from fd %d",
+              clockTickRdFd, clockTickWrFd);
+
+        if (writeSignal_(clockTickWrFd, aSigNum))
+        {
+            if (EBADF != errno && EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to indicate clock tick to fd %d", clockTickWrFd);
+        }
+    }
+    --sSigContext;
+}
+
+static int
+resetProcessClockWatch_(void)
+{
+    int rc = -1;
+
+    if (-1 != sClockTickWrFd_)
+    {
+        sClockTickWrFd_ = -1;
+        sClockTickRdFd_ = -1;
+
+        struct itimerval disableClock =
+            {
+                .it_value    = { .tv_sec = 0 },
+                .it_interval = { .tv_sec = 0 },
+            };
+
+        if (setitimer(ITIMER_REAL, &disableClock, 0))
+            goto Finally;
+
+        struct sigaction clockAction =
+            {
+                .sa_handler = SIG_DFL,
+            };
+
+        if (sigaction(SIGALRM, &clockAction, 0))
+            goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+watchProcessClock(const struct Pipe    *aClockPipe,
+                  const struct timeval *aClockPeriod)
+{
+    int rc = -1;
+
+    /* It is ok to mark the clock pipe non-blocking because this
+     * file descriptor is not shared with any other process. */
+
+    sClockTickRdFd_ = aClockPipe->mRdFile->mFd;
+    sClockTickWrFd_ = aClockPipe->mWrFile->mFd;
+
+    if (nonblockingFd(sClockTickRdFd_))
+        goto Finally;
+
+    if (nonblockingFd(sClockTickWrFd_))
+        goto Finally;
+
+    struct sigaction clockAction =
+    {
+        .sa_handler = clockTick_,
+    };
+
+    if (sigaction(SIGALRM, &clockAction, 0))
+        goto Finally;
+
+    /* Make sure that there are not timers already running. The
+     * interface only supports one clock instance. */
+
+    struct itimerval clockTimer;
+
+    if (getitimer(ITIMER_REAL, &clockTimer))
+        goto Finally;
+
+    if (clockTimer.it_value.tv_sec || clockTimer.it_value.tv_usec)
+    {
+        errno = EPERM;
+        goto Finally;
+    }
+
+    /* Ensure that the selected clock period is non-zero. A zero
+     * clock period would mean that clock is disabled. */
+
+    if ( ! aClockPeriod->tv_sec && ! aClockPeriod->tv_usec)
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    clockTimer.it_value    = *aClockPeriod;
+    clockTimer.it_interval = *aClockPeriod;
+
+    if (setitimer(ITIMER_REAL, &clockTimer, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+unwatchProcessClock(void)
+{
+    return resetProcessClockWatch_();
+}
+
+/* -------------------------------------------------------------------------- */
 static int sSignalRdFd_ = -1;
 static int sSignalWrFd_ = -1;
 
@@ -389,6 +523,9 @@ static int
 resetSignals_(void)
 {
     int rc = -1;
+
+    if (resetProcessClockWatch_())
+        goto Finally;
 
     if (resetProcessSignalsWatch_())
         goto Finally;

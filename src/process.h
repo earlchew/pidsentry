@@ -82,6 +82,13 @@ ignoreProcessSigPipe(void);
 int
 resetProcessSigPipe(void);
 
+int
+watchProcessClock(const struct Pipe    *aClockPipe,
+                  const struct timeval *aClockPeriod);
+
+int
+unwatchProcessClock(void);
+
 /* -------------------------------------------------------------------------- */
 pid_t
 forkProcess(enum ForkProcessOption aOption);
