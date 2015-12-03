@@ -216,4 +216,103 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
     EXPECT_EQ(shortenedVal, shortenIntervalTime(&alarmVal, nsTime_1_0 * 11));
 }
 
+TEST(TimeKeepingTest, PushIntervalTimer)
+{
+    struct PushedIntervalTimer pushedTimer;
+
+    struct sigaction timerAction;
+    struct itimerval timerVal;
+
+    // Verify that the interval timer can be pushed when there is
+    // no previously configured timer.
+
+    EXPECT_FALSE(getitimer(ITIMER_REAL, &timerVal));
+    EXPECT_EQ(0, timerVal.it_value.tv_sec);
+    EXPECT_EQ(0, timerVal.it_value.tv_usec);
+    EXPECT_EQ(0, timerVal.it_interval.tv_sec);
+    EXPECT_EQ(0, timerVal.it_interval.tv_usec);
+
+    timerVal.it_value.tv_sec  = 60 * 60;
+    timerVal.it_value.tv_usec = 0;
+    timerVal.it_interval.tv_sec  = 60 * 60;
+    timerVal.it_interval.tv_usec = 0;
+    EXPECT_FALSE(pushIntervalTimer(&pushedTimer, ITIMER_REAL, &timerVal));
+
+    EXPECT_FALSE(getitimer(ITIMER_REAL, &timerVal));
+    EXPECT_TRUE(timerVal.it_value.tv_sec || timerVal.it_value.tv_usec);
+    EXPECT_EQ(60 * 60, timerVal.it_interval.tv_sec);
+    EXPECT_EQ(0,       timerVal.it_interval.tv_usec);
+
+    EXPECT_FALSE(popIntervalTimer(&pushedTimer));
+
+    EXPECT_FALSE(getitimer(ITIMER_REAL, &timerVal));
+    EXPECT_EQ(0, timerVal.it_value.tv_sec);
+    EXPECT_EQ(0, timerVal.it_value.tv_usec);
+    EXPECT_EQ(0, timerVal.it_interval.tv_sec);
+    EXPECT_EQ(0, timerVal.it_interval.tv_usec);
+
+    EXPECT_EQ(0, sigaction(SIGALRM, 0, &timerAction));
+    EXPECT_EQ(0, timerAction.sa_flags & SA_SIGINFO);
+    EXPECT_EQ(SIG_DFL, timerAction.sa_handler);
+
+    // Verify that the interval timer can be pushed when there is
+    // a previously configured timer, and verify that the timer
+    // is restored.
+
+    timerVal.it_value.tv_sec  = 1;
+    timerVal.it_value.tv_usec = 0;
+    timerVal.it_interval.tv_sec  = 1 * 60 * 60;
+    timerVal.it_interval.tv_usec = 0;
+    EXPECT_EQ(0, setitimer(ITIMER_REAL, &timerVal, 0));
+
+    timerAction.sa_handler = SIG_IGN;
+    timerAction.sa_flags   = 0;
+    EXPECT_EQ(0, sigaction(SIGALRM, &timerAction, 0));
+
+    EXPECT_EQ(0, sigaction(SIGALRM, 0, &timerAction));
+    EXPECT_EQ(0,       timerAction.sa_flags & SA_SIGINFO);
+    EXPECT_EQ(SIG_IGN, timerAction.sa_handler);
+
+    timerVal.it_value.tv_sec  = 1 * 60 * 60;
+    timerVal.it_value.tv_usec = 0;
+    timerVal.it_interval.tv_sec  = 2 * 60 * 60;
+    timerVal.it_interval.tv_usec = 0;
+    EXPECT_FALSE(pushIntervalTimer(&pushedTimer, ITIMER_REAL, &timerVal));
+
+    EXPECT_FALSE(getitimer(ITIMER_REAL, &timerVal));
+    EXPECT_TRUE(timerVal.it_value.tv_sec || timerVal.it_value.tv_usec);
+    EXPECT_EQ(2 * 60 * 60, timerVal.it_interval.tv_sec);
+    EXPECT_EQ(0,           timerVal.it_interval.tv_usec);
+
+    EXPECT_EQ(0, sigaction(SIGALRM, 0, &timerAction));
+    if (timerAction.sa_flags & SA_SIGINFO)
+        EXPECT_TRUE(timerAction.sa_sigaction);
+    else
+        EXPECT_TRUE(
+            SIG_ERR != timerAction.sa_handler &&
+            SIG_IGN != timerAction.sa_handler &&
+            SIG_DFL != timerAction.sa_handler);
+
+    EXPECT_FALSE(popIntervalTimer(&pushedTimer));
+
+    EXPECT_FALSE(getitimer(ITIMER_REAL, &timerVal));
+    EXPECT_TRUE(timerVal.it_value.tv_sec || timerVal.it_value.tv_usec);
+    EXPECT_EQ(1 * 60 * 60, timerVal.it_interval.tv_sec);
+    EXPECT_EQ(0,           timerVal.it_interval.tv_usec);
+
+    EXPECT_EQ(0, sigaction(SIGALRM, 0, &timerAction));
+    EXPECT_EQ(0,       timerAction.sa_flags & SA_SIGINFO);
+    EXPECT_EQ(SIG_IGN, timerAction.sa_handler);
+
+    timerVal.it_value.tv_sec  = 0;
+    timerVal.it_value.tv_usec = 0;
+    timerVal.it_interval.tv_sec  = 0;
+    timerVal.it_interval.tv_usec = 0;
+    EXPECT_EQ(0, setitimer(ITIMER_REAL, &timerVal, 0));
+
+    timerAction.sa_handler = SIG_DFL;
+    timerAction.sa_flags   = 0;
+    EXPECT_EQ(0, sigaction(SIGALRM, &timerAction, 0));
+}
+
 #include "../googletest/src/gtest_main.cc"
