@@ -71,6 +71,10 @@ static const char sUsage[] =
 "      the fd of the tether. Otherwise replace the first command\n"
 "      line argument with a substring that matches N with the fd\n"
 "      of the tether. [Default: Do not advertise fd]\n"
+"  --orphaned | -o\n"
+"      Terminate the child process if this process ever becomes a child\n"
+"      of init(8). This option is only useful if the parent of this\n"
+"      process is not init(8). [Default: Allow this process to be orphaned]\n"
 "  --pid N | -P N\n"
 "      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
 "      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
@@ -91,7 +95,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "df:in:P:p:qsTt:u";
+    "df:in:oP:p:qsTt:u";
 
 static struct option sLongOptions[] =
 {
@@ -99,6 +103,7 @@ static struct option sLongOptions[] =
     { "fd",         1, 0, 'f' },
     { "identify",   0, 0, 'i' },
     { "name",       1, 0, 'n' },
+    { "orphaned",   0, 0, 'o' },
     { "pid",        1, 0, 'P' },
     { "pidfile",    1, 0, 'p' },
     { "quiet",      0, 0, 'q' },
@@ -243,6 +248,11 @@ parseOptions(int argc, char **argv)
         case 'i':
             pidFileOnly = -1;
             gOptions.mIdentify = true;
+            break;
+
+        case 'o':
+            pidFileOnly = -1;
+            gOptions.mOrphaned = true;
             break;
 
         case 'P':

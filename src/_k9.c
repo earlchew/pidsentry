@@ -59,8 +59,10 @@
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
  * Partition monitorChild() -- it's too big
- * Add test for flock timeout
- * Monitor parent
+ * Add test case for persistent SIGTERM deferring killing of child
+ * Add test case for SIGKILL of watchdog and child not watching tether
+ * Add exit code to terminate so that parent can tell why watchdog exited
+ * Add messages to indicate reasons for watchdog actions (--verbose)
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -601,6 +603,18 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
                 pollfds[POLL_FD_STDOUT].events = pollOutputEvents;
                 pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
+            }
+        }
+
+        /* If requested to be aware when the watchdog becomes an orphan,
+         * check if init(8) is the parent of this process. If this process
+         * start sending signals to the child to encourage it to exit. */
+
+        if (gOptions.mOrphaned)
+        {
+            if (1 == getppid())
+            {
+                /* TBD */
             }
         }
 

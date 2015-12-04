@@ -50,6 +50,7 @@ struct Options
     bool        mSetPgid;
     bool        mQuiet;
     bool        mTest;
+    bool        mOrphaned;
 };
 
 extern struct Options gOptions;
