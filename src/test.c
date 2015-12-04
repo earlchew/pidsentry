@@ -35,6 +35,13 @@
 
 /* -------------------------------------------------------------------------- */
 bool
+testMode(void)
+{
+    return gOptions.mTest;
+}
+
+/* -------------------------------------------------------------------------- */
+bool
 testAction(void)
 {
     /* If test mode has been enabled, choose to activate a test action

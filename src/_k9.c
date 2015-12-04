@@ -55,13 +55,10 @@
  *
  * cmdRunCommand() is too big, break it up
  * EINTR everywhere, especially flock
- * SIGALARM for occasional EINTR
  * Correctly close socket/pipe on read and write EOF
  * Check correct operation if child closes tether first, vs stdout close first
- * Bracket splice() with SIGALARM (setitimer() and getitimer())
  * Partition monitorChild() -- it's too big
- * Add test for flock timeout (Use -T to shorten timeout value)
- * Add unit test for timekeeping
+ * Add test for flock timeout
  */
 
 #define DEVNULLPATH "/dev/null"

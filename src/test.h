@@ -42,6 +42,9 @@ testSleep(void);
 bool
 testAction(void);
 
+bool
+testMode(void);
+
 /* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus

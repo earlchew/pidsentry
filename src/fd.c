@@ -326,61 +326,67 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
         goto Finally;
     }
 
-    /* Disable the timer and SIGALRM action so that a new
-     * timer and action can be installed to provide some
-     * protection against deadlocks. */
+    /* Try to acquire the lock immediately. In many cases this will
+     * succeed, and there will not be any need to block. */
 
-    static const struct itimerval flockTimer =
+    if (testAction() || flock(aFd, aType | LOCK_NB))
     {
-        .it_value    = { .tv_sec = 1 },
-        .it_interval = { .tv_sec = 1 },
-    };
+        /* Disable the timer and SIGALRM action so that a new
+         * timer and action can be installed to provide some
+         * protection against deadlocks. */
 
-    struct PushedIntervalTimer pushedTimer;
-
-    if (pushIntervalTimer(&pushedTimer, ITIMER_REAL, &flockTimer))
-        goto Finally;
-
-    /* The installed timer will inject periodic SIGALRM signals
-     * and cause flock() to return with EINTR. This allows
-     * the deadline to be checked periodically. */
-
-    uint64_t deadlineTime = 0;
-
-    do
-    {
-        if (deadlineTimeExpired(&deadlineTime, milliSeconds(aMilliSeconds)))
-        {
-            err = EDEADLOCK;
-            break;
-        }
-
-        /* Very infrequently block here to exercise the EINTR
-         * functionality of the delivered SIGALRM signal. */
-
-        if (testAction() && 1 > random() % 10)
-        {
-            struct timeval timeout =
+        static const struct itimerval flockTimer =
             {
-                .tv_sec = 24 * 60 * 60,
+                .it_value    = { .tv_sec = 1 },
+                .it_interval = { .tv_sec = 1 },
             };
 
-            ensure(-1 == select(0, 0, 0, 0, &timeout) && EINTR == errno);
-        }
+        struct PushedIntervalTimer pushedTimer;
 
-        if ( ! flock(aFd, aType))
-            break;
+        if (pushIntervalTimer(&pushedTimer, ITIMER_REAL, &flockTimer))
+            goto Finally;
 
-        if (EINTR != errno)
+        /* The installed timer will inject periodic SIGALRM signals
+         * and cause flock() to return with EINTR. This allows
+         * the deadline to be checked periodically. */
+
+        uint64_t deadlineTime = 0;
+
+        do
         {
-            err = errno ? errno : EPERM;
-            break;
-        }
+            if (deadlineTimeExpired(&deadlineTime, milliSeconds(aMilliSeconds)))
+            {
+                err = EDEADLOCK;
+                break;
+            }
 
-    } while (1);
+            /* Very infrequently block here to exercise the EINTR
+             * functionality of the delivered SIGALRM signal. */
 
-    if (popIntervalTimer(&pushedTimer))
-        goto Finally;
+            if (testAction() && 1 > random() % 10)
+            {
+                struct timeval timeout =
+                    {
+                        .tv_sec = 24 * 60 * 60,
+                    };
+
+                ensure(-1 == select(0, 0, 0, 0, &timeout) && EINTR == errno);
+            }
+
+            if ( ! flock(aFd, aType))
+                break;
+
+            if (EINTR != errno)
+            {
+                err = errno ? errno : EPERM;
+                break;
+            }
+
+        } while (1);
+
+        if (popIntervalTimer(&pushedTimer))
+            goto Finally;
+    }
 
     rc = 0;
 

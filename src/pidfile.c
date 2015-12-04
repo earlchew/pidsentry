@@ -96,9 +96,16 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
     ensure(LOCK_UN != aLock);
     ensure(LOCK_UN == self->mLock);
 
+    /* Reduce the pidfile lock timeout in test mode so that the
+     * unit test can verify operation of the lock in the reasonable
+     * amount of time. */
+
+    const struct FileLockTimeout *lockTimeout =
+        testMode() ? FILE_LOCK_MILLISECONDS(3000) : 0;
+
     testSleep();
 
-    if (lockFile(self->mFile, aLock, 0))
+    if (lockFile(self->mFile, aLock, lockTimeout))
         goto Finally;
 
     self->mLock = aLock;

@@ -97,7 +97,7 @@ lockFile(struct File *self, int aType, const struct FileLockTimeout *aTimeout);
 int
 unlockFile(struct File *self);
 
-#define FILE_DESCRIPTOR_LOCK_MILLISECONDS(aTimeout) \
+#define FILE_LOCK_MILLISECONDS(aTimeout) \
     ( & ((struct FileLockTimeout) { .mMilliSeconds = (aTimeout) }))
 
 /* -------------------------------------------------------------------------- */
