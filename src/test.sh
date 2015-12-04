@@ -69,7 +69,6 @@ runWait()
 runTest()
 {
     :
-    : testCase 'Test flock times out'
 }
 
 runTests()
@@ -124,6 +123,22 @@ runTests()
     dd if=/dev/zero bs=1K count=1 > pidfile
     testExit 0 runWait ./k9 -T -p pidfile -- true
     [ ! -f pidfile ]
+
+    testCase 'Test flock time out'
+    testOutput 1 == '$(
+        exec 3>&1
+        if ./k9 -T -d -i -p pidfile -- sh -ec "
+          while : ; do sleep 1 ; echo X ; done" ; then
+            echo $? >&3
+        else
+            echo $? >&3
+        fi | {
+            read PARENT
+            read CHILD
+            read X
+            flock -x pidfile sh -xc "kill $CHILD ; sleep 8"
+        }
+    )'
 
     testCase 'Dead process in pid file'
     rm -f pidfile

@@ -336,10 +336,10 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
          * protection against deadlocks. */
 
         static const struct itimerval flockTimer =
-            {
-                .it_value    = { .tv_sec = 1 },
-                .it_interval = { .tv_sec = 1 },
-            };
+        {
+            .it_value    = { .tv_sec = 1 },
+            .it_interval = { .tv_sec = 1 },
+        };
 
         struct PushedIntervalTimer pushedTimer;
 
@@ -366,9 +366,9 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
             if (testAction() && 1 > random() % 10)
             {
                 struct timeval timeout =
-                    {
-                        .tv_sec = 24 * 60 * 60,
-                    };
+                {
+                    .tv_sec = 24 * 60 * 60,
+                };
 
                 ensure(-1 == select(0, 0, 0, 0, &timeout) && EINTR == errno);
             }
@@ -387,6 +387,9 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
         if (popIntervalTimer(&pushedTimer))
             goto Finally;
     }
+
+    if (err)
+        goto Finally;
 
     rc = 0;
 
