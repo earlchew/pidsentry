@@ -30,6 +30,7 @@
 #include "options.h"
 #include "macros.h"
 #include "pipe.h"
+#include "timekeeping.h"
 #include "stdfdfiller.h"
 #include "pidfile.h"
 #include "process.h"
@@ -59,6 +60,7 @@
  * Check correct operation if child closes tether first, vs stdout close first
  * Partition monitorChild() -- it's too big
  * Add test for flock timeout
+ * Monitor parent
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -955,24 +957,15 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
             if ( ! pidFileTime.tv_nsec)
                 pidFileTime.tv_nsec = 900 * 1000 * 1000;
 
-            for (long usResolution = 1; ; usResolution *= 10)
+            for (uint64_t resolution = 1000; ; resolution *= 10)
             {
-                if (pidFileTime.tv_nsec % (1000 * usResolution))
+                if (pidFileTime.tv_nsec % resolution)
                 {
-                    /* OpenGroup says that the argument to usleep(3)
-                     * must be less than 1e6. */
+                    ensure(resolution);
 
-                    ensure(usResolution);
-                    ensure(1000 * 1000 >= usResolution);
+                    debug(0, "delay for %" PRIu64 "ns", resolution);
 
-                    --usResolution;
-
-                    debug(0, "delay for %ldus", usResolution);
-
-                    if (usleep(usResolution) && EINTR != errno)
-                        terminate(
-                            errno,
-                            "Unable to sleep for %ldus", usResolution);
+                    monotonicSleep(resolution);
 
                     break;
                 }

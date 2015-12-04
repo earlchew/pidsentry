@@ -63,6 +63,10 @@ struct timeval
 timeValFromTime(uint64_t aNanoSeconds);
 
 /* -------------------------------------------------------------------------- */
+void
+monotonicSleep(uint64_t aDuration);
+
+/* -------------------------------------------------------------------------- */
 uint64_t
 monotonicTime(void);
 

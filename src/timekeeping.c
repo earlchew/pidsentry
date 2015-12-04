@@ -82,6 +82,33 @@ deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration)
 }
 
 /* -------------------------------------------------------------------------- */
+void
+monotonicSleep(uint64_t aDuration)
+{
+    uint64_t since = 0;
+
+    while ( ! deadlineTimeExpired(&since, aDuration))
+    {
+        /* This approach avoids the problem of drifting sleep duration
+         * caused by repeated signal delivery by fixing the wake time
+         * then re-calibrating the sleep time on each iteration. */
+
+        uint64_t sleepDuration = since + aDuration - monotonicTime();
+
+        if (sleepDuration)
+        {
+            struct timespec sleepTime =
+            {
+                .tv_sec  = sleepDuration / (1000 * 1000 * 1000),
+                .tv_nsec = sleepDuration % (1000 * 1000 * 1000),
+            };
+
+            nanosleep(&sleepTime, 0);
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 struct timespec
 earliestTime(const struct timespec *aLhs, const struct timespec *aRhs)
 {

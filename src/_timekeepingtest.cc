@@ -82,6 +82,19 @@ TEST(TimeKeepingTest, DeadlineExpires)
     EXPECT_GE(elapsedOuter, duration);
 }
 
+TEST(TimeKeepingTest, MonotonicSleep)
+{
+    auto duration = milliSeconds(1000);
+
+    auto startTime = monotonicTime();
+    monotonicSleep(duration);
+    auto stopTime = monotonicTime();
+
+    auto elapsedTime = (stopTime - startTime) / (100 * 1000 * 1000);
+
+    EXPECT_EQ(duration / 10, elapsedTime);
+}
+
 TEST(TimeKeepingTest, EarliestTime)
 {
     struct timespec small;
