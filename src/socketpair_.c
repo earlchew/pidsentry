@@ -27,26 +27,29 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "pipe.h"
-#include "fd.h"
-#include "error.h"
-#include "macros.h"
+#include "socketpair_.h"
+#include "fd_.h"
+#include "macros_.h"
+#include "error_.h"
 
 #include <unistd.h>
 #include <errno.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+
 /* -------------------------------------------------------------------------- */
 int
-createPipe(struct Pipe *self)
+createSocketPair(struct SocketPair *self)
 {
     int rc = -1;
 
-    self->mRdFile = 0;
-    self->mWrFile = 0;
+    self->mParentFile = 0;
+    self->mChildFile  = 0;
 
     int fd[2];
 
-    if (pipe(fd))
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd))
         goto Finally;
 
     if (-1 == fd[0] || -1 == fd[1])
@@ -55,15 +58,15 @@ createPipe(struct Pipe *self)
     ensure( ! stdFd(fd[0]));
     ensure( ! stdFd(fd[1]));
 
-    if (createFile(&self->mRdFile_, fd[0]))
+    if (createFile(&self->mParentFile_, fd[0]))
         goto Finally;
-    self->mRdFile = &self->mRdFile_;
+    self->mParentFile = &self->mParentFile_;
 
     fd[0] = -1;
 
-    if (createFile(&self->mWrFile_, fd[1]))
+    if (createFile(&self->mChildFile_, fd[1]))
         goto Finally;
-    self->mWrFile = &self->mWrFile_;
+    self->mChildFile = &self->mChildFile_;
 
     fd[1] = -1;
 
@@ -78,8 +81,8 @@ Finally:
 
         if (rc)
         {
-            closeFile(self->mRdFile);
-            closeFile(self->mWrFile);
+            closeFile(self->mParentFile);
+            closeFile(self->mChildFile);
         }
     });
 
@@ -88,32 +91,13 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-closePipeReader(struct Pipe *self)
+closeSocketPairParent(struct SocketPair *self)
 {
     int rc = -1;
 
-    if (closeFile(self->mRdFile))
+    if (closeFile(self->mParentFile))
         goto Finally;
-    self->mRdFile = 0;
-
-    rc = 0;
-
- Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-closePipeWriter(struct Pipe *self)
-{
-    int rc = -1;
-
-    if (closeFile(self->mWrFile))
-        goto Finally;
-    self->mWrFile = 0;
+    self->mParentFile = 0;
 
     rc = 0;
 
@@ -126,30 +110,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec)
+closeSocketPair(struct SocketPair *self)
 {
-    int rc = -1;
-
-    if (closeFileOnExec(self->mRdFile, aCloseOnExec) ||
-        closeFileOnExec(self->mWrFile, aCloseOnExec))
-    {
-        goto Finally;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-closePipe(struct Pipe *self)
-{
-    return closeFilePair(&self->mRdFile, &self->mWrFile);
+    return closeFilePair(&self->mParentFile, &self->mChildFile);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -27,8 +27,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "pathname.h"
-#include "macros.h"
+#include "pathname_.h"
+#include "macros_.h"
 
 #include <string.h>
 #include <stdlib.h>

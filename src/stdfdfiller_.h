@@ -26,32 +26,27 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef SOCKETPAIR_H
-#define SOCKETPAIR_H
+#ifndef STDFDFILLER_H
+#define STDFDFILLER_H
 
-#include "file.h"
+#include "file_.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct SocketPair
+struct StdFdFiller
 {
-    struct File  mParentFile_;
-    struct File *mParentFile;
-    struct File  mChildFile_;
-    struct File *mChildFile;
+    struct File  mFile_[3];
+    struct File *mFile[3];
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createSocketPair(struct SocketPair *self);
+createStdFdFiller(struct StdFdFiller *self);
 
 int
-closeSocketPair(struct SocketPair *self);
-
-int
-closeSocketPairParent(struct SocketPair *self);
+closeStdFdFiller(struct StdFdFiller *self);
 
 /* -------------------------------------------------------------------------- */
 
@@ -59,4 +54,4 @@ closeSocketPairParent(struct SocketPair *self);
 }
 #endif
 
-#endif /* SOCKETPAIR_H */
+#endif /* STDFDFILLER_H */

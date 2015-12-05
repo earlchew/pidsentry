@@ -26,51 +26,46 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef PIDFILE_H
-#define PIDFILE_H
+#ifndef PATHNAME_H
+#define PATHNAME_H
 
-#include "file.h"
-#include "pathname.h"
+#include "file_.h"
+
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct PidFile
+struct stat;
+
+struct PathName
 {
-    struct PathName  mPathName;
-    struct File      mFile_;
-    struct File     *mFile;
-    int              mLock;
+    char *mFileName;
+    char *mDirName_;
+    char *mDirName;
+    char *mBaseName_;
+    char *mBaseName;
+
+    struct File  mDirFile_;
+    struct File *mDirFile;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createPidFile(struct PidFile *self, const char *aFileName);
+createPathName(struct PathName *self, const char *aFileName);
 
 int
-openPidFile(struct PidFile *self, const char *aFileName);
+closePathName(struct PathName *self);
 
 int
-detectPidFileZombie(const struct PidFile *self);
+openPathName(struct PathName *self, int aFlags, mode_t aMode);
 
 int
-closePidFile(struct PidFile *self);
-
-pid_t
-readPidFile(const struct PidFile *self);
+unlinkPathName(struct PathName *self, int aFlags);
 
 int
-releaseLockPidFile(struct PidFile *self);
-
-int
-acquireWriteLockPidFile(struct PidFile *self);
-
-int
-acquireReadLockPidFile(struct PidFile *self);
-
-int
-writePidFile(struct PidFile *self, pid_t aPid);
+fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags);
 
 /* -------------------------------------------------------------------------- */
 
@@ -78,4 +73,4 @@ writePidFile(struct PidFile *self, pid_t aPid);
 }
 #endif
 
-#endif /* PIDFILE_H */
+#endif /* PATHNAME_H */

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset:4; indent-tabs-mode:nil -*- vi: set sw=4 et: */
 /*
-// Copyright (c) 2015, Earl Chew
+// Copyright (c) 2013, Earl Chew
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,99 +26,71 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+#ifndef ERROR_H
+#define ERROR_H
 
-#include "stdfdfiller.h"
-#include "macros.h"
-#include "fd.h"
+#include "options_.h"
 
-#include <unistd.h>
-#include <errno.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* -------------------------------------------------------------------------- */
+#define breadcrumb() \
+    debug_(__FILE__, __LINE__, ".")
+
+#define debug(aLevel, ...)                              \
+    if ((aLevel) < gOptions.mDebug)                     \
+        debug_(__FILE__, __LINE__, ## __VA_ARGS__)
+
+void
+debug_(
+    const char *aFile, unsigned aLine,
+    const char *aFmt, ...);
+
+/* -------------------------------------------------------------------------- */
+#define ensure(aPredicate)                                      \
+    do                                                          \
+        if ( ! (aPredicate))                                    \
+            ensure_(__FILE__, __LINE__, 0, # aPredicate);       \
+    while (0)
+
+void
+ensure_(
+    const char *aFile, unsigned aLine,
+    const char *aFmt, ...);
+
+/* -------------------------------------------------------------------------- */
+#define warn(aErrCode, ...) \
+    warn_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
+
+void
+warn_(
+    int aErrCode,
+    const char *aFile, unsigned aLine,
+    const char *aFmt, ...);
+
+/* -------------------------------------------------------------------------- */
+#define terminate(aErrCode, ...) \
+    terminate_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
+
+void
+terminate_(
+    int aErrCode,
+    const char *aFile, unsigned aLine,
+    const char *aFmt, ...);
 
 /* -------------------------------------------------------------------------- */
 int
-createStdFdFiller(struct StdFdFiller *self)
-{
-    int rc = -1;
+Error_init(void);
 
-    for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
-        self->mFile[ix] = 0;
-
-    int fd[2];
-
-    if (pipe(fd))
-        goto Finally;
-
-    if (-1 == fd[0] || -1 == fd[1])
-    {
-        errno = EBADF;
-        goto Finally;
-    }
-
-    /* Close the writing end of the pipe, leaving only the reading
-     * end of the pipe. Any attempt to write will fail, and any
-     * attempt to read will yield EOF. */
-
-    if (closeFd(&fd[1]))
-        goto Finally;
-
-    fd[1] = -1;
-
-    if (createFile(&self->mFile_[0], fd[0]))
-        goto Finally;
-    self->mFile[0] = &self->mFile_[0];
-
-    fd[0] = -1;
-
-    if (dupFile(&self->mFile_[1], &self->mFile_[0]))
-        goto Finally;
-    self->mFile[1] = &self->mFile_[1];
-
-    if (dupFile(&self->mFile_[2], &self->mFile_[0]))
-        goto Finally;
-    self->mFile[2] = &self->mFile_[2];
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        closeFd(&fd[0]);
-        closeFd(&fd[1]);
-
-        if (rc)
-        {
-            for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
-            {
-                closeFile(self->mFile[ix]);
-                self->mFile[ix] = 0;
-            }
-        }
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 int
-closeStdFdFiller(struct StdFdFiller *self)
-{
-    int rc = -1;
-
-    for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
-    {
-        if (closeFile(self->mFile[ix]))
-            goto Finally;
-        self->mFile[ix] = 0;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
+Error_exit(void);
 
 /* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* ERROR_H */

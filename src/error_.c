@@ -27,10 +27,10 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "error.h"
-#include "macros.h"
-#include "process.h"
-#include "fd.h"
+#include "error_.h"
+#include "macros_.h"
+#include "process_.h"
+#include "fd_.h"
 
 #include <stdlib.h>
 #include <stdarg.h>

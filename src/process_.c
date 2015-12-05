@@ -27,15 +27,15 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "process.h"
-#include "macros.h"
-#include "pathname.h"
-#include "fd.h"
-#include "file.h"
-#include "pipe.h"
-#include "test.h"
-#include "error.h"
-#include "timekeeping.h"
+#include "process_.h"
+#include "macros_.h"
+#include "pathname_.h"
+#include "fd_.h"
+#include "file_.h"
+#include "pipe_.h"
+#include "test_.h"
+#include "error_.h"
+#include "timekeeping_.h"
 
 #include <stdio.h>
 #include <stdlib.h>

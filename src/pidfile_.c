@@ -27,13 +27,13 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "pidfile.h"
-#include "macros.h"
-#include "error.h"
-#include "test.h"
-#include "process.h"
-#include "timekeeping.h"
-#include "fd.h"
+#include "pidfile_.h"
+#include "macros_.h"
+#include "error_.h"
+#include "test_.h"
+#include "process_.h"
+#include "timekeeping_.h"
+#include "fd_.h"
 
 #include <stdio.h>
 #include <fcntl.h>

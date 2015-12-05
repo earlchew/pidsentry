@@ -27,11 +27,12 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "fd.h"
-#include "macros.h"
-#include "test.h"
-#include "error.h"
-#include "timekeeping.h"
+#include "fd_.h"
+#include "macros_.h"
+#include "test_.h"
+#include "error_.h"
+#include "timekeeping_.h"
+#include "process_.h"
 
 #include <stdlib.h>
 #include <errno.h>
@@ -39,7 +40,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <inttypes.h>
-#include <process.h>
 
 #include <sys/time.h>
 #include <sys/file.h>

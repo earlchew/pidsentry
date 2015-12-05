@@ -26,27 +26,51 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef STDFDFILLER_H
-#define STDFDFILLER_H
+#ifndef PIDFILE_H
+#define PIDFILE_H
 
-#include "file.h"
+#include "file_.h"
+#include "pathname_.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct StdFdFiller
+struct PidFile
 {
-    struct File  mFile_[3];
-    struct File *mFile[3];
+    struct PathName  mPathName;
+    struct File      mFile_;
+    struct File     *mFile;
+    int              mLock;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createStdFdFiller(struct StdFdFiller *self);
+createPidFile(struct PidFile *self, const char *aFileName);
 
 int
-closeStdFdFiller(struct StdFdFiller *self);
+openPidFile(struct PidFile *self, const char *aFileName);
+
+int
+detectPidFileZombie(const struct PidFile *self);
+
+int
+closePidFile(struct PidFile *self);
+
+pid_t
+readPidFile(const struct PidFile *self);
+
+int
+releaseLockPidFile(struct PidFile *self);
+
+int
+acquireWriteLockPidFile(struct PidFile *self);
+
+int
+acquireReadLockPidFile(struct PidFile *self);
+
+int
+writePidFile(struct PidFile *self, pid_t aPid);
 
 /* -------------------------------------------------------------------------- */
 
@@ -54,4 +78,4 @@ closeStdFdFiller(struct StdFdFiller *self);
 }
 #endif
 
-#endif /* STDFDFILLER_H */
+#endif /* PIDFILE_H */

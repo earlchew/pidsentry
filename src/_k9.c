@@ -27,16 +27,16 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "options.h"
-#include "macros.h"
-#include "pipe.h"
-#include "timekeeping.h"
-#include "stdfdfiller.h"
-#include "pidfile.h"
-#include "process.h"
-#include "error.h"
-#include "test.h"
-#include "fd.h"
+#include "options_.h"
+#include "macros_.h"
+#include "pipe_.h"
+#include "timekeeping_.h"
+#include "stdfdfiller_.h"
+#include "pidfile_.h"
+#include "process_.h"
+#include "error_.h"
+#include "test_.h"
+#include "fd_.h"
 
 #include <ctype.h>
 #include <stdio.h>

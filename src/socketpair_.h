@@ -26,46 +26,32 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef PATHNAME_H
-#define PATHNAME_H
+#ifndef SOCKETPAIR_H
+#define SOCKETPAIR_H
 
-#include "file.h"
-
-#include <sys/types.h>
+#include "file_.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct stat;
-
-struct PathName
+struct SocketPair
 {
-    char *mFileName;
-    char *mDirName_;
-    char *mDirName;
-    char *mBaseName_;
-    char *mBaseName;
-
-    struct File  mDirFile_;
-    struct File *mDirFile;
+    struct File  mParentFile_;
+    struct File *mParentFile;
+    struct File  mChildFile_;
+    struct File *mChildFile;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createPathName(struct PathName *self, const char *aFileName);
+createSocketPair(struct SocketPair *self);
 
 int
-closePathName(struct PathName *self);
+closeSocketPair(struct SocketPair *self);
 
 int
-openPathName(struct PathName *self, int aFlags, mode_t aMode);
-
-int
-unlinkPathName(struct PathName *self, int aFlags);
-
-int
-fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags);
+closeSocketPairParent(struct SocketPair *self);
 
 /* -------------------------------------------------------------------------- */
 
@@ -73,4 +59,4 @@ fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags);
 }
 #endif
 
-#endif /* PATHNAME_H */
+#endif /* SOCKETPAIR_H */

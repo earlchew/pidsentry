@@ -27,9 +27,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "timekeeping.h"
-#include "error.h"
-#include "macros.h"
+#include "timekeeping_.h"
+#include "error_.h"
+#include "macros_.h"
 
 #include <time.h>
 #include <errno.h>

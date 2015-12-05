@@ -27,8 +27,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "test.h"
-#include "options.h"
+#include "test_.h"
+#include "options_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
