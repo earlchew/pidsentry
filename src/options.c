@@ -43,7 +43,8 @@
 
 struct Options gOptions;
 
-#define DEFAULT_TIMEOUT 30
+#define DEFAULT_TETHER_TIMEOUT_S 30
+#define DEFAULT_EXIT_PACING_S    30
 
 /* -------------------------------------------------------------------------- */
 static const char sUsage[] =
@@ -53,6 +54,9 @@ static const char sUsage[] =
 "options:\n"
 "  --debug | -d\n"
 "      Print debug information.\n"
+"  --delay N | -D N\n"
+"      Specify the delay N in seconds between signals when terminating\n"
+"      the child process. [Default: " STRINGIFY(DEFAULT_EXIT_PACING_S) "]\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
@@ -88,18 +92,19 @@ static const char sUsage[] =
 "  --timeout N | -t N\n"
 "      Specify the timeout N in seconds for activity on tether from\n"
 "      the child process. Set N to 0 to avoid imposing any timeout at\n"
-"      all. [Default: N = " STRINGIFY(DEFAULT_TIMEOUT) "]\n"
+"      all. [Default: N = " STRINGIFY(DEFAULT_TETHER_TIMEOUT) "]\n"
 "  --untethered | -u\n"
 "      Run child process without a tether and only watch for termination.\n"
 "      [Default: Tether child process]\n"
 "";
 
 static const char sShortOptions[] =
-    "df:in:oP:p:qsTt:u";
+    "D:df:in:oP:p:qsTt:u";
 
 static struct option sLongOptions[] =
 {
     { "debug",      0, 0, 'd' },
+    { "delay",      1, 0, 'D' },
     { "fd",         1, 0, 'f' },
     { "identify",   0, 0, 'i' },
     { "name",       1, 0, 'n' },
@@ -152,9 +157,29 @@ parseUnsignedLongLong_(const char *aArg)
 
     return arg;
 }
+
 /* -------------------------------------------------------------------------- */
 int
 parseInt(const char *aArg, int *aValue)
+{
+    int rc = -1;
+
+    unsigned long long value = parseUnsignedLongLong_(aArg);
+
+    if ( ! errno)
+    {
+        *aValue = value;
+
+        if ( ! (*aValue - value))
+            rc = 0;
+    }
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+parseUInt(const char *aArg, unsigned *aValue)
 {
     int rc = -1;
 
@@ -199,7 +224,8 @@ parseOptions(int argc, char **argv)
 {
     int pidFileOnly = 0;
 
-    gOptions.mTimeout   = DEFAULT_TIMEOUT;
+    gOptions.mTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
+    gOptions.mPacing_s  = DEFAULT_EXIT_PACING_S;
     gOptions.mTetherFd  = STDOUT_FILENO;
     gOptions.mTether    = &gOptions.mTetherFd;
 
@@ -225,6 +251,13 @@ parseOptions(int argc, char **argv)
 
         case 'd':
             ++gOptions.mDebug;
+            break;
+
+        case 'D':
+            pidFileOnly = -1;
+            if (parseUInt(optarg,
+                          &gOptions.mPacing_s) || 0 >= gOptions.mPacing_s)
+                terminate(0, "Badly formed delay - '%s'", optarg);
             break;
 
         case 'f':
@@ -291,7 +324,8 @@ parseOptions(int argc, char **argv)
 
         case 't':
             pidFileOnly = -1;
-            if (parseInt(optarg, &gOptions.mTimeout) || 0 > gOptions.mTimeout)
+            if (parseInt(optarg,
+                         &gOptions.mTimeout_s) || 0 > gOptions.mTimeout_s)
                 terminate(0, "Badly formed timeout - '%s'", optarg);
             break;
 

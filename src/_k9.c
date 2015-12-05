@@ -55,14 +55,9 @@
 /* TODO
  *
  * cmdRunCommand() is too big, break it up
- * EINTR everywhere, especially flock
- * Correctly close socket/pipe on read and write EOF
- * Check correct operation if child closes tether first, vs stdout close first
  * Partition monitorChild() -- it's too big
- * Add test case for persistent SIGTERM deferring killing of child
  * Add test case for SIGKILL of watchdog and child not watching tether
- * Add exit code to terminate so that parent can tell why watchdog exited
- * Add messages to indicate reasons for watchdog actions (--verbose)
+ * Parasitic watcher for child process
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -485,9 +480,35 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     const struct ChildSignalPlan *childSignalPlan =
         gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan;
 
-    int timeout = gOptions.mTimeout;
+    struct
+    {
+        int      mPeriod_ms;    /* Timeout period if not -1 */
+        uint64_t mSince_ns;     /* Last activity on tether */
+        bool     mTriggered;    /* Timeout triggered */
+    } timeout =
+    {
+        .mPeriod_ms = gOptions.mTimeout_s ? gOptions.mTimeout_s * 1000 : -1,
+        .mSince_ns  = lapTimeSince(0, 0),
+        .mTriggered = false,
+    };
 
-    timeout = timeout ? timeout * 1000 : -1;
+    struct
+    {
+        bool mTriggered;        /* Process detected as orhpan */
+    } orphaned =
+    {
+        .mTriggered  = false,
+    };
+
+    struct
+    {
+        uint64_t mSince_ns;     /* Termination timeline */
+        int      mTriggered;    /* Termination in progress */
+    } termination =
+    {
+        .mSince_ns  = 0,
+        .mTriggered = false,
+    };
 
     int closedStdout = 0;
     int closedStdin  = 0;
@@ -504,7 +525,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         debug(1, "poll wait");
 
-        int rc = poll(pollfds, NUMBEROF(pollfds), timeout);
+        int rc = poll(pollfds, NUMBEROF(pollfds), timeout.mPeriod_ms);
 
         if (-1 == rc)
         {
@@ -540,6 +561,95 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
          * file descriptor. */
 
         unsigned eventCount = 0;
+
+        if ( ! rc)
+        {
+            ensure(-1 != timeout.mPeriod_ms);
+
+            ++eventCount;
+        }
+
+        /* If a timeout is expected and a timeout occurred, and the
+         * event loop was waiting for data from the child process,
+         * then declare the child terminated. */
+
+        if (gOptions.mTimeout_s && ! timeout.mTriggered)
+        {
+            int elapsedTime_ms =
+                toMilliSeconds(lapTimeSince(&timeout.mSince_ns, 0));
+
+            debug(1, "inactivity clock %dms", elapsedTime_ms);
+
+            if (elapsedTime_ms >= timeout.mPeriod_ms)
+            {
+                debug(0, "timeout after %ds", gOptions.mTimeout_s);
+
+                timeout.mTriggered = true;
+
+                if ( ! termination.mTriggered)
+                {
+                    termination.mTriggered = -1;
+                    termination.mSince_ns  = lapTimeSince(0, 0);
+                }
+            }
+        }
+
+        /* If requested to be aware when the watchdog becomes an orphan,
+         * check if init(8) is the parent of this process. If this process
+         * start sending signals to the child to encourage it to exit. */
+
+        if (gOptions.mOrphaned && ! orphaned.mTriggered)
+        {
+            if (1 == getppid())
+            {
+                debug(0, "orphaned");
+
+                orphaned.mTriggered = true;
+
+                if ( ! termination.mTriggered)
+                {
+                    termination.mTriggered = -1;
+                    termination.mSince_ns  = lapTimeSince(0, 0);
+                }
+            }
+        }
+
+        if (termination.mTriggered)
+        {
+            unsigned elapsedTime_s =
+                termination.mTriggered < 0
+                ? gOptions.mPacing_s
+                : toMilliSeconds(
+                    lapTimeSince(
+                        &termination.mSince_ns,
+                        milliSeconds(gOptions.mPacing_s * 1000))) / 1000;
+
+            debug(1, "post mortem clock %us", elapsedTime_s);
+
+            if (gOptions.mPacing_s <= elapsedTime_s)
+            {
+                termination.mTriggered = 1;
+
+                pid_t pidNum = childSignalPlan->mPid;
+                int   sigNum = childSignalPlan->mSig;
+
+                if (childSignalPlan[1].mPid)
+                    ++childSignalPlan;
+
+                warn(
+                    0,
+                    "Killing child pid %jd with signal %d",
+                    (intmax_t) pidNum,
+                    sigNum);
+
+                if (kill(pidNum, sigNum) && ESRCH != errno)
+                    terminate(
+                        errno,
+                        "Unable to kill child pid %jd with signal %d",
+                        (intmax_t) pidNum,
+                        sigNum);
+            }
+        }
 
         if (pollfds[POLL_FD_CLOCK].revents)
         {
@@ -586,6 +696,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
             ++eventCount;
 
+            timeout.mSince_ns = lapTimeSince(0, 0);
+
             debug(
                 1,
                 "poll stdin %s",
@@ -606,50 +718,6 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             }
         }
 
-        /* If requested to be aware when the watchdog becomes an orphan,
-         * check if init(8) is the parent of this process. If this process
-         * start sending signals to the child to encourage it to exit. */
-
-        if (gOptions.mOrphaned)
-        {
-            if (1 == getppid())
-            {
-                /* TBD */
-            }
-        }
-
-        /* If a timeout is expected and a timeout occurred, and the
-         * event loop was waiting for data from the child process,
-         * then declare the child terminated. */
-
-        if ( ! rc)
-        {
-            ensure(-1 != timeout);
-
-            ++eventCount;
-
-            debug(0, "timeout after %d", timeout);
-
-            pid_t pidNum = childSignalPlan->mPid;
-            int   sigNum = childSignalPlan->mSig;
-
-            if (childSignalPlan[1].mPid)
-                ++childSignalPlan;
-
-            warn(
-                0,
-                "Killing unresponsive child pid %jd with signal %d",
-                (intmax_t) pidNum,
-                sigNum);
-
-            if (kill(pidNum, sigNum) && ESRCH != errno)
-                terminate(
-                    errno,
-                    "Unable to kill child pid %jd with signal %d",
-                    (intmax_t) pidNum,
-                    sigNum);
-        }
-
         if (pollfds[POLL_FD_STDOUT].revents)
         {
             ensure(rc);
@@ -657,6 +725,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             ensure( ! closedStdout);
 
             ++eventCount;
+
+            timeout.mSince_ns = lapTimeSince(0, 0);
 
             debug(
                 1,
@@ -969,7 +1039,7 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
                 break;
 
             if ( ! pidFileTime.tv_nsec)
-                pidFileTime.tv_nsec = 900 * 1000 * 1000;
+                pidFileTime.tv_nsec = milliSeconds(900);
 
             for (uint64_t resolution = 1000; ; resolution *= 10)
             {
@@ -1215,7 +1285,7 @@ cmdRunCommand(char **aCmd)
             "Unable to dup tether pipe to stdin");
 
     if (closePipe(&tetherPipe))
-        warn(
+        terminate(
             errno,
             "Unable to close tether pipe");
 

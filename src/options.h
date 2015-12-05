@@ -42,7 +42,8 @@ struct Options
     const char *mName;
     pid_t       mPid;
     const char *mPidFile;
-    int         mTimeout;
+    unsigned    mPacing_s;
+    int         mTimeout_s;
     int         mTetherFd;
     const int  *mTether;
     unsigned    mDebug;
@@ -61,6 +62,9 @@ parseOptions(int argc, char **argv);
 
 int
 parseInt(const char *aArg, int *aValue);
+
+int
+parseUInt(const char *aArg, unsigned *aValue);
 
 int
 parsePid(const char *aArg, pid_t *aValue);

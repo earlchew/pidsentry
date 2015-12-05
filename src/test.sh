@@ -351,6 +351,24 @@ runTests()
         }
     done
 
+    testCase 'Fixed termination deadline'
+    testOutput OK = '$(
+        $VALGRIND ./k9 -T -i -dd -t 3 -D 4 -- sh -cx "
+            trap : 15
+            while : ; do sleep 1 ; done" |
+        {
+            read PARENT
+            read CHILD
+            sleep 4 # Wait for watchdog to send first signal
+            while : ; do sleep 1 ; kill $PARENT 2>&- ; done &
+            SLAVE=$!
+            sleep 8
+            read -t 0 && echo OK || echo FAIL
+            kill -9 $SLAVE 2>&-
+            kill -9 $CHILD 2>&-
+        }
+    )'
+
     testCase 'Test SIGPIPE propagates from child'
     testOutput "X-$((128 + 13))" = '$(
         exec 3>&1
