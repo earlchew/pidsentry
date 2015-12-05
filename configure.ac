@@ -39,7 +39,7 @@ AC_PROG_CXX
 AM_PROG_CC_C_O
 
 # Checks for libraries.
-LT_INIT([disable-shared])
+LT_INIT([])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdint.h])

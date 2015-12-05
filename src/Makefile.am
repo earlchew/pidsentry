@@ -28,6 +28,7 @@ $(eval include $(top_srcdir)/wildcard.mk)
 
 include $(top_srcdir)/headercheck.mk
 
+VERSION       = 1.0.0
 INCLUDES      =
 LDADD         =
 
@@ -53,12 +54,18 @@ check_PROGRAMS      = _splicetest _timekeepingtest
 noinst_PROGRAMS     = #bioscall-asm
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
-#lib_LTLIBRARIES     = libk9.la
+lib_LTLIBRARIES     = libk9.la
 
 k9_CFLAGS    = $(COMMON_CFLAGS)
 k9_LDFLAGS   = #-Wl,-Ttext=0x100000
 k9_LDADD     = libk9_.la -lrt
 k9_SOURCES   = _k9.c
+
+libk9_la_CFLAGS  = $(COMMON_CFLAGS)
+libk9_la_LIBADD  = -lrt
+libk9_la_SOURCES = libk9.c
+libk9_la_VERSION = 0:0:0
+libk9_la_LDFLAGS = -version-info $(libk9_la_VERSION) -release $(VERSION)
 
 _splicetest_SOURCES = _splicetest.c
 
