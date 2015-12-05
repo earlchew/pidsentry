@@ -55,6 +55,12 @@ milliSeconds(uint64_t aMilliSeconds)
     return aMilliSeconds * 1000 * 1000;
 }
 
+static inline uint64_t
+toMilliSeconds(uint64_t aNanoSeconds)
+{
+    return aNanoSeconds / (1000 * 1000);
+}
+
 /* -------------------------------------------------------------------------- */
 uint64_t
 timeValToTime(const struct timeval *aTimeVal);
@@ -69,6 +75,10 @@ monotonicSleep(uint64_t aDuration);
 /* -------------------------------------------------------------------------- */
 uint64_t
 monotonicTime(void);
+
+/* -------------------------------------------------------------------------- */
+uint64_t
+lapTimeSince(uint64_t *aSince, uint64_t aPeriod);
 
 /* -------------------------------------------------------------------------- */
 bool

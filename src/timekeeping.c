@@ -82,6 +82,36 @@ deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration)
 }
 
 /* -------------------------------------------------------------------------- */
+uint64_t
+lapTimeSince(uint64_t *aSince, uint64_t aPeriod)
+{
+    uint64_t runningTime = monotonicTime();
+    uint64_t lapTime     = runningTime;
+
+    if (aSince)
+    {
+        if (*aSince)
+        {
+            lapTime = runningTime - *aSince;
+
+            if (aPeriod && lapTime >= aPeriod)
+                *aSince = runningTime - lapTime % aPeriod;
+        }
+        else
+        {
+            lapTime = 0;
+
+            while ( ! runningTime)
+                runningTime = monotonicTime();
+
+            *aSince = runningTime;
+        }
+    }
+
+    return lapTime;
+}
+
+/* -------------------------------------------------------------------------- */
 void
 monotonicSleep(uint64_t aDuration)
 {

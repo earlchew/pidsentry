@@ -60,23 +60,23 @@ TEST(TimeKeepingTest, DeadlineRunsOnce)
 
 TEST(TimeKeepingTest, DeadlineExpires)
 {
-    auto duration = milliSeconds(1000);
+    auto duration_ns = milliSeconds(1000);
 
     uint64_t since = 0;
 
     auto startTimeOuter = monotonicTime();
-    EXPECT_FALSE(deadlineTimeExpired(&since, duration));
+    EXPECT_FALSE(deadlineTimeExpired(&since, duration_ns));
     auto startTimeInner = monotonicTime();
 
-    while ( ! deadlineTimeExpired(&since, duration))
+    while ( ! deadlineTimeExpired(&since, duration_ns))
         continue;
 
     auto stopTime = monotonicTime();
 
-    auto elapsedInner = (stopTime - startTimeInner) / (100 * 1000 * 1000);
-    auto elapsedOuter = (stopTime - startTimeOuter) / (100 * 1000 * 1000);
+    auto elapsedInner = toMilliSeconds(stopTime - startTimeInner) / 100;
+    auto elapsedOuter = toMilliSeconds(stopTime - startTimeOuter) / 100;
 
-    duration /= (100 * 1000 * 1000);
+    auto duration = toMilliSeconds(duration_ns) / 100;
 
     EXPECT_LE(elapsedInner, duration);
     EXPECT_GE(elapsedOuter, duration);
@@ -84,15 +84,124 @@ TEST(TimeKeepingTest, DeadlineExpires)
 
 TEST(TimeKeepingTest, MonotonicSleep)
 {
-    auto duration = milliSeconds(1000);
+    auto duration_ns = milliSeconds(1000);
 
     auto startTime = monotonicTime();
-    monotonicSleep(duration);
+    monotonicSleep(duration_ns);
     auto stopTime = monotonicTime();
 
-    auto elapsedTime = (stopTime - startTime) / (100 * 1000 * 1000);
+    auto elapsedTime = toMilliSeconds(stopTime - startTime) / 100;
+    auto duration    = toMilliSeconds(duration_ns) / 100;
 
-    EXPECT_EQ(duration / 10, elapsedTime);
+    EXPECT_EQ(duration, elapsedTime);
+}
+
+TEST(TimeKeepingTest, LapTimeSinceNull)
+{
+    {
+        auto startTime = monotonicTime();
+        auto lapTime  = lapTimeSince(0, 0);
+        auto stopTime = monotonicTime();
+
+        EXPECT_LE(startTime, lapTime);
+        EXPECT_GE(stopTime,  lapTime);
+    }
+
+    {
+        auto startTime = monotonicTime();
+        auto lapTime  = lapTimeSince(0, 1);
+        auto stopTime = monotonicTime();
+
+        EXPECT_LE(startTime, lapTime);
+        EXPECT_GE(stopTime,  lapTime);
+    }
+}
+
+TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
+{
+    auto duration_ns = milliSeconds(1000);
+
+    uint64_t since = 0;
+
+    EXPECT_FALSE(lapTimeSince(&since, 0));
+
+    {
+        monotonicSleep(duration_ns);
+
+        auto lapTime =
+            toMilliSeconds(lapTimeSince(&since, 0)) / 100;
+
+        auto duration =
+            toMilliSeconds(duration_ns) / 100;
+
+        EXPECT_EQ(1 * duration, lapTime);
+
+        lapTime =
+            toMilliSeconds(lapTimeSince(&since, 0)) / 100;
+
+        EXPECT_EQ(1 * duration, lapTime);
+    }
+
+    {
+        monotonicSleep(duration_ns);
+
+        auto lapTime =
+            toMilliSeconds(lapTimeSince(&since, 0)) / 100;
+
+        auto duration =
+            toMilliSeconds(duration_ns) / 100;
+
+        EXPECT_EQ(2 * duration, lapTime);
+
+        lapTime =
+            toMilliSeconds(lapTimeSince(&since, 0)) / 100;
+
+        EXPECT_EQ(2 * duration, lapTime);
+    }
+}
+
+TEST(TimeKeepingTest, LapTimeSinceWithPeriod)
+{
+    auto duration_ns = milliSeconds(1000);
+    auto period_ns   = milliSeconds(5000);
+
+    uint64_t since = 0;
+
+    EXPECT_FALSE(lapTimeSince(&since, 0));
+
+    {
+        monotonicSleep(duration_ns);
+
+        uint64_t lapTime =
+            toMilliSeconds(lapTimeSince(&since, period_ns)) / 100;
+
+        auto duration =
+            toMilliSeconds(duration_ns) / 100;
+
+        EXPECT_EQ(1 * duration, lapTime);
+
+        lapTime =
+            toMilliSeconds(lapTimeSince(&since, period_ns)) / 100;
+
+        EXPECT_EQ(1 * duration, lapTime);
+    }
+
+    {
+        monotonicSleep(duration_ns);
+
+        uint64_t lapTime =
+            toMilliSeconds(lapTimeSince(&since, period_ns)) / 100;
+
+        auto duration =
+            toMilliSeconds(duration_ns) / 100;
+
+        EXPECT_EQ(2 * duration, lapTime);
+
+        lapTime =
+            toMilliSeconds(lapTimeSince(&since, period_ns)) / 100;
+
+        EXPECT_EQ(2 * duration, lapTime);
+    }
 }
 
 TEST(TimeKeepingTest, EarliestTime)
@@ -155,7 +264,6 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
     three.tv_usec = 0;
 
     uint64_t nsTime_1_0 = 1000 * 1000 * 1000;
-    //uint64_t nsTime_0_5 = nsTime_1_0 / 2;
 
     struct itimerval alarmVal, shortenedVal;
 
