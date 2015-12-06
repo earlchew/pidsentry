@@ -42,6 +42,7 @@ struct Options
     const char *mName;
     pid_t       mPid;
     const char *mPidFile;
+    const char *mLibrary;
     unsigned    mPacing_s;
     int         mTimeout_s;
     int         mTetherFd;

@@ -49,7 +49,6 @@ struct Options gOptions;
 /* -------------------------------------------------------------------------- */
 static const char sUsage[] =
 "usage : %s [ options ] cmd ...\n"
-"        %s { --pidfile file | -p file }\n"
 "\n"
 "options:\n"
 "  --debug | -d\n"
@@ -61,14 +60,13 @@ static const char sUsage[] =
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
 "      allocate a new file descriptor. [Default: N = 1 (stdout) ].\n"
-"  --setpgid | -s\n"
-"      Place the child process into its own process group. This is\n"
-"      useful if the child will create its own family of processes\n"
-"      and the watchdog is not itself being supervised.\n"
-"      [Default: Do not place child in its own process group\n"
 "  --identify | -i\n"
 "      Print the pid of the child process on stdout before starting\n"
 "      the child program. [Default: Do not print the pid of the child]\n"
+"  --library [N] | -L [N]\n"
+"      Specify the libk9.so to use when tethering the child. If N is not\n"
+"      provided, do not attach libk9.so to the child process.\n"
+"      [Default: Use installed libk9.so]\n"
 "  --name N | -n N\n"
 "      Name the fd of the tether. If N matches [A-Z][A-Z0-9_]*, then\n"
 "      create an environment variable of that name and set is value to\n"
@@ -89,6 +87,11 @@ static const char sUsage[] =
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
+"  --setpgid | -s\n"
+"      Place the child process into its own process group. This is\n"
+"      useful if the child will create its own family of processes\n"
+"      and the watchdog is not itself being supervised.\n"
+"      [Default: Do not place child in its own process group\n"
 "  --timeout N | -t N\n"
 "      Specify the timeout N in seconds for activity on tether from\n"
 "      the child process. Set N to 0 to avoid imposing any timeout at\n"
@@ -99,7 +102,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "D:df:in:oP:p:qsTt:u";
+    "D:df:iL::n:oP:p:qsTt:u";
 
 static struct option sLongOptions[] =
 {
@@ -107,6 +110,7 @@ static struct option sLongOptions[] =
     { "delay",      1, 0, 'D' },
     { "fd",         1, 0, 'f' },
     { "identify",   0, 0, 'i' },
+    { "library",    1, 0, 'L' },
     { "name",       1, 0, 'n' },
     { "orphaned",   0, 0, 'o' },
     { "pid",        1, 0, 'P' },
@@ -124,7 +128,7 @@ showUsage_(void)
 {
     const char *arg0 = ownProcessName();
 
-    dprintf(STDERR_FILENO, sUsage, arg0, arg0);
+    dprintf(STDERR_FILENO, sUsage, arg0);
     _exit(1);
 }
 
@@ -224,6 +228,7 @@ parseOptions(int argc, char **argv)
 {
     int pidFileOnly = 0;
 
+    gOptions.mLibrary   = "";
     gOptions.mTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
     gOptions.mPacing_s  = DEFAULT_EXIT_PACING_S;
     gOptions.mTetherFd  = STDOUT_FILENO;
@@ -281,6 +286,13 @@ parseOptions(int argc, char **argv)
         case 'i':
             pidFileOnly = -1;
             gOptions.mIdentify = true;
+            break;
+
+        case 'L':
+            pidFileOnly = -1;
+            if (optarg && ! *optarg)
+                terminate(0, "Empty library name");
+            gOptions.mLibrary = optarg;
             break;
 
         case 'o':

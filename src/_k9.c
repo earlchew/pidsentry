@@ -263,23 +263,29 @@ runChild(
                 /* Configure the environment variables of the child so that
                  * it can find and monitor the tether to the watchdog. */
 
-                if (setenv("LD_PRELOAD", sK9soPath, 1))
-                    terminate(
-                        errno,
-                        "Unable to set LD_PRELOAD");
-                debug(0, "env - LD_PRELOAD=%s", getenv("LD_PRELOAD"));
+                if (gOptions.mLibrary)
+                {
+                    const char *sopath =
+                        *gOptions.mLibrary ? gOptions.mLibrary : sK9soPath;
 
-                if (setenv("K9_SO", sK9soPath, 1))
-                    terminate(
-                        errno,
-                        "Unable to set K9_SO");
-                debug(0, "env - K9_SO=%s", getenv("K9_SO"));
+                    if (setenv("LD_PRELOAD", sopath, 1))
+                        terminate(
+                            errno,
+                            "Unable to set LD_PRELOAD");
+                    debug(0, "env - LD_PRELOAD=%s", getenv("LD_PRELOAD"));
 
-                if (setenv("K9_FD", tetherArg, 1))
-                    terminate(
-                        errno,
-                        "Unable to set K9_FD");
-                debug(0, "env - K9_FD=%s", getenv("K9_FD"));
+                    if (setenv("K9_SO", sopath, 1))
+                        terminate(
+                            errno,
+                            "Unable to set K9_SO");
+                    debug(0, "env - K9_SO=%s", getenv("K9_SO"));
+
+                    if (setenv("K9_FD", tetherArg, 1))
+                        terminate(
+                            errno,
+                            "Unable to set K9_FD");
+                    debug(0, "env - K9_FD=%s", getenv("K9_FD"));
+                }
 
                 if (tetherFd == aTetherPipe->mWrFile->mFd)
                     break;
