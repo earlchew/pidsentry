@@ -1,6 +1,6 @@
 /* -*- c-basic-offset:4; indent-tabs-mode:nil -*- vi: set sw=4 et: */
 /*
-// Copyright (c) 2015, Earl Chew
+// Copyright (c) 2013, Earl Chew
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,49 +26,21 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+#ifndef LIBK9_H
+#define LIBK9_H
 
-#include "libk9.h"
-
-#include <stdio.h>
-#include <unistd.h>
-
-extern char **_dl_argv;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* -------------------------------------------------------------------------- */
 int
-k9so()
-{
-    return 0;
-}
+k9so(void);
 
 /* -------------------------------------------------------------------------- */
-static void  __attribute__((constructor))
-libk9_init()
-{
-    dprintf(2, "@@@ ENTER %d %s\n", (int) getpid(), _dl_argv[0]);
 
-    char **p = _dl_argv;
-
-    while (*p)
-        ++p;
-    ++p;
-
-    for ( ; *p; ++p)
-    {
-        if ((*p)[0] == 'L' && (*p)[1] == 'D')
-        {
-            dprintf(2, "%s\n", *p);
-            (*p)[sizeof("LD_PRELOAD=")] = 'X';
-        }
-    }
-    dprintf(2, "DONE\n");
+#ifdef __cplusplus
 }
+#endif
 
-/* -------------------------------------------------------------------------- */
-static void __attribute__((destructor))
-libk9_exit()
-{
-    dprintf(2, "@@@ EXIT %d\n", (int) getpid());
-}
-
-/* -------------------------------------------------------------------------- */
+#endif /* LIBK9_H */

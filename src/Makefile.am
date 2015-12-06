@@ -57,15 +57,19 @@ noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
 lib_LTLIBRARIES     = libk9.la
 
 k9_CFLAGS    = $(COMMON_CFLAGS)
-k9_LDFLAGS   = #-Wl,-Ttext=0x100000
-k9_LDADD     = libk9_.la -lrt
+k9_LDFLAGS   = -Wl,-Map,k9.map -Wl,-cref
+k9_LDADD     = libk9_.la libk9.la -lrt -ldl
 k9_SOURCES   = _k9.c
 
-libk9_la_CFLAGS  = $(COMMON_CFLAGS)
-libk9_la_LIBADD  = -lrt
-libk9_la_SOURCES = libk9.c
-libk9_la_VERSION = 0:0:0
-libk9_la_LDFLAGS = -version-info $(libk9_la_VERSION) -release $(VERSION)
+libk9_la_CFLAGS   = $(COMMON_CFLAGS)
+libk9_la_LIBADD   =
+libk9_la_SOURCES  = libk9.c
+libk9_la_VERSION  = 0:0:0
+libk9_la_LDFLAGS  =
+libk9_la_LDFLAGS += -version-info $(libk9_la_VERSION) -release $(VERSION)
+libk9_la_LDFLAGS += -Wc,-nodefaultlibs -Wl,-Bstatic # Standalone library
+libk9_la_LDFLAGS += -export-symbols libk9.sym
+libk9_la_LDFLAGS += -Wl,-Map,libk9.map -Wl,-cref
 
 _splicetest_SOURCES = _splicetest.c
 
@@ -78,3 +82,6 @@ libk9__la_CFLAGS = $(COMMON_CFLAGS)
 
 libgoogletest_la_SOURCES  = gtest-all.cc
 libgoogletest_la_CPPFLAGS = -I ../googletest
+
+clean-local::
+	rm -f *.map

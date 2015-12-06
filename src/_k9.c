@@ -38,6 +38,8 @@
 #include "test_.h"
 #include "fd_.h"
 
+#include "libk9.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
@@ -45,6 +47,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <link.h>
+#include <dlfcn.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -63,6 +67,9 @@
 #define DEVNULLPATH "/dev/null"
 
 static const char sDevNullPath[] = DEVNULLPATH;
+
+#define K9SO k9so
+static const char *sK9soPath;
 
 /* -------------------------------------------------------------------------- */
 static pid_t
@@ -252,6 +259,27 @@ runChild(
                                 gOptions.mName);
                     }
                 }
+
+                /* Configure the environment variables of the child so that
+                 * it can find and monitor the tether to the watchdog. */
+
+                if (setenv("LD_PRELOAD", sK9soPath, 1))
+                    terminate(
+                        errno,
+                        "Unable to set LD_PRELOAD");
+                debug(0, "env - LD_PRELOAD=%s", getenv("LD_PRELOAD"));
+
+                if (setenv("K9_SO", sK9soPath, 1))
+                    terminate(
+                        errno,
+                        "Unable to set K9_SO");
+                debug(0, "env - K9_SO=%s", getenv("K9_SO"));
+
+                if (setenv("K9_FD", tetherArg, 1))
+                    terminate(
+                        errno,
+                        "Unable to set K9_FD");
+                debug(0, "env - K9_FD=%s", getenv("K9_FD"));
 
                 if (tetherFd == aTetherPipe->mWrFile->mFd)
                     break;
@@ -1400,12 +1428,108 @@ cmdRunCommand(char **aCmd)
 }
 
 /* -------------------------------------------------------------------------- */
+struct LibK9Visitor_
+{
+    uintptr_t mK9soAddr;
+    char     *mK9soPath;
+};
+
+static int
+initLibK9Vistor_(struct dl_phdr_info *aInfo, size_t aSize, void *aVisitor)
+{
+    int rc = -1;
+
+    struct LibK9Visitor_ *visitor = aVisitor;
+
+    for (unsigned ix = 0; ix < aInfo->dlpi_phnum; ++ix)
+    {
+        uintptr_t addr = aInfo->dlpi_addr + aInfo->dlpi_phdr[ix].p_vaddr;
+        size_t    size = aInfo->dlpi_phdr[ix].p_memsz;
+
+        if (addr <= visitor->mK9soAddr && visitor->mK9soAddr < addr + size)
+        {
+            if (aInfo->dlpi_name)
+            {
+                char *sopath = strdup(aInfo->dlpi_name);
+
+                if ( ! sopath)
+                    terminate(
+                        errno,
+                        "Unable to duplicate string '%s'", aInfo->dlpi_name);
+
+                visitor->mK9soPath = sopath;
+
+                rc = 1;
+            }
+
+            goto Finally;
+        }
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static const char *
+initLibK9(void)
+{
+    if (K9SO())
+        terminate(
+            errno,
+            "Unable to initialise library");
+
+    /* PIC implementations resolve symbols to an intermediate thunk.
+     * Repeatedly try to resolve the symbol to find the actual
+     * implementation of the symbol. */
+
+    void *k9sosym;
+    {
+        dlerror();
+        void       *next = dlsym(RTLD_DEFAULT, STRINGIFY(K9SO));
+        const char *err  = dlerror();
+
+        if (err)
+            terminate(
+                0,
+                "Unable to find shared library " STRINGIFY(K9SO) " - %s",
+                err);
+
+        do
+        {
+            k9sosym = next;
+            next    = dlsym(RTLD_NEXT, STRINGIFY(K9SO));
+            err     = dlerror();
+        } while ( ! err && k9sosym != next);
+    }
+
+    struct LibK9Visitor_ visitor =
+    {
+        .mK9soAddr = (uintptr_t) k9sosym,
+        .mK9soPath = 0,
+    };
+
+    if (0 > dl_iterate_phdr(initLibK9Vistor_, &visitor))
+        terminate(
+            0,
+            "Unable to resolve " STRINGIFY(K9SO) " to shared library");
+
+    return visitor.mK9soPath;
+}
+
+/* -------------------------------------------------------------------------- */
 int main(int argc, char **argv)
 {
     if (Process_init(argv[0]))
         terminate(
             errno,
             "Unable to initialise process state");
+
+    sK9soPath = initLibK9();
 
     struct ExitCode exitCode;
 
