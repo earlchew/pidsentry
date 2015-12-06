@@ -62,20 +62,25 @@ print_(
         elapsed_m = elapsed_s % (60 * 60) / 60;
         elapsed_s = elapsed_s % (60 * 60) % 60;
 
-        if (lockProcessLock())
+        if ( ! aFile || lockProcessLock())
         {
             int err = errno;
 
-            dprintf(
-                STDERR_FILENO,
-                "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
-                ownProcessName(),
-                elapsed_h, elapsed_m, elapsed_s,
-                (intmax_t) getpid(),
-                aFile, aLine);
+            if ( ! aFile)
+                dprintf(STDERR_FILENO, "%s: ", ownProcessName());
+            else
+            {
+                dprintf(
+                    STDERR_FILENO,
+                    "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
+                    ownProcessName(),
+                    elapsed_h, elapsed_m, elapsed_s,
+                    (intmax_t) getpid(),
+                    aFile, aLine);
 
-            if (EWOULDBLOCK != err)
-                dprintf(STDERR_FILENO, "- lock error %d - ", err);
+                if (EWOULDBLOCK != err)
+                    dprintf(STDERR_FILENO, "- lock error %d - ", err);
+            }
 
             vdprintf(STDERR_FILENO, aFmt, aArgs);
             if (aErrCode)
@@ -171,7 +176,7 @@ terminate_(
         va_list args;
 
         va_start(args, aFmt);
-        print_(aErrCode, aFile, aLine, aFmt, args);
+        print_(aErrCode, 0, 0, aFmt, args);
         va_end(args);
         _exit(1);
     });
