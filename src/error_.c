@@ -30,6 +30,7 @@
 #include "error_.h"
 #include "macros_.h"
 #include "process_.h"
+#include "timekeeping_.h"
 #include "fd_.h"
 
 #include <stdlib.h>
@@ -53,14 +54,16 @@ print_(
 {
     FINALLY
     ({
-        uint64_t elapsed   = ownProcessElapsedTime();
-        uint64_t elapsed_s = elapsed / (1000 * 1000 * 1000);
+        uint64_t elapsed_ns = ownProcessElapsedTime();
+        uint64_t elapsed_ms = toMilliSeconds(elapsed_ns);
+        uint64_t elapsed_s;
         uint64_t elapsed_m;
         uint64_t elapsed_h;
 
-        elapsed_h = elapsed_s / (60 * 60);
-        elapsed_m = elapsed_s % (60 * 60) / 60;
-        elapsed_s = elapsed_s % (60 * 60) % 60;
+        elapsed_h  = elapsed_ms / (1000 * 60 * 60);
+        elapsed_m  = elapsed_ms % (1000 * 60 * 60) / (1000 * 60);
+        elapsed_s  = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) / 1000;
+        elapsed_ms = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) % 1000;
 
         if ( ! aFile || lockProcessLock())
         {
@@ -72,9 +75,11 @@ print_(
             {
                 dprintf(
                     STDERR_FILENO,
-                    "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
+                    "%s: [%04" PRIu64 ":%02" PRIu64
+                                      ":%02" PRIu64
+                                      ".%03" PRIu64 " %jd %s:%u] ",
                     ownProcessName(),
-                    elapsed_h, elapsed_m, elapsed_s,
+                    elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                     (intmax_t) getpid(),
                     aFile, aLine);
 
@@ -93,9 +98,11 @@ print_(
             rewind(sPrintBuf.mFile);
             fprintf(
                 sPrintBuf.mFile,
-                "%s: [%03" PRIu64 ":%02" PRIu64 ":%02" PRIu64" %jd %s:%u] ",
+                "%s: [%04" PRIu64 ":%02" PRIu64
+                                  ":%02" PRIu64
+                                  ".%03" PRIu64 " %jd %s:%u] ",
                 ownProcessName(),
-                elapsed_h, elapsed_m, elapsed_s,
+                elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                 (intmax_t) getpid(),
                 aFile, aLine);
             vfprintf(sPrintBuf.mFile, aFmt, aArgs);
