@@ -28,11 +28,28 @@
 */
 
 #include "libk9.h"
+#include "macros_.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 extern char **_dl_argv;
+
+/* -------------------------------------------------------------------------- */
+enum EnvKind
+{
+    ENV_LD_PRELOAD,
+    ENV_K9_SO,
+    ENV_K9_FD,
+    ENV_KINDS
+};
+
+struct Env
+{
+    const char *mName;
+    char       *mEnv;
+};
 
 /* -------------------------------------------------------------------------- */
 int
@@ -42,33 +59,132 @@ k9so()
 }
 
 /* -------------------------------------------------------------------------- */
+static void
+initArgv(char ***argv, int *argc, char ***envp)
+{
+    /* Find the environment variables for this process. Unfortunately
+     * __environ is not available, but _dl_argv is accessible. */
+
+    *argv = _dl_argv;
+
+    for (*argc = 0; ; ++(*argc))
+    {
+        if ( ! (*argv)[*argc])
+        {
+            *envp = *argv + *argc + 1;
+            break;
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+initEnv(struct Env *aEnv, size_t aEnvLen, char **envp)
+{
+    for (unsigned ex = 0; envp[ex]; ++ex)
+    {
+        char *eqptr = strchr(envp[ex], '=');
+
+        if ( ! eqptr)
+            continue;
+
+        const char *name    = envp[ex];
+        size_t      namelen = eqptr - envp[ex];
+
+        for (unsigned ix = 0; aEnvLen > ix; ++ix)
+        {
+            if ( ! strncmp(aEnv[ix].mName, name, namelen) &&
+                 ! aEnv[ix].mName[namelen])
+            {
+                aEnv[ix].mEnv = eqptr + 1;
+                break;
+            }
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+stripEnvPreload(struct Env *aPreload, const char *aLibrary)
+{
+    while (aLibrary)
+    {
+        const char *sopath = aLibrary;
+
+        while (*sopath && *sopath == ' ')
+            ++sopath;
+
+        if ( ! *sopath)
+            break;
+
+        size_t sopathlen = strlen(sopath);
+
+        char *preloadname = aPreload->mEnv;
+
+        if ( ! preloadname)
+            break;
+
+        do
+        {
+            while (*preloadname && (*preloadname == ' ' || *preloadname == ':'))
+                ++preloadname;
+
+            if ( ! *preloadname)
+                break;
+
+            if ( ! strncmp(preloadname, sopath, sopathlen) &&
+                 ( ! preloadname[sopathlen] ||
+                   preloadname[sopathlen] == ' ' ||
+                   preloadname[sopathlen] == ':'))
+            {
+                size_t tail = sopathlen;
+
+                while (preloadname[tail] &&
+                       (preloadname[tail] == ' ' || preloadname[tail] == ':'))
+                    ++tail;
+
+                for (unsigned ix = 0; ; ++ix)
+                {
+                    preloadname[ix] = preloadname[tail + ix];
+                    if ( ! preloadname[ix])
+                        break;
+                }
+            }
+
+        } while (0);
+
+        break;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 static void  __attribute__((constructor))
 libk9_init()
 {
-    dprintf(2, "@@@ ENTER %d %s\n", (int) getpid(), _dl_argv[0]);
+    char **argv;
+    int    argc;
+    char **envp;
 
-    char **p = _dl_argv;
+    initArgv(&argv, &argc, &envp);
 
-    while (*p)
-        ++p;
-    ++p;
+    /* Now that the environment variables are available, find
+     * the environment variables that pertain to the watchdog. */
 
-    for ( ; *p; ++p)
+    struct Env env[ENV_KINDS] =
     {
-        if ((*p)[0] == 'L' && (*p)[1] == 'D')
-        {
-            dprintf(2, "%s\n", *p);
-            (*p)[sizeof("LD_PRELOAD=")] = 'X';
-        }
-    }
-    dprintf(2, "DONE\n");
+        [ENV_LD_PRELOAD] = { "LD_PRELOAD" },
+        [ENV_K9_SO]      = { "K9_SO" },
+        [ENV_K9_FD]      = { "K9_FD" },
+    };
+
+    initEnv(env, NUMBEROF(env), envp);
+
+    stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
 }
 
 /* -------------------------------------------------------------------------- */
 static void __attribute__((destructor))
 libk9_exit()
-{
-    dprintf(2, "@@@ EXIT %d\n", (int) getpid());
-}
+{ }
 
 /* -------------------------------------------------------------------------- */

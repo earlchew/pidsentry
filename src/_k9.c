@@ -268,7 +268,20 @@ runChild(
                     const char *sopath =
                         *gOptions.mLibrary ? gOptions.mLibrary : sK9soPath;
 
-                    if (setenv("LD_PRELOAD", sopath, 1))
+                    const char *preload    = getenv("LD_PRELOAD");
+                    size_t      preloadlen = preload ? strlen(preload) : 0;
+
+                    static const char k9preloadfmt[] = "%s %s";
+
+                    char k9preload[
+                        preloadlen + strlen(sopath) + sizeof(k9preloadfmt)];
+
+                    if (preload)
+                        sprintf(k9preload, k9preloadfmt, sopath, preload);
+                    else
+                        strcpy(k9preload, sopath);
+
+                    if (setenv("LD_PRELOAD", k9preload, 1))
                         terminate(
                             errno,
                             "Unable to set LD_PRELOAD");
@@ -424,7 +437,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         POLL_FD_CHILD,
         POLL_FD_SIGNAL,
         POLL_FD_CLOCK,
-        POLL_FD_COUNT
+        POLL_FD_KINDS
     };
 
     struct Pipe nullPipe;
@@ -464,7 +477,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     const unsigned pollOutputEvents    = POLLHUP | POLLERR | POLLOUT;
     const unsigned pollDisconnectEvent = POLLHUP | POLLERR;
 
-    static const char *pollfdNames[POLL_FD_COUNT] =
+    static const char *pollfdNames[POLL_FD_KINDS] =
     {
         [POLL_FD_CHILD]  = "child",
         [POLL_FD_SIGNAL] = "signal",
@@ -473,7 +486,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         [POLL_FD_CLOCK]  = "clock",
     };
 
-    struct pollfd pollfds[POLL_FD_COUNT] =
+    struct pollfd pollfds[POLL_FD_KINDS] =
     {
         [POLL_FD_CLOCK] = {
             .fd = clockPipe.mRdFile->mFd,  .events = pollInputEvents },
