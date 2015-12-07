@@ -31,8 +31,14 @@
 #include "macros_.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
+#include <limits.h>
+#include <sched.h>
+#include <inttypes.h>
 
 extern char **_dl_argv;
 
@@ -158,6 +164,90 @@ stripEnvPreload(struct Env *aPreload, const char *aLibrary)
 }
 
 /* -------------------------------------------------------------------------- */
+struct WatchThread
+{
+    char  mStack_[PTHREAD_STACK_MIN];
+    char *mStack;
+    int   mFd;
+};
+
+static void
+printErr(int aErr, const char *aFmt, ...)
+{
+    va_list argp;
+
+    va_start(argp, aFmt);
+    vdprintf(STDERR_FILENO, aFmt, argp);
+    va_end(argp);
+    if (aErr)
+        dprintf(STDERR_FILENO, "- error %d\n", aErr);
+    else
+        dprintf(STDERR_FILENO, "\n");
+}
+
+#if 1
+static int
+watchTether_(void *aWatchThread)
+{
+    //struct WatchThread *watchThread = aWatchThread;
+
+    printErr(0, "*********RUNNING CHILD**********");
+
+    return 0;
+}
+#endif
+
+static void
+watchTether(const char *aFd)
+{
+    static struct WatchThread watchThread;
+
+    while (aFd)
+    {
+        //dprintf(2, "********* START %d\n", getpid());
+        printErr(0, "********* START");
+
+        char         *endp;
+        unsigned long ulfd = strtoul(aFd, &endp, 10);
+        int           fd   = ulfd;
+
+        uintptr_t frameChild  = (uintptr_t) __builtin_frame_address(0);
+        uintptr_t frameParent = (uintptr_t) __builtin_frame_address(1);
+
+        if (frameChild == frameParent)
+            break;
+
+        if ( ( ! (1 + ulfd) && errno == ERANGE) || (ulfd != fd || fd < 0))
+            break;
+
+        watchThread.mFd    = fd;
+        watchThread.mStack = watchThread.mStack_;
+
+        if (frameChild < frameParent)
+            watchThread.mStack += sizeof(watchThread.mStack_);
+
+#if 1
+        if (-1 == clone(
+                watchTether_,
+                watchThread.mStack,
+                CLONE_VM | CLONE_FS | CLONE_FILES |
+                CLONE_SIGHAND | CLONE_THREAD |
+                CLONE_SYSVSEM | CLONE_DETACHED,
+                &watchThread, 0, 0, 0, 0, 0))
+        {
+            printErr(errno, "Unable to clone thread");
+        }
+#endif
+
+        printErr(0, "********* Sleeping");
+        sleep(10);
+
+        printErr(0, "********* DONE");
+        break;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 static void  __attribute__((constructor))
 libk9_init()
 {
@@ -180,6 +270,8 @@ libk9_init()
     initEnv(env, NUMBEROF(env), envp);
 
     stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
+
+    watchTether(env[ENV_K9_FD].mEnv);
 }
 
 /* -------------------------------------------------------------------------- */
