@@ -51,6 +51,12 @@ int
 closePipe(struct Pipe *self);
 
 int
+detachPipeReader(struct Pipe *self);
+
+int
+detachPipeWriter(struct Pipe *self);
+
+int
 closePipeReader(struct Pipe *self);
 
 int

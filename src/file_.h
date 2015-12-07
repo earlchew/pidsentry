@@ -54,6 +54,9 @@ int
 createFile(struct File *self, int aFd);
 
 int
+detachFile(struct File *self);
+
+int
 closeFile(struct File *self);
 
 void

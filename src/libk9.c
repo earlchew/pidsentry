@@ -240,7 +240,7 @@ watchTether(const char *aFd)
 #endif
 
         printErr(0, "********* Sleeping");
-        sleep(10);
+        //sleep(10);
 
         printErr(0, "********* DONE");
         break;

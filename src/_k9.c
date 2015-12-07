@@ -77,6 +77,7 @@ runChild(
     char              **aCmd,
     struct StdFdFiller *aStdFdFiller,
     struct Pipe        *aTetherPipe,
+    struct Pipe        *aUmbilicalPipe,
     struct Pipe        *aSyncPipe,
     struct Pipe        *aTermPipe,
     struct Pipe        *aSigPipe)
@@ -175,6 +176,7 @@ runChild(
                 "Unable to close sync pipe");
 
         char tetherArg[sizeof(int) * CHAR_BIT + 1];
+        char umbilicalArg[sizeof(int) * CHAR_BIT + 1];
 
         do
         {
@@ -186,6 +188,60 @@ runChild(
                 terminate(
                     errno,
                     "Unable to close tether pipe reader");
+
+            /* Configure the environment variables of the child so that
+             * it can find and monitor the tether to the watchdog. */
+
+            if (gOptions.mTether && gOptions.mLibrary)
+            {
+                int umbilicalFd = aUmbilicalPipe->mWrFile->mFd;
+
+                if (detachPipeWriter(aUmbilicalPipe))
+                    terminate(
+                        errno,
+                        "Unable to detach umbilical writer");
+
+                sprintf(umbilicalArg, "%d", umbilicalFd);
+
+                const char *sopath =
+                    *gOptions.mLibrary ? gOptions.mLibrary : sK9soPath;
+
+                const char *preload    = getenv("LD_PRELOAD");
+                size_t      preloadlen = preload ? strlen(preload) : 0;
+
+                static const char k9preloadfmt[] = "%s %s";
+
+                char k9preload[
+                    preloadlen + strlen(sopath) + sizeof(k9preloadfmt)];
+
+                if (preload)
+                    sprintf(k9preload, k9preloadfmt, sopath, preload);
+                else
+                    strcpy(k9preload, sopath);
+
+                if (setenv("LD_PRELOAD", k9preload, 1))
+                    terminate(
+                        errno,
+                        "Unable to set LD_PRELOAD");
+                debug(0, "env - LD_PRELOAD=%s", getenv("LD_PRELOAD"));
+
+                if (setenv("K9_SO", sopath, 1))
+                    terminate(
+                        errno,
+                        "Unable to set K9_SO");
+                debug(0, "env - K9_SO=%s", getenv("K9_SO"));
+
+                if (setenv("K9_FD", umbilicalArg, 1))
+                    terminate(
+                        errno,
+                        "Unable to set K9_FD");
+                debug(0, "env - K9_FD=%s", getenv("K9_FD"));
+            }
+
+            if (closePipe(aUmbilicalPipe))
+                terminate(
+                    errno,
+                    "Unable to close umbilical pipe");
 
             if (gOptions.mTether)
             {
@@ -258,46 +314,6 @@ runChild(
                                 "Unable to find matching argument '%s'",
                                 gOptions.mName);
                     }
-                }
-
-                /* Configure the environment variables of the child so that
-                 * it can find and monitor the tether to the watchdog. */
-
-                if (gOptions.mLibrary)
-                {
-                    const char *sopath =
-                        *gOptions.mLibrary ? gOptions.mLibrary : sK9soPath;
-
-                    const char *preload    = getenv("LD_PRELOAD");
-                    size_t      preloadlen = preload ? strlen(preload) : 0;
-
-                    static const char k9preloadfmt[] = "%s %s";
-
-                    char k9preload[
-                        preloadlen + strlen(sopath) + sizeof(k9preloadfmt)];
-
-                    if (preload)
-                        sprintf(k9preload, k9preloadfmt, sopath, preload);
-                    else
-                        strcpy(k9preload, sopath);
-
-                    if (setenv("LD_PRELOAD", k9preload, 1))
-                        terminate(
-                            errno,
-                            "Unable to set LD_PRELOAD");
-                    debug(0, "env - LD_PRELOAD=%s", getenv("LD_PRELOAD"));
-
-                    if (setenv("K9_SO", sopath, 1))
-                        terminate(
-                            errno,
-                            "Unable to set K9_SO");
-                    debug(0, "env - K9_SO=%s", getenv("K9_SO"));
-
-                    if (setenv("K9_FD", tetherArg, 1))
-                        terminate(
-                            errno,
-                            "Unable to set K9_FD");
-                    debug(0, "env - K9_FD=%s", getenv("K9_FD"));
                 }
 
                 if (tetherFd == aTetherPipe->mWrFile->mFd)
@@ -1204,6 +1220,12 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create tether pipe");
 
+    struct Pipe umbilicalPipe;
+    if (createPipe(&umbilicalPipe))
+        terminate(
+            errno,
+            "Unable to create umbilical pipe");
+
     struct Pipe termPipe;
     if (createPipe(&termPipe))
         terminate(
@@ -1261,7 +1283,8 @@ cmdRunCommand(char **aCmd)
 
     pid_t childPid = runChild(aCmd,
                               &stdFdFiller,
-                              &tetherPipe, &syncPipe, &termPipe, &sigPipe);
+                              &tetherPipe, &umbilicalPipe,
+                              &syncPipe, &termPipe, &sigPipe);
     if (-1 == childPid)
         terminate(
             errno,
@@ -1336,6 +1359,11 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close tether pipe");
 
+    if (closePipeWriter(&umbilicalPipe))
+        terminate(
+            errno,
+            "Unable to close umbilical pipe writer");
+
     if (purgeProcessOrphanedFds())
         terminate(
             errno,
@@ -1392,6 +1420,14 @@ cmdRunCommand(char **aCmd)
      * running, release the pid file if one was allocated. */
 
     monitorChild(childPid, &termPipe, &sigPipe);
+
+    /* With the running child terminated, it is ok to close the
+     * umbilical pipe because the child has no more use for it. */
+
+    if (closePipe(&umbilicalPipe))
+        terminate(
+            errno,
+            "Unable to close umbilical pipe");
 
     if (resetProcessSigPipe())
         terminate(

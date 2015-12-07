@@ -88,6 +88,46 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+detachPipeReader(struct Pipe *self)
+{
+    int rc = -1;
+
+    if (detachFile(self->mRdFile))
+        goto Finally;
+
+    self->mRdFile = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+detachPipeWriter(struct Pipe *self)
+{
+    int rc = -1;
+
+    if (detachFile(self->mWrFile))
+        goto Finally;
+
+    self->mWrFile = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 closePipeReader(struct Pipe *self)
 {
     int rc = -1;

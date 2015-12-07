@@ -85,6 +85,36 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+detachFile(struct File *self)
+{
+    ensure(self != &sFileList);
+
+    int rc = -1;
+
+    if (self)
+    {
+        if (-1 == self->mFd)
+            goto Finally;
+
+        self->mPrev->mNext = self->mNext;
+        self->mNext->mPrev = self->mPrev;
+
+        self->mPrev = 0;
+        self->mNext = 0;
+        self->mFd   = -1;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 closeFile(struct File *self)
 {
     ensure(self != &sFileList);
