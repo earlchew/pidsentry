@@ -28,6 +28,7 @@
 */
 
 #include "options_.h"
+#include "env_.h"
 #include "macros_.h"
 #include "pipe_.h"
 #include "timekeeping_.h"
@@ -176,9 +177,6 @@ runChild(
                 errno,
                 "Unable to close sync pipe");
 
-        char tetherArg[sizeof(int) * CHAR_BIT + 1];
-        char umbilicalArg[sizeof(int) * CHAR_BIT + 1];
-
         do
         {
             /* Close the reading end of the tether pipe separately
@@ -202,10 +200,22 @@ runChild(
                         errno,
                         "Unable to detach umbilical writer");
 
-                sprintf(umbilicalArg, "%d", umbilicalFd);
+                const char *umbilicalEnv = setEnvInt("K9_FD", umbilicalFd);
+                if ( ! umbilicalEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_FD=%d", umbilicalFd);
+                debug(0, "env - K9_FD=%s", umbilicalEnv);
 
                 const char *sopath =
                     *gOptions.mLibrary ? gOptions.mLibrary : sK9soPath;
+
+                const char *sopathEnv = setEnvString("K9_SO", sopath);
+                if ( ! sopathEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_SO=%s", sopath);
+                debug(0, "env - K9_SO=%s", sopathEnv);
 
                 const char *preload    = getenv("LD_PRELOAD");
                 size_t      preloadlen = preload ? strlen(preload) : 0;
@@ -220,23 +230,13 @@ runChild(
                 else
                     strcpy(k9preload, sopath);
 
-                if (setenv("LD_PRELOAD", k9preload, 1))
+                const char *ldpreloadEnv = setEnvString(
+                    "XLD_PRELOAD", k9preload);
+                if ( ! ldpreloadEnv)
                     terminate(
                         errno,
-                        "Unable to set LD_PRELOAD");
-                debug(0, "env - LD_PRELOAD=%s", getenv("LD_PRELOAD"));
-
-                if (setenv("K9_SO", sopath, 1))
-                    terminate(
-                        errno,
-                        "Unable to set K9_SO");
-                debug(0, "env - K9_SO=%s", getenv("K9_SO"));
-
-                if (setenv("K9_FD", umbilicalArg, 1))
-                    terminate(
-                        errno,
-                        "Unable to set K9_FD");
-                debug(0, "env - K9_FD=%s", getenv("K9_FD"));
+                        "Unable to set LD_PRELOAD=%s", k9preload);
+                debug(0, "env - LD_PRELOAD=%s", ldpreloadEnv);
             }
 
             if (closePipe(aUmbilicalPipe))
@@ -250,6 +250,8 @@ runChild(
 
                 if (0 > tetherFd)
                     tetherFd = aTetherPipe->mWrFile->mFd;
+
+                char tetherArg[sizeof(int) * CHAR_BIT + 1];
 
                 sprintf(tetherArg, "%d", tetherFd);
 
