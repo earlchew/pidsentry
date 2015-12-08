@@ -29,6 +29,8 @@
 #ifndef ENV_H
 #define ENV_H
 
+#include <sys/types.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -45,6 +47,12 @@ setEnvString(const char *aName, const char *aValue);
 
 int
 getEnvString(const char *aName, const char **aValue);
+
+const char *
+setEnvPid(const char *aName, pid_t aValue);
+
+int
+getEnvPid(const char *aName, pid_t *aValue);
 
 /* -------------------------------------------------------------------------- */
 

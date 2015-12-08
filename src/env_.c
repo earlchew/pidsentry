@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 
 /* -------------------------------------------------------------------------- */
@@ -109,6 +110,38 @@ setEnvInt(const char *aName, int aValue)
     char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
 
     if (0 > sprintf(value, "%d", aValue))
+        return 0;
+
+    return setEnvString(aName, value);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+getEnvPid(const char *aName, pid_t *aValue)
+{
+    int rc = -1;
+
+    const char *env;
+
+    if (getEnvString(aName, &env))
+        goto Finally;
+
+    rc = parsePid(env, aValue);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+setEnvPid(const char *aName, pid_t aValue)
+{
+    char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
+
+    if (0 > sprintf(value, "%jd", (intmax_t) aValue))
         return 0;
 
     return setEnvString(aName, value);
