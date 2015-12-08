@@ -166,8 +166,8 @@ stripEnvPreload(struct Env *aPreload, const char *aLibrary)
 /* -------------------------------------------------------------------------- */
 struct WatchThread
 {
-    char  mStack_[PTHREAD_STACK_MIN];
-    char *mStack;
+    long  mStack_[PTHREAD_STACK_MIN / sizeof(long)];
+    long *mStack;
     int   mFd;
 };
 
@@ -185,7 +185,13 @@ printErr(int aErr, const char *aFmt, ...)
         dprintf(STDERR_FILENO, "\n");
 }
 
-#if 1
+#if 0
+static void
+watchTether(const char *aFd)
+{
+    (void) printErr;
+}
+#else
 static int
 watchTether_(void *aWatchThread)
 {
@@ -195,7 +201,6 @@ watchTether_(void *aWatchThread)
 
     return 0;
 }
-#endif
 
 static void
 watchTether(const char *aFd)
@@ -224,7 +229,7 @@ watchTether(const char *aFd)
         watchThread.mStack = watchThread.mStack_;
 
         if (frameChild < frameParent)
-            watchThread.mStack += sizeof(watchThread.mStack_);
+            watchThread.mStack += NUMBEROF(watchThread.mStack_);
 
 #if 1
         if (-1 == clone(
@@ -246,6 +251,7 @@ watchTether(const char *aFd)
         break;
     }
 }
+#endif
 
 /* -------------------------------------------------------------------------- */
 static void  __attribute__((constructor))
