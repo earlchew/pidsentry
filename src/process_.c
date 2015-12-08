@@ -43,6 +43,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 
 #include <sys/file.h>
 #include <sys/wait.h>
@@ -66,6 +67,7 @@ static unsigned            sActiveProcessLock;
 static unsigned    sSigContext;
 static sigset_t    sSigSet;
 static const char *sArg0;
+static const char *sProgramName;
 static uint64_t    sTimeBase;
 
 /* -------------------------------------------------------------------------- */
@@ -693,6 +695,9 @@ Process_init(const char *aArg0)
     sArg0     = aArg0;
     sTimeBase = monotonicTime();
 
+    sProgramName = strrchr(sArg0, '/');
+    sProgramName = sProgramName ? sProgramName + 1 : sArg0;
+
     srandom(getpid());
 
     if (sigprocmask(SIG_SETMASK, 0, &sSigSet))
@@ -920,7 +925,7 @@ Finally:
 const char *
 ownProcessName(void)
 {
-    return sArg0;
+    return sProgramName;
 }
 
 /* -------------------------------------------------------------------------- */
