@@ -107,6 +107,8 @@ runChild(
     }
     else
     {
+        childPid = getpid();
+
         debug(0, "starting child process");
 
         /* Unwatch the signals so that the child process will be
@@ -193,6 +195,13 @@ runChild(
 
             if (gOptions.mTether && gOptions.mLibrary)
             {
+                const char *pidEnv = setEnvPid("K9_PID", childPid);
+                if ( ! pidEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_PID=%jd", (intmax_t) childPid);
+                debug(0, "env - K9_PID=%s", pidEnv);
+
                 int umbilicalFd = aUmbilicalPipe->mWrFile->mFd;
 
                 if (detachPipeWriter(aUmbilicalPipe))
