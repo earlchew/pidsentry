@@ -34,6 +34,7 @@
 #include "process_.h"
 #include "timekeeping_.h"
 #include "fd_.h"
+#include "parse_.h"
 
 #include <stdio.h>
 #include <fcntl.h>

@@ -50,7 +50,7 @@ TESTS              = $(check_PROGRAMS) $(check_SCRIPTS)
 k9dir       = $(datadir)/k9
 k9_PROGRAMS         = k9
 check_SCRIPTS       = test.sh
-check_PROGRAMS      = _splicetest _timekeepingtest
+check_PROGRAMS      = _splicetest _timekeepingtest _envtest
 noinst_PROGRAMS     = #bioscall-asm
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
@@ -75,6 +75,9 @@ _splicetest_SOURCES = _splicetest.c
 
 _timekeepingtest_SOURCES = _timekeepingtest.cc
 _timekeepingtest_LDADD   = $(TEST_LIBS)
+
+_envtest_SOURCES = _envtest.cc
+_envtest_LDADD   = $(TEST_LIBS)
 
 include libk9__la.am
 $(call WILDCARD,libk9__la,libk9__la_SOURCES,[a-z]*_.[ch])

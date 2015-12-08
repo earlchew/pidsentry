@@ -30,6 +30,7 @@
 #include "options_.h"
 #include "macros_.h"
 #include "error_.h"
+#include "parse_.h"
 #include "process_.h"
 
 #include <stdio.h>
@@ -133,98 +134,8 @@ showUsage_(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static unsigned long long
-parseUnsignedLongLong_(const char *aArg)
-{
-    unsigned long long arg;
-
-    do
-    {
-        if (isdigit((unsigned char) *aArg))
-        {
-            char *endptr = 0;
-
-            errno = 0;
-            arg   = strtoull(aArg, &endptr, 10);
-
-            if (!*endptr && (ULLONG_MAX != arg || ERANGE != errno))
-            {
-                errno = 0;
-                break;
-            }
-        }
-
-        errno = ERANGE;
-        arg   = ULLONG_MAX;
-
-    } while (0);
-
-    return arg;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-parseInt(const char *aArg, int *aValue)
-{
-    int rc = -1;
-
-    unsigned long long value = parseUnsignedLongLong_(aArg);
-
-    if ( ! errno)
-    {
-        *aValue = value;
-
-        if ( ! (*aValue - value))
-            rc = 0;
-    }
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-parseUInt(const char *aArg, unsigned *aValue)
-{
-    int rc = -1;
-
-    unsigned long long value = parseUnsignedLongLong_(aArg);
-
-    if ( ! errno)
-    {
-        *aValue = value;
-
-        if ( ! (*aValue - value))
-            rc = 0;
-    }
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-parsePid(const char *aArg, pid_t *aValue)
-{
-    int rc = -1;
-
-    unsigned long long value = parseUnsignedLongLong_(aArg);
-
-    if ( ! errno)
-    {
-        *aValue = value;
-
-        if ( !   (*aValue - value) &&
-             0 <= *aValue)
-        {
-            rc = 0;
-        }
-    }
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 char **
-parseOptions(int argc, char **argv)
+processOptions(int argc, char **argv)
 {
     int pidFileOnly = 0;
 

@@ -62,6 +62,7 @@
  * Partition monitorChild() -- it's too big
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Parasitic watcher for child process
+ * Check for useless #include in *.c
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -1589,7 +1590,7 @@ int main(int argc, char **argv)
     struct ExitCode exitCode;
 
     {
-        char **cmd = parseOptions(argc, argv);
+        char **cmd = processOptions(argc, argv);
 
         if ( ! cmd && gOptions.mPidFile)
             exitCode = cmdPrintPidFile(gOptions.mPidFile);

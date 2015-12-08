@@ -26,40 +26,25 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef OPTIONS_H
-#define OPTIONS_H
-
-#include <sys/types.h>
-#include <stdbool.h>
+#ifndef ENV_H
+#define ENV_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-struct Options
-{
-    const char *mName;
-    pid_t       mPid;
-    const char *mPidFile;
-    const char *mLibrary;
-    unsigned    mPacing_s;
-    int         mTimeout_s;
-    int         mTetherFd;
-    const int  *mTether;
-    unsigned    mDebug;
-    bool        mIdentify;
-    bool        mSetPgid;
-    bool        mQuiet;
-    bool        mTest;
-    bool        mOrphaned;
-};
+const char *
+setEnvInt(const char *aName, int aValue);
 
-extern struct Options gOptions;
+int
+getEnvInt(const char *aName, int *aValue);
 
-/* -------------------------------------------------------------------------- */
-char **
-processOptions(int argc, char **argv);
+const char *
+setEnvString(const char *aName, const char *aValue);
+
+int
+getEnvString(const char *aName, const char **aValue);
 
 /* -------------------------------------------------------------------------- */
 
@@ -67,4 +52,4 @@ processOptions(int argc, char **argv);
 }
 #endif
 
-#endif /* OPTIONS_H */
+#endif /* ENV_H */

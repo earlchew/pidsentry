@@ -26,40 +26,24 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef OPTIONS_H
-#define OPTIONS_H
+#ifndef PARSE_H
+#define PARSE_H
 
 #include <sys/types.h>
-#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-struct Options
-{
-    const char *mName;
-    pid_t       mPid;
-    const char *mPidFile;
-    const char *mLibrary;
-    unsigned    mPacing_s;
-    int         mTimeout_s;
-    int         mTetherFd;
-    const int  *mTether;
-    unsigned    mDebug;
-    bool        mIdentify;
-    bool        mSetPgid;
-    bool        mQuiet;
-    bool        mTest;
-    bool        mOrphaned;
-};
+int
+parseInt(const char *aArg, int *aValue);
 
-extern struct Options gOptions;
+int
+parseUInt(const char *aArg, unsigned *aValue);
 
-/* -------------------------------------------------------------------------- */
-char **
-processOptions(int argc, char **argv);
+int
+parsePid(const char *aArg, pid_t *aValue);
 
 /* -------------------------------------------------------------------------- */
 
@@ -67,4 +51,4 @@ processOptions(int argc, char **argv);
 }
 #endif
 
-#endif /* OPTIONS_H */
+#endif /* PARSE_H */

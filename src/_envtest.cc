@@ -1,6 +1,6 @@
 /* -*- c-basic-offset:4; indent-tabs-mode:nil -*- vi: set sw=4 et: */
 /*
-// Copyright (c) 2013, Earl Chew
+// Copyright (c) 2015, Earl Chew
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,45 +26,80 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef OPTIONS_H
-#define OPTIONS_H
 
-#include <sys/types.h>
-#include <stdbool.h>
+#include "env_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdlib.h>
+#include <string.h>
 
-/* -------------------------------------------------------------------------- */
-struct Options
+#include "gtest/gtest.h"
+
+TEST(EnvTest, String)
 {
-    const char *mName;
-    pid_t       mPid;
-    const char *mPidFile;
-    const char *mLibrary;
-    unsigned    mPacing_s;
-    int         mTimeout_s;
-    int         mTetherFd;
-    const int  *mTether;
-    unsigned    mDebug;
-    bool        mIdentify;
-    bool        mSetPgid;
-    bool        mQuiet;
-    bool        mTest;
-    bool        mOrphaned;
-};
+    unsetenv("NIL");
 
-extern struct Options gOptions;
+    {
+        const char *value;
 
-/* -------------------------------------------------------------------------- */
-char **
-processOptions(int argc, char **argv);
+        EXPECT_EQ(-1, getEnvString("NIL", &value));
+    }
 
-/* -------------------------------------------------------------------------- */
+    {
+        EXPECT_EQ(0, strcmp("abc", setEnvString("VALUE", "abc")));
 
-#ifdef __cplusplus
+        const char *value;
+
+        EXPECT_EQ(0,  getEnvString("VALUE", &value));
+        EXPECT_EQ(0,  strcmp("abc", value));
+    }
 }
-#endif
 
-#endif /* OPTIONS_H */
+TEST(EnvTest, Int)
+{
+    unsetenv("NIL");
+
+    {
+        int value;
+
+        EXPECT_EQ(-1, getEnvInt("NIL", &value));
+    }
+
+    {
+        setenv("EMPTY0", "",  1);
+        setenv("EMPTY1", " ", 1);
+
+        int value;
+
+        EXPECT_EQ(-1, getEnvInt("EMPTY0", &value));
+        EXPECT_EQ(-1, getEnvInt("EMPTY1", &value));
+    }
+
+    {
+        EXPECT_EQ(0, strcmp("0", setEnvInt("VALUE", 0)));
+
+        int value;
+
+        EXPECT_EQ(0,  getEnvInt("VALUE", &value));
+        EXPECT_EQ(0,  value);
+    }
+
+    {
+        EXPECT_EQ(0, strcmp("-1", setEnvInt("VALUE", -1)));
+
+        int value;
+
+        EXPECT_EQ(0,  getEnvInt("VALUE", &value));
+        EXPECT_EQ(-1, value);
+    }
+
+    {
+        EXPECT_EQ(0, strcmp("1", setEnvInt("VALUE", 1)));
+
+        int value;
+
+        EXPECT_EQ(0, getEnvInt("VALUE", &value));
+        EXPECT_EQ(1, value);
+    }
+}
+
+#include "../googletest/src/gtest_main.cc"

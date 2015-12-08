@@ -1,6 +1,6 @@
 /* -*- c-basic-offset:4; indent-tabs-mode:nil -*- vi: set sw=4 et: */
 /*
-// Copyright (c) 2013, Earl Chew
+// Copyright (c) 2015, Earl Chew
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,45 +26,92 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef OPTIONS_H
-#define OPTIONS_H
 
-#include <sys/types.h>
-#include <stdbool.h>
+#include "env_.h"
+#include "parse_.h"
+#include "macros_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <limits.h>
 
 /* -------------------------------------------------------------------------- */
-struct Options
+int
+getEnvString(const char *aName, const char **aValue)
 {
-    const char *mName;
-    pid_t       mPid;
-    const char *mPidFile;
-    const char *mLibrary;
-    unsigned    mPacing_s;
-    int         mTimeout_s;
-    int         mTetherFd;
-    const int  *mTether;
-    unsigned    mDebug;
-    bool        mIdentify;
-    bool        mSetPgid;
-    bool        mQuiet;
-    bool        mTest;
-    bool        mOrphaned;
-};
+    int rc = -1;
 
-extern struct Options gOptions;
+    *aValue = getenv(aName);
 
-/* -------------------------------------------------------------------------- */
-char **
-processOptions(int argc, char **argv);
+    if ( ! *aValue)
+    {
+        errno = ENOENT;
+        goto Finally;
+    }
 
-/* -------------------------------------------------------------------------- */
+    rc = 0;
 
-#ifdef __cplusplus
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
-#endif
 
-#endif /* OPTIONS_H */
+/* -------------------------------------------------------------------------- */
+const char *
+setEnvString(const char *aName, const char *aValue)
+{
+    const char *rc = 0;
+
+    if (setenv(aName, aValue, 1))
+        goto Finally;
+
+    const char *env;
+
+    if (getEnvString(aName, &env))
+        goto Finally;
+
+    rc = env;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+getEnvInt(const char *aName, int *aValue)
+{
+    int rc = -1;
+
+    const char *env;
+
+    if (getEnvString(aName, &env))
+        goto Finally;
+
+    rc = parseInt(env, aValue);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+setEnvInt(const char *aName, int aValue)
+{
+    char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
+
+    if (0 > sprintf(value, "%d", aValue))
+        return 0;
+
+    return setEnvString(aName, value);
+}
+
+/* -------------------------------------------------------------------------- */
