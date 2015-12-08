@@ -231,7 +231,7 @@ runChild(
                     strcpy(k9preload, sopath);
 
                 const char *ldpreloadEnv = setEnvString(
-                    "XLD_PRELOAD", k9preload);
+                    "LD_PRELOAD", k9preload);
                 if ( ! ldpreloadEnv)
                     terminate(
                         errno,
@@ -516,8 +516,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         [POLL_FD_STDOUT] = {
             .fd = STDOUT_FILENO,  .events = pollDisconnectEvent },
         [POLL_FD_STDIN] = {
-            .fd = STDIN_FILENO,   .events = ! gOptions.mTether
-                                            ? 0 : pollInputEvents },
+            .fd = STDIN_FILENO,   .events = pollInputEvents, },
     };
 
     bool deadChild = false;
@@ -576,8 +575,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         .mTriggered = false,
     };
 
-    int closedStdout = 0;
-    int closedStdin  = 0;
+    int closedStdout = gOptions.mTether ? 0 : -1;
+    int closedStdin  = gOptions.mTether ? 0 : -1;
 
     /* It would be so much easier to use non-blocking IO, but O_NONBLOCK
      * is an attribute of the underlying open file, not of each
@@ -587,6 +586,37 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
     do
     {
+        if (0 > closedStdout || 0 > closedStdin)
+        {
+            closedStdout = 1;
+            closedStdin  = 1;
+
+            debug(0, "closing stdin and stdout");
+
+            /* If the far end of stdout has been closed, close stdin
+             * using the side-effect of dup2. Use of dup2 ensures
+             * that the watchdog continues to have a valid stdin.
+             *
+             * Also duplicating the file descriptors allows nullPipe
+             * to be cleaned up while leaving a valid stdin and stdout. */
+
+            if (STDIN_FILENO != dup2(nullPipe.mRdFile->mFd, STDIN_FILENO))
+                terminate(
+                    errno,
+                    "Unable to dup null pipe to stdin");
+
+            if (STDOUT_FILENO != dup2(nullPipe.mWrFile->mFd, STDOUT_FILENO))
+                terminate(
+                    errno,
+                    "Unable to dup null pipe to stdout");
+
+            pollfds[POLL_FD_STDIN].fd  = STDIN_FILENO;
+            pollfds[POLL_FD_STDOUT].fd = STDOUT_FILENO;
+
+            pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
+            pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
+        }
+
         ensure(closedStdin == closedStdout);
 
         debug(1, "poll wait");
@@ -880,37 +910,6 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
                 break;
 
             } while (0);
-        }
-
-        if (0 > closedStdout || 0 > closedStdin)
-        {
-            closedStdout = 1;
-            closedStdin  = 1;
-
-            debug(0, "closing stdin and stdout");
-
-            /* If the far end of stdout has been closed, close stdin
-             * using the side-effect of dup2. Use of dup2 ensures
-             * that the watchdog continues to have a valid stdin.
-             *
-             * Also duplicating the file descriptors allows nullPipe
-             * to be cleaned up while leaving a valid stdin and stdout. */
-
-            if (STDIN_FILENO != dup2(nullPipe.mRdFile->mFd, STDIN_FILENO))
-                terminate(
-                    errno,
-                    "Unable to dup null pipe to stdin");
-
-            if (STDOUT_FILENO != dup2(nullPipe.mWrFile->mFd, STDOUT_FILENO))
-                terminate(
-                    errno,
-                    "Unable to dup null pipe to stdout");
-
-            pollfds[POLL_FD_STDIN].fd  = STDIN_FILENO;
-            pollfds[POLL_FD_STDOUT].fd = STDOUT_FILENO;
-
-            pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
-            pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
         }
 
         /* Propagate signals to the child process. Signals are queued
@@ -1370,7 +1369,7 @@ cmdRunCommand(char **aCmd)
     if (purgeProcessOrphanedFds())
         terminate(
             errno,
-            "Unable to cleanse files");
+            "Unable to purge orphaned files");
 
     /* If stdout is not open, or data sent to stdout is to be discarded,
      * then provide a default sink for the data transmitted through
