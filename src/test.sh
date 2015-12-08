@@ -6,6 +6,11 @@ set -eu
 # process from the shell. This is important because SIGPIPE will be
 # delivered to the separate echo process, rather than to the shell.
 
+k9()
+{
+    libtool --mode=execute $VALGRIND ./k9 "$@"
+}
+
 testCase()
 {
     printf '\ntestCase - %s\n' "$1"
@@ -61,11 +66,6 @@ testOutput()
     fi
 }
 
-runWait()
-{
-    $VALGRIND "$@"
-}
-
 runTest()
 {
     :
@@ -74,60 +74,60 @@ runTest()
 runTests()
 {
     testCase 'Usage'
-    testExit 1 runWait ./k9 -? -- true
+    testExit 1 k9 -? -- true
 
     testCase 'Missing -P option value'
-    testExit 1 runWait ./k9 -P
+    testExit 1 k9 -P
 
     testCase 'Illegal negative -P option value'
-    testExit 1 runWait ./k9 -P -2 -- true
+    testExit 1 k9 -P -2 -- true
 
     testCase 'Valid -P option values'
-    testExit 0 runWait ./k9 -dd -P -1 -- true
-    testExit 0 runWait ./k9 -dd -P 0 -- true
-    testExit 0 runWait ./k9 -dd -P 1 -- true
+    testExit 0 k9 -dd -P -1 -- true
+    testExit 0 k9 -dd -P 0 -- true
+    testExit 0 k9 -dd -P 1 -- true
 
     testCase 'Long --pid option'
-    testExit 0 runWait ./k9 --pid 1 -- true
+    testExit 0 k9 --pid 1 -- true
 
     testCase 'Missing -p option value'
-    testExit 1 runWait ./k9 -p
+    testExit 1 k9 -p
 
     testCase 'Valid -p option value'
-    testExit 0 runWait ./k9 -d -p pidfile -- true
+    testExit 0 k9 -d -p pidfile -- true
     [ ! -f pidfile ]
 
     testCase 'Long --pidfile option'
-    testExit 0 runWait ./k9 --pidfile pidfile -- true
+    testExit 0 k9 --pidfile pidfile -- true
     [ ! -f pidfile ]
 
     testCase 'Missing command'
-    testExit 1 runWait ./k9
+    testExit 1 k9
 
     testCase 'Simple command'
-    REPLY=$(runWait ./k9 -dd /bin/echo test)
+    REPLY=$(k9 -dd /bin/echo test)
     [ x"$REPLY" = x"test" ]
 
     testCase 'Simple command in test mode'
-    REPLY=$(runWait ./k9 -dd -T /bin/echo test)
+    REPLY=$(k9 -dd -T /bin/echo test)
     [ x"$REPLY" = x"test" ]
 
     testCase 'Empty pid file'
     rm -f pidfile
     : > pidfile
-    testExit 0 runWait ./k9 -T -p pidfile -- true
+    testExit 0 k9 -T -p pidfile -- true
     [ ! -f pidfile ]
 
     testCase 'Invalid content in pid file'
     rm -f pidfile
     dd if=/dev/zero bs=1K count=1 > pidfile
-    testExit 0 runWait ./k9 -T -p pidfile -- true
+    testExit 0 k9 -T -p pidfile -- true
     [ ! -f pidfile ]
 
     testCase 'Test flock time out'
     testOutput 1 == '$(
         exec 3>&1
-        if ./k9 -T -d -i -p pidfile -- sh -ec "
+        if k9 -T -d -i -p pidfile -- sh -ec "
           while : ; do sleep 1 ; echo X ; done" ; then
             echo $? >&3
         else
@@ -143,31 +143,33 @@ runTests()
     testCase 'Dead process in pid file'
     rm -f pidfile
     sh -c '/bin/echo $$' > pidfile
-    testExit 0 runWait ./k9 -T -d -p pidfile -- true
+    testExit 0 k9 -T -d -p pidfile -- true
     [ ! -f pidfile ]
 
     testCase 'Aliased process in pid file'
     rm -f pidfile
     ( sh -c '/bin/echo $(( $$ + 1))' > pidfile ; sleep 1 ) &
     sleep 1
-    testExit 0 runWait ./k9 -T -d -p pidfile -- true
+    testExit 0 k9 -T -d -p pidfile -- true
     wait
     [ ! -f pidfile ]
 
     testCase 'Read non-existent pid file'
     rm -f pidfile
-    testExit 1 runWait ./k9 -T -p pidfile
+    testExit 1 k9 -T -p pidfile
     [ ! -f pidfile ]
 
     testCase 'Read malformed pid file'
     rm -f pidfile
     date > pidfile
-    testExit 1 runWait ./k9 -T -p pidfile
+    testExit 1 k9 -T -p pidfile
     [ -f pidfile ]
 
     testCase 'Identify processes'
     for REPLY in $(
-      exec sh -c '/bin/echo $$ ; exec ./k9 -T -i -- sh -c '\''/bin/echo $$'\' |
+      exec sh -c '
+        /bin/echo $$
+        exec libtool --mode=execute '"$VALGRIND"' ./k9 -T -i -- sh -c '\''/bin/echo $$'\' |
       {
         read REALPARENT
         read PARENT ; read CHILD
@@ -179,14 +181,14 @@ runTests()
     done
 
     testCase 'Exit code propagation'
-    testExit 2 runWait ./k9 -T -- sh -c 'exit 2'
+    testExit 2 k9 -T -- sh -c 'exit 2'
 
     testCase 'Signal exit code propagation'
-    testExit $((128 + 9)) runWait ./k9 -T -- sh -c '
+    testExit $((128 + 9)) k9 -T -- sh -c '
         /bin/echo Killing $$ ; kill -9 $$'
 
     testCase 'Child shares process group'
-    runWait ./k9 -i -dd -- ps -o pid,pgid,cmd | {
+    k9 -i -dd -- ps -o pid,pgid,cmd | {
         read PARENT
         read CHILD
         read HEADING
@@ -206,7 +208,7 @@ runTests()
     }
 
     testCase 'Child sets own process group'
-    runWait ./k9 -i -s -- ps -o pid,pgid,cmd | {
+    k9 -i -s -- ps -o pid,pgid,cmd | {
         read PARENT
         read CHILD
         read HEADING
@@ -229,60 +231,60 @@ runTests()
     testCase 'Untethered child process'
     testOutput '$(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
-      runWait ./k9 -T -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 -T -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Untethered child process with 8M data'
     testOutput 8192000 = '$(
-      runWait ./k9 -T -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      k9 -T -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether with new file descriptor'
     testOutput '$(( 2 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      runWait ./k9 -T -f - -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 -T -f - -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using stdout'
     testOutput '$(( 1 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      runWait ./k9 -T -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 -T -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using named stdout'
     testOutput '$(( 1 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      runWait ./k9 -T -f 1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 -T -f 1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using stdout with 8M data'
     testOutput 8192000 = '$(
-      runWait ./k9 -T -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      k9 -T -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether quietly using stdout with 8M data'
     testOutput 0 = '$(
-      runWait ./k9 -T -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      k9 -T -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether named in environment'
     testOutput "TETHER=1" = '$(
-      runWait ./k9 -T -n TETHER -- printenv | grep TETHER)'
+      k9 -T -n TETHER -- printenv | grep TETHER)'
 
     testCase 'Tether named alone in argument'
     testOutput "1" = '$(
-      runWait ./k9 -T -n @tether@ -- /bin/echo @tether@ | grep "1")'
+      k9 -T -n @tether@ -- /bin/echo @tether@ | grep "1")'
 
     testCase 'Tether named as suffix in argument'
     testOutput "x1" = '$(
-      runWait ./k9 -T -n @tether@ -- /bin/echo x@tether@ | grep "1")'
+      k9 -T -n @tether@ -- /bin/echo x@tether@ | grep "1")'
 
     testCase 'Tether named as prefix argument'
     testOutput "1x" = '$(
-      runWait ./k9 -T -n @tether@ -- /bin/echo @tether@x | grep "1")'
+      k9 -T -n @tether@ -- /bin/echo @tether@x | grep "1")'
 
     testCase 'Tether named as infix argument'
     testOutput "x1x" = '$(
-      runWait ./k9 -T -n @tether@ -- /bin/echo x@tether@x | grep "1")'
+      k9 -T -n @tether@ -- /bin/echo x@tether@x | grep "1")'
 
     testCase 'Unexpected death of child'
     REPLY=$(
       exec 3>&1
       {
-        if $VALGRIND ./k9 -T -d -i -- sh -c '
+        if k9 -T -d -i -- sh -c '
             while : ; do : ; done ; exit 0' 3>&- ; then
           /bin/echo 0 >&3
         else
@@ -302,7 +304,7 @@ runTests()
         sh -c '
           /bin/echo $$
           exec >/dev/null
-          exec setsid '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+          exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
               trap '\''exit 1'\'''"$SIGNALS"'
               while : ; do sleep 1 ; done"' |
         {
@@ -329,7 +331,7 @@ runTests()
         sh -c '
           /bin/echo $$
           exec >/dev/null
-          exec setsid '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+          exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
               trap '\''exit 1'\'''"$SIGNALS"'
               while : ; do sleep 1 ; done"' |
         {
@@ -353,7 +355,7 @@ runTests()
 
     testCase 'Fixed termination deadline'
     testOutput OK = '$(
-        $VALGRIND ./k9 -T -i -dd -t 3 -D 4 -- sh -cx "
+        k9 -T -i -dd -t 3 -D 4 -- sh -cx "
             trap : 15
             while : ; do sleep 1 ; done" |
         {
@@ -372,7 +374,7 @@ runTests()
     testCase 'Test SIGPIPE propagates from child'
     testOutput "X-$((128 + 13))" = '$(
         exec 3>&1
-        if ./k9 -T -d -d -- sh -cx "
+        if k9 -T -d -d -- sh -cx "
             while : ; do /bin/echo X || exit \$?; sleep 1 ; done " ; then
             /bin/echo "X-$?" >&3
         else
@@ -383,7 +385,7 @@ runTests()
     testCase 'Test EPIPE propagates to child'
     testOutput "X-2" = '$(
         exec 3>&1
-        if ./k9 -dd -- sh -c "
+        if k9 -dd -- sh -c "
             sleep 1 ;
             while : ; do
                 /bin/echo X || exit 2
@@ -403,7 +405,7 @@ runTests()
             dd if=/dev/zero bs=$((64 * 1024)) count=1
             ( sleep 2
                 dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
-            exec ./k9 -dd -- sh -c "
+            exec libtool --mode=execute '"$VALGRIND"' ./k9 -dd -- sh -c "
                trap '\''/bin/echo -n AA >&3; exit 2'\'' 15
                sleep 2
                dd if=/dev/zero bs=$((64 * 1024)) count=1 &
@@ -428,7 +430,7 @@ runTests()
 
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
-        /usr/bin/time -p $VALGRIND ./k9 -T -t 4 -- sh -c '
+        /usr/bin/time -p libtool --mode=execute $VALGRIND ./k9 -T -t 4 -- sh -c '
             trap "" 15 ; sleep 6' 2>&1 | grep real)
     REPLY=${REPLY%%.*}
     REPLY=${REPLY##* }
