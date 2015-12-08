@@ -63,7 +63,7 @@ k9_SOURCES   = _k9.c
 
 libk9_la_CFLAGS   = $(COMMON_CFLAGS)
 libk9_la_LIBADD   =
-libk9_la_SOURCES  = libk9.c
+libk9_la_SOURCES  = libk9.c parse_.c
 libk9_la_VERSION  = 0:0:0
 libk9_la_LDFLAGS  =
 libk9_la_LDFLAGS += -version-info $(libk9_la_VERSION) -release $(VERSION)

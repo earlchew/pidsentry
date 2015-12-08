@@ -29,6 +29,7 @@
 
 #include "libk9.h"
 #include "macros_.h"
+#include "parse_.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -48,6 +49,7 @@ enum EnvKind
     ENV_LD_PRELOAD,
     ENV_K9_SO,
     ENV_K9_FD,
+    ENV_K9_PID,
     ENV_KINDS
 };
 
@@ -271,13 +273,35 @@ libk9_init()
         [ENV_LD_PRELOAD] = { "LD_PRELOAD" },
         [ENV_K9_SO]      = { "K9_SO" },
         [ENV_K9_FD]      = { "K9_FD" },
+        [ENV_K9_PID]     = { "K9_PID" },
     };
 
     initEnv(env, NUMBEROF(env), envp);
 
-    stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
+    if (env[ENV_K9_PID].mEnv)
+    {
+        pid_t pid;
+        if ( ! parsePid(env[ENV_K9_PID].mEnv, &pid))
+        {
+            if (pid == getpid())
+            {
+                /* This is the child process to be monitored. The
+                 * child process might exec() another program, so
+                 * leave the environment variables in place to
+                 * monitor the new program . */
 
-    watchTether(env[ENV_K9_FD].mEnv);
+                watchTether(env[ENV_K9_FD].mEnv);
+            }
+            else
+            {
+                /* This is a grandchild process. Any descendant
+                 * processes or programs do not need the parasite
+                 * library. */
+
+                stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
+            }
+        }
+    }
 }
 
 /* -------------------------------------------------------------------------- */
