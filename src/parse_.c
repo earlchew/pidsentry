@@ -136,7 +136,7 @@ parsePid(const char *aArg, pid_t *aValue)
     if (*aValue - value)
         goto Finally;
 
-    if (0 <= *aValue)
+    if (0 > *aValue)
         goto Finally;
 
     rc = 0;
