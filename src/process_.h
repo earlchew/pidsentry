@@ -103,6 +103,9 @@ lockProcessLock(void);
 int
 unlockProcessLock(void);
 
+const char *
+ownProcessLockPath(void);
+
 uint64_t
 ownProcessElapsedTime(void);
 

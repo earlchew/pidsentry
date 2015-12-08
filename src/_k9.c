@@ -202,6 +202,20 @@ runChild(
                         "Unable to set K9_PID=%jd", (intmax_t) childPid);
                 debug(0, "env - K9_PID=%s", pidEnv);
 
+                const char *lockFileName = ownProcessLockPath();
+
+                if ( ! lockFileName)
+                    terminate(
+                        0,
+                        "Process lock file unavailable");
+
+                const char *lockEnv = setEnvString("K9_LOCK", lockFileName);
+                if ( ! lockEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_LOCK=%s", lockFileName);
+                debug(0, "env - K9_LOCK=%s", lockEnv);
+
                 int umbilicalFd = aUmbilicalPipe->mWrFile->mFd;
 
                 if (detachPipeWriter(aUmbilicalPipe))

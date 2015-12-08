@@ -584,7 +584,14 @@ createProcessLock_(struct ProcessLock *self)
     self->mLock     = LOCK_UN;
     self->mPathName = 0;
 
-    if (createPathName(&self->mPathName_, "/proc/self/."))
+    static const char pathNameFmt[] = "/proc/%jd/.";
+
+    char pathName[sizeof(pathNameFmt) + sizeof(pid_t) * CHAR_BIT];
+
+    if (-1 == sprintf(pathName, pathNameFmt, (intmax_t) getpid()))
+        goto Finally;
+
+    if (createPathName(&self->mPathName_, pathName))
         goto Finally;
     self->mPathName = &self->mPathName_;
 
@@ -795,6 +802,15 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+ownProcessLockPath(void)
+{
+    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+
+    return processLock ? processLock->mPathName->mFileName : 0;
 }
 
 /* -------------------------------------------------------------------------- */
