@@ -39,8 +39,10 @@ AM_LDFLAGS    =
 
 COMMON_FLAGS       = -D_GNU_SOURCE -Wall -Werror -pedantic -O2 -Wno-parentheses
 COMMON_CFLAGS      = $(COMMON_FLAGS) -std=gnu99
+COMMON_CFLAGS     += -fdata-sections -ffunction-sections
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x \
 		     -Wno-variadic-macros -Wno-long-long
+COMMON_LDFLAGS     = -Wl,--gc-sections
 TEST_LIBS          = libk9_.la libgoogletest.la -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
 TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
@@ -57,17 +59,17 @@ noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
 lib_LTLIBRARIES     = libk9.la
 
 k9_CFLAGS    = $(COMMON_CFLAGS)
-k9_LDFLAGS   = -Wl,-Map,k9.map -Wl,-cref
+k9_LDFLAGS   = $(COMMON_LDFLAGS) -Wl,-Map,k9.map -Wl,-cref
 k9_LDADD     = libk9_.la libk9.la -lrt -ldl
 k9_SOURCES   = _k9.c
 
 libk9_la_CFLAGS   = $(COMMON_CFLAGS)
-libk9_la_LIBADD   =
-libk9_la_SOURCES  = libk9.c parse_.c
+libk9_la_LIBADD   = -lrt
+libk9_la_SOURCES  = libk9.c $(libk9__la_SOURCES)
 libk9_la_VERSION  = 0:0:0
 libk9_la_LDFLAGS  =
+libk9_la_LDFLAGS += $(COMMON_LDFLAGS)
 libk9_la_LDFLAGS += -version-info $(libk9_la_VERSION) -release $(VERSION)
-libk9_la_LDFLAGS += -Wc,-nodefaultlibs -Wl,-Bstatic # Standalone library
 libk9_la_LDFLAGS += -export-symbols libk9.sym
 libk9_la_LDFLAGS += -Wl,-Map,libk9.map -Wl,-cref
 
