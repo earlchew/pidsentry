@@ -216,6 +216,15 @@ runChild(
                         "Unable to set K9_LOCK=%s", lockFileName);
                 debug(0, "env - K9_LOCK=%s", lockEnv);
 
+                uint64_t baseTime = ownProcessBaseTime();
+
+                const char *basetimeEnv = setEnvUInt64("K9_TIME", baseTime);
+                if ( ! basetimeEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_TIME=%" PRIu64, baseTime);
+                debug(0, "env - K9_TIME=%s", basetimeEnv);
+
                 int umbilicalFd = aUmbilicalPipe->mWrFile->mFd;
 
                 if (detachPipeWriter(aUmbilicalPipe))

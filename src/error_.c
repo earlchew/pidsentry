@@ -39,6 +39,15 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <sys/syscall.h>
+
+/* -------------------------------------------------------------------------- */
+static pid_t
+gettid(void)
+{
+    return syscall(SYS_gettid);
+}
+
 /* -------------------------------------------------------------------------- */
 static struct {
     char  *mBuf;
@@ -65,26 +74,50 @@ print_(
         elapsed_s  = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) / 1000;
         elapsed_ms = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) % 1000;
 
-        if ( ! aFile || lockProcessLock())
+        intmax_t pid = getpid();
+        intmax_t tid = gettid();
+
+        if (sPrintBuf.mFile && lockProcessLock())
         {
-            int err = errno;
+            /* Note that there is an old defect which causes dprintf()
+             * to race with fork():
+             *
+             *    https://sourceware.org/bugzilla/show_bug.cgi?id=12847
+             *
+             * The symptom is that the child process will terminate with
+             * SIGSEGV in fresetlockfiles(). */
+
+            int lockErr = errno;
 
             if ( ! aFile)
                 dprintf(STDERR_FILENO, "%s: ", ownProcessName());
             else
             {
-                dprintf(
-                    STDERR_FILENO,
-                    "%s: [%04" PRIu64 ":%02" PRIu64
-                                      ":%02" PRIu64
-                                      ".%03" PRIu64 " %jd %s:%u] ",
-                    ownProcessName(),
-                    elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                    (intmax_t) getpid(),
-                    aFile, aLine);
+                if (pid == tid)
+                {
+                    dprintf(
+                        STDERR_FILENO,
+                        "%s: [%04" PRIu64 ":%02" PRIu64
+                        ":%02" PRIu64
+                        ".%03" PRIu64 " %jd %s:%u] ",
+                        ownProcessName(),
+                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                        pid, aFile, aLine);
+                }
+                else
+                {
+                    dprintf(
+                        STDERR_FILENO,
+                        "%s: [%04" PRIu64 ":%02" PRIu64
+                        ":%02" PRIu64
+                        ".%03" PRIu64 " %jd:%jd %s:%u] ",
+                        ownProcessName(),
+                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                        pid, tid, aFile, aLine);
+                }
 
-                if (EWOULDBLOCK != err)
-                    dprintf(STDERR_FILENO, "- lock error %d - ", err);
+                if (EWOULDBLOCK != lockErr)
+                    dprintf(STDERR_FILENO, "- lock error %d - ", lockErr);
             }
 
             vdprintf(STDERR_FILENO, aFmt, aArgs);
@@ -96,15 +129,35 @@ print_(
         else
         {
             rewind(sPrintBuf.mFile);
-            fprintf(
-                sPrintBuf.mFile,
-                "%s: [%04" PRIu64 ":%02" PRIu64
-                                  ":%02" PRIu64
-                                  ".%03" PRIu64 " %jd %s:%u] ",
-                ownProcessName(),
-                elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                (intmax_t) getpid(),
-                aFile, aLine);
+
+            if ( ! aFile)
+                fprintf(sPrintBuf.mFile, "%s: ", ownProcessName());
+            else
+            {
+                if (pid == tid)
+                {
+                    fprintf(
+                        sPrintBuf.mFile,
+                        "%s: [%04" PRIu64 ":%02" PRIu64
+                        ":%02" PRIu64
+                        ".%03" PRIu64 " %jd %s:%u] ",
+                        ownProcessName(),
+                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                        pid, aFile, aLine);
+                }
+                else
+                {
+                    fprintf(
+                        sPrintBuf.mFile,
+                        "%s: [%04" PRIu64 ":%02" PRIu64
+                        ":%02" PRIu64
+                        ".%03" PRIu64 " %jd:%jd %s:%u] ",
+                        ownProcessName(),
+                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                        pid, tid, aFile, aLine);
+                }
+            }
+
             vfprintf(sPrintBuf.mFile, aFmt, aArgs);
             if (aErrCode)
                 fprintf(sPrintBuf.mFile, " - errno %d\n", aErrCode);

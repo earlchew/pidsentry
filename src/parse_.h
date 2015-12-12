@@ -29,6 +29,8 @@
 #ifndef PARSE_H
 #define PARSE_H
 
+#include <inttypes.h>
+
 #include <sys/types.h>
 
 #ifdef __cplusplus
@@ -41,6 +43,9 @@ parseInt(const char *aArg, int *aValue);
 
 int
 parseUInt(const char *aArg, unsigned *aValue);
+
+int
+parseUInt64(const char *aArg, uint64_t *aValue);
 
 int
 parsePid(const char *aArg, pid_t *aValue);

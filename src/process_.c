@@ -986,6 +986,13 @@ ownProcessElapsedTime(void)
 }
 
 /* -------------------------------------------------------------------------- */
+uint64_t
+ownProcessBaseTime(void)
+{
+    return sTimeBase;
+}
+
+/* -------------------------------------------------------------------------- */
 static int
 rankProcessFd_(const void *aLhs, const void *aRhs)
 {

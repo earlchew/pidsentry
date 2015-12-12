@@ -63,9 +63,6 @@ void
 walkFileList(void *aOther,
              int (*aVisitor)(void *aOther, const struct File *aFile));
 
-int
-cleanseFiles(void);
-
 int dupFile(struct File *self, const struct File *aOther);
 
 int

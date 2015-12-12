@@ -117,6 +117,38 @@ setEnvInt(const char *aName, int aValue)
 
 /* -------------------------------------------------------------------------- */
 int
+getEnvUInt64(const char *aName, uint64_t *aValue)
+{
+    int rc = -1;
+
+    const char *env;
+
+    if (getEnvString(aName, &env))
+        goto Finally;
+
+    rc = parseUInt64(env, aValue);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+setEnvUInt64(const char *aName, uint64_t aValue)
+{
+    char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
+
+    if (0 > sprintf(value, "%" PRIu64, aValue))
+        return 0;
+
+    return setEnvString(aName, value);
+}
+
+/* -------------------------------------------------------------------------- */
+int
 getEnvPid(const char *aName, pid_t *aValue)
 {
     int rc = -1;

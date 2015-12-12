@@ -30,6 +30,9 @@
 #include "libk9.h"
 #include "macros_.h"
 #include "parse_.h"
+#include "error_.h"
+#include "fd_.h"
+#include "socketpair_.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -41,6 +44,8 @@
 #include <sched.h>
 #include <inttypes.h>
 
+#include <sys/resource.h>
+
 extern char **_dl_argv;
 
 /* -------------------------------------------------------------------------- */
@@ -50,6 +55,7 @@ enum EnvKind
     ENV_K9_SO,
     ENV_K9_FD,
     ENV_K9_PID,
+    ENV_K9_TIME,
     ENV_KINDS
 };
 
@@ -168,11 +174,14 @@ stripEnvPreload(struct Env *aPreload, const char *aLibrary)
 /* -------------------------------------------------------------------------- */
 struct WatchThread
 {
-    long  mStack_[PTHREAD_STACK_MIN / sizeof(long)];
-    long *mStack;
-    int   mFd;
+    intmax_t          mStack_[PTHREAD_STACK_MIN / sizeof(intmax_t)];
+    intmax_t         *mStack;
+    int               mFd;
+    struct SocketPair mSync;
+    char              mSyncBuf[1];
 };
 
+#if 0
 static void
 printErr(int aErr, const char *aFmt, ...)
 {
@@ -186,6 +195,7 @@ printErr(int aErr, const char *aFmt, ...)
     else
         dprintf(STDERR_FILENO, "\n");
 }
+#endif
 
 #if 0
 static void
@@ -194,12 +204,58 @@ watchTether(const char *aFd)
     (void) printErr;
 }
 #else
+
 static int
 watchTether_(void *aWatchThread)
 {
-    //struct WatchThread *watchThread = aWatchThread;
+    /* The watchThread structure is owned by the parent thread, so
+     * ensure that the child makes no attempt to modify the structure
+     * here. */
 
-    printErr(0, "*********RUNNING CHILD**********");
+    const struct WatchThread *watchThread = aWatchThread;
+
+    char syncBuf[sizeof(watchThread->mSyncBuf)];
+
+    if (1 != readFile(watchThread->mSync.mChildFile,
+                      syncBuf,
+                      sizeof(syncBuf)))
+        terminate(
+            errno,
+            "Unable to synchronise umbilical thread");
+
+    if ( ! ownFdValid(watchThread->mFd))
+        terminate(
+            errno,
+            "Umbilical file descriptor is not valid %d", watchThread->mFd);
+
+    if (1 != writeFile(watchThread->mSync.mChildFile,
+                       syncBuf,
+                       sizeof(syncBuf)))
+        terminate(
+            errno,
+            "Unable to synchronise umbilical thread");
+
+    /* Since the child has its own file descriptor space, close
+     * all unnecessary file descriptors so that the child will not
+     * inadvertently corrupt or pollute the file descriptors of the
+     * child process.
+     *
+     * Note that this will close the file descriptors in watchThread->mSync
+     * so no attempt should be made to them after this point. */
+
+    struct rlimit noFile;
+    if (getrlimit(RLIMIT_NOFILE, &noFile))
+        terminate(
+            errno,
+            "Unable to obtain file descriptor limit");
+
+    for (int fd = 0; fd < noFile.rlim_cur; ++fd)
+    {
+        if (  ! stdFd(fd) && fd != watchThread->mFd)
+            (void) close(fd);
+    }
+
+    warn(0, "*** RUNNING CHILD ***");
 
     return 0;
 }
@@ -212,44 +268,108 @@ watchTether(const char *aFd)
     while (aFd)
     {
         //dprintf(2, "********* START %d\n", getpid());
-        printErr(0, "********* START");
+        warn(0, "********* START");
 
-        char         *endp;
-        unsigned long ulfd = strtoul(aFd, &endp, 10);
-        int           fd   = ulfd;
+        int fd;
+        if (parseInt(aFd, &fd) || 0 > fd)
+            terminate(
+                errno,
+                "Unable to parse umbilical file descriptor %s", aFd);
+
+        if (stdFd(fd) || 0 > fd)
+            terminate(
+                0,
+                "Unexpected value for umbilical file descriptor %d", fd);
+
+        if ( ! ownFdValid(fd))
+            terminate(
+                errno,
+                "Umbilical file descriptor %d is not valid", fd);
+
+        watchThread.mFd = fd;
+
+        /* The stack is allocated statically to keep the footprint
+         * of the shared library contained. Dynamically allocating
+         * the stack (eg using mmap(2)) would create another
+         * visible artifact indicating the presence of this library. */
 
         uintptr_t frameChild  = (uintptr_t) __builtin_frame_address(0);
         uintptr_t frameParent = (uintptr_t) __builtin_frame_address(1);
 
         if (frameChild == frameParent)
-            break;
+            terminate(
+                0,
+                "Unable to ascertain direction of stack growth");
 
-        if ( ( ! (1 + ulfd) && errno == ERANGE) || (ulfd != fd || fd < 0))
-            break;
-
-        watchThread.mFd    = fd;
         watchThread.mStack = watchThread.mStack_;
 
         if (frameChild < frameParent)
             watchThread.mStack += NUMBEROF(watchThread.mStack_);
 
-#if 1
+        memset(watchThread.mSyncBuf, 0, sizeof(watchThread.mSyncBuf));
+
+        if (createSocketPair(&watchThread.mSync))
+            terminate(
+                errno,
+                "Unable to create synchronisation pipe");
+
+        /* Create the umbilical thread and ensure that it is ready before
+         * proceeding. This is important partly because the library
+         * code is largely single threaded, and also to ensure that
+         * the umbilical thread is functional.
+         *
+         * CLONE_THREAD semantics are required in order to ensure that
+         * the umbilical thread is reaped when the process executes
+         * execve() et al. By implication, CLONE_THREAD requires
+         * CLONE_SIGHAND, and CLONE_SIGHAND in turn requires
+         * CLONE_VM.
+         *
+         * CLONE_FILE is not used so that the umbilical file descriptor
+         * can be used exclusively by the umbilical thread. Apart from
+         * the umbilical thread, the rest of the child process cannot
+         * manipulate or close the umbilical file descriptor, allowing
+         * it to close all file descriptors without disrupting the
+         * operation of the umbilical thread. */
+
         if (-1 == clone(
                 watchTether_,
                 watchThread.mStack,
-                CLONE_VM | CLONE_FS | CLONE_FILES |
-                CLONE_SIGHAND | CLONE_THREAD |
-                CLONE_SYSVSEM | CLONE_DETACHED,
+                CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS,
                 &watchThread, 0, 0, 0, 0, 0))
         {
-            printErr(errno, "Unable to clone thread");
+            terminate(
+                errno,
+                "Unable to create umbilical thread");
         }
-#endif
 
-        printErr(0, "********* Sleeping");
-        //sleep(10);
+        if (closeFd(&fd))
+            terminate(
+                errno,
+                "Unable to close umbilical file descriptor %d", fd);
 
-        printErr(0, "********* DONE");
+        warn(0, "********* SYNCRHONISING");
+
+        if (1 != writeFile(watchThread.mSync.mParentFile,
+                           watchThread.mSyncBuf,
+                           sizeof(watchThread.mSyncBuf)))
+            terminate(
+                errno,
+                "Unable to synchronise umbilical thread");
+
+        if (1 != readFile(watchThread.mSync.mParentFile,
+                          watchThread.mSyncBuf,
+                          sizeof(watchThread.mSyncBuf)))
+            terminate(
+                errno,
+                "Unable to synchronise umbilical thread");
+
+        if (closeSocketPair(&watchThread.mSync))
+            terminate(
+                errno,
+                "Unable to close synchronisation pipe");
+
+        warn(0, "********* DONE");
+
         break;
     }
 }
@@ -259,6 +379,11 @@ watchTether(const char *aFd)
 static void  __attribute__((constructor))
 libk9_init()
 {
+    if (Error_init())
+        terminate(
+            0,
+            "Unable to initialise error module");
+
     char **argv;
     int    argc;
     char **envp;
@@ -274,6 +399,7 @@ libk9_init()
         [ENV_K9_SO]      = { "K9_SO" },
         [ENV_K9_FD]      = { "K9_FD" },
         [ENV_K9_PID]     = { "K9_PID" },
+        [ENV_K9_TIME]    = { "K9_TIME" },
     };
 
     initEnv(env, NUMBEROF(env), envp);
@@ -297,6 +423,8 @@ libk9_init()
                 /* This is a grandchild process. Any descendant
                  * processes or programs do not need the parasite
                  * library. */
+
+                env[ENV_K9_FD].mEnv[0] = 0;
 
                 stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
             }

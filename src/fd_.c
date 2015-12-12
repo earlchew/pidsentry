@@ -251,6 +251,8 @@ Finally:
 ssize_t
 readFd(int aFd, char *aBuf, size_t aLen)
 {
+    ssize_t rc = -1;
+
     char *bufPtr = aBuf;
     char *bufEnd = bufPtr + aLen;
 
@@ -271,19 +273,27 @@ readFd(int aFd, char *aBuf, size_t aLen)
             if (bufPtr != aBuf)
                 break;
 
-            return -1;
+            goto Finally;
         }
 
         bufPtr += len;
     }
 
-    return bufPtr - aBuf;
+    rc = bufPtr - aBuf;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
 ssize_t
 writeFd(int aFd, const char *aBuf, size_t aLen)
 {
+    ssize_t rc = -1;
+
     const char *bufPtr = aBuf;
     const char *bufEnd = bufPtr + aLen;
 
@@ -304,13 +314,19 @@ writeFd(int aFd, const char *aBuf, size_t aLen)
             if (bufPtr != aBuf)
                 break;
 
-            return -1;
+            goto Finally;
         }
 
         bufPtr += len;
     }
 
-    return bufPtr - aBuf;
+    rc = bufPtr - aBuf;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

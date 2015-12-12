@@ -124,6 +124,29 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+parseUInt64(const char *aArg, uint64_t *aValue)
+{
+    int rc = -1;
+
+    unsigned long long value;
+    if (parseUnsignedLongLong_(aArg, &value))
+        goto Finally;
+    *aValue = value;
+
+    if (*aValue - value)
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 parsePid(const char *aArg, pid_t *aValue)
 {
     int rc = -1;

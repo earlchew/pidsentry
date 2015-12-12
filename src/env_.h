@@ -29,6 +29,8 @@
 #ifndef ENV_H
 #define ENV_H
 
+#include <inttypes.h>
+
 #include <sys/types.h>
 
 #ifdef __cplusplus
@@ -41,6 +43,12 @@ setEnvInt(const char *aName, int aValue);
 
 int
 getEnvInt(const char *aName, int *aValue);
+
+const char *
+setEnvUInt64(const char *aName, uint64_t aValue);
+
+int
+getEnvUInt64(const char *aName, uint64_t *aValue);
 
 const char *
 setEnvString(const char *aName, const char *aValue);

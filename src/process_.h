@@ -109,6 +109,9 @@ ownProcessLockPath(void);
 uint64_t
 ownProcessElapsedTime(void);
 
+uint64_t
+ownProcessBaseTime(void);
+
 const char*
 ownProcessName(void);
 

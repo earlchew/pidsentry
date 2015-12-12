@@ -238,17 +238,17 @@ runTests()
       k9 -T -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether with new file descriptor'
-    testOutput '$(( 2 + $(
+    testOutput '$(( 1 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
       k9 -T -f - -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using stdout'
-    testOutput '$(( 1 + $(
+    testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
       k9 -T -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using named stdout'
-    testOutput '$(( 1 + $(
+    testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
       k9 -T -f 1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
