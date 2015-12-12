@@ -54,6 +54,10 @@ static const char sUsage[] =
 "options:\n"
 "  --debug | -d\n"
 "      Print debug information.\n"
+"  --cordless | -c\n"
+"      When running with a tether, do not run the child with an umbilical\n"
+"      connection. An umbilical cord allows the child terminate immediately\n"
+"      the watchdog is absent. [Default: Use an umbilical cord]\n"
 "  --delay N | -D N\n"
 "      Specify the delay N in seconds between signals when terminating\n"
 "      the child process. [Default: " STRINGIFY(DEFAULT_EXIT_PACING_S) "]\n"
@@ -103,10 +107,11 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "D:df:iL::n:oP:p:qsTt:u";
+    "cD:df:iL::n:oP:p:qsTt:u";
 
 static struct option sLongOptions[] =
 {
+    { "cordless",   0, 0, 'c' },
     { "debug",      0, 0, 'd' },
     { "delay",      1, 0, 'D' },
     { "fd",         1, 0, 'f' },
@@ -139,7 +144,6 @@ processOptions(int argc, char **argv)
 {
     int pidFileOnly = 0;
 
-    gOptions.mLibrary   = "";
     gOptions.mTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
     gOptions.mPacing_s  = DEFAULT_EXIT_PACING_S;
     gOptions.mTetherFd  = STDOUT_FILENO;
@@ -163,6 +167,11 @@ processOptions(int argc, char **argv)
 
         case '?':
             showUsage_();
+            break;
+
+        case 'c':
+            pidFileOnly = -1;
+            gOptions.mCordless = true;
             break;
 
         case 'd':
@@ -197,13 +206,6 @@ processOptions(int argc, char **argv)
         case 'i':
             pidFileOnly = -1;
             gOptions.mIdentify = true;
-            break;
-
-        case 'L':
-            pidFileOnly = -1;
-            if (optarg && ! *optarg)
-                terminate(0, "Empty library name");
-            gOptions.mLibrary = optarg;
             break;
 
         case 'o':

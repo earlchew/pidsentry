@@ -193,7 +193,7 @@ runChild(
             /* Configure the environment variables of the child so that
              * it can find and monitor the tether to the watchdog. */
 
-            if (gOptions.mTether && gOptions.mLibrary)
+            if (gOptions.mTether && ! gOptions.mCordless)
             {
                 const char *pidEnv = setEnvPid("K9_PID", childPid);
                 if ( ! pidEnv)
@@ -239,14 +239,11 @@ runChild(
                         "Unable to set K9_FD=%d", umbilicalFd);
                 debug(0, "env - K9_FD=%s", umbilicalEnv);
 
-                const char *sopath =
-                    *gOptions.mLibrary ? gOptions.mLibrary : sK9soPath;
-
-                const char *sopathEnv = setEnvString("K9_SO", sopath);
+                const char *sopathEnv = setEnvString("K9_SO", sK9soPath);
                 if ( ! sopathEnv)
                     terminate(
                         errno,
-                        "Unable to set K9_SO=%s", sopath);
+                        "Unable to set K9_SO=%s", sK9soPath);
                 debug(0, "env - K9_SO=%s", sopathEnv);
 
                 const char *preload    = getenv("LD_PRELOAD");
@@ -255,12 +252,12 @@ runChild(
                 static const char k9preloadfmt[] = "%s %s";
 
                 char k9preload[
-                    preloadlen + strlen(sopath) + sizeof(k9preloadfmt)];
+                    preloadlen + strlen(sK9soPath) + sizeof(k9preloadfmt)];
 
                 if (preload)
-                    sprintf(k9preload, k9preloadfmt, sopath, preload);
+                    sprintf(k9preload, k9preloadfmt, sK9soPath, preload);
                 else
-                    strcpy(k9preload, sopath);
+                    strcpy(k9preload, sK9soPath);
 
                 const char *ldpreloadEnv = setEnvString(
                     "LD_PRELOAD", k9preload);
@@ -1567,6 +1564,8 @@ Finally:
 static const char *
 initLibK9(void)
 {
+    const char *rc = 0;
+
     if (K9SO())
         terminate(
             errno,
@@ -1602,12 +1601,10 @@ initLibK9(void)
         .mK9soPath = 0,
     };
 
-    if (0 > dl_iterate_phdr(initLibK9Vistor_, &visitor))
-        terminate(
-            0,
-            "Unable to resolve " STRINGIFY(K9SO) " to shared library");
+    if (0 < dl_iterate_phdr(initLibK9Vistor_, &visitor))
+        rc = visitor.mK9soPath;
 
-    return visitor.mK9soPath;
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1619,6 +1616,11 @@ int main(int argc, char **argv)
             "Unable to initialise process state");
 
     sK9soPath = initLibK9();
+
+    if ( ! sK9soPath)
+        terminate(
+            0,
+            "Unable to resolve " STRINGIFY(K9SO) " to shared library");
 
     struct ExitCode exitCode;
 

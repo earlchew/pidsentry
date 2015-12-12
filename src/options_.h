@@ -42,12 +42,12 @@ struct Options
     const char *mName;
     pid_t       mPid;
     const char *mPidFile;
-    const char *mLibrary;
     unsigned    mPacing_s;
     int         mTimeout_s;
     int         mTetherFd;
     const int  *mTether;
     unsigned    mDebug;
+    bool        mCordless;
     bool        mIdentify;
     bool        mSetPgid;
     bool        mQuiet;
