@@ -26,96 +26,48 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef FILE_H
-#define FILE_H
+#ifndef UNIXSOCKET_H
+#define UNIXSOCKET_H
 
-#include <sys/types.h>
-#include <sys/socket.h>
+#include "file_.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct stat;
-struct sockaddr;
+struct sockaddr_un;
 
-struct File
+struct UnixSocket
 {
-    int          mFd;
-    struct File *mNext;
-    struct File *mPrev;
-};
-
-struct FileLockTimeout
-{
-    unsigned mMilliSeconds;
+    struct File  mFile_;
+    struct File *mFile;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createFile(struct File *self, int aFd);
+createUnixSocket(struct UnixSocket *self,
+                 const char *aName,
+                 size_t aNameLen);
 
 int
-detachFile(struct File *self);
+acceptUnixSocket(struct UnixSocket *self,
+                 const struct UnixSocket *aServer);
 
 int
-closeFile(struct File *self);
-
-void
-walkFileList(void *aOther,
-             int (*aVisitor)(void *aOther, const struct File *aFile));
-
-int dupFile(struct File *self, const struct File *aOther);
+connectUnixSocket(struct UnixSocket *self,
+                 const char *aName,
+                 size_t aNameLen);
 
 int
-closeFilePair(struct File **aFile1,
-                        struct File **aFile2);
+closeUnixSocket(struct UnixSocket *self);
 
 int
-nonblockingFile(struct File *self);
+ownUnixSocketPeerName(const struct UnixSocket *self,
+                      struct sockaddr_un *aAddr);
 
 int
-closeFileOnExec(struct File *self, unsigned aCloseOnExec);
-
-ssize_t
-writeFile(struct File *self, const char *aBuf, size_t aLen);
-
-ssize_t
-readFile(struct File *self, char *aBuf, size_t aLen);
-
-int
-fstatFile(struct File *self, struct stat *aStat);
-
-int
-fcntlFileGetFlags(struct File *self);
-
-int
-ftruncateFile(struct File *self, off_t aLength);
-
-/* -------------------------------------------------------------------------- */
-int
-bindFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
-
-int
-acceptFileSocket(const struct File *self);
-
-int
-ownFileSocketName(const struct File *self,
-                  struct sockaddr *aAddr, socklen_t *aAddrLen);
-
-int
-ownFileSocketPeerName(const struct File *self,
-                      struct sockaddr *aAddr, socklen_t *aAddrLen);
-
-/* -------------------------------------------------------------------------- */
-int
-lockFile(struct File *self, int aType, const struct FileLockTimeout *aTimeout);
-
-int
-unlockFile(struct File *self);
-
-#define FILE_LOCK_MILLISECONDS(aTimeout) \
-    ( & ((struct FileLockTimeout) { .mMilliSeconds = (aTimeout) }))
+ownUnixSocketName(const struct UnixSocket *self,
+                  struct sockaddr_un *aAddr);
 
 /* -------------------------------------------------------------------------- */
 
@@ -123,4 +75,4 @@ unlockFile(struct File *self);
 }
 #endif
 
-#endif /* FILE_H */
+#endif /* UNIXSOCKET_H */

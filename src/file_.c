@@ -38,6 +38,7 @@
 #include <fcntl.h>
 
 #include <sys/resource.h>
+#include <sys/socket.h>
 
 /* -------------------------------------------------------------------------- */
 static struct File sFileList =
@@ -275,6 +276,36 @@ int
 ftruncateFile(struct File *self, off_t aLength)
 {
     return ftruncate(self->mFd, aLength);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+bindFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
+{
+    return bind(self->mFd, aAddr, aAddrLen);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+acceptFileSocket(const struct File *self)
+{
+    return accept(self->mFd, 0, 0);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFileSocketName(const struct File *self,
+                  struct sockaddr *aAddr, socklen_t *aAddrLen)
+{
+    return getsockname(self->mFd, aAddr, aAddrLen);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFileSocketPeerName(const struct File *self,
+                      struct sockaddr *aAddr, socklen_t *aAddrLen)
+{
+    return getpeername(self->mFd, aAddr, aAddrLen);
 }
 
 /* -------------------------------------------------------------------------- */
