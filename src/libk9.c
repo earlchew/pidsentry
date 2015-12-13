@@ -43,8 +43,12 @@
 #include <limits.h>
 #include <sched.h>
 #include <inttypes.h>
+#include <pthread.h>
+
+#include <asm/ldt.h>
 
 #include <sys/resource.h>
+#include <sys/syscall.h>
 
 extern char **_dl_argv;
 
@@ -260,6 +264,41 @@ watchTether_(void *aWatchThread)
     return 0;
 }
 
+static void *
+watchTetherMain_(void *aWatchThread)
+{
+    struct WatchThread *watchThread = aWatchThread;
+
+    unsigned gs;
+    __asm ("movw %%gs, %w0" : "=q" (gs));
+    gs &= 0xffff;
+
+    struct user_desc userdesc;
+
+    userdesc.entry_number = gs >> 3;
+
+    if (syscall(SYS_get_thread_area, &userdesc))
+        terminate(
+            errno,
+            "Unable to find thread area 0x%x", gs);
+
+    if (-1 == clone(
+            watchTether_,
+            watchThread->mStack,
+            CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS | CLONE_SETTLS,
+            watchThread, 0, &userdesc))
+    {
+        terminate(
+            errno,
+            "Unable to create umbilical thread");
+    }
+
+    while (1)
+        sleep(5);
+
+    return 0;
+}
+
 static void
 watchTether(const char *aFd)
 {
@@ -331,6 +370,16 @@ watchTether(const char *aFd)
          * it to close all file descriptors without disrupting the
          * operation of the umbilical thread. */
 
+        pthread_t watchTetherThread;
+        if (errno = pthread_create(&watchTetherThread, 0,
+                                   watchTetherMain_, &watchThread))
+        {
+            terminate(
+                errno,
+                "Unable to create umbilical thread");
+        }
+
+#if 0
         if (-1 == clone(
                 watchTether_,
                 watchThread.mStack,
@@ -341,11 +390,7 @@ watchTether(const char *aFd)
                 errno,
                 "Unable to create umbilical thread");
         }
-
-        if (closeFd(&fd))
-            terminate(
-                errno,
-                "Unable to close umbilical file descriptor %d", fd);
+#endif
 
         warn(0, "********* SYNCRHONISING");
 
@@ -362,6 +407,11 @@ watchTether(const char *aFd)
             terminate(
                 errno,
                 "Unable to synchronise umbilical thread");
+
+        if (closeFd(&fd))
+            terminate(
+                errno,
+                "Unable to close umbilical file descriptor %d", fd);
 
         if (closeSocketPair(&watchThread.mSync))
             terminate(
