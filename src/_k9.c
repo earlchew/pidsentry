@@ -74,6 +74,23 @@ static const char sDevNullPath[] = DEVNULLPATH;
 static const char *sK9soPath;
 
 /* -------------------------------------------------------------------------- */
+enum PollFdKind
+{
+    POLL_FD_STDIN,
+    POLL_FD_STDOUT,
+    POLL_FD_CHILD,
+    POLL_FD_SIGNAL,
+    POLL_FD_CLOCK,
+    POLL_FD_KINDS
+};
+
+struct PollFdAction
+{
+    void (*mAction)(void *self, struct pollfd *aPollFds);
+    void  *mSelf;
+};
+
+/* -------------------------------------------------------------------------- */
 static pid_t
 runChild(
     char              **aCmd,
@@ -470,6 +487,66 @@ createPollEventText(
 }
 
 /* -------------------------------------------------------------------------- */
+struct PollFdClock
+{
+    struct Pipe mClockPipe;
+};
+
+static void
+pollFdClock(void *self_, struct pollfd *aPollFds)
+{
+    struct PollFdClock *self = self_;
+
+    /* The clock is used to deliver SIGALRM to the process
+     * periodically to ensure that blocking operations will
+     * return with EINTR so that the event loop remains
+     * responsive. */
+
+    struct PollEventText pollEventText;
+    debug(
+        1,
+        "clock tick %s",
+        createPollEventText(
+            &pollEventText,
+            aPollFds[POLL_FD_CLOCK].revents));
+
+    unsigned char clockTick;
+
+    ssize_t len = read(self->mClockPipe.mRdFile->mFd, &clockTick, 1);
+
+    if (-1 == len)
+    {
+        if (EINTR != errno)
+            terminate(
+                errno,
+                "Unable to read clock tick from queue");
+    }
+    else if ( ! len)
+    {
+        terminate(
+            0,
+            "Clock tick queue closed unexpectedly");
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+struct PollFdTether
+{
+    struct
+    {
+        int      mPeriod_ms;    /* Timeout period if not -1 */
+        uint64_t mSince_ns;     /* Last activity on tether */
+        bool     mTriggered;    /* Timeout triggered */
+    } mTimeout;
+
+    struct
+    {
+        int mStdout;
+        int mStdin;
+    } mClosed;
+};
+
+/* -------------------------------------------------------------------------- */
 static void
 monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 {
@@ -478,35 +555,25 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     struct PollEventText pollEventText;
     struct PollEventText pollRcvdEventText;
 
-    enum PollFdKind
-    {
-        POLL_FD_STDIN,
-        POLL_FD_STDOUT,
-        POLL_FD_CHILD,
-        POLL_FD_SIGNAL,
-        POLL_FD_CLOCK,
-        POLL_FD_KINDS
-    };
-
     struct Pipe nullPipe;
     if (createPipe(&nullPipe))
         terminate(
             errno,
             "Unable to create null pipe");
 
-    struct Pipe clockPipe;
-    if (createPipe(&clockPipe))
+    struct PollFdClock pollfdclock;
+    if (createPipe(&pollfdclock.mClockPipe))
         terminate(
             errno,
             "Unable to create clock pipe");
-    if (closePipeOnExec(&clockPipe, O_CLOEXEC))
+    if (closePipeOnExec(&pollfdclock.mClockPipe, O_CLOEXEC))
         terminate(
             errno,
             "Unable to set close on exec for clock pipe");
 
     struct timeval clockPeriod = { .tv_sec = 3 };
 
-    if (watchProcessClock(&clockPipe, &clockPeriod))
+    if (watchProcessClock(&pollfdclock.mClockPipe, &clockPeriod))
         terminate(
             errno,
             "Unable to install process clock watch");
@@ -537,15 +604,25 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     struct pollfd pollfds[POLL_FD_KINDS] =
     {
         [POLL_FD_CLOCK] = {
-            .fd = clockPipe.mRdFile->mFd,  .events = pollInputEvents },
+            .fd     = pollfdclock.mClockPipe.mRdFile->mFd,
+            .events = pollInputEvents },
         [POLL_FD_CHILD] = {
-            .fd = aTermPipe->mRdFile->mFd, .events = pollInputEvents },
+            .fd     = aTermPipe->mRdFile->mFd,
+            .events = pollInputEvents },
         [POLL_FD_SIGNAL] = {
-            .fd = aSigPipe->mRdFile->mFd,  .events = pollInputEvents },
+            .fd     = aSigPipe->mRdFile->mFd,
+            .events = pollInputEvents },
         [POLL_FD_STDOUT] = {
-            .fd = STDOUT_FILENO,  .events = pollDisconnectEvent },
+            .fd     = STDOUT_FILENO,
+            .events = pollDisconnectEvent },
         [POLL_FD_STDIN] = {
-            .fd = STDIN_FILENO,   .events = pollInputEvents, },
+            .fd     = STDIN_FILENO,
+            .events = pollInputEvents, },
+    };
+
+    struct PollFdAction pollfdactions[POLL_FD_KINDS] =
+    {
+        [POLL_FD_CLOCK] = { pollFdClock, &pollfdclock },
     };
 
     bool deadChild = false;
@@ -574,16 +651,32 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     const struct ChildSignalPlan *childSignalPlan =
         gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan;
 
-    struct
+    int timeout_ms = gOptions.mTimeout_s * 1000;
+
+    if (timeout_ms / 1000 != gOptions.mTimeout_s || 0 > timeout_ms)
+        terminate(
+            0,
+            "Timeout overflows representation %d", gOptions.mTimeout_s);
+
+    if ( ! gOptions.mTether)
+        timeout_ms = 0;
+
+    if ( ! timeout_ms)
+        timeout_ms = -1;
+
+    struct PollFdTether pollfdtether =
     {
-        int      mPeriod_ms;    /* Timeout period if not -1 */
-        uint64_t mSince_ns;     /* Last activity on tether */
-        bool     mTriggered;    /* Timeout triggered */
-    } timeout =
-    {
-        .mPeriod_ms = gOptions.mTimeout_s ? gOptions.mTimeout_s * 1000 : -1,
-        .mSince_ns  = lapTimeSince(0, 0),
-        .mTriggered = false,
+        .mTimeout =
+        {
+            .mPeriod_ms = timeout_ms,
+            .mSince_ns  = lapTimeSince(0, 0),
+            .mTriggered = false,
+        },
+        .mClosed =
+        {
+            .mStdout = gOptions.mTether ? 0 : -1,
+            .mStdin  = gOptions.mTether ? 0 : -1,
+        },
     };
 
     struct
@@ -604,9 +697,6 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         .mTriggered = false,
     };
 
-    int closedStdout = gOptions.mTether ? 0 : -1;
-    int closedStdin  = gOptions.mTether ? 0 : -1;
-
     /* It would be so much easier to use non-blocking IO, but O_NONBLOCK
      * is an attribute of the underlying open file, not of each
      * file descriptor. Since stdin and stdout are typically inherited
@@ -615,10 +705,11 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
     do
     {
-        if (0 > closedStdout || 0 > closedStdin)
+        if (0 > pollfdtether.mClosed.mStdout ||
+            0 > pollfdtether.mClosed.mStdin)
         {
-            closedStdout = 1;
-            closedStdin  = 1;
+            pollfdtether.mClosed.mStdout = 1;
+            pollfdtether.mClosed.mStdin  = 1;
 
             debug(0, "closing stdin and stdout");
 
@@ -646,11 +737,12 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
         }
 
-        ensure(closedStdin == closedStdout);
+        ensure(pollfdtether.mClosed.mStdin == pollfdtether.mClosed.mStdout);
 
         debug(1, "poll wait");
 
-        int rc = poll(pollfds, NUMBEROF(pollfds), timeout.mPeriod_ms);
+        int rc = poll(
+            pollfds, NUMBEROF(pollfds), pollfdtether.mTimeout.mPeriod_ms);
 
         if (-1 == rc)
         {
@@ -662,24 +754,6 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
                 "Unable to poll for activity");
         }
 
-        /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
-         * no matter what the caller has subscribed for. Only pay
-         * attention to what was subscribed. */
-
-        debug(1, "poll scan of %d fds", rc);
-
-        for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
-        {
-            debug(
-                1,
-                "poll %s %d (%s) (%s)",
-                pollfdNames[ix],
-                pollfds[ix].fd,
-                createPollEventText(&pollEventText, pollfds[ix].events),
-                createPollEventText(&pollRcvdEventText, pollfds[ix].revents));
-            pollfds[ix].revents &= pollfds[ix].events;
-        }
-
         /* When processing file descriptor events, do not loop in EINTR
          * but instead allow the polling cycle to be re-run so that
          * the event loop will not remain stuck processing a single
@@ -689,7 +763,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
         if ( ! rc)
         {
-            ensure(-1 != timeout.mPeriod_ms);
+            ensure(-1 != pollfdtether.mTimeout.mPeriod_ms);
 
             ++eventCount;
         }
@@ -698,18 +772,20 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
          * event loop was waiting for data from the child process,
          * then declare the child terminated. */
 
-        if (gOptions.mTimeout_s && ! timeout.mTriggered)
+        if (-1 != pollfdtether.mTimeout.mPeriod_ms &&
+            ! pollfdtether.mTimeout.mTriggered)
         {
             int elapsedTime_ms =
-                toMilliSeconds(lapTimeSince(&timeout.mSince_ns, 0));
+                toMilliSeconds(
+                    lapTimeSince(&pollfdtether.mTimeout.mSince_ns, 0));
 
             debug(1, "inactivity clock %dms", elapsedTime_ms);
 
-            if (elapsedTime_ms >= timeout.mPeriod_ms)
+            if (elapsedTime_ms >= pollfdtether.mTimeout.mPeriod_ms)
             {
                 debug(0, "timeout after %ds", gOptions.mTimeout_s);
 
-                timeout.mTriggered = true;
+                pollfdtether.mTimeout.mTriggered = true;
 
                 if ( ! termination.mTriggered)
                 {
@@ -776,40 +852,34 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             }
         }
 
-        if (pollfds[POLL_FD_CLOCK].revents)
+        /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
+         * no matter what the caller has subscribed for. Only pay
+         * attention to what was subscribed. */
+
+        debug(1, "poll scan of %d fds", rc);
+
+        for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
         {
-            ensure(rc);
-
-            ++eventCount;
-
-            /* The clock is used to deliver SIGALRM to the process
-             * periodically to ensure that blocking operations will
-             * return with EINTR so that the event loop remains
-             * responsive. */
-
             debug(
                 1,
-                "clock tick %s",
-                createPollEventText(
-                    &pollEventText,
-                    pollfds[POLL_FD_CLOCK].revents));
+                "poll %s %d (%s) (%s)",
+                pollfdNames[ix],
+                pollfds[ix].fd,
+                createPollEventText(&pollEventText, pollfds[ix].events),
+                createPollEventText(&pollRcvdEventText, pollfds[ix].revents));
 
-            unsigned char clockTick;
+            pollfds[ix].revents &= pollfds[ix].events;
 
-            ssize_t len = read(clockPipe.mRdFile->mFd, &clockTick, 1);
-
-            if (-1 == len)
+            if (pollfds[ix].revents)
             {
-                if (EINTR != errno)
-                    terminate(
-                        errno,
-                        "Unable to read clock tick from queue");
-            }
-            else if ( ! len)
-            {
-                    terminate(
-                        0,
-                        "Clock tick queue closed unexpectedly");
+                ensure(rc);
+
+                ++eventCount;
+
+                if (pollfdactions[ix].mAction)
+                    pollfdactions[ix].mAction(
+                        pollfdactions[ix].mSelf,
+                        pollfds);
             }
         }
 
@@ -817,11 +887,11 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         {
             ensure(rc);
             ensure(STDIN_FILENO == pollfds[POLL_FD_STDIN].fd);
-            ensure( ! closedStdin);
+            ensure( ! pollfdtether.mClosed.mStdin);
 
             ++eventCount;
 
-            timeout.mSince_ns = lapTimeSince(0, 0);
+            pollfdtether.mTimeout.mSince_ns = lapTimeSince(0, 0);
 
             debug(
                 1,
@@ -833,7 +903,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             ensure(pollfds[POLL_FD_STDIN].events);
 
             if ( ! (pollfds[POLL_FD_STDIN].revents & POLLIN))
-                closedStdin = -1;
+                pollfdtether.mClosed.mStdin = -1;
             else
             {
                 pollfds[POLL_FD_STDIN].fd = nullPipe.mRdFile->mFd;
@@ -847,11 +917,11 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         {
             ensure(rc);
             ensure(STDOUT_FILENO == pollfds[POLL_FD_STDOUT].fd);
-            ensure( ! closedStdout);
+            ensure( ! pollfdtether.mClosed.mStdout);
 
             ++eventCount;
 
-            timeout.mSince_ns = lapTimeSince(0, 0);
+            pollfdtether.mTimeout.mSince_ns = lapTimeSince(0, 0);
 
             debug(
                 1,
@@ -935,7 +1005,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
                     }
                 }
 
-                closedStdout = -1;
+                pollfdtether.mClosed.mStdout = -1;
                 break;
 
             } while (0);
@@ -1037,7 +1107,7 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             errno,
             "Unable to remove process clock watch");
 
-    if (closePipe(&clockPipe))
+    if (closePipe(&pollfdclock.mClockPipe))
         terminate(
             errno,
             "Unable to close clock pipe");
