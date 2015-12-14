@@ -32,7 +32,8 @@
 #include "parse_.h"
 #include "error_.h"
 #include "fd_.h"
-#include "socketpair_.h"
+#include "thread_.h"
+#include "process_.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -50,6 +51,8 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 
+#include <linux/futex.h>
+
 extern char **_dl_argv;
 
 /* -------------------------------------------------------------------------- */
@@ -60,6 +63,7 @@ enum EnvKind
     ENV_K9_FD,
     ENV_K9_PID,
     ENV_K9_TIME,
+    ENV_K9_DEBUG,
     ENV_KINDS
 };
 
@@ -176,75 +180,56 @@ stripEnvPreload(struct Env *aPreload, const char *aLibrary)
 }
 
 /* -------------------------------------------------------------------------- */
-struct WatchThread
+enum UmbilicalThreadState
 {
-    intmax_t          mStack_[PTHREAD_STACK_MIN / sizeof(intmax_t)];
-    intmax_t         *mStack;
-    int               mFd;
-    struct SocketPair mSync;
-    char              mSyncBuf[1];
+    UMBILICAL_STOPPED,
+    UMBILICAL_STARTING,
+    UMBILICAL_STARTED,
 };
 
-#if 0
-static void
-printErr(int aErr, const char *aFmt, ...)
+struct UmbilicalThread
 {
-    va_list argp;
+    pthread_t                  mThread;
+    pthread_mutex_t            mMutex;
+    pthread_cond_t             mCond;
+    enum UmbilicalThreadState  mState;
+    intmax_t                   mStack_[PTHREAD_STACK_MIN / sizeof(intmax_t)];
+    intmax_t                  *mStack;
+    int                        mFd;
+    int                        mStatus;
+};
 
-    va_start(argp, aFmt);
-    vdprintf(STDERR_FILENO, aFmt, argp);
-    va_end(argp);
-    if (aErr)
-        dprintf(STDERR_FILENO, "- error %d\n", aErr);
-    else
-        dprintf(STDERR_FILENO, "\n");
-}
-#endif
-
-#if 0
-static void
-watchTether(const char *aFd)
-{
-    (void) printErr;
-}
-#else
-
+/* -------------------------------------------------------------------------- */
 static int
-watchTether_(void *aWatchThread)
+watchUmbilical_(void *aUmbilicalThread)
 {
-    /* The watchThread structure is owned by the parent thread, so
+    /* The umbilicalThread structure is owned by the parent thread, so
      * ensure that the child makes no attempt to modify the structure
      * here. */
 
-    const struct WatchThread *watchThread = aWatchThread;
+    struct UmbilicalThread *umbilicalThread = aUmbilicalThread;
 
-    char syncBuf[sizeof(watchThread->mSyncBuf)];
+    lockMutex(&umbilicalThread->mMutex);
+    {
+        while (UMBILICAL_STARTING != umbilicalThread->mState)
+            waitCond(&umbilicalThread->mCond, &umbilicalThread->mMutex);
 
-    if (1 != readFile(watchThread->mSync.mChildFile,
-                      syncBuf,
-                      sizeof(syncBuf)))
-        terminate(
-            errno,
-            "Unable to synchronise umbilical thread");
+        if ( ! ownFdValid(umbilicalThread->mFd))
+            terminate(
+                errno,
+                "Umbilical file descriptor is not valid %d",
+                umbilicalThread->mFd);
 
-    if ( ! ownFdValid(watchThread->mFd))
-        terminate(
-            errno,
-            "Umbilical file descriptor is not valid %d", watchThread->mFd);
-
-    if (1 != writeFile(watchThread->mSync.mChildFile,
-                       syncBuf,
-                       sizeof(syncBuf)))
-        terminate(
-            errno,
-            "Unable to synchronise umbilical thread");
+        umbilicalThread->mState = UMBILICAL_STARTED;
+    }
+    unlockMutexSignal(&umbilicalThread->mMutex, &umbilicalThread->mCond);
 
     /* Since the child has its own file descriptor space, close
      * all unnecessary file descriptors so that the child will not
      * inadvertently corrupt or pollute the file descriptors of the
      * child process.
      *
-     * Note that this will close the file descriptors in watchThread->mSync
+     * Note that this will close the file descriptors in umbilicalThread->mSync
      * so no attempt should be made to them after this point. */
 
     struct rlimit noFile;
@@ -255,7 +240,7 @@ watchTether_(void *aWatchThread)
 
     for (int fd = 0; fd < noFile.rlim_cur; ++fd)
     {
-        if (  ! stdFd(fd) && fd != watchThread->mFd)
+        if (  ! stdFd(fd) && fd != umbilicalThread->mFd)
             (void) close(fd);
     }
 
@@ -264,49 +249,101 @@ watchTether_(void *aWatchThread)
     return 0;
 }
 
+/* -------------------------------------------------------------------------- */
 static void *
-watchTetherMain_(void *aWatchThread)
+umbilicalMain_(void *aUmbilicalThread)
 {
-    struct WatchThread *watchThread = aWatchThread;
+    struct UmbilicalThread *umbilicalThread = aUmbilicalThread;
 
-    unsigned gs;
-    __asm ("movw %%gs, %w0" : "=q" (gs));
-    gs &= 0xffff;
+    /* Create the umbilical thread and ensure that it is ready before
+     * proceeding. This is important partly because the library
+     * code is largely single threaded, and also to ensure that
+     * the umbilical thread is functional.
+     *
+     * CLONE_THREAD semantics are required in order to ensure that
+     * the umbilical thread is reaped when the process executes
+     * execve() et al. By implication, CLONE_THREAD requires
+     * CLONE_SIGHAND, and CLONE_SIGHAND in turn requires
+     * CLONE_VM.
+     *
+     * CLONE_FILE is not used so that the umbilical file descriptor
+     * can be used exclusively by the umbilical thread. Apart from
+     * the umbilical thread, the rest of the child process cannot
+     * manipulate or close the umbilical file descriptor, allowing
+     * it to close all file descriptors without disrupting the
+     * operation of the umbilical thread. */
 
-    struct user_desc userdesc;
+#ifdef __i386__
+    struct user_desc  tls_;
+    struct user_desc *tls = &tls_;
 
-    userdesc.entry_number = gs >> 3;
-
-    if (syscall(SYS_get_thread_area, &userdesc))
-        terminate(
-            errno,
-            "Unable to find thread area 0x%x", gs);
-
-    if (-1 == clone(
-            watchTether_,
-            watchThread->mStack,
-            CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS | CLONE_SETTLS,
-            watchThread, 0, &userdesc))
     {
+        unsigned gs;
+        __asm ("movw %%gs, %w0" : "=q" (gs));
+
+        gs &= 0xffff;
+        tls->entry_number = gs >> 3;
+
+        if (syscall(SYS_get_thread_area, tls))
+            terminate(
+                errno,
+                "Unable to find thread area 0x%x", gs);
+    }
+#endif
+
+    /* Use an umbilical slave thread so that it can operate with
+     * an isolated set of file descriptors. It is expected that
+     * watched processes (especially servers) will close all file
+     * descriptors in which they have no active interest, and thus
+     * would close the umbilical file descriptor if the umbilical
+     * thread shared the same file descriptor space. */
+
+    pid_t tid;
+    pid_t pid = clone(
+            watchUmbilical_,
+            umbilicalThread->mStack,
+            CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS |
+            CLONE_SETTLS | CLONE_CHILD_SETTID,
+            umbilicalThread, 0, tls, &tid);
+
+    if (-1 == pid)
         terminate(
             errno,
             "Unable to create umbilical thread");
+
+    while (tid)
+    {
+        switch (syscall(SYS_futex, &tid, FUTEX_WAIT, pid, 0, 0, 0))
+        {
+        case 0:
+            continue;
+
+        default:
+            if (EINTR == errno || EWOULDBLOCK == errno)
+                continue;
+            terminate(
+                errno,
+                "Unable to wait for umbilical thread");
+        }
     }
 
-    while (1)
-        sleep(5);
+    /* Do not exit until the umbilical slave thread has completed because
+     * it shares the same pthread resources. Once the umbilical slave
+     * thread completes, it is safe to release the pthread resources. */
 
-    return 0;
+    debug(0, "**** Umbilical thread %jd terminated", (intmax_t) pid);
+
+    return umbilicalThread;
 }
 
+/* -------------------------------------------------------------------------- */
 static void
-watchTether(const char *aFd)
+watchUmbilical(const char *aFd)
 {
-    static struct WatchThread watchThread;
+    static struct UmbilicalThread umbilicalThread;
 
     while (aFd)
     {
-        //dprintf(2, "********* START %d\n", getpid());
         warn(0, "********* START");
 
         int fd;
@@ -325,12 +362,20 @@ watchTether(const char *aFd)
                 errno,
                 "Umbilical file descriptor %d is not valid", fd);
 
-        watchThread.mFd = fd;
+        /* Use a detached thread to monitor the umbilical from the
+         * watchdog. Using a thread allows the main thread of control
+         * to continue performing the main activities of the process. */
 
-        /* The stack is allocated statically to keep the footprint
-         * of the shared library contained. Dynamically allocating
-         * the stack (eg using mmap(2)) would create another
-         * visible artifact indicating the presence of this library. */
+        static const pthread_mutex_t mutexInit = PTHREAD_MUTEX_INITIALIZER;
+        static const pthread_cond_t  condInit  = PTHREAD_COND_INITIALIZER;
+
+        umbilicalThread.mMutex = mutexInit;
+        umbilicalThread.mCond  = condInit;
+        umbilicalThread.mState = UMBILICAL_STOPPED;
+        umbilicalThread.mFd    = fd;
+
+        /* The stack is allocated statically to avoid creating another
+         * anonymous mmap(2) region unnecessarily. */
 
         uintptr_t frameChild  = (uintptr_t) __builtin_frame_address(0);
         uintptr_t frameParent = (uintptr_t) __builtin_frame_address(1);
@@ -340,90 +385,50 @@ watchTether(const char *aFd)
                 0,
                 "Unable to ascertain direction of stack growth");
 
-        watchThread.mStack = watchThread.mStack_;
+        umbilicalThread.mStack = umbilicalThread.mStack_;
 
         if (frameChild < frameParent)
-            watchThread.mStack += NUMBEROF(watchThread.mStack_);
+            umbilicalThread.mStack += NUMBEROF(umbilicalThread.mStack_);
 
-        memset(watchThread.mSyncBuf, 0, sizeof(watchThread.mSyncBuf));
-
-        if (createSocketPair(&watchThread.mSync))
-            terminate(
-                errno,
-                "Unable to create synchronisation pipe");
-
-        /* Create the umbilical thread and ensure that it is ready before
-         * proceeding. This is important partly because the library
-         * code is largely single threaded, and also to ensure that
-         * the umbilical thread is functional.
-         *
-         * CLONE_THREAD semantics are required in order to ensure that
-         * the umbilical thread is reaped when the process executes
-         * execve() et al. By implication, CLONE_THREAD requires
-         * CLONE_SIGHAND, and CLONE_SIGHAND in turn requires
-         * CLONE_VM.
-         *
-         * CLONE_FILE is not used so that the umbilical file descriptor
-         * can be used exclusively by the umbilical thread. Apart from
-         * the umbilical thread, the rest of the child process cannot
-         * manipulate or close the umbilical file descriptor, allowing
-         * it to close all file descriptors without disrupting the
-         * operation of the umbilical thread. */
-
-        pthread_t watchTetherThread;
-        if (errno = pthread_create(&watchTetherThread, 0,
-                                   watchTetherMain_, &watchThread))
         {
-            terminate(
-                errno,
-                "Unable to create umbilical thread");
-        }
+            pthread_attr_t umbilicalThreadAttr;
 
-#if 0
-        if (-1 == clone(
-                watchTether_,
-                watchThread.mStack,
-                CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS,
-                &watchThread, 0, 0, 0, 0, 0))
-        {
-            terminate(
-                errno,
-                "Unable to create umbilical thread");
+            createThreadAttr(&umbilicalThreadAttr);
+            setThreadAttrDetachState(
+                &umbilicalThreadAttr, PTHREAD_CREATE_DETACHED);
+
+            createThread(&umbilicalThread.mThread,
+                         &umbilicalThreadAttr,
+                         umbilicalMain_, &umbilicalThread);
+
+            destroyThreadAttr(&umbilicalThreadAttr);
         }
-#endif
 
         warn(0, "********* SYNCRHONISING");
 
-        if (1 != writeFile(watchThread.mSync.mParentFile,
-                           watchThread.mSyncBuf,
-                           sizeof(watchThread.mSyncBuf)))
-            terminate(
-                errno,
-                "Unable to synchronise umbilical thread");
+        lockMutex(&umbilicalThread.mMutex);
+        {
+            umbilicalThread.mState = UMBILICAL_STARTING;
+        }
+        unlockMutexSignal(&umbilicalThread.mMutex, &umbilicalThread.mCond);
 
-        if (1 != readFile(watchThread.mSync.mParentFile,
-                          watchThread.mSyncBuf,
-                          sizeof(watchThread.mSyncBuf)))
-            terminate(
-                errno,
-                "Unable to synchronise umbilical thread");
+        lockMutex(&umbilicalThread.mMutex);
+        {
+            while (UMBILICAL_STARTED != umbilicalThread.mState)
+                waitCond(&umbilicalThread.mCond, &umbilicalThread.mMutex);
+        }
+        unlockMutex(&umbilicalThread.mMutex);
 
         if (closeFd(&fd))
             terminate(
                 errno,
                 "Unable to close umbilical file descriptor %d", fd);
 
-        if (closeSocketPair(&watchThread.mSync))
-            terminate(
-                errno,
-                "Unable to close synchronisation pipe");
-
         warn(0, "********* DONE");
 
         break;
     }
 }
-#endif
 
 /* -------------------------------------------------------------------------- */
 static void  __attribute__((constructor))
@@ -433,6 +438,8 @@ libk9_init()
         terminate(
             0,
             "Unable to initialise error module");
+
+    initOptions();
 
     char **argv;
     int    argc;
@@ -450,6 +457,7 @@ libk9_init()
         [ENV_K9_FD]      = { "K9_FD" },
         [ENV_K9_PID]     = { "K9_PID" },
         [ENV_K9_TIME]    = { "K9_TIME" },
+        [ENV_K9_DEBUG]   = { "K9_DEBUG" },
     };
 
     initEnv(env, NUMBEROF(env), envp);
@@ -466,7 +474,7 @@ libk9_init()
                  * leave the environment variables in place to
                  * monitor the new program . */
 
-                watchTether(env[ENV_K9_FD].mEnv);
+                watchUmbilical(env[ENV_K9_FD].mEnv);
             }
             else
             {

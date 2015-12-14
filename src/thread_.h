@@ -26,89 +26,48 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef TIMEKEEPING_H
-#define TIMEKEEPING_H
+#ifndef THREAD_H
+#define THREAD_H
 
-#include <inttypes.h>
-#include <stdbool.h>
-#include <signal.h>
-
-#include <sys/time.h>
+#include <pthread.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct PushedIntervalTimer
-{
-    int              mType;
-    int              mSignal;
-    uint64_t         mMark;
-    struct sigaction mAction;
-    struct itimerval mTimer;
-};
-
 /* -------------------------------------------------------------------------- */
-static inline uint64_t
-milliSeconds(uint64_t aMilliSeconds)
-{
-    return aMilliSeconds * 1000 * 1000;
-}
-
-static inline uint64_t
-toMilliSeconds(uint64_t aNanoSeconds)
-{
-    return aNanoSeconds / (1000 * 1000);
-}
-
-/* -------------------------------------------------------------------------- */
-uint64_t
-timeValToTime(const struct timeval *aTimeVal);
-
-uint64_t
-timeSpecToTime(const struct timespec *aTimeSpec);
-
-struct timeval
-timeValFromTime(uint64_t aNanoSeconds);
-
-struct timespec
-timeSpecFromTime(uint64_t aNanoSeconds);
+void
+createThread(pthread_t      *self,
+             pthread_attr_t *aAttr,
+             void           *aThread(void *),
+             void           *aContext);
 
 /* -------------------------------------------------------------------------- */
 void
-monotonicSleep(uint64_t aDuration);
+createThreadAttr(pthread_attr_t *self);
+
+void
+destroyThreadAttr(pthread_attr_t *self);
+
+void
+setThreadAttrDetachState(pthread_attr_t *self, int aState);
 
 /* -------------------------------------------------------------------------- */
-uint64_t
-monotonicTime(void);
+void
+lockMutex(pthread_mutex_t *self);
 
-uint64_t
-wallclockTime(void);
+void
+unlockMutex(pthread_mutex_t *self);
 
-/* -------------------------------------------------------------------------- */
-uint64_t
-lapTimeSince(uint64_t *aSince, uint64_t aPeriod);
+void
+unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond);
 
-/* -------------------------------------------------------------------------- */
-bool
-deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration);
+void
+unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond);
 
 /* -------------------------------------------------------------------------- */
-struct timespec
-earliestTime(const struct timespec *aLhs, const struct timespec *aRhs);
-
-/* -------------------------------------------------------------------------- */
-int
-pushIntervalTimer(struct PushedIntervalTimer *aPause,
-                   int                         aType,
-                   const struct itimerval     *aTimer);
-
-int
-popIntervalTimer(struct PushedIntervalTimer *aPause);
-
-/* -------------------------------------------------------------------------- */
-struct itimerval
-shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsed);
+void
+waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);
 
 /* -------------------------------------------------------------------------- */
 
@@ -116,4 +75,4 @@ shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsed);
 }
 #endif
 
-#endif /* TIMEKEEPING_H */
+#endif /* THREAD_H */

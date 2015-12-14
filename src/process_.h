@@ -98,6 +98,10 @@ pid_t
 forkProcess(enum ForkProcessOption aOption);
 
 int
+reapProcess(pid_t aPid, int *aStatus);
+
+/* -------------------------------------------------------------------------- */
+int
 lockProcessLock(void);
 
 int

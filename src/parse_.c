@@ -53,6 +53,9 @@ parseUnsignedLongLong_(const char *aArg, unsigned long long *aValue)
             rc = 0;
     }
 
+    if (rc)
+        errno = EINVAL;
+
     return rc;
 }
 
@@ -73,6 +76,9 @@ parseLongLong_(const char *aArg, long long *aValue)
             rc = 0;
     }
 
+    if (rc)
+        errno = EINVAL;
+
     return rc;
 }
 
@@ -88,7 +94,10 @@ parseInt(const char *aArg, int *aValue)
     *aValue = value;
 
     if (*aValue - value)
+    {
+        errno = EINVAL;
         goto Finally;
+    }
 
     rc = 0;
 
@@ -111,7 +120,10 @@ parseUInt(const char *aArg, unsigned *aValue)
     *aValue = value;
 
     if (*aValue - value)
+    {
+        errno = EINVAL;
         goto Finally;
+    }
 
     rc = 0;
 
@@ -134,7 +146,10 @@ parseUInt64(const char *aArg, uint64_t *aValue)
     *aValue = value;
 
     if (*aValue - value)
+    {
+        errno = EINVAL;
         goto Finally;
+    }
 
     rc = 0;
 
@@ -156,11 +171,11 @@ parsePid(const char *aArg, pid_t *aValue)
         goto Finally;
     *aValue = value;
 
-    if (*aValue - value)
+    if (*aValue - value || 0 > *aValue)
+    {
+        errno = EINVAL;
         goto Finally;
-
-    if (0 > *aValue)
-        goto Finally;
+    }
 
     rc = 0;
 

@@ -814,6 +814,35 @@ ownProcessLockPath(void)
 }
 
 /* -------------------------------------------------------------------------- */
+int
+reapProcess(pid_t aPid, int *aStatus)
+{
+    int rc = -1;
+
+    if (-1 == aPid || ! aPid)
+        goto Finally;
+
+    pid_t pid;
+
+    do
+    {
+        pid = waitpid(aPid, aStatus, __WALL);
+
+        if (-1 == pid && EINTR != errno)
+            goto Finally;
+
+    } while (pid != aPid);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 pid_t
 forkProcess(enum ForkProcessOption aOption)
 {

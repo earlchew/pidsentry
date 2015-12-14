@@ -32,6 +32,7 @@
 #include "error_.h"
 #include "parse_.h"
 #include "process_.h"
+#include "env_.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -139,15 +140,33 @@ showUsage_(void)
 }
 
 /* -------------------------------------------------------------------------- */
+void
+initOptions()
+{
+    gOptions.mTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
+    gOptions.mPacing_s  = DEFAULT_EXIT_PACING_S;
+    gOptions.mTetherFd  = STDOUT_FILENO;
+    gOptions.mTether    = &gOptions.mTetherFd;
+
+    if (getEnvUInt("K9_DEBUG", &gOptions.mDebug))
+    {
+        gOptions.mDebug = 0;
+
+        if (ENOENT != errno)
+            warn(
+                errno,
+                "Unable to configure debug setting %s",
+                getenv("K9_DEBUG"));
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 char **
 processOptions(int argc, char **argv)
 {
     int pidFileOnly = 0;
 
-    gOptions.mTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
-    gOptions.mPacing_s  = DEFAULT_EXIT_PACING_S;
-    gOptions.mTetherFd  = STDOUT_FILENO;
-    gOptions.mTether    = &gOptions.mTetherFd;
+    initOptions();
 
     while (1)
     {

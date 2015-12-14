@@ -117,6 +117,38 @@ setEnvInt(const char *aName, int aValue)
 
 /* -------------------------------------------------------------------------- */
 int
+getEnvUInt(const char *aName, unsigned *aValue)
+{
+    int rc = -1;
+
+    const char *env;
+
+    if (getEnvString(aName, &env))
+        goto Finally;
+
+    rc = parseUInt(env, aValue);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+setEnvUInt(const char *aName, unsigned aValue)
+{
+    char value[sizeof(aValue) * CHAR_BIT];
+
+    if (0 > sprintf(value, "%u", aValue))
+        return 0;
+
+    return setEnvString(aName, value);
+}
+
+/* -------------------------------------------------------------------------- */
+int
 getEnvUInt64(const char *aName, uint64_t *aValue)
 {
     int rc = -1;

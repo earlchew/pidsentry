@@ -47,9 +47,21 @@ monotonicTime(void)
             errno,
             "Unable to fetch monotonic time");
 
-    uint64_t ns = ts.tv_sec;
+    return timeSpecToTime(&ts);
+}
 
-    return ns * 1000 * 1000 * 1000 + ts.tv_nsec;
+/* -------------------------------------------------------------------------- */
+uint64_t
+wallclockTime(void)
+{
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_REALTIME, &ts))
+        terminate(
+            errno,
+            "Unable to fetch monotonic time");
+
+    return timeSpecToTime(&ts);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -170,6 +182,25 @@ timeValFromTime(uint64_t aNanoSeconds)
     return (struct timeval) {
         .tv_sec  = aNanoSeconds / (1000 * 1000 * 1000),
         .tv_usec = aNanoSeconds % (1000 * 1000 * 1000) / 1000,
+    };
+}
+
+/* -------------------------------------------------------------------------- */
+uint64_t
+timeSpecToTime(const struct timespec *aTimeSpec)
+{
+    uint64_t ns = aTimeSpec->tv_sec;
+
+    return (ns * 1000 * 1000 * 1000) + aTimeSpec->tv_nsec;
+}
+
+/* -------------------------------------------------------------------------- */
+struct timespec
+timeSpecFromTime(uint64_t aNanoSeconds)
+{
+    return (struct timespec) {
+        .tv_sec  = aNanoSeconds / (1000 * 1000 * 1000),
+        .tv_nsec = aNanoSeconds % (1000 * 1000 * 1000),
     };
 }
 

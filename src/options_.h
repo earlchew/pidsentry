@@ -58,6 +58,9 @@ struct Options
 extern struct Options gOptions;
 
 /* -------------------------------------------------------------------------- */
+void
+initOptions(void);
+
 char **
 processOptions(int argc, char **argv);
 

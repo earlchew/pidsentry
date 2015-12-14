@@ -45,6 +45,12 @@ int
 getEnvInt(const char *aName, int *aValue);
 
 const char *
+setEnvUInt(const char *aName, unsigned aValue);
+
+int
+getEnvUInt(const char *aName, unsigned *aValue);
+
+const char *
 setEnvUInt64(const char *aName, uint64_t aValue);
 
 int

@@ -263,6 +263,13 @@ runChild(
                         "Unable to set K9_SO=%s", sK9soPath);
                 debug(0, "env - K9_SO=%s", sopathEnv);
 
+                const char *debugEnv = setEnvUInt("K9_DEBUG", gOptions.mDebug);
+                if ( ! debugEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_DEBUG=%u", gOptions.mDebug);
+                debug(0, "env - K9_DEBUG=%s", debugEnv);
+
                 const char *preload    = getenv("LD_PRELOAD");
                 size_t      preloadlen = preload ? strlen(preload) : 0;
 
@@ -409,21 +416,12 @@ static int
 reapChild(pid_t aChildPid)
 {
     int status;
-    pid_t pid;
 
-    ensure(-1 != aChildPid && aChildPid);
-
-    do
-    {
-        pid = waitpid(aChildPid, &status, 0);
-
-        if (-1 == pid && EINTR != errno)
-            terminate(
-                errno,
-                "Unable to reap child pid '%jd'",
-                (intmax_t) aChildPid);
-
-    } while (pid != aChildPid);
+    if (reapProcess(aChildPid, &status))
+        terminate(
+            errno,
+            "Unable to reap child pid '%jd'",
+            (intmax_t) aChildPid);
 
     return status;
 }
