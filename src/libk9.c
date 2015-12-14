@@ -185,6 +185,7 @@ enum UmbilicalThreadState
     UMBILICAL_STOPPED,
     UMBILICAL_STARTING,
     UMBILICAL_STARTED,
+    UMBILICAL_STOPPING,
 };
 
 struct UmbilicalThread
@@ -246,6 +247,12 @@ watchUmbilical_(void *aUmbilicalThread)
 
     warn(0, "*** RUNNING CHILD ***");
 
+    lockMutex(&umbilicalThread->mMutex);
+    {
+        umbilicalThread->mState = UMBILICAL_STOPPING;
+    }
+    unlockMutex(&umbilicalThread->mMutex);
+
     return 0;
 }
 
@@ -303,8 +310,8 @@ umbilicalMain_(void *aUmbilicalThread)
             watchUmbilical_,
             umbilicalThread->mStack,
             CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS |
-            CLONE_SETTLS | CLONE_CHILD_SETTID,
-            umbilicalThread, 0, tls, &tid);
+            CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
+            umbilicalThread, &tid, tls, &tid);
 
     if (-1 == pid)
         terminate(
@@ -327,11 +334,17 @@ umbilicalMain_(void *aUmbilicalThread)
         }
     }
 
+    lockMutex(&umbilicalThread->mMutex);
+    {
+        ensure(UMBILICAL_STOPPING == umbilicalThread->mState);
+    }
+    unlockMutex(&umbilicalThread->mMutex);
+
     /* Do not exit until the umbilical slave thread has completed because
      * it shares the same pthread resources. Once the umbilical slave
      * thread completes, it is safe to release the pthread resources. */
 
-    debug(0, "**** Umbilical thread %jd terminated", (intmax_t) pid);
+    debug(0, "**** umbilical thread %jd terminated", (intmax_t) pid);
 
     return umbilicalThread;
 }
@@ -414,7 +427,7 @@ watchUmbilical(const char *aFd)
 
         lockMutex(&umbilicalThread.mMutex);
         {
-            while (UMBILICAL_STARTED != umbilicalThread.mState)
+            while (UMBILICAL_STARTING == umbilicalThread.mState)
                 waitCond(&umbilicalThread.mCond, &umbilicalThread.mMutex);
         }
         unlockMutex(&umbilicalThread.mMutex);

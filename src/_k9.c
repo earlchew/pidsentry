@@ -90,6 +90,10 @@ struct PollFdAction
     void  *mSelf;
 };
 
+static const unsigned sPollInputEvents     = POLLHUP|POLLERR|POLLPRI|POLLIN;
+static const unsigned sPollOutputEvents    = POLLHUP|POLLERR|POLLOUT;
+static const unsigned sPollDisconnectEvent = POLLHUP|POLLERR;
+
 /* -------------------------------------------------------------------------- */
 static pid_t
 runChild(
@@ -487,13 +491,16 @@ createPollEventText(
 /* -------------------------------------------------------------------------- */
 struct PollFdClock
 {
-    struct Pipe mClockPipe;
+    enum PollFdKind mKind;
+    struct Pipe     mClockPipe;
 };
 
 static void
 pollFdClock(void *self_, struct pollfd *aPollFds)
 {
     struct PollFdClock *self = self_;
+
+    ensure(POLL_FD_CLOCK == self->mKind);
 
     /* The clock is used to deliver SIGALRM to the process
      * periodically to ensure that blocking operations will
@@ -528,8 +535,112 @@ pollFdClock(void *self_, struct pollfd *aPollFds)
 }
 
 /* -------------------------------------------------------------------------- */
+struct PollFdChild
+{
+    enum PollFdKind mKind;
+    bool            mDead;
+};
+
+static void
+pollFdChild(void *self_, struct pollfd *aPollFds)
+{
+    struct PollFdChild *self = self_;
+
+    ensure(POLL_FD_CHILD == self->mKind);
+
+        /* Record when the child has terminated, but do not exit
+         * the event loop until all the IO has been flushed. */
+
+    struct PollEventText pollEventText;
+    debug(
+        1,
+        "poll child %s",
+        createPollEventText(
+            &pollEventText,
+            aPollFds[POLL_FD_CHILD].revents));
+
+    ensure(aPollFds[POLL_FD_CHILD].events);
+
+    aPollFds[POLL_FD_CHILD].events = 0;
+
+    self->mDead = true;
+}
+
+/* -------------------------------------------------------------------------- */
+struct PollFdSignal
+{
+    enum PollFdKind mKind;
+    pid_t           mChildPid;
+    struct Pipe    *mSigPipe;
+};
+
+static void
+pollFdSignal(void *self_, struct pollfd *aPollFds)
+{
+    struct PollFdSignal *self = self_;
+
+    ensure(POLL_FD_SIGNAL == self->mKind);
+
+    /* Propagate signals to the child process. Signals are queued
+     * by the local signal handler to the inherent race in the
+     * fork() idiom:
+     *
+     *     pid_t childPid = fork();
+     *
+     * The fork() completes before childPid can be assigned. This
+     * event loop only runs after the fork() is complete and
+     * any signals received before the fork() will be queued for
+     * delivery. */
+
+    struct PollEventText pollEventText;
+    debug(
+        1,
+        "poll signal %s",
+        createPollEventText(
+            &pollEventText,
+            aPollFds[POLL_FD_SIGNAL].revents));
+
+    unsigned char sigNum;
+
+    ssize_t len = read(self->mSigPipe->mRdFile->mFd, &sigNum, 1);
+
+    if (-1 == len)
+    {
+        if (EINTR != errno)
+            terminate(
+                errno,
+                "Unable to read signal from queue");
+    }
+    else if ( ! len)
+    {
+        terminate(
+            0,
+            "Signal queue closed unexpectedly");
+    }
+    else
+    {
+        debug(1,
+              "deliver signal %d to child pid %jd",
+              sigNum,
+              (intmax_t) self->mChildPid);
+
+        if (kill(self->mChildPid, sigNum))
+        {
+            if (ESRCH != errno)
+                warn(
+                    errno,
+                    "Unable to deliver signal %d to child pid %jd",
+                    sigNum,
+                    (intmax_t) self->mChildPid);
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 struct PollFdTether
 {
+    enum PollFdKind mKind;
+
     struct
     {
         int      mPeriod_ms;    /* Timeout period if not -1 */
@@ -542,7 +653,143 @@ struct PollFdTether
         int mStdout;
         int mStdin;
     } mClosed;
+
+    struct Pipe *mNullPipe;
 };
+
+static void
+pollFdStdin(void *self_, struct pollfd *aPollFds)
+{
+    struct PollFdTether *self = self_;
+
+    ensure(POLL_FD_STDIN == self->mKind);
+
+    ensure(STDIN_FILENO == aPollFds[POLL_FD_STDIN].fd);
+    ensure( ! self->mClosed.mStdin);
+
+    self->mTimeout.mSince_ns = lapTimeSince(0, 0);
+
+    struct PollEventText pollEventText;
+    debug(
+        1,
+        "poll stdin %s",
+        createPollEventText(
+            &pollEventText,
+            aPollFds[POLL_FD_STDIN].revents));
+
+    ensure(aPollFds[POLL_FD_STDIN].events);
+
+    if ( ! (aPollFds[POLL_FD_STDIN].revents & POLLIN))
+        self->mClosed.mStdin = -1;
+    else
+    {
+        aPollFds[POLL_FD_STDIN].fd = self->mNullPipe->mRdFile->mFd;
+
+        aPollFds[POLL_FD_STDOUT].events = sPollOutputEvents;
+        aPollFds[POLL_FD_STDIN].events  = sPollDisconnectEvent;
+    }
+}
+
+static void
+pollFdStdout(void *self_, struct pollfd *aPollFds)
+{
+    struct PollFdTether *self = self_;
+
+    ensure(POLL_FD_STDIN == self->mKind);
+
+    ensure(STDOUT_FILENO == aPollFds[POLL_FD_STDOUT].fd);
+    ensure( ! self->mClosed.mStdout);
+
+    self->mTimeout.mSince_ns = lapTimeSince(0, 0);
+
+    struct PollEventText pollEventText;
+    debug(
+        1,
+        "poll stdout %s",
+        createPollEventText(
+            &pollEventText,
+            aPollFds[POLL_FD_STDOUT].revents));
+
+    ensure(aPollFds[POLL_FD_STDOUT].events);
+
+    do
+    {
+        if (aPollFds[POLL_FD_STDOUT].revents & POLLOUT)
+        {
+            int available;
+
+            /* Use FIONREAD to dynamically determine the amount
+             * of data in stdin, remembering that the child
+             * process could change the capacity of the pipe
+             * at runtime. */
+
+            if (ioctl(STDIN_FILENO, FIONREAD, &available))
+                terminate(
+                    errno,
+                    "Unable to find amount of readable data in stdin");
+
+            ensure(available);
+
+            if (testAction() && available)
+                available = 1 + random() % available;
+
+            ssize_t bytes = spliceFd(
+                STDIN_FILENO,
+                STDOUT_FILENO,
+                available,
+                SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
+
+            debug(1,
+                  "spliced stdin to stdout %zd out of %d",
+                  bytes,
+                  available);
+
+            /* If the child has closed its end of the tether, the
+             * watchdog will read EOF on the tether. Continue running
+             * the event loop until the child terminates. */
+
+            if (-1 == bytes)
+            {
+                if (EPIPE != errno)
+                {
+                    switch (errno)
+                    {
+                    default:
+                        terminate(
+                            errno,
+                            "Unable to write to stdout");
+
+                    case EWOULDBLOCK:
+                    case EINTR:
+                        break;
+                    }
+
+                    break;
+                }
+            }
+            else if (bytes)
+            {
+                /* Continue polling stdout unless all the available
+                 * data on stdin was transferred because this might
+                 * be the last chunk of data on stdin before it was
+                 * closed so there will be no more available. */
+
+                if (bytes >= available)
+                {
+                    aPollFds[POLL_FD_STDIN].fd = STDIN_FILENO;
+
+                    aPollFds[POLL_FD_STDOUT].events= sPollDisconnectEvent;
+                    aPollFds[POLL_FD_STDIN].events = sPollInputEvents;
+                }
+                break;
+            }
+        }
+
+        self->mClosed.mStdout = -1;
+        break;
+
+    } while (0);
+}
 
 /* -------------------------------------------------------------------------- */
 static void
@@ -559,7 +806,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             errno,
             "Unable to create null pipe");
 
-    struct PollFdClock pollfdclock;
+    struct PollFdClock pollfdclock = { .mKind = POLL_FD_CLOCK };
+
     if (createPipe(&pollfdclock.mClockPipe))
         terminate(
             errno,
@@ -576,6 +824,52 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             errno,
             "Unable to install process clock watch");
 
+    struct PollFdChild pollfdchild =
+    {
+        .mKind  = POLL_FD_CHILD,
+        .mDead = false,
+    };
+
+    struct PollFdSignal pollfdsignal =
+    {
+        .mKind     = POLL_FD_SIGNAL,
+        .mChildPid = aChildPid,
+        .mSigPipe  = aSigPipe,
+    };
+
+    int timeout_ms = gOptions.mTimeout_s * 1000;
+
+    if (timeout_ms / 1000 != gOptions.mTimeout_s || 0 > timeout_ms)
+        terminate(
+            0,
+            "Timeout overflows representation %d", gOptions.mTimeout_s);
+
+    if ( ! gOptions.mTether)
+        timeout_ms = 0;
+
+    if ( ! timeout_ms)
+        timeout_ms = -1;
+
+    struct PollFdTether pollfdtether =
+    {
+        .mKind = POLL_FD_STDIN,
+
+        .mTimeout =
+        {
+            .mPeriod_ms = timeout_ms,
+            .mSince_ns  = lapTimeSince(0, 0),
+            .mTriggered = false,
+        },
+
+        .mClosed =
+        {
+            .mStdout = gOptions.mTether ? 0 : -1,
+            .mStdin  = gOptions.mTether ? 0 : -1,
+        },
+
+        .mNullPipe = &nullPipe,
+    };
+
     /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
      * that it is best not to put too much trust in POLLHUP vs POLLIN,
      * and to treat the presence of either as a trigger to attempt to
@@ -585,10 +879,6 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
      * far end reader is no longer available (to match EPIPE), but
      * the documentation suggests that POLLHUP might also be reasonable
      * in this context. */
-
-    const unsigned pollInputEvents     = POLLHUP | POLLERR | POLLPRI | POLLIN;
-    const unsigned pollOutputEvents    = POLLHUP | POLLERR | POLLOUT;
-    const unsigned pollDisconnectEvent = POLLHUP | POLLERR;
 
     static const char *pollfdNames[POLL_FD_KINDS] =
     {
@@ -603,27 +893,29 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     {
         [POLL_FD_CLOCK] = {
             .fd     = pollfdclock.mClockPipe.mRdFile->mFd,
-            .events = pollInputEvents },
+            .events = sPollInputEvents },
         [POLL_FD_CHILD] = {
             .fd     = aTermPipe->mRdFile->mFd,
-            .events = pollInputEvents },
+            .events = sPollInputEvents },
         [POLL_FD_SIGNAL] = {
             .fd     = aSigPipe->mRdFile->mFd,
-            .events = pollInputEvents },
-        [POLL_FD_STDOUT] = {
-            .fd     = STDOUT_FILENO,
-            .events = pollDisconnectEvent },
+            .events = sPollInputEvents },
         [POLL_FD_STDIN] = {
             .fd     = STDIN_FILENO,
-            .events = pollInputEvents, },
+            .events = sPollInputEvents, },
+        [POLL_FD_STDOUT] = {
+            .fd     = STDOUT_FILENO,
+            .events = sPollDisconnectEvent },
     };
 
     struct PollFdAction pollfdactions[POLL_FD_KINDS] =
     {
-        [POLL_FD_CLOCK] = { pollFdClock, &pollfdclock },
+        [POLL_FD_CLOCK]  = { pollFdClock,  &pollfdclock },
+        [POLL_FD_CHILD]  = { pollFdChild,  &pollfdchild },
+        [POLL_FD_SIGNAL] = { pollFdSignal, &pollfdsignal },
+        [POLL_FD_STDIN]  = { pollFdStdin,  &pollfdtether },
+        [POLL_FD_STDOUT] = { pollFdStdout, &pollfdtether },
     };
-
-    bool deadChild = false;
 
     struct ChildSignalPlan
     {
@@ -648,34 +940,6 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
     const struct ChildSignalPlan *childSignalPlan =
         gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan;
-
-    int timeout_ms = gOptions.mTimeout_s * 1000;
-
-    if (timeout_ms / 1000 != gOptions.mTimeout_s || 0 > timeout_ms)
-        terminate(
-            0,
-            "Timeout overflows representation %d", gOptions.mTimeout_s);
-
-    if ( ! gOptions.mTether)
-        timeout_ms = 0;
-
-    if ( ! timeout_ms)
-        timeout_ms = -1;
-
-    struct PollFdTether pollfdtether =
-    {
-        .mTimeout =
-        {
-            .mPeriod_ms = timeout_ms,
-            .mSince_ns  = lapTimeSince(0, 0),
-            .mTriggered = false,
-        },
-        .mClosed =
-        {
-            .mStdout = gOptions.mTether ? 0 : -1,
-            .mStdin  = gOptions.mTether ? 0 : -1,
-        },
-    };
 
     struct
     {
@@ -731,8 +995,8 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             pollfds[POLL_FD_STDIN].fd  = STDIN_FILENO;
             pollfds[POLL_FD_STDOUT].fd = STDOUT_FILENO;
 
-            pollfds[POLL_FD_STDOUT].events = pollDisconnectEvent;
-            pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
+            pollfds[POLL_FD_STDOUT].events = sPollDisconnectEvent;
+            pollfds[POLL_FD_STDIN].events  = sPollDisconnectEvent;
         }
 
         ensure(pollfdtether.mClosed.mStdin == pollfdtether.mClosed.mStdout);
@@ -881,224 +1145,14 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
             }
         }
 
-        if (pollfds[POLL_FD_STDIN].revents)
-        {
-            ensure(rc);
-            ensure(STDIN_FILENO == pollfds[POLL_FD_STDIN].fd);
-            ensure( ! pollfdtether.mClosed.mStdin);
-
-            ++eventCount;
-
-            pollfdtether.mTimeout.mSince_ns = lapTimeSince(0, 0);
-
-            debug(
-                1,
-                "poll stdin %s",
-                createPollEventText(
-                    &pollEventText,
-                    pollfds[POLL_FD_STDIN].revents));
-
-            ensure(pollfds[POLL_FD_STDIN].events);
-
-            if ( ! (pollfds[POLL_FD_STDIN].revents & POLLIN))
-                pollfdtether.mClosed.mStdin = -1;
-            else
-            {
-                pollfds[POLL_FD_STDIN].fd = nullPipe.mRdFile->mFd;
-
-                pollfds[POLL_FD_STDOUT].events = pollOutputEvents;
-                pollfds[POLL_FD_STDIN].events  = pollDisconnectEvent;
-            }
-        }
-
-        if (pollfds[POLL_FD_STDOUT].revents)
-        {
-            ensure(rc);
-            ensure(STDOUT_FILENO == pollfds[POLL_FD_STDOUT].fd);
-            ensure( ! pollfdtether.mClosed.mStdout);
-
-            ++eventCount;
-
-            pollfdtether.mTimeout.mSince_ns = lapTimeSince(0, 0);
-
-            debug(
-                1,
-                "poll stdout %s",
-                createPollEventText(
-                    &pollEventText,
-                    pollfds[POLL_FD_STDOUT].revents));
-
-            ensure(pollfds[POLL_FD_STDOUT].events);
-
-            do
-            {
-                if (pollfds[POLL_FD_STDOUT].revents & POLLOUT)
-                {
-                    int available;
-
-                    /* Use FIONREAD to dynamically determine the amount
-                     * of data in stdin, remembering that the child
-                     * process could change the capacity of the pipe
-                     * at runtime. */
-
-                    if (ioctl(STDIN_FILENO, FIONREAD, &available))
-                        terminate(
-                            errno,
-                            "Unable to find amount of readable data in stdin");
-
-                    ensure(available);
-
-                    if (testAction() && available)
-                        available = 1 + random() % available;
-
-                    ssize_t bytes = spliceFd(
-                        STDIN_FILENO,
-                        STDOUT_FILENO,
-                        available,
-                        SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
-
-                    debug(1,
-                          "spliced stdin to stdout %zd out of %d",
-                          bytes,
-                          available);
-
-                    /* If the child has closed its end of the tether, the
-                     * watchdog will read EOF on the tether. Continue running
-                     * the event loop until the child terminates. */
-
-                    if (-1 == bytes)
-                    {
-                        if (EPIPE != errno)
-                        {
-                            switch (errno)
-                            {
-                            default:
-                                terminate(
-                                    errno,
-                                    "Unable to write to stdout");
-
-                            case EWOULDBLOCK:
-                            case EINTR:
-                                break;
-                            }
-
-                            break;
-                        }
-                    }
-                    else if (bytes)
-                    {
-                        /* Continue polling stdout unless all the available
-                         * data on stdin was transferred because this might
-                         * be the last chunk of data on stdin before it was
-                         * closed so there will be no more available. */
-
-                        if (bytes >= available)
-                        {
-                            pollfds[POLL_FD_STDIN].fd = STDIN_FILENO;
-
-                            pollfds[POLL_FD_STDOUT].events= pollDisconnectEvent;
-                            pollfds[POLL_FD_STDIN].events = pollInputEvents;
-                        }
-                        break;
-                    }
-                }
-
-                pollfdtether.mClosed.mStdout = -1;
-                break;
-
-            } while (0);
-        }
-
-        /* Propagate signals to the child process. Signals are queued
-         * by the local signal handler to the inherent race in the
-         * fork() idiom:
-         *
-         *     pid_t childPid = fork();
-         *
-         * The fork() completes before childPid can be assigned. This
-         * event loop only runs after the fork() is complete and
-         * any signals received before the fork() will be queued for
-         * delivery. */
-
-        if (pollfds[POLL_FD_SIGNAL].revents)
-        {
-            ensure(rc);
-
-            ++eventCount;
-
-            debug(
-                1,
-                "poll signal %s",
-                createPollEventText(
-                    &pollEventText,
-                    pollfds[POLL_FD_SIGNAL].revents));
-
-            unsigned char sigNum;
-
-            ssize_t len = read(aSigPipe->mRdFile->mFd, &sigNum, 1);
-
-            if (-1 == len)
-            {
-                if (EINTR != errno)
-                    terminate(
-                        errno,
-                        "Unable to read signal from queue");
-            }
-            else if ( ! len)
-            {
-                    terminate(
-                        0,
-                        "Signal queue closed unexpectedly");
-            }
-            else
-            {
-                debug(1,
-                      "deliver signal %d to child pid %jd",
-                      sigNum,
-                      (intmax_t) aChildPid);
-
-                if (kill(aChildPid, sigNum))
-                {
-                    if (ESRCH != errno)
-                        warn(
-                            errno,
-                            "Unable to deliver signal %d to child pid %jd",
-                            sigNum,
-                            (intmax_t) aChildPid);
-                }
-            }
-        }
-
-        /* Record when the child has terminated, but do not exit
-         * the event loop until all the IO has been flushed. */
-
-        if (pollfds[POLL_FD_CHILD].revents)
-        {
-            ensure(rc);
-
-            ++eventCount;
-
-            debug(
-                1,
-                "poll child %s",
-                createPollEventText(
-                    &pollEventText,
-                    pollfds[POLL_FD_CHILD].revents));
-
-            ensure(pollfds[POLL_FD_CHILD].events);
-
-            pollfds[POLL_FD_CHILD].events = 0;
-            deadChild = true;
-        }
-
         /* Ensure that the interpretation of the poll events is being
          * correctly handled, to avoid a busy-wait poll loop. */
 
         ensure(eventCount);
 
-    } while ( ! deadChild ||
-                pollOutputEvents == pollfds[POLL_FD_STDOUT].events ||
-                pollInputEvents  == pollfds[POLL_FD_STDIN].events);
+    } while ( ! pollfdchild.mDead ||
+                sPollOutputEvents == pollfds[POLL_FD_STDOUT].events ||
+                sPollInputEvents  == pollfds[POLL_FD_STDIN].events);
 
     if (unwatchProcessClock())
         terminate(
