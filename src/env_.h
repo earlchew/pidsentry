@@ -38,6 +38,9 @@ extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
+int
+deleteEnv(const char *aName);
+
 const char *
 setEnvInt(const char *aName, int aValue);
 

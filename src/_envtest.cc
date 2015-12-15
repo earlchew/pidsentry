@@ -34,6 +34,19 @@
 
 #include "gtest/gtest.h"
 
+TEST(EnvTest, Delete)
+{
+    unsetenv("NIL");
+
+    EXPECT_EQ(-1, deleteEnv("NIL"));
+    EXPECT_EQ(ENOENT, errno);
+
+    setenv("EMPTY", "", 1);
+    EXPECT_EQ(0,  deleteEnv("EMPTY"));
+    EXPECT_EQ(-1, deleteEnv("EMPTY"));
+    EXPECT_EQ(ENOENT, errno);
+}
+
 TEST(EnvTest, String)
 {
     unsetenv("NIL");

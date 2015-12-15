@@ -85,25 +85,6 @@ k9so()
 
 /* -------------------------------------------------------------------------- */
 static void
-initArgv(char ***argv, int *argc, char ***envp)
-{
-    /* Find the environment variables for this process. Unfortunately
-     * __environ is not available, but _dl_argv is accessible. */
-
-    *argv = _dl_argv;
-
-    for (*argc = 0; ; ++(*argc))
-    {
-        if ( ! (*argv)[*argc])
-        {
-            *envp = *argv + *argc + 1;
-            break;
-        }
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-static void
 initEnv(struct Env *aEnv, size_t aEnvLen, char **envp)
 {
     for (unsigned ex = 0; envp[ex]; ++ex)
@@ -522,7 +503,7 @@ watchUmbilical(const char *aAddr)
 
 /* -------------------------------------------------------------------------- */
 static void  __attribute__((constructor))
-libk9_init()
+libk9_init(void)
 {
     if (Error_init())
         terminate(
@@ -530,12 +511,6 @@ libk9_init()
             "Unable to initialise error module");
 
     initOptions();
-
-    char **argv;
-    int    argc;
-    char **envp;
-
-    initArgv(&argv, &argc, &envp);
 
     /* Now that the environment variables are available, find
      * the environment variables that pertain to the watchdog. */
@@ -550,7 +525,7 @@ libk9_init()
         [ENV_K9_DEBUG]   = { "K9_DEBUG" },
     };
 
-    initEnv(env, NUMBEROF(env), envp);
+    initEnv(env, NUMBEROF(env), __environ);
 
     if (env[ENV_K9_PID].mEnv)
     {

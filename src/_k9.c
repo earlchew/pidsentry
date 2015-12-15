@@ -274,12 +274,23 @@ runChild(
                         "Unable to set K9_SO=%s", sK9soPath);
                 debug(0, "env - K9_SO=%s", sopathEnv);
 
-                const char *debugEnv = setEnvUInt("K9_DEBUG", gOptions.mDebug);
-                if ( ! debugEnv)
-                    terminate(
-                        errno,
-                        "Unable to set K9_DEBUG=%u", gOptions.mDebug);
-                debug(0, "env - K9_DEBUG=%s", debugEnv);
+                if ( ! gOptions.mDebug)
+                {
+                    if (deleteEnv("K9_DEBUG") && ENOENT != errno)
+                        terminate(
+                            errno,
+                            "Unable to remove K9_DEBUG");
+                }
+                else
+                {
+                    const char *debugEnv =
+                        setEnvUInt("K9_DEBUG", gOptions.mDebug);
+                    if ( ! debugEnv)
+                        terminate(
+                            errno,
+                            "Unable to set K9_DEBUG=%u", gOptions.mDebug);
+                    debug(0, "env - K9_DEBUG=%s", debugEnv);
+                }
 
                 const char *preload    = getenv("LD_PRELOAD");
                 size_t      preloadlen = preload ? strlen(preload) : 0;

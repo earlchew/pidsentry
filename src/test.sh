@@ -169,7 +169,8 @@ runTests()
     for REPLY in $(
       exec sh -c '
         /bin/echo $$
-        exec libtool --mode=execute '"$VALGRIND"' ./k9 -T -i -- sh -c '\''/bin/echo $$'\' |
+        set -- '"$VALGRIND"' ./k9 -T -i -- sh -c '\''/bin/echo $$'\'
+        exec libtool --mode=execute "$@"
       {
         read REALPARENT
         read PARENT ; read CHILD
@@ -179,6 +180,12 @@ runTests()
 
       [ x"${REPLY%% *}" = x"${REPLY#* }" ]
     done
+
+    testCase 'Environment propagation'
+    testOutput 'K9_ADDR=' = '"$(
+        k9 -- sh -c '\''date ; printenv'\'' | grep K9_ADDR)"'
+    testOutput '""' = '"$(
+        k9 -- sh -c '\''date ; printenv'\'' | grep K9_DEBUG)"'
 
     testCase 'Exit code propagation'
     testExit 2 k9 -T -- sh -c 'exit 2'

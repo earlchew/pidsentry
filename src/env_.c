@@ -39,6 +39,27 @@
 
 /* -------------------------------------------------------------------------- */
 int
+deleteEnv(const char *aName)
+{
+    int rc = -1;
+
+    if ( ! getenv(aName))
+    {
+        errno = ENOENT;
+        goto Finally;
+    }
+
+    rc = unsetenv(aName);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 getEnvString(const char *aName, const char **aValue)
 {
     int rc = -1;
