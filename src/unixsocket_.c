@@ -78,7 +78,8 @@ createUnixSocket(
     self->mFile = 0;
 
     if (createFile(&self->mFile_,
-                   socket(AF_UNIX, SOCK_STREAM, 0)))
+                   socket(AF_UNIX,
+                          SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)))
         goto Finally;
     self->mFile = &self->mFile_;
 
@@ -113,12 +114,6 @@ createUnixSocket(
         goto Finally;
 
     if (listenFileSocket(self->mFile, aQueueLen))
-        goto Finally;
-
-    if (closeFileOnExec(self->mFile, O_CLOEXEC))
-        goto Finally;
-
-    if (nonblockingFile(self->mFile))
         goto Finally;
 
     rc = 0;
