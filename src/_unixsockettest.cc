@@ -70,8 +70,10 @@ TEST(UnixSocketTest, AnonymousServer)
 
     struct UnixSocket peersock;
 
+    static const uint64_t zeroTimeout = 0;
+
     EXPECT_EQ(0, acceptUnixSocket(&peersock, &serversock));
-    EXPECT_EQ(1, waitUnixSocketWriteReady(&clientsock, 0));
+    EXPECT_EQ(1, waitUnixSocketWriteReady(&clientsock, &zeroTimeout));
 
     struct ucred cred;
 

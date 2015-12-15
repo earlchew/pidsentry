@@ -257,7 +257,7 @@ watchUmbilical_(void *aUmbilicalThread)
     {
         debug(0, "waiting on umbilical socket");
 
-        switch (waitFileReadReady(&umbilicalFile, milliSeconds(60 * 1000)))
+        switch (waitFileReadReady(&umbilicalFile, 0))
         {
         default:
             break;

@@ -275,7 +275,7 @@ shutdownUnixSocketWriter(struct UnixSocket *self)
 /* -------------------------------------------------------------------------- */
 int
 waitUnixSocketWriteReady(const struct UnixSocket *self,
-                         uint64_t aTimeout_ns)
+                         const uint64_t          *aTimeout_ns)
 {
     return waitFileWriteReady(self->mFile, aTimeout_ns);
 }
@@ -283,7 +283,7 @@ waitUnixSocketWriteReady(const struct UnixSocket *self,
 /* -------------------------------------------------------------------------- */
 int
 waitUnixSocketReadReady(const struct UnixSocket *self,
-                        uint64_t aTimeout_ns)
+                        const uint64_t          *aTimeout_ns)
 {
     return waitFileReadReady(self->mFile, aTimeout_ns);
 }

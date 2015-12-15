@@ -313,7 +313,7 @@ listenFileSocket(struct File *self, unsigned aQueueLen)
 static int
 waitFileReady_(const struct File *self,
                unsigned           aPollMask,
-               uint64_t           aTimeout_ns)
+               const uint64_t    *aTimeout_ns)
 {
     int rc = -1;
 
@@ -329,14 +329,25 @@ waitFileReady_(const struct File *self,
     uint64_t since = 0;
     uint64_t remaining;
 
-    while ( ! deadlineTimeExpired(&since, aTimeout_ns, &remaining))
+    const uint64_t timeout_ns = aTimeout_ns ? *aTimeout_ns : 0;
+
+    while ( ! deadlineTimeExpired(&since, timeout_ns, &remaining))
     {
-        uint64_t timeout_s = toMilliSeconds(remaining);
+        int timeout_ms;
 
-        if (0 > timeout_s || INT_MAX < timeout_s)
-            timeout_s = INT_MAX;
+        if ( ! aTimeout_ns)
+            timeout_ms = -1;
+        else
+        {
+            uint64_t remaining_ms = toMilliSeconds(remaining);
 
-        switch (poll(pollfd, NUMBEROF(pollfd), timeout_s))
+            timeout_ms = remaining_ms;
+
+            if (0 > timeout_ms || timeout_ms != remaining_ms)
+                timeout_ms = INT_MAX;
+        }
+
+        switch (poll(pollfd, NUMBEROF(pollfd), timeout_ms))
         {
         case -1:
             if (EINTR == errno)
@@ -364,15 +375,17 @@ Finally:
 }
 
 int
-waitFileWriteReady(const struct File *self, uint64_t aNanoSeconds)
+waitFileWriteReady(const struct File *self,
+                   const uint64_t    *aTimeout_ns)
 {
-    return waitFileReady_(self, POLLOUT, aNanoSeconds);
+    return waitFileReady_(self, POLLOUT, aTimeout_ns);
 }
 
 int
-waitFileReadReady(const struct File *self, uint64_t aNanoSeconds)
+waitFileReadReady(const struct File *self,
+                  const uint64_t    *aTimeout_ns)
 {
-    return waitFileReady_(self, POLLPRI | POLLIN, aNanoSeconds);
+    return waitFileReady_(self, POLLPRI | POLLIN, aTimeout_ns);
 }
 
 /* -------------------------------------------------------------------------- */

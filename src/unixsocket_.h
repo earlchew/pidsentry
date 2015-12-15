@@ -71,11 +71,11 @@ shutdownUnixSocketWriter(struct UnixSocket *self);
 
 int
 waitUnixSocketWriteReady(const struct UnixSocket *self,
-                         uint64_t aTimeout_ns);
+                         const uint64_t          *aTimeout_ns);
 
 int
 waitUnixSocketReadReady(const struct UnixSocket *self,
-                        uint64_t aTimeout_ns);
+                        const uint64_t          *aTimeout_ns);
 
 int
 ownUnixSocketPeerName(const struct UnixSocket *self,

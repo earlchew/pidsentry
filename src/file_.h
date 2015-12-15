@@ -98,10 +98,12 @@ ftruncateFile(struct File *self, off_t aLength);
 
 /* -------------------------------------------------------------------------- */
 int
-waitFileWriteReady(const struct File *self, uint64_t aNanoSeconds);
+waitFileWriteReady(const struct File *self,
+                   const uint64_t    *aNanoSeconds);
 
 int
-waitFileReadReady(const struct File *self, uint64_t aNanoSeconds);
+waitFileReadReady(const struct File *self,
+                  const uint64_t    *aNanoSeconds);
 
 /* -------------------------------------------------------------------------- */
 int
