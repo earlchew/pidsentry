@@ -47,6 +47,7 @@
 #include <sched.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <signal.h>
 
 #include <asm/ldt.h>
 
@@ -464,6 +465,23 @@ watchUmbilical(const char *aAddr)
             umbilicalThread.mStack += NUMBEROF(umbilicalThread.mStack_);
 
         {
+            /* When creatng the umbilical thread, ensure that it
+             * is not a target of any signals intended for the process
+             * being monitored. */
+
+            sigset_t prevmask;
+            sigset_t nextmask;
+
+            if (sigfillset(&nextmask))
+                terminate(
+                    errno,
+                    "Unable to fill signal mask");
+
+            if (pthread_sigmask(SIG_SETMASK, &nextmask, &prevmask))
+                terminate(
+                    errno,
+                    "Unable to set signal mask");
+
             pthread_attr_t umbilicalThreadAttr;
 
             createThreadAttr(&umbilicalThreadAttr);
@@ -475,6 +493,11 @@ watchUmbilical(const char *aAddr)
                          umbilicalMain_, &umbilicalThread);
 
             destroyThreadAttr(&umbilicalThreadAttr);
+
+            if (pthread_sigmask(SIG_SETMASK, &prevmask, 0))
+                terminate(
+                    errno,
+                    "Unable to restore signal mask");
         }
 
         debug(0, "umbilical thread starting");
