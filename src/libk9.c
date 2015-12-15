@@ -382,21 +382,23 @@ umbilicalMain_(void *aUmbilicalThread)
 
     /* Do not exit until the umbilical slave thread has completed because
      * it shares the same pthread resources. Once the umbilical slave
-     * thread completes, it is safe to release the pthread resources. */
+     * thread completes, it is safe to release the pthread resources.
+     *
+     * With the umbilical broken, kill the process group that contains
+     * the process being monitored. Try politely, then more aggressively.
+     */
 
-    pid_t pid = getpid();
-
-    if (kill(pid, SIGTERM))
+    if (kill(0, SIGTERM))
         terminate(
             errno,
-            "Unable to send SIGTERM to pid %jd", (intmax_t) pid);
+            "Unable to send SIGTERM to process group");
 
     monotonicSleep(milliSeconds(30 * 1000));
 
-    if (kill(pid, SIGKILL))
+    if (kill(0, SIGKILL))
         terminate(
             errno,
-            "Unable to send SIGKILL to pid %jd", (intmax_t) pid);
+            "Unable to send SIGKILL to process group");
 
     _exit(1);
 
