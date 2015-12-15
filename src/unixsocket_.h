@@ -36,6 +36,7 @@ extern "C" {
 #endif
 
 struct sockaddr_un;
+struct ucred;
 
 struct UnixSocket
 {
@@ -46,8 +47,9 @@ struct UnixSocket
 /* -------------------------------------------------------------------------- */
 int
 createUnixSocket(struct UnixSocket *self,
-                 const char *aName,
-                 size_t aNameLen);
+                 const char        *aName,
+                 size_t             aNameLen,
+                 unsigned           aQueueLen);
 
 int
 acceptUnixSocket(struct UnixSocket *self,
@@ -68,6 +70,24 @@ ownUnixSocketPeerName(const struct UnixSocket *self,
 int
 ownUnixSocketName(const struct UnixSocket *self,
                   struct sockaddr_un *aAddr);
+
+int
+ownUnixSocketWriteReady(const struct UnixSocket *self);
+
+int
+ownUnixSocketReadReady(const struct UnixSocket *self);
+
+int
+ownUnixSocketError(const struct UnixSocket *self, int *aError);
+
+int
+ownUnixSocketPeerCred(const struct UnixSocket *self, struct ucred *aCred);
+
+ssize_t
+sendUnixSocket(struct UnixSocket *self, const char *aBuf, size_t aLen);
+
+ssize_t
+recvUnixSocket(struct UnixSocket *self, char *aBuf, size_t aLen);
 
 /* -------------------------------------------------------------------------- */
 

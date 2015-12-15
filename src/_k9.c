@@ -31,6 +31,7 @@
 #include "env_.h"
 #include "macros_.h"
 #include "pipe_.h"
+#include "unixsocket_.h"
 #include "timekeeping_.h"
 #include "stdfdfiller_.h"
 #include "pidfile_.h"
@@ -56,13 +57,12 @@
 #include <sys/stat.h>
 #include <sys/poll.h>
 #include <sys/ioctl.h>
+#include <sys/un.h>
 
 /* TODO
  *
  * cmdRunCommand() is too big, break it up
- * Partition monitorChild() -- it's too big
  * Add test case for SIGKILL of watchdog and child not watching tether
- * Parasitic watcher for child process
  * Check for useless #include in *.c
  */
 
@@ -100,7 +100,7 @@ runChild(
     char              **aCmd,
     struct StdFdFiller *aStdFdFiller,
     struct Pipe        *aTetherPipe,
-    struct Pipe        *aUmbilicalPipe,
+    struct UnixSocket  *aUmbilicalSocket,
     struct Pipe        *aSyncPipe,
     struct Pipe        *aTermPipe,
     struct Pipe        *aSigPipe)
@@ -246,19 +246,25 @@ runChild(
                         "Unable to set K9_TIME=%" PRIu64, baseTime);
                 debug(0, "env - K9_TIME=%s", basetimeEnv);
 
-                int umbilicalFd = aUmbilicalPipe->mWrFile->mFd;
-
-                if (detachPipeWriter(aUmbilicalPipe))
+                struct sockaddr_un umbilicalSockAddr;
+                if (ownUnixSocketName(aUmbilicalSocket, &umbilicalSockAddr))
                     terminate(
                         errno,
-                        "Unable to detach umbilical writer");
+                        "Unable to find address of umbilical socket");
 
-                const char *umbilicalEnv = setEnvInt("K9_FD", umbilicalFd);
+                char umbilicalAddr[sizeof(umbilicalSockAddr.sun_path)];
+                memcpy(umbilicalAddr,
+                       &umbilicalSockAddr.sun_path[1],
+                       sizeof(umbilicalAddr) - 1);
+                umbilicalAddr[sizeof(umbilicalAddr)-1] = 0;
+
+                const char *umbilicalEnv =
+                    setEnvString("K9_ADDR", umbilicalAddr);
                 if ( ! umbilicalEnv)
                     terminate(
                         errno,
-                        "Unable to set K9_FD=%d", umbilicalFd);
-                debug(0, "env - K9_FD=%s", umbilicalEnv);
+                        "Unable to set K9_ADDR=%s", umbilicalAddr);
+                debug(0, "env - K9_ADDR=%s", umbilicalEnv);
 
                 const char *sopathEnv = setEnvString("K9_SO", sK9soPath);
                 if ( ! sopathEnv)
@@ -296,10 +302,10 @@ runChild(
                 debug(0, "env - LD_PRELOAD=%s", ldpreloadEnv);
             }
 
-            if (closePipe(aUmbilicalPipe))
+            if (closeUnixSocket(aUmbilicalSocket))
                 terminate(
                     errno,
-                    "Unable to close umbilical pipe");
+                    "Unable to close umbilical socket");
 
             if (gOptions.mTether)
             {
@@ -1373,11 +1379,11 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create tether pipe");
 
-    struct Pipe umbilicalPipe;
-    if (createPipe(&umbilicalPipe))
+    struct UnixSocket umbilicalSocket;
+    if (createUnixSocket(&umbilicalSocket, 0, 0, 0))
         terminate(
             errno,
-            "Unable to create umbilical pipe");
+            "Unable to create umbilical socket");
 
     struct Pipe termPipe;
     if (createPipe(&termPipe))
@@ -1436,7 +1442,7 @@ cmdRunCommand(char **aCmd)
 
     pid_t childPid = runChild(aCmd,
                               &stdFdFiller,
-                              &tetherPipe, &umbilicalPipe,
+                              &tetherPipe, &umbilicalSocket,
                               &syncPipe, &termPipe, &sigPipe);
     if (-1 == childPid)
         terminate(
@@ -1512,11 +1518,6 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close tether pipe");
 
-    if (closePipeWriter(&umbilicalPipe))
-        terminate(
-            errno,
-            "Unable to close umbilical pipe writer");
-
     if (purgeProcessOrphanedFds())
         terminate(
             errno,
@@ -1577,10 +1578,10 @@ cmdRunCommand(char **aCmd)
     /* With the running child terminated, it is ok to close the
      * umbilical pipe because the child has no more use for it. */
 
-    if (closePipe(&umbilicalPipe))
+    if (closeUnixSocket(&umbilicalSocket))
         terminate(
             errno,
-            "Unable to close umbilical pipe");
+            "Unable to close umbilical socket");
 
     if (resetProcessSigPipe())
         terminate(

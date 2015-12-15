@@ -35,18 +35,23 @@
 #include <stdlib.h>
 
 #include <sys/socket.h>
+#include <sys/file.h>
 #include <sys/un.h>
 
 /* -------------------------------------------------------------------------- */
 static void
 createRandomName(struct sockaddr_un *aSockAddr)
 {
-    static const char hexDigits[] = "0123456789abcdef";
+    static const char hexDigits[16] = "0123456789abcdef";
 
     char *bp = aSockAddr->sun_path;
     char *ep = bp + sizeof(aSockAddr->sun_path);
 
-    for (unsigned ix = 0; sizeof(aSockAddr->sun_path) / 4 > ix; ++ix)
+    typedef char check[sizeof(aSockAddr->sun_path) > 40 ? 1 : 0];
+
+    *bp++ = 0;
+
+    for (unsigned ix = 0; 10 > ix; ++ix)
     {
         uint32_t rnd = random();
 
@@ -54,20 +59,19 @@ createRandomName(struct sockaddr_un *aSockAddr)
         bp[1] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
         bp[2] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
         bp[3] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
+
+        bp += 4;
     }
 
-    uint32_t rnd = random();
-
-    while (bp < ep)
-    {
-        *bp++ = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
-    }
+    memset(bp, 0, ep-bp);
 }
 
 int
-createUnixSocket(struct UnixSocket *self,
-                 const char *aName,
-                 size_t aNameLen)
+createUnixSocket(
+    struct UnixSocket *self,
+    const char        *aName,
+    size_t             aNameLen,
+    unsigned           aQueueLen)
 {
     int rc = -1;
 
@@ -80,23 +84,42 @@ createUnixSocket(struct UnixSocket *self,
 
     struct sockaddr_un sockAddr;
 
-    while (1)
+    if ( ! aName)
     {
         createRandomName(&sockAddr);
-
         sockAddr.sun_family = AF_UNIX;
         sockAddr.sun_path[0] = 0;
-
-        if (bindFileSocket(self->mFile,
-                           (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
-        {
-            if (EADDRINUSE == errno)
-                continue;
-            goto Finally;
-        }
-
-        break;
     }
+    else
+    {
+        sockAddr.sun_family = AF_UNIX;
+        memset(sockAddr.sun_path, 0, sizeof(sockAddr.sun_path));
+
+        if ( ! aNameLen)
+            strncpy(sockAddr.sun_path, aName, sizeof(sockAddr.sun_path));
+        else
+        {
+            if (sizeof(sockAddr.sun_path) < aNameLen)
+            {
+                errno = EINVAL;
+                goto Finally;
+            }
+            memcpy(sockAddr.sun_path, aName, aNameLen);
+        }
+    }
+
+    if (bindFileSocket(self->mFile,
+                       (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
+        goto Finally;
+
+    if (listenFileSocket(self->mFile, aQueueLen))
+        goto Finally;
+
+    if (closeFileOnExec(self->mFile, O_CLOEXEC))
+        goto Finally;
+
+    if (nonblockingFile(self->mFile))
+        goto Finally;
 
     rc = 0;
 
@@ -113,16 +136,31 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-acceptUnixSocket(struct UnixSocket *self,
-                 const struct UnixSocket *aServer)
+acceptUnixSocket(struct UnixSocket *self, const struct UnixSocket *aServer)
 {
     int rc = -1;
 
     self->mFile = 0;
 
-    if (createFile(&self->mFile_, acceptFileSocket(aServer->mFile)))
-        goto Finally;
+    while (1)
+    {
+        if (createFile(&self->mFile_, acceptFileSocket(aServer->mFile)))
+        {
+            if (EINTR == errno)
+                continue;
+            goto Finally;
+        }
+        break;
+    }
     self->mFile = &self->mFile_;
+
+    if (closeFileOnExec(self->mFile, O_CLOEXEC))
+        goto Finally;
+
+    if (nonblockingFile(self->mFile))
+        goto Finally;
+
+    rc = 0;
 
 Finally:
 
@@ -137,11 +175,10 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-connectSocket(struct UnixSocket *self,
-              const char *aName,
-              size_t aNameLen)
+connectUnixSocket(struct UnixSocket *self, const char *aName, size_t aNameLen)
 {
-    int rc = 0;
+    int rc = -1;
+    int err = 0;
 
     self->mFile = 0;
 
@@ -159,15 +196,36 @@ connectSocket(struct UnixSocket *self,
 
     sockAddr.sun_family = AF_UNIX;
     memcpy(sockAddr.sun_path, aName, aNameLen);
+    memset(
+        sockAddr.sun_path + aNameLen, 0, sizeof(sockAddr.sun_path) - aNameLen);
 
     if (createFile(&self->mFile_,
                    socket(AF_UNIX, SOCK_STREAM, 0)))
         goto Finally;
     self->mFile = &self->mFile_;
 
-    if (bindFileSocket(self->mFile,
-                       (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
+    if (closeFileOnExec(self->mFile, O_CLOEXEC))
         goto Finally;
+
+    if (nonblockingFile(self->mFile))
+        goto Finally;
+
+    while (1)
+    {
+        if (connectFileSocket(
+                self->mFile,
+                (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
+        {
+            if (EINTR == errno)
+                continue;
+            if (EINPROGRESS != errno)
+                goto Finally;
+
+            err = EINPROGRESS;
+        }
+
+        break;
+    }
 
     rc = 0;
 
@@ -179,7 +237,7 @@ Finally:
             closeFile(self->mFile);
     });
 
-    return rc;
+    return rc ? rc : err ? err : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -203,6 +261,20 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+ssize_t
+sendUnixSocket(struct UnixSocket *self, const char *aBuf, size_t aLen)
+{
+    return sendFileSocket(self->mFile, aBuf, aLen);
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+recvUnixSocket(struct UnixSocket *self, char *aBuf, size_t aLen)
+{
+    return recvFileSocket(self->mFile, aBuf, aLen);
+}
+
+/* -------------------------------------------------------------------------- */
 int
 ownUnixSocketName(const struct UnixSocket *self,
                   struct sockaddr_un *aAddr)
@@ -221,6 +293,34 @@ ownUnixSocketPeerName(const struct UnixSocket *self,
 
     return ownFileSocketPeerName(
         self->mFile, (struct sockaddr *) aAddr, &addrLen);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownUnixSocketWriteReady(const struct UnixSocket *self)
+{
+    return ownFileWriteReady(self->mFile);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownUnixSocketReadReady(const struct UnixSocket *self)
+{
+    return ownFileReadReady(self->mFile);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownUnixSocketError(const struct UnixSocket *self, int *aError)
+{
+    return ownFileSocketError(self->mFile, aError);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownUnixSocketPeerCred(const struct UnixSocket *self, struct ucred *aCred)
+{
+    return ownFileSocketPeerCred(self->mFile, aCred);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -34,6 +34,7 @@
 #include "fd_.h"
 #include "thread_.h"
 #include "process_.h"
+#include "unixsocket_.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -50,6 +51,7 @@
 
 #include <sys/resource.h>
 #include <sys/syscall.h>
+#include <sys/un.h>
 
 #include <linux/futex.h>
 
@@ -60,7 +62,7 @@ enum EnvKind
 {
     ENV_LD_PRELOAD,
     ENV_K9_SO,
-    ENV_K9_FD,
+    ENV_K9_ADDR,
     ENV_K9_PID,
     ENV_K9_TIME,
     ENV_K9_DEBUG,
@@ -196,8 +198,9 @@ struct UmbilicalThread
     enum UmbilicalThreadState  mState;
     intmax_t                   mStack_[PTHREAD_STACK_MIN / sizeof(intmax_t)];
     intmax_t                  *mStack;
-    int                        mFd;
+    struct UnixSocket          mSock;
     int                        mStatus;
+    int                       *mErrno;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -210,16 +213,34 @@ watchUmbilical_(void *aUmbilicalThread)
 
     struct UmbilicalThread *umbilicalThread = aUmbilicalThread;
 
+    if (umbilicalThread->mErrno != &errno)
+        terminate(
+            0,
+            "Umbilical thread context mismatched %p vs %p",
+            (void *) umbilicalThread->mErrno,
+            (void *) &errno);
+
+    /* Capture the umbilical file descriptor here because although this
+     * thread shares the same memory space as the enclosing process,
+     * it has a separate file descriptor space. */
+
+    struct File umbilicalFile;
+    if (dupFile(&umbilicalFile, umbilicalThread->mSock.mFile))
+        terminate(
+            errno,
+            "Unable to dup umbilical thread file descriptor %d",
+            umbilicalThread->mSock.mFile->mFd);
+
     lockMutex(&umbilicalThread->mMutex);
     {
         while (UMBILICAL_STARTING != umbilicalThread->mState)
             waitCond(&umbilicalThread->mCond, &umbilicalThread->mMutex);
 
-        if ( ! ownFdValid(umbilicalThread->mFd))
+        if ( ! ownFdValid(umbilicalThread->mSock.mFile->mFd))
             terminate(
                 errno,
                 "Umbilical file descriptor is not valid %d",
-                umbilicalThread->mFd);
+                umbilicalThread->mSock.mFile->mFd);
 
         umbilicalThread->mState = UMBILICAL_STARTED;
     }
@@ -241,7 +262,7 @@ watchUmbilical_(void *aUmbilicalThread)
 
     for (int fd = 0; fd < noFile.rlim_cur; ++fd)
     {
-        if (  ! stdFd(fd) && fd != umbilicalThread->mFd)
+        if (  ! stdFd(fd) && fd != umbilicalFile.mFd)
             (void) close(fd);
     }
 
@@ -252,6 +273,12 @@ watchUmbilical_(void *aUmbilicalThread)
         umbilicalThread->mState = UMBILICAL_STOPPING;
     }
     unlockMutex(&umbilicalThread->mMutex);
+
+    if (closeFile(&umbilicalFile))
+        terminate(
+            errno,
+            "Unable to close umbilical file descriptor %d",
+            umbilicalFile.mFd);
 
     return 0;
 }
@@ -305,6 +332,8 @@ umbilicalMain_(void *aUmbilicalThread)
      * would close the umbilical file descriptor if the umbilical
      * thread shared the same file descriptor space. */
 
+    umbilicalThread->mErrno = &errno;
+
     pid_t tid;
     pid_t pid = clone(
             watchUmbilical_,
@@ -351,29 +380,25 @@ umbilicalMain_(void *aUmbilicalThread)
 
 /* -------------------------------------------------------------------------- */
 static void
-watchUmbilical(const char *aFd)
+watchUmbilical(const char *aAddr)
 {
     static struct UmbilicalThread umbilicalThread;
 
-    while (aFd)
+    while (aAddr)
     {
         warn(0, "********* START");
 
-        int fd;
-        if (parseInt(aFd, &fd) || 0 > fd)
-            terminate(
-                errno,
-                "Unable to parse umbilical file descriptor %s", aFd);
+        size_t addrLen = strlen(aAddr);
 
-        if (stdFd(fd) || 0 > fd)
+        struct sockaddr_un umbilicalAddr;
+
+        if (sizeof(umbilicalAddr.sun_path) <= addrLen)
             terminate(
                 0,
-                "Unexpected value for umbilical file descriptor %d", fd);
+                "Umbilical socket address too long '%s'", aAddr);
 
-        if ( ! ownFdValid(fd))
-            terminate(
-                errno,
-                "Umbilical file descriptor %d is not valid", fd);
+        memcpy(&umbilicalAddr.sun_path[1], aAddr, addrLen);
+        umbilicalAddr.sun_path[0] = 0;
 
         /* Use a detached thread to monitor the umbilical from the
          * watchdog. Using a thread allows the main thread of control
@@ -385,7 +410,15 @@ watchUmbilical(const char *aFd)
         umbilicalThread.mMutex = mutexInit;
         umbilicalThread.mCond  = condInit;
         umbilicalThread.mState = UMBILICAL_STOPPED;
-        umbilicalThread.mFd    = fd;
+        umbilicalThread.mErrno = 0;
+
+        if (connectUnixSocket(
+                &umbilicalThread.mSock, umbilicalAddr.sun_path, addrLen+1))
+            terminate(
+                errno,
+                "Failed to connect umbilical socket to '%.*s'",
+                sizeof(umbilicalAddr.sun_path) - 1,
+                &umbilicalAddr.sun_path[1]);
 
         /* The stack is allocated statically to avoid creating another
          * anonymous mmap(2) region unnecessarily. */
@@ -432,10 +465,10 @@ watchUmbilical(const char *aFd)
         }
         unlockMutex(&umbilicalThread.mMutex);
 
-        if (closeFd(&fd))
+        if (closeUnixSocket(&umbilicalThread.mSock))
             terminate(
                 errno,
-                "Unable to close umbilical file descriptor %d", fd);
+                "Unable to close umbilical socket");
 
         warn(0, "********* DONE");
 
@@ -467,7 +500,7 @@ libk9_init()
     {
         [ENV_LD_PRELOAD] = { "LD_PRELOAD" },
         [ENV_K9_SO]      = { "K9_SO" },
-        [ENV_K9_FD]      = { "K9_FD" },
+        [ENV_K9_ADDR]    = { "K9_ADDR" },
         [ENV_K9_PID]     = { "K9_PID" },
         [ENV_K9_TIME]    = { "K9_TIME" },
         [ENV_K9_DEBUG]   = { "K9_DEBUG" },
@@ -487,7 +520,7 @@ libk9_init()
                  * leave the environment variables in place to
                  * monitor the new program . */
 
-                watchUmbilical(env[ENV_K9_FD].mEnv);
+                watchUmbilical(env[ENV_K9_ADDR].mEnv);
             }
             else
             {
@@ -495,7 +528,7 @@ libk9_init()
                  * processes or programs do not need the parasite
                  * library. */
 
-                env[ENV_K9_FD].mEnv[0] = 0;
+                env[ENV_K9_ADDR].mEnv[0] = 0;
 
                 stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
             }

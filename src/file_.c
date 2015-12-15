@@ -37,6 +37,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <sys/poll.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 
@@ -287,9 +288,132 @@ bindFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
 
 /* -------------------------------------------------------------------------- */
 int
-acceptFileSocket(const struct File *self)
+connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
+{
+    return connect(self->mFd, aAddr, aAddrLen);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+acceptFileSocket(struct File *self)
 {
     return accept(self->mFd, 0, 0);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+listenFileSocket(struct File *self, unsigned aQueueLen)
+{
+    return listen(self->mFd, aQueueLen ? aQueueLen : 1);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+ownFileReady_(const struct File *self, unsigned aPollMask)
+{
+    int rc = -1;
+
+    struct pollfd pollfd[1] =
+    {
+        {
+            .fd     = self->mFd,
+            .events = aPollMask
+        },
+    };
+
+    while (1)
+    {
+        switch (poll(pollfd, NUMBEROF(pollfd), 0))
+        {
+        case -1:
+            if (EINTR == errno)
+                continue;
+            goto Finally;
+
+        case 0:
+            pollfd[0].revents = 0;
+            break;
+
+        default:
+            if (pollfd[0].revents & (POLLERR | POLLHUP | POLLNVAL))
+                goto Finally;
+            break;
+        }
+
+        break;
+    }
+
+    rc = !! (pollfd[0].revents & aPollMask);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+ownFileWriteReady(const struct File *self)
+{
+    return ownFileReady_(self, POLLOUT);
+}
+
+int
+ownFileReadReady(const struct File *self)
+{
+    return ownFileReady_(self, POLLPRI | POLLIN);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFileSocketError(const struct File *self, int *aError)
+{
+    int rc = -1;
+
+    socklen_t len = sizeof(*aError);
+
+    if (getsockopt(self->mFd, SOL_SOCKET, SO_ERROR, aError, &len))
+        goto Finally;
+
+    if (sizeof(*aError) != len)
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFileSocketPeerCred(const struct File *self, struct ucred *aCred)
+{
+    int rc = -1;
+
+    socklen_t len = sizeof(*aCred);
+
+    if (getsockopt(self->mFd, SOL_SOCKET, SO_PEERCRED, aCred, &len))
+        goto Finally;
+
+    if (sizeof(*aCred) != len)
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -306,6 +430,20 @@ ownFileSocketPeerName(const struct File *self,
                       struct sockaddr *aAddr, socklen_t *aAddrLen)
 {
     return getpeername(self->mFd, aAddr, aAddrLen);
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+sendFileSocket(struct File *self, const char *aBuf, size_t aLen)
+{
+    return send(self->mFd, aBuf, aLen, 0);
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+recvFileSocket(struct File *self, char *aBuf, size_t aLen)
+{
+    return recv(self->mFd, aBuf, aLen, 0);
 }
 
 /* -------------------------------------------------------------------------- */

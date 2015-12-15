@@ -38,6 +38,7 @@ extern "C" {
 
 struct stat;
 struct sockaddr;
+struct ucred;
 
 struct File
 {
@@ -65,7 +66,8 @@ void
 walkFileList(void *aOther,
              int (*aVisitor)(void *aOther, const struct File *aFile));
 
-int dupFile(struct File *self, const struct File *aOther);
+int
+dupFile(struct File *self, const struct File *aOther);
 
 int
 closeFilePair(struct File **aFile1,
@@ -94,10 +96,29 @@ ftruncateFile(struct File *self, off_t aLength);
 
 /* -------------------------------------------------------------------------- */
 int
+ownFileWriteReady(const struct File *self);
+
+int
+ownFileReadReady(const struct File *self);
+
+/* -------------------------------------------------------------------------- */
+int
 bindFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
 
 int
-acceptFileSocket(const struct File *self);
+connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
+
+int
+acceptFileSocket(struct File *self);
+
+int
+listenFileSocket(struct File *self, unsigned aQueueLen);
+
+ssize_t
+sendFileSocket(struct File *self, const char *aBuf, size_t aLen);
+
+ssize_t
+recvFileSocket(struct File *self, char *aBuf, size_t aLen);
 
 int
 ownFileSocketName(const struct File *self,
@@ -106,6 +127,12 @@ ownFileSocketName(const struct File *self,
 int
 ownFileSocketPeerName(const struct File *self,
                       struct sockaddr *aAddr, socklen_t *aAddrLen);
+
+int
+ownFileSocketError(const struct File *self, int *aError);
+
+int
+ownFileSocketPeerCred(const struct File *self, struct ucred *aCred);
 
 /* -------------------------------------------------------------------------- */
 int
