@@ -1627,28 +1627,27 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close stdin, stdout and stderr fillers");
 
+    /* Discard the origin stdin file descriptor, and instead attach
+     * the reading end of the tether as stdin. This means that the
+     * watchdog does not contribute any more references to the
+     * original stdin file table entry. */
+
     if (STDIN_FILENO != dup2(tetherPipe.mRdFile->mFd, STDIN_FILENO))
         terminate(
             errno,
             "Unable to dup tether pipe to stdin");
 
-    if (closePipe(&tetherPipe))
-        terminate(
-            errno,
-            "Unable to close tether pipe");
-
-    if (purgeProcessOrphanedFds())
-        terminate(
-            errno,
-            "Unable to purge orphaned files");
-
-    /* If stdout is not open, or data sent to stdout is to be discarded,
-     * then provide a default sink for the data transmitted through
-     * the tether. */
+    /* Avoid closing the original stdout file descriptor only if
+     * there is a need to copy the contents of the tether to it.
+     * Otherwise, close the original stdout and open it as a sink so
+     * that the watchdog does not contribute any more references to the
+     * original stdout file table entry. */
 
     bool discardStdout = gOptions.mQuiet;
 
-    if (gOptions.mTether)
+    if ( ! gOptions.mTether)
+        discardStdout = true;
+    else
     {
         switch (ownFdValid(STDOUT_FILENO))
         {
@@ -1687,6 +1686,16 @@ cmdRunCommand(char **aCmd)
                     "Unable to close %s", sDevNullPath);
         }
     }
+
+    if (closePipe(&tetherPipe))
+        terminate(
+            errno,
+            "Unable to close tether pipe");
+
+    if (purgeProcessOrphanedFds())
+        terminate(
+            errno,
+            "Unable to purge orphaned files");
 
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped

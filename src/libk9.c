@@ -252,6 +252,11 @@ watchUmbilical_(void *aUmbilicalThread)
      * inadvertently corrupt or pollute the file descriptors of the
      * child process.
      *
+     * Only leave stderr and the umbilical file descriptor. In particular,
+     * both stdin and stdout are closed so that the monitored application
+     * can control and redirect these standard file descriptors as
+     * it sees fit.
+     *
      * Note that this will close the file descriptors in umbilicalThread->mSync
      * so no attempt should be made to them after this point. */
 
@@ -263,7 +268,7 @@ watchUmbilical_(void *aUmbilicalThread)
 
     for (int fd = 0; fd < noFile.rlim_cur; ++fd)
     {
-        if (  ! stdFd(fd) && fd != umbilicalFile.mFd)
+        if (STDERR_FILENO != fd && fd != umbilicalFile.mFd)
             (void) close(fd);
     }
 
