@@ -64,18 +64,26 @@ int
 closeUnixSocket(struct UnixSocket *self);
 
 int
+shutdownUnixSocketReader(struct UnixSocket *self);
+
+int
+shutdownUnixSocketWriter(struct UnixSocket *self);
+
+int
+waitUnixSocketWriteReady(const struct UnixSocket *self,
+                         uint64_t aTimeout_ns);
+
+int
+waitUnixSocketReadReady(const struct UnixSocket *self,
+                        uint64_t aTimeout_ns);
+
+int
 ownUnixSocketPeerName(const struct UnixSocket *self,
                       struct sockaddr_un *aAddr);
 
 int
 ownUnixSocketName(const struct UnixSocket *self,
                   struct sockaddr_un *aAddr);
-
-int
-ownUnixSocketWriteReady(const struct UnixSocket *self);
-
-int
-ownUnixSocketReadReady(const struct UnixSocket *self);
 
 int
 ownUnixSocketError(const struct UnixSocket *self, int *aError);

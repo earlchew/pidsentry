@@ -189,7 +189,21 @@ Finally:
 int
 closePipe(struct Pipe *self)
 {
-    return closeFilePair(&self->mRdFile, &self->mWrFile);
+    int rc = -1;
+
+    if (self)
+    {
+        if (closeFilePair(&self->mRdFile, &self->mWrFile))
+            goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

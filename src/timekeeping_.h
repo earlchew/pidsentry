@@ -87,11 +87,12 @@ wallclockTime(void);
 
 /* -------------------------------------------------------------------------- */
 uint64_t
-lapTimeSince(uint64_t *aSince, uint64_t aPeriod);
+lapTimeSince(uint64_t *aSince, uint64_t aPeriod_ns);
 
 /* -------------------------------------------------------------------------- */
 bool
-deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration);
+deadlineTimeExpired(
+    uint64_t *aSince, uint64_t aDuration_ns, uint64_t *aRemaining_ns);
 
 /* -------------------------------------------------------------------------- */
 struct timespec
@@ -100,8 +101,8 @@ earliestTime(const struct timespec *aLhs, const struct timespec *aRhs);
 /* -------------------------------------------------------------------------- */
 int
 pushIntervalTimer(struct PushedIntervalTimer *aPause,
-                   int                         aType,
-                   const struct itimerval     *aTimer);
+                   int                        aType,
+                   const struct itimerval    *aTimer);
 
 int
 popIntervalTimer(struct PushedIntervalTimer *aPause);

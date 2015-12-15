@@ -112,7 +112,21 @@ Finally:
 int
 closeSocketPair(struct SocketPair *self)
 {
-    return closeFilePair(&self->mParentFile, &self->mChildFile);
+    int rc = -1;
+
+    if (self)
+    {
+        if (closeFilePair(&self->mParentFile, &self->mChildFile))
+            goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

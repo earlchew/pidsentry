@@ -35,6 +35,7 @@
 #include "thread_.h"
 #include "process_.h"
 #include "unixsocket_.h"
+#include "timekeeping_.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -266,7 +267,29 @@ watchUmbilical_(void *aUmbilicalThread)
             (void) close(fd);
     }
 
-    warn(0, "*** RUNNING CHILD ***");
+    while (1)
+    {
+        debug(0, "waiting on umbilical socket");
+
+        switch (waitFileReadReady(&umbilicalFile, milliSeconds(60 * 1000)))
+        {
+        default:
+            break;
+
+        case -1:
+            terminate(
+                errno,
+                "Unable to wait for umbilical socket");
+            break;
+
+        case 0:
+            continue;
+        }
+
+        debug(0, "broken umbilical connection");
+
+        break;
+    }
 
     lockMutex(&umbilicalThread->mMutex);
     {
@@ -334,22 +357,22 @@ umbilicalMain_(void *aUmbilicalThread)
 
     umbilicalThread->mErrno = &errno;
 
-    pid_t tid;
-    pid_t pid = clone(
-            watchUmbilical_,
-            umbilicalThread->mStack,
-            CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS |
-            CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
-            umbilicalThread, &tid, tls, &tid);
+    pid_t slavetid;
+    pid_t slavepid = clone(
+        watchUmbilical_,
+        umbilicalThread->mStack,
+        CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS |
+        CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
+        umbilicalThread, &slavetid, tls, &slavetid);
 
-    if (-1 == pid)
+    if (-1 == slavepid)
         terminate(
             errno,
-            "Unable to create umbilical thread");
+            "Unable to create umbilical slave thread");
 
-    while (tid)
+    while (slavetid)
     {
-        switch (syscall(SYS_futex, &tid, FUTEX_WAIT, pid, 0, 0, 0))
+        switch (syscall(SYS_futex, &slavetid, FUTEX_WAIT, slavepid, 0, 0, 0))
         {
         case 0:
             continue;
@@ -359,7 +382,7 @@ umbilicalMain_(void *aUmbilicalThread)
                 continue;
             terminate(
                 errno,
-                "Unable to wait for umbilical thread");
+                "Unable to wait for umbilical slave thread");
         }
     }
 
@@ -369,11 +392,27 @@ umbilicalMain_(void *aUmbilicalThread)
     }
     unlockMutex(&umbilicalThread->mMutex);
 
+    debug(0, "umbilical thread %jd terminated", (intmax_t) slavepid);
+
     /* Do not exit until the umbilical slave thread has completed because
      * it shares the same pthread resources. Once the umbilical slave
      * thread completes, it is safe to release the pthread resources. */
 
-    debug(0, "**** umbilical thread %jd terminated", (intmax_t) pid);
+    pid_t pid = getpid();
+
+    if (kill(pid, SIGTERM))
+        terminate(
+            errno,
+            "Unable to send SIGTERM to pid %jd", (intmax_t) pid);
+
+    monotonicSleep(milliSeconds(30 * 1000));
+
+    if (kill(pid, SIGKILL))
+        terminate(
+            errno,
+            "Unable to send SIGKILL to pid %jd", (intmax_t) pid);
+
+    _exit(1);
 
     return umbilicalThread;
 }
@@ -386,7 +425,7 @@ watchUmbilical(const char *aAddr)
 
     while (aAddr)
     {
-        warn(0, "********* START");
+        debug(0, "umbilical thread initialising");
 
         size_t addrLen = strlen(aAddr);
 
@@ -450,7 +489,7 @@ watchUmbilical(const char *aAddr)
             destroyThreadAttr(&umbilicalThreadAttr);
         }
 
-        warn(0, "********* SYNCRHONISING");
+        debug(0, "umbilical thread starting");
 
         lockMutex(&umbilicalThread.mMutex);
         {
@@ -470,7 +509,7 @@ watchUmbilical(const char *aAddr)
                 errno,
                 "Unable to close umbilical socket");
 
-        warn(0, "********* DONE");
+        debug(0, "umbilical thread started");
 
         break;
     }

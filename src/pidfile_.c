@@ -429,47 +429,50 @@ Finally:
 int
 closePidFile(struct PidFile *self)
 {
-    ensure(LOCK_UN != self->mLock);
-
     int rc = -1;
 
-    int flags = fcntlFileGetFlags(self->mFile);
-
-    if (-1 == flags)
-        goto Finally;
-
-    if (O_RDONLY != (flags & O_ACCMODE))
+    if (self)
     {
-        /* The pidfile is still locked at this point. If writable,
-         * remove the content from the pidfile first so that any
-         * competing reader will see any empty file. Once emptied,
-         * remove the pidfile so that no other process will be
-         * able to find the file. */
+        ensure(LOCK_UN != self->mLock);
 
-        if (ftruncateFile(self->mFile, 0))
+        int flags = fcntlFileGetFlags(self->mFile);
+
+        if (-1 == flags)
             goto Finally;
 
-        if (unlinkPathName(&self->mPathName, 0))
+        if (O_RDONLY != (flags & O_ACCMODE))
         {
-            /* In theory, ENOENT should not occur since the pidfile
-             * is locked, and competing processes need to hold the
-             * lock to remove the pidfile. It might be possible
-             * that the pidfile is deleted from, say, the command
-             * line. */
+            /* The pidfile is still locked at this point. If writable,
+             * remove the content from the pidfile first so that any
+             * competing reader will see any empty file. Once emptied,
+             * remove the pidfile so that no other process will be
+             * able to find the file. */
 
-            if (ENOENT != errno)
+            if (ftruncateFile(self->mFile, 0))
                 goto Finally;
+
+            if (unlinkPathName(&self->mPathName, 0))
+            {
+                /* In theory, ENOENT should not occur since the pidfile
+                 * is locked, and competing processes need to hold the
+                 * lock to remove the pidfile. It might be possible
+                 * that the pidfile is deleted from, say, the command
+                 * line. */
+
+                if (ENOENT != errno)
+                    goto Finally;
+            }
         }
+
+        if (closeFile(self->mFile))
+            goto Finally;
+
+        if (closePathName(&self->mPathName))
+            goto Finally;
+
+        self->mFile = 0;
+        self->mLock = LOCK_UN;
     }
-
-    if (closeFile(self->mFile))
-        goto Finally;
-
-    if (closePathName(&self->mPathName))
-        goto Finally;
-
-    self->mFile = 0;
-    self->mLock = LOCK_UN;
 
     rc = 0;
 

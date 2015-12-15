@@ -370,7 +370,8 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
 
         do
         {
-            if (deadlineTimeExpired(&deadlineTime, milliSeconds(aMilliSeconds)))
+            if (deadlineTimeExpired(
+                    &deadlineTime, milliSeconds(aMilliSeconds), 0))
             {
                 err = EDEADLOCK;
                 break;

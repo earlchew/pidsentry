@@ -246,10 +246,13 @@ closeUnixSocket(struct UnixSocket *self)
 {
     int rc = -1;
 
-    if (closeFile(self->mFile))
-        goto Finally;
+    if (self)
+    {
+        if (closeFile(self->mFile))
+            goto Finally;
 
-    self->mFile = 0;
+        self->mFile = 0;
+    }
 
     rc = 0;
 
@@ -258,6 +261,36 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+shutdownUnixSocketReader(struct UnixSocket *self)
+{
+    return shutdownFileSocketReader(self->mFile);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+shutdownUnixSocketWriter(struct UnixSocket *self)
+{
+    return shutdownFileSocketWriter(self->mFile);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+waitUnixSocketWriteReady(const struct UnixSocket *self,
+                         uint64_t aTimeout_ns)
+{
+    return waitFileWriteReady(self->mFile, aTimeout_ns);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+waitUnixSocketReadReady(const struct UnixSocket *self,
+                        uint64_t aTimeout_ns)
+{
+    return waitFileReadReady(self->mFile, aTimeout_ns);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -293,20 +326,6 @@ ownUnixSocketPeerName(const struct UnixSocket *self,
 
     return ownFileSocketPeerName(
         self->mFile, (struct sockaddr *) aAddr, &addrLen);
-}
-
-/* -------------------------------------------------------------------------- */
-int
-ownUnixSocketWriteReady(const struct UnixSocket *self)
-{
-    return ownFileWriteReady(self->mFile);
-}
-
-/* -------------------------------------------------------------------------- */
-int
-ownUnixSocketReadReady(const struct UnixSocket *self)
-{
-    return ownFileReadReady(self->mFile);
 }
 
 /* -------------------------------------------------------------------------- */

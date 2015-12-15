@@ -31,11 +31,13 @@
 #include "macros_.h"
 #include "error_.h"
 #include "fd_.h"
+#include "timekeeping_.h"
 
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #include <sys/poll.h>
 #include <sys/resource.h>
@@ -309,21 +311,32 @@ listenFileSocket(struct File *self, unsigned aQueueLen)
 
 /* -------------------------------------------------------------------------- */
 static int
-ownFileReady_(const struct File *self, unsigned aPollMask)
+waitFileReady_(const struct File *self,
+               unsigned           aPollMask,
+               uint64_t           aTimeout_ns)
 {
     int rc = -1;
 
     struct pollfd pollfd[1] =
     {
         {
-            .fd     = self->mFd,
-            .events = aPollMask
+            .fd      = self->mFd,
+            .events  = aPollMask,
+            .revents = 0,
         },
     };
 
-    while (1)
+    uint64_t since = 0;
+    uint64_t remaining;
+
+    while ( ! deadlineTimeExpired(&since, aTimeout_ns, &remaining))
     {
-        switch (poll(pollfd, NUMBEROF(pollfd), 0))
+        uint64_t timeout_s = toMilliSeconds(remaining);
+
+        if (0 > timeout_s || INT_MAX < timeout_s)
+            timeout_s = INT_MAX;
+
+        switch (poll(pollfd, NUMBEROF(pollfd), timeout_s))
         {
         case -1:
             if (EINTR == errno)
@@ -332,11 +345,9 @@ ownFileReady_(const struct File *self, unsigned aPollMask)
 
         case 0:
             pollfd[0].revents = 0;
-            break;
+            continue;
 
         default:
-            if (pollfd[0].revents & (POLLERR | POLLHUP | POLLNVAL))
-                goto Finally;
             break;
         }
 
@@ -353,15 +364,15 @@ Finally:
 }
 
 int
-ownFileWriteReady(const struct File *self)
+waitFileWriteReady(const struct File *self, uint64_t aNanoSeconds)
 {
-    return ownFileReady_(self, POLLOUT);
+    return waitFileReady_(self, POLLOUT, aNanoSeconds);
 }
 
 int
-ownFileReadReady(const struct File *self)
+waitFileReadReady(const struct File *self, uint64_t aNanoSeconds)
 {
-    return ownFileReady_(self, POLLPRI | POLLIN);
+    return waitFileReady_(self, POLLPRI | POLLIN, aNanoSeconds);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -444,6 +455,20 @@ ssize_t
 recvFileSocket(struct File *self, char *aBuf, size_t aLen)
 {
     return recv(self->mFd, aBuf, aLen, 0);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+shutdownFileSocketReader(struct File *self)
+{
+    return shutdown(self->mFd, SHUT_RD);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+shutdownFileSocketWriter(struct File *self)
+{
+    return shutdown(self->mFd, SHUT_WR);
 }
 
 /* -------------------------------------------------------------------------- */

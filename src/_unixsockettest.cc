@@ -71,7 +71,7 @@ TEST(UnixSocketTest, AnonymousServer)
     struct UnixSocket peersock;
 
     EXPECT_EQ(0, acceptUnixSocket(&peersock, &serversock));
-    EXPECT_EQ(1, ownUnixSocketWriteReady(&clientsock));
+    EXPECT_EQ(1, waitUnixSocketWriteReady(&clientsock, 0));
 
     struct ucred cred;
 

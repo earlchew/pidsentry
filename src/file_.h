@@ -29,6 +29,8 @@
 #ifndef FILE_H
 #define FILE_H
 
+#include <inttypes.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -96,10 +98,10 @@ ftruncateFile(struct File *self, off_t aLength);
 
 /* -------------------------------------------------------------------------- */
 int
-ownFileWriteReady(const struct File *self);
+waitFileWriteReady(const struct File *self, uint64_t aNanoSeconds);
 
 int
-ownFileReadReady(const struct File *self);
+waitFileReadReady(const struct File *self, uint64_t aNanoSeconds);
 
 /* -------------------------------------------------------------------------- */
 int
@@ -119,6 +121,12 @@ sendFileSocket(struct File *self, const char *aBuf, size_t aLen);
 
 ssize_t
 recvFileSocket(struct File *self, char *aBuf, size_t aLen);
+
+int
+shutdownFileSocketReader(struct File *self);
+
+int
+shutdownFileSocketWriter(struct File *self);
 
 int
 ownFileSocketName(const struct File *self,

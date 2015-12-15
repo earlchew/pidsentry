@@ -66,12 +66,27 @@ wallclockTime(void)
 
 /* -------------------------------------------------------------------------- */
 bool
-deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration)
+deadlineTimeExpired(
+    uint64_t *aSince, uint64_t aDuration_ns, uint64_t *aRemaining_ns)
 {
-    bool expired;
+    bool     expired;
+    uint64_t remaining;
 
     if (*aSince)
-        expired = monotonicTime() - *aSince >= aDuration;
+    {
+        uint64_t elapsed = monotonicTime() - *aSince;
+
+        if (elapsed >= aDuration_ns)
+        {
+            remaining = 0;
+            expired   = true;
+        }
+        else
+        {
+            remaining = aDuration_ns - elapsed;
+            expired   = false;
+        }
+    }
     else
     {
         /* Initialise the mark time from which the duration will be
@@ -87,8 +102,12 @@ deadlineTimeExpired(uint64_t *aSince, uint64_t aDuration)
 
         *aSince = since;
 
-        expired = false;
+        remaining = aDuration_ns;
+        expired   = false;
     }
+
+    if (aRemaining_ns)
+        *aRemaining_ns = remaining;
 
     return expired;
 }
@@ -128,21 +147,20 @@ void
 monotonicSleep(uint64_t aDuration)
 {
     uint64_t since = 0;
+    uint64_t remaining;
 
-    while ( ! deadlineTimeExpired(&since, aDuration))
+    while ( ! deadlineTimeExpired(&since, aDuration, &remaining))
     {
         /* This approach avoids the problem of drifting sleep duration
          * caused by repeated signal delivery by fixing the wake time
          * then re-calibrating the sleep time on each iteration. */
 
-        uint64_t sleepDuration = since + aDuration - monotonicTime();
-
-        if (sleepDuration)
+        if (remaining)
         {
             struct timespec sleepTime =
             {
-                .tv_sec  = sleepDuration / (1000 * 1000 * 1000),
-                .tv_nsec = sleepDuration % (1000 * 1000 * 1000),
+                .tv_sec  = remaining / (1000 * 1000 * 1000),
+                .tv_nsec = remaining % (1000 * 1000 * 1000),
             };
 
             nanosleep(&sleepTime, 0);

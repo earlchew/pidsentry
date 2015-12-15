@@ -81,6 +81,7 @@ enum PollFdKind
     POLL_FD_CHILD,
     POLL_FD_SIGNAL,
     POLL_FD_CLOCK,
+    POLL_FD_UMBILICAL,
     POLL_FD_KINDS
 };
 
@@ -643,6 +644,103 @@ pollFdSignal(void *self_, struct pollfd *aPollFds)
 }
 
 /* -------------------------------------------------------------------------- */
+struct PollFdUmbilical
+{
+    enum PollFdKind    mKind;
+    pid_t              mChildPid;
+    struct UnixSocket *mUmbilicalSocket;
+    struct UnixSocket  mUmbilicalPeer_;
+    struct UnixSocket *mUmbilicalPeer;
+};
+
+static int
+pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
+                       const struct UnixSocket *aServer,
+                       pid_t                    aChildPid)
+{
+    int rc = -1;
+
+    struct UnixSocket *peersocket = 0;
+
+    if (acceptUnixSocket(aPeer, aServer))
+        goto Finally;
+
+    peersocket = aPeer;
+
+    /* Require that the remote peer be the process being monitored.
+     * The connection will be dropped if the process uses execv() to
+     * run another program, and then re-established when the new
+     * program creates its own umbilical connection. */
+
+    struct ucred cred;
+
+    if (ownUnixSocketPeerCred(aPeer, &cred))
+        goto Finally;
+
+    debug(1, "umbilical connection from pid %jd", (intmax_t) cred.pid);
+
+    if (cred.pid != aChildPid)
+    {
+        errno = EPERM;
+        goto Finally;
+    }
+
+    /* There is nothing read from the umbilical connection, so shut down
+     * the reading side here. Do not shut down the writing side leaving
+     * the umbilical half-open to allow it to be used to signal to
+     * the child process if the watchdog terminates. */
+
+    if (shutdownUnixSocketReader(peersocket))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY(
+    {
+        if (rc)
+            closeUnixSocket(peersocket);
+    });
+
+    return rc;
+}
+
+static void
+pollFdUmbilical(void *self_, struct pollfd *aPollFds)
+{
+    struct PollFdUmbilical *self = self_;
+
+    ensure(POLL_FD_UMBILICAL == self->mKind);
+
+    /* Process an inbound connection from the child process on its
+     * umbilical socket. The parasite watchdog library attached to the
+     * child will use this to detect if the watchdog has terminated. */
+
+    struct PollEventText pollEventText;
+    debug(
+        1,
+        "poll umbilical %s",
+        createPollEventText(
+            &pollEventText,
+            aPollFds[POLL_FD_UMBILICAL].revents));
+
+    if (aPollFds[POLL_FD_UMBILICAL].revents & POLLIN)
+    {
+        if (closeUnixSocket(self->mUmbilicalPeer))
+            terminate(
+                errno,
+                "Unable to close umbilical peer");
+        self->mUmbilicalPeer = 0;
+
+        if ( ! pollFdUmbilicalAccept_(&self->mUmbilicalPeer_,
+                                      self->mUmbilicalSocket,
+                                      self->mChildPid))
+            self->mUmbilicalPeer = &self->mUmbilicalPeer_;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 struct PollFdTether
 {
     enum PollFdKind mKind;
@@ -799,7 +897,10 @@ pollFdStdout(void *self_, struct pollfd *aPollFds)
 
 /* -------------------------------------------------------------------------- */
 static void
-monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
+monitorChild(pid_t              aChildPid,
+             struct UnixSocket *aUmbilicalSocket,
+             struct Pipe       *aTermPipe,
+             struct Pipe       *aSigPipe)
 {
     debug(0, "start monitoring child");
 
@@ -841,6 +942,14 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         .mKind     = POLL_FD_SIGNAL,
         .mChildPid = aChildPid,
         .mSigPipe  = aSigPipe,
+    };
+
+    struct PollFdUmbilical pollfdumbilical =
+    {
+        .mKind            = POLL_FD_UMBILICAL,
+        .mChildPid        = aChildPid,
+        .mUmbilicalSocket = aUmbilicalSocket,
+        .mUmbilicalPeer   = 0,
     };
 
     int timeout_ms = gOptions.mTimeout_s * 1000;
@@ -888,11 +997,12 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
     static const char *pollfdNames[POLL_FD_KINDS] =
     {
-        [POLL_FD_CHILD]  = "child",
-        [POLL_FD_SIGNAL] = "signal",
-        [POLL_FD_STDOUT] = "stdout",
-        [POLL_FD_STDIN]  = "stdin",
-        [POLL_FD_CLOCK]  = "clock",
+        [POLL_FD_CHILD]     = "child",
+        [POLL_FD_SIGNAL]    = "signal",
+        [POLL_FD_STDOUT]    = "stdout",
+        [POLL_FD_STDIN]     = "stdin",
+        [POLL_FD_CLOCK]     = "clock",
+        [POLL_FD_UMBILICAL] = "umbilical",
     };
 
     struct pollfd pollfds[POLL_FD_KINDS] =
@@ -906,6 +1016,9 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
         [POLL_FD_SIGNAL] = {
             .fd     = aSigPipe->mRdFile->mFd,
             .events = sPollInputEvents },
+        [POLL_FD_UMBILICAL] = {
+            .fd     = aUmbilicalSocket->mFile->mFd,
+            .events = sPollInputEvents },
         [POLL_FD_STDIN] = {
             .fd     = STDIN_FILENO,
             .events = sPollInputEvents, },
@@ -916,11 +1029,12 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
 
     struct PollFdAction pollfdactions[POLL_FD_KINDS] =
     {
-        [POLL_FD_CLOCK]  = { pollFdClock,  &pollfdclock },
-        [POLL_FD_CHILD]  = { pollFdChild,  &pollfdchild },
-        [POLL_FD_SIGNAL] = { pollFdSignal, &pollfdsignal },
-        [POLL_FD_STDIN]  = { pollFdStdin,  &pollfdtether },
-        [POLL_FD_STDOUT] = { pollFdStdout, &pollfdtether },
+        [POLL_FD_CLOCK]     = { pollFdClock,     &pollfdclock },
+        [POLL_FD_CHILD]     = { pollFdChild,     &pollfdchild },
+        [POLL_FD_SIGNAL]    = { pollFdSignal,    &pollfdsignal },
+        [POLL_FD_UMBILICAL] = { pollFdUmbilical, &pollfdumbilical },
+        [POLL_FD_STDIN]     = { pollFdStdin,     &pollfdtether },
+        [POLL_FD_STDOUT]    = { pollFdStdout,    &pollfdtether },
     };
 
     struct ChildSignalPlan
@@ -1159,6 +1273,11 @@ monitorChild(pid_t aChildPid, struct Pipe *aTermPipe, struct Pipe *aSigPipe)
     } while ( ! pollfdchild.mDead ||
                 sPollOutputEvents == pollfds[POLL_FD_STDOUT].events ||
                 sPollInputEvents  == pollfds[POLL_FD_STDIN].events);
+
+    if (closeUnixSocket(pollfdumbilical.mUmbilicalPeer))
+        terminate(
+            errno,
+            "Unable to close umbilical peer");
 
     if (unwatchProcessClock())
         terminate(
@@ -1573,7 +1692,7 @@ cmdRunCommand(char **aCmd)
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(childPid, &termPipe, &sigPipe);
+    monitorChild(childPid, &umbilicalSocket, &termPipe, &sigPipe);
 
     /* With the running child terminated, it is ok to close the
      * umbilical pipe because the child has no more use for it. */
