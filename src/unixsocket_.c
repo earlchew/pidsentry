@@ -83,38 +83,51 @@ createUnixSocket(
         goto Finally;
     self->mFile = &self->mFile_;
 
-    struct sockaddr_un sockAddr;
-
-    if ( ! aName)
+    while (1)
     {
-        createRandomName(&sockAddr);
-        sockAddr.sun_family = AF_UNIX;
-        sockAddr.sun_path[0] = 0;
-    }
-    else
-    {
-        sockAddr.sun_family = AF_UNIX;
-        memset(sockAddr.sun_path, 0, sizeof(sockAddr.sun_path));
+        struct sockaddr_un sockAddr;
 
-        if ( ! aNameLen)
-            strncpy(sockAddr.sun_path, aName, sizeof(sockAddr.sun_path));
+        if ( ! aName || 1 == aNameLen && ! *aName)
+        {
+            createRandomName(&sockAddr);
+            sockAddr.sun_family = AF_UNIX;
+            sockAddr.sun_path[0] = 0;
+        }
         else
         {
-            if (sizeof(sockAddr.sun_path) < aNameLen)
+            sockAddr.sun_family = AF_UNIX;
+            memset(sockAddr.sun_path, 0, sizeof(sockAddr.sun_path));
+
+            if ( ! aNameLen)
+                strncpy(sockAddr.sun_path, aName, sizeof(sockAddr.sun_path));
+            else
             {
-                errno = EINVAL;
-                goto Finally;
+                if (sizeof(sockAddr.sun_path) < aNameLen)
+                {
+                    errno = EINVAL;
+                    goto Finally;
+                }
+                memcpy(sockAddr.sun_path, aName, aNameLen);
             }
-            memcpy(sockAddr.sun_path, aName, aNameLen);
         }
+
+        if (bindFileSocket(self->mFile,
+                           (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
+        {
+            /* Only perform an automatic retry if requested. This is
+             * primarily to allow the unit test to verify correct
+             * operation of the retry and name generation code. */
+
+            if (EADDRINUSE == errno && ! aName)
+                continue;
+            goto Finally;
+        }
+
+        if (listenFileSocket(self->mFile, aQueueLen))
+            goto Finally;
+
+        break;
     }
-
-    if (bindFileSocket(self->mFile,
-                       (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
-        goto Finally;
-
-    if (listenFileSocket(self->mFile, aQueueLen))
-        goto Finally;
 
     rc = 0;
 
