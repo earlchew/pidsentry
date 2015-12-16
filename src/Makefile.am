@@ -68,7 +68,7 @@ k9_SOURCES   = _k9.c
 
 libk9_la_CFLAGS   = $(COMMON_CFLAGS)
 libk9_la_LIBADD   = -lrt -lpthread
-libk9_la_SOURCES  = libk9.c $(libk9__la_SOURCES)
+libk9_la_SOURCES  = libk9.c k9main.c $(libk9__la_SOURCES)
 libk9_la_VERSION  = 0:0:0
 libk9_la_LDFLAGS  =
 libk9_la_LDFLAGS += $(COMMON_LDFLAGS)

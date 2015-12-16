@@ -1,6 +1,6 @@
 /* -*- c-basic-offset:4; indent-tabs-mode:nil -*- vi: set sw=4 et: */
 /*
-// Copyright (c) 2015, Earl Chew
+// Copyright (c) 2013, Earl Chew
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,13 +26,21 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+#ifndef K9MAIN_H
+#define K9MAIN_H
 
-#include "k9main.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* -------------------------------------------------------------------------- */
-int main(int argc, char **argv)
-{
-    return k9main(argc, argv);
+int
+k9main(int argc, char** argv);
+
+/* -------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
 }
+#endif
 
-/* -------------------------------------------------------------------------- */
+#endif /* K9MAIN_H */
