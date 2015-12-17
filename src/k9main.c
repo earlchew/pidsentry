@@ -41,6 +41,7 @@
 #include "error_.h"
 #include "test_.h"
 #include "fd_.h"
+#include "dl_.h"
 
 #include "libk9.h"
 
@@ -51,8 +52,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <link.h>
-#include <dlfcn.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -72,7 +71,6 @@
 
 static const char sDevNullPath[] = DEVNULLPATH;
 
-#define K9SO_ENTRY k9main
 static const char *sK9soPath;
 
 /* -------------------------------------------------------------------------- */
@@ -1778,109 +1776,40 @@ cmdRunCommand(char **aCmd)
 }
 
 /* -------------------------------------------------------------------------- */
-struct LibK9Visitor_
+static void
+initK9soPath(void)
 {
-    uintptr_t mK9soAddr;
-    char     *mK9soPath;
-};
+    const char *k9soMain = STRINGIFY(K9SO_MAIN);
 
-static int
-initLibK9Vistor_(struct dl_phdr_info *aInfo, size_t aSize, void *aVisitor)
-{
-    int rc = -1;
+    const char *err;
 
-    struct LibK9Visitor_ *visitor = aVisitor;
+    sK9soPath = findDlSymbol(k9soMain, 0, &err);
 
-    for (unsigned ix = 0; ix < aInfo->dlpi_phnum; ++ix)
+    if ( ! sK9soPath)
     {
-        uintptr_t addr = aInfo->dlpi_addr + aInfo->dlpi_phdr[ix].p_vaddr;
-        size_t    size = aInfo->dlpi_phdr[ix].p_memsz;
-
-        if (addr <= visitor->mK9soAddr && visitor->mK9soAddr < addr + size)
-        {
-            if (aInfo->dlpi_name)
-            {
-                char *sopath = strdup(aInfo->dlpi_name);
-
-                if ( ! sopath)
-                    terminate(
-                        errno,
-                        "Unable to duplicate string '%s'", aInfo->dlpi_name);
-
-                visitor->mK9soPath = sopath;
-
-                rc = 1;
-            }
-
-            goto Finally;
-        }
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-static const char *
-initLibK9(void)
-{
-    const char *rc = 0;
-
-    /* PIC implementations resolve symbols to an intermediate thunk.
-     * Repeatedly try to resolve the symbol to find the actual
-     * implementation of the symbol. */
-
-    void *k9sosym;
-    {
-        dlerror();
-        void       *next = dlsym(RTLD_DEFAULT, STRINGIFY(K9SO_ENTRY));
-        const char *err  = dlerror();
-
         if (err)
             terminate(
                 0,
-                "Unable to find shared library " STRINGIFY(K9SO_ENTRY) " - %s",
+                "Unable to resolve shared library of symbol %s", k9soMain);
+        else
+            terminate(
+                0,
+                "Unable to resolve address of symbol %s - %s",
+                k9soMain,
                 err);
-
-        do
-        {
-            k9sosym = next;
-            next    = dlsym(RTLD_NEXT, STRINGIFY(K9SO_ENTRY));
-            err     = dlerror();
-        } while ( ! err && k9sosym != next && next);
     }
-
-    struct LibK9Visitor_ visitor =
-    {
-        .mK9soAddr = (uintptr_t) k9sosym,
-        .mK9soPath = 0,
-    };
-
-    if (0 < dl_iterate_phdr(initLibK9Vistor_, &visitor))
-        rc = visitor.mK9soPath;
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
 int
-k9main(int argc, char **argv)
+K9SO_MAIN(int argc, char **argv)
 {
     if (Process_init(argv[0]))
         terminate(
             errno,
             "Unable to initialise process state");
 
-    sK9soPath = initLibK9();
-
-    if ( ! sK9soPath)
-        terminate(
-            0,
-            "Unable to resolve " STRINGIFY(K9SO_ENTRY) " to shared library");
+    initK9soPath();
 
     struct ExitCode exitCode;
 

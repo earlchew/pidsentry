@@ -64,6 +64,7 @@ static struct ProcessLock  sProcessLock_[2];
 static struct ProcessLock *sProcessLock[2];
 static unsigned            sActiveProcessLock;
 
+static unsigned    sInit;
 static unsigned    sSigContext;
 static sigset_t    sSigSet;
 static const char *sArg0;
@@ -695,27 +696,30 @@ Finally:
 int
 Process_init(const char *aArg0)
 {
-    ensure( ! sProcessLock[sActiveProcessLock]);
-
     int rc = -1;
 
-    sArg0     = aArg0;
-    sTimeBase = monotonicTime();
+    if (1 == ++sInit)
+    {
+        ensure( ! sProcessLock[sActiveProcessLock]);
 
-    sProgramName = strrchr(sArg0, '/');
-    sProgramName = sProgramName ? sProgramName + 1 : sArg0;
+        sArg0     = aArg0;
+        sTimeBase = monotonicTime();
 
-    srandom(getpid());
+        sProgramName = strrchr(sArg0, '/');
+        sProgramName = sProgramName ? sProgramName + 1 : sArg0;
 
-    if (sigprocmask(SIG_SETMASK, 0, &sSigSet))
-        goto Finally;
+        srandom(getpid());
 
-    if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
-        goto Finally;
-    sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
+        if (sigprocmask(SIG_SETMASK, 0, &sSigSet))
+            goto Finally;
 
-    if (Error_init())
-        goto Finally;
+        if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
+            goto Finally;
+        sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
+
+        if (Error_init())
+            goto Finally;
+    }
 
     rc = 0;
 
@@ -730,18 +734,21 @@ Finally:
 int
 Process_exit(void)
 {
-    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
-
-    ensure(processLock);
-
     int rc = -1;
 
-    if (Error_exit())
-        goto Finally;
+    if (0 == --sInit)
+    {
+        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
-    if (closeProcessLock_(processLock))
-        goto Finally;
-    sProcessLock[sActiveProcessLock] = 0;
+        ensure(processLock);
+
+        if (Error_exit())
+            goto Finally;
+
+        if (closeProcessLock_(processLock))
+            goto Finally;
+        sProcessLock[sActiveProcessLock] = 0;
+    }
 
     rc = 0;
 

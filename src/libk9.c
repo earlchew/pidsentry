@@ -574,6 +574,11 @@ libk9_init(void)
 /* -------------------------------------------------------------------------- */
 static void __attribute__((destructor))
 libk9_exit()
-{ }
+{
+    if (Error_exit())
+        terminate(
+            0,
+            "Unable to finalise error module");
+}
 
 /* -------------------------------------------------------------------------- */

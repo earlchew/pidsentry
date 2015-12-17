@@ -66,15 +66,21 @@ k9_LDFLAGS   = $(COMMON_LDFLAGS) -Wl,-Map,k9.map -Wl,-cref
 k9_LDADD     = libk9_.la libk9.la -lrt -ldl
 k9_SOURCES   = _k9.c
 
-libk9_la_CFLAGS   = $(COMMON_CFLAGS)
-libk9_la_LIBADD   = -lrt -lpthread
-libk9_la_SOURCES  = libk9.c k9main.c $(libk9__la_SOURCES)
-libk9_la_VERSION  = 0:0:0
-libk9_la_LDFLAGS  =
-libk9_la_LDFLAGS += $(COMMON_LDFLAGS)
-libk9_la_LDFLAGS += -version-info $(libk9_la_VERSION) -release $(VERSION)
-libk9_la_LDFLAGS += -export-symbols libk9.sym
-libk9_la_LDFLAGS += -Wl,-Map,libk9.map -Wl,-cref
+libk9_la_CFLAGS       = $(COMMON_CFLAGS)
+libk9_la_LIBADD       = -lrt -lpthread
+libk9_la_SOURCES      = libk9.c k9main.c $(libk9__la_SOURCES)
+libk9_la_DEPENDENCIES = libk9.exp
+libk9_la_VERSION      = 0:0:0
+libk9_la_LDFLAGS      =
+libk9_la_LDFLAGS     += $(COMMON_LDFLAGS)
+libk9_la_LDFLAGS     += -version-info $(libk9_la_VERSION) -release $(VERSION)
+libk9_la_LDFLAGS     += -export-symbols libk9.exp
+libk9_la_LDFLAGS     += -Wl,-Map,libk9.map -Wl,-cref
+
+libk9.exp:	libk9.sym
+	$(CPP) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
+	    $(AM_CPPFLAGS) $(CPPFLAGS) -x c-header "$<" | tail -1 > "$@.new"
+	mv -- "$@.new" "$@"
 
 _splicetest_SOURCES = _splicetest.c
 

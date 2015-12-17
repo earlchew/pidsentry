@@ -308,56 +308,56 @@ runTests()
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-        sh -c '
-          /bin/echo $$
-          exec >/dev/null
-          exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
-              trap '\''exit 1'\'''"$SIGNALS"'
-              while : ; do sleep 1 ; done"' |
-        {
-           read REPLY
-           while kill -0 "$REPLY" 2>&- ; do
-               kill -"$SIG" "$REPLY"
-               date ; /bin/echo kill -"$SIG" "$REPLY"
-               kill -0 "$REPLY" 2>&- || break
-               date
-               sleep 1
-           done >&2
-           ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
-           kill -9 -"$REPLY" 2>&- || :
-           /bin/echo OK
-        } | {
-            read REPLY
-            [ x"$REPLY" = x"OK" ]
-        }
+      sh -c '
+        /bin/echo $$
+        exec >/dev/null
+        exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+            trap '\''exit 1'\'''"$SIGNALS"'
+            while : ; do sleep 1 ; done"' |
+      {
+         read REPLY
+         while kill -0 "$REPLY" 2>&- ; do
+             kill -"$SIG" "$REPLY"
+             date ; /bin/echo kill -"$SIG" "$REPLY"
+             kill -0 "$REPLY" 2>&- || break
+             date
+             sleep 1
+         done >&2
+         ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
+         kill -9 -"$REPLY" 2>&- || :
+         /bin/echo OK
+      } | {
+          read REPLY
+          [ x"$REPLY" = x"OK" ]
+      }
     done
 
     testCase 'Slow signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-        sh -c '
-          /bin/echo $$
-          exec >/dev/null
-          exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
-              trap '\''exit 1'\'''"$SIGNALS"'
-              while : ; do sleep 1 ; done"' |
-        {
-           read REPLY
-           sleep 1
-           while kill -0 "$REPLY" 2>&- ; do
-               kill -"$SIG" "$REPLY"
-               date ; /bin/echo kill -"$SIG" "$REPLY"
-               kill -0 "$REPLY" 2>&- || break
-               date
-               sleep 1
-           done >&2
-           ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
-           kill -9 -"$REPLY" 2>&- || :
-           /bin/echo OK
-        } | {
-            read REPLY
-            [ x"$REPLY" = x"OK" ]
-        }
+      sh -c '
+        /bin/echo $$
+        exec >/dev/null
+        exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
+            trap '\''exit 1'\'''"$SIGNALS"'
+            while : ; do sleep 1 ; done"' |
+      {
+         read REPLY
+         sleep 1
+         while kill -0 "$REPLY" 2>&- ; do
+             kill -"$SIG" "$REPLY"
+             date ; /bin/echo kill -"$SIG" "$REPLY"
+             kill -0 "$REPLY" 2>&- || break
+             date
+             sleep 1
+         done >&2
+         ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
+         kill -9 -"$REPLY" 2>&- || :
+         /bin/echo OK
+      } | {
+          read REPLY
+          [ x"$REPLY" = x"OK" ]
+      }
     done
 
     testCase 'Fixed termination deadline'
@@ -437,8 +437,8 @@ runTests()
 
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
-        /usr/bin/time -p libtool --mode=execute $VALGRIND ./k9 -T -t 4 -- sh -c '
-            trap "" 15 ; sleep 6' 2>&1 | grep real)
+      /usr/bin/time -p libtool --mode=execute $VALGRIND ./k9 -T -t 4 -- sh -c '
+        trap "" 15 ; sleep 6' 2>&1 | grep real)
     REPLY=${REPLY%%.*}
     REPLY=${REPLY##* }
     [ "$REPLY" -ge 6 ]

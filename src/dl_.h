@@ -26,19 +26,18 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef K9MAIN_H
-#define K9MAIN_H
+#ifndef DL_H
+#define DL_H
+
+#include <inttypes.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-#define K9SO_MAIN k9main
-
-/* -------------------------------------------------------------------------- */
-int
-k9main(int argc, char** argv);
+const char *
+findDlSymbol(const char *aSymName, uintptr_t *aSymAddr, const char **aErr);
 
 /* -------------------------------------------------------------------------- */
 
@@ -46,4 +45,4 @@ k9main(int argc, char** argv);
 }
 #endif
 
-#endif /* K9MAIN_H */
+#endif /* DL_H */

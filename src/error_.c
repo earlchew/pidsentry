@@ -42,6 +42,9 @@
 #include <sys/syscall.h>
 
 /* -------------------------------------------------------------------------- */
+static unsigned sInit;
+
+/* -------------------------------------------------------------------------- */
 static pid_t
 gettid(void)
 {
@@ -248,10 +251,13 @@ Error_init(void)
 {
     int rc = -1;
 
-    sPrintBuf.mFile = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize);
+    if (1 == ++sInit)
+    {
+        sPrintBuf.mFile = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize);
 
-    if ( ! sPrintBuf.mFile)
-        goto Finally;
+        if ( ! sPrintBuf.mFile)
+            goto Finally;
+    }
 
     rc = 0;
 
@@ -268,14 +274,17 @@ Error_exit(void)
 {
     int rc = -1;
 
-    if (fclose(sPrintBuf.mFile))
-        goto Finally;
+    if (0 == --sInit)
+    {
+        if (fclose(sPrintBuf.mFile))
+            goto Finally;
 
-    free(sPrintBuf.mBuf);
+        free(sPrintBuf.mBuf);
 
-    sPrintBuf.mFile = 0;
-    sPrintBuf.mBuf  = 0;
-    sPrintBuf.mSize = 0;
+        sPrintBuf.mFile = 0;
+        sPrintBuf.mBuf  = 0;
+        sPrintBuf.mSize = 0;
+    }
 
     rc = 0;
 
