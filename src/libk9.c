@@ -32,6 +32,7 @@
 #include "parse_.h"
 #include "error_.h"
 #include "fd_.h"
+#include "env_.h"
 #include "thread_.h"
 #include "process_.h"
 #include "unixsocket_.h"
@@ -65,38 +66,120 @@ enum EnvKind
     ENV_K9_ADDR,
     ENV_K9_PID,
     ENV_K9_TIME,
-    ENV_K9_DEBUG,
     ENV_KINDS
 };
 
 struct Env
 {
     const char *mName;
-    char       *mEnv;
+    const char *mValue;
 };
 
 /* -------------------------------------------------------------------------- */
+static int
+rankEnv(const void *aLhs, const void *aRhs)
+{
+    const struct Env * const *lhs = aLhs;
+    const struct Env * const *rhs = aRhs;
+
+    return strcmp((*lhs)->mName, (*rhs)->mName);
+}
+
+struct EnvEntry
+{
+    const char *mEnv;
+    size_t      mNameLen;
+    const char *mValue;
+};
+
+static int
+rankEnvEntry(const void *aLhs, const void *aRhs)
+{
+    const struct EnvEntry *lhs = aLhs;
+    const struct EnvEntry *rhs = aRhs;
+
+    size_t namelen =
+        lhs->mNameLen < rhs->mNameLen ? lhs->mNameLen : rhs->mNameLen;
+
+    int rank = strncmp(lhs->mEnv, rhs->mEnv, namelen);
+
+    if ( ! rank)
+    {
+        if (lhs->mNameLen < rhs->mNameLen)
+            rank = -1;
+        else if (lhs->mNameLen > rhs->mNameLen)
+            rank = +1;
+    }
+
+    return rank;
+}
+
+static int
+rankEnvName(const struct Env *aLhs, const struct EnvEntry *aRhs)
+{
+    int rank = strncmp(aLhs->mName, aRhs->mEnv, aRhs->mNameLen);
+
+    return ! rank && aLhs->mName[aRhs->mNameLen] ? 1 : rank;
+}
+
 static void
 initEnv(struct Env *aEnv, size_t aEnvLen, char **envp)
 {
-    for (unsigned ex = 0; envp[ex]; ++ex)
+    /* Create two sorted lists of environment variables: the list of
+     * requested variables, and the list of available variables. Once
+     * formed perform a single pass through both lists to locate
+     * the requested variables that are available. */
+
+    struct Env *sortedEnv[aEnvLen];
+
+    for (size_t ex = 0; ex < aEnvLen; ++ex)
+        sortedEnv[ex] = &aEnv[ex];
+
+    qsort(sortedEnv, aEnvLen, sizeof(sortedEnv[0]), rankEnv);
+
+    size_t environLen = 0;
+    while (envp[environLen])
+        ++environLen;
+
+    struct EnvEntry sortedEnviron[environLen];
+
+    for (size_t ex = 0; envp[ex]; ++ex)
     {
-        char *eqptr = strchr(envp[ex], '=');
+        char *eqPtr = strchr(envp[ex], '=');
 
-        if ( ! eqptr)
-            continue;
+        if ( ! eqPtr)
+            eqPtr = strchr(envp[ex], 0);
 
-        const char *name    = envp[ex];
-        size_t      namelen = eqptr - envp[ex];
+        sortedEnviron[ex].mEnv     = envp[ex];
+        sortedEnviron[ex].mNameLen = eqPtr - envp[ex];
+        sortedEnviron[ex].mValue   = *eqPtr ? eqPtr+1 : eqPtr;
+    }
 
-        for (unsigned ix = 0; aEnvLen > ix; ++ix)
+    qsort(sortedEnviron, environLen, sizeof(sortedEnviron[0]), rankEnvEntry);
+
+    size_t envix     = 0;
+    size_t environix = 0;
+
+    while (envix < NUMBEROF(sortedEnv) && environix < NUMBEROF(sortedEnviron))
+    {
+        int rank = rankEnvName(sortedEnv[envix],
+                               &sortedEnviron[environix]);
+
+        if (rank < 0)
+            ++envix;
+        else if (rank > 0)
+            ++environix;
+        else
         {
-            if ( ! strncmp(aEnv[ix].mName, name, namelen) &&
-                 ! aEnv[ix].mName[namelen])
-            {
-                aEnv[ix].mEnv = eqptr + 1;
-                break;
-            }
+            sortedEnv[envix]->mValue = sortedEnviron[environix].mValue;
+
+            debug(1,
+                  "Env - %s '%s'",
+                  sortedEnv[envix]->mName,
+                  sortedEnv[envix]->mValue);
+
+            ++envix;
+            ++environix;
         }
     }
 }
@@ -112,7 +195,7 @@ purgeEnv(void)
      * will likely mutate as each is purged. Once recorded, purge each
      * of the matching variables. */
 
-    unsigned envLen = 0;
+    size_t envLen = 0;
 
     for (unsigned ix = 0; environ[ix]; ++ix)
     {
@@ -122,15 +205,16 @@ purgeEnv(void)
 
     const char *env[envLen];
 
-    for (unsigned ix = 0, ex = 0; environ[ix]; ++ix)
+    for (size_t ix = 0, ex = 0; environ[ix]; ++ix)
     {
         if ( ! strncmp(envPrefix, environ[ix], sizeof(envPrefix)-1))
             env[ex++] = environ[ix];
     }
 
-    for (unsigned ex = 0; ex < envLen; ++ex)
+    for (size_t ex = 0; ex < envLen; ++ex)
     {
         const char *eqPtr = strchr(env[ex], '=');
+
         if ( ! eqPtr)
             continue;
 
@@ -140,7 +224,7 @@ purgeEnv(void)
         memcpy(name, env[ex], nameLen);
         name[nameLen-1] = 0;
 
-        if (unsetenv(name))
+        if (deleteEnv(name))
             terminate(
                 errno, "Unable to remove environment variable '%s'", name);
     }
@@ -148,7 +232,7 @@ purgeEnv(void)
 
 /* -------------------------------------------------------------------------- */
 static void
-stripEnvPreload(struct Env *aPreload, const char *aLibrary)
+stripEnvPreload(struct Env *aPreloadEnv, const char *aLibrary)
 {
     while (aLibrary)
     {
@@ -162,36 +246,52 @@ stripEnvPreload(struct Env *aPreload, const char *aLibrary)
 
         size_t sopathlen = strlen(sopath);
 
-        char *preloadname = aPreload->mEnv;
-
-        if ( ! preloadname)
+        if ( ! aPreloadEnv->mValue)
             break;
 
         do
         {
-            while (*preloadname && (*preloadname == ' ' || *preloadname == ':'))
-                ++preloadname;
+            char sopreloadtext[1 + strlen(aPreloadEnv->mValue)];
 
-            if ( ! *preloadname)
+            char *sopreload = sopreloadtext;
+
+            strcpy(sopreload, aPreloadEnv->mValue);
+
+            while (*sopreload && (*sopreload == ' ' || *sopreload == ':'))
+                ++sopreload;
+
+            if ( ! *sopreload)
                 break;
 
-            if ( ! strncmp(preloadname, sopath, sopathlen) &&
-                 ( ! preloadname[sopathlen] ||
-                   preloadname[sopathlen] == ' ' ||
-                   preloadname[sopathlen] == ':'))
+            if ( ! strncmp(sopreload, sopath, sopathlen) &&
+                 ( ! sopreload[sopathlen] ||
+                   sopreload[sopathlen] == ' ' ||
+                   sopreload[sopathlen] == ':'))
             {
                 size_t tail = sopathlen;
 
-                while (preloadname[tail] &&
-                       (preloadname[tail] == ' ' || preloadname[tail] == ':'))
+                while (sopreload[tail] &&
+                       (sopreload[tail] == ' ' || sopreload[tail] == ':'))
                     ++tail;
 
                 for (unsigned ix = 0; ; ++ix)
                 {
-                    preloadname[ix] = preloadname[tail + ix];
-                    if ( ! preloadname[ix])
+                    sopreload[ix] = sopreload[tail + ix];
+                    if ( ! sopreload[ix])
                         break;
                 }
+
+                const char *strippedPreload =
+                    setEnvString(aPreloadEnv->mName, sopreloadtext);
+
+                if ( ! strippedPreload)
+                    terminate(
+                        errno,
+                        "Unable to prune %s '%s'",
+                        aPreloadEnv->mName,
+                        aPreloadEnv->mValue);
+
+                aPreloadEnv->mValue = strippedPreload;
             }
 
         } while (0);
@@ -583,15 +683,14 @@ libk9_init(void)
         [ENV_K9_ADDR]    = { "K9_ADDR" },
         [ENV_K9_PID]     = { "K9_PID" },
         [ENV_K9_TIME]    = { "K9_TIME" },
-        [ENV_K9_DEBUG]   = { "K9_DEBUG" },
     };
 
-    initEnv(env, NUMBEROF(env), __environ);
+    initEnv(env, NUMBEROF(env), environ);
 
-    if (env[ENV_K9_PID].mEnv)
+    if (env[ENV_K9_PID].mValue)
     {
         pid_t pid;
-        if ( ! parsePid(env[ENV_K9_PID].mEnv, &pid))
+        if ( ! parsePid(env[ENV_K9_PID].mValue, &pid))
         {
             if (pid == getpid())
             {
@@ -600,7 +699,7 @@ libk9_init(void)
                  * leave the environment variables in place to
                  * monitor the new program . */
 
-                watchUmbilical(env[ENV_K9_ADDR].mEnv);
+                watchUmbilical(env[ENV_K9_ADDR].mValue);
             }
             else
             {
@@ -609,7 +708,7 @@ libk9_init(void)
                  * library. */
 
                 purgeEnv();
-                stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
+                stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mValue);
             }
         }
     }

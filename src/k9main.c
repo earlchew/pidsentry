@@ -65,6 +65,7 @@
  * cmdRunCommand() is too big, break it up
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Check for useless #include in *.c
+ * Provide option to use PR_SET_PDEATHSIG instead of umbilical
  */
 
 #define DEVNULLPATH "/dev/null"
