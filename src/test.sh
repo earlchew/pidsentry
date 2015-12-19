@@ -182,10 +182,8 @@ runTests()
     done
 
     testCase 'Environment propagation'
-    testOutput 'K9_ADDR=' = '"$(
-        k9 -- sh -c '\''date ; printenv'\'' | grep K9_ADDR)"'
-    testOutput '""' = '"$(
-        k9 -- sh -c '\''date ; printenv'\'' | grep K9_DEBUG)"'
+    testOutput '0' = '"$(
+        k9 -- sh -c '\''date ; printenv'\'' | grep "^K9_" | wc -l)"'
 
     testCase 'Exit code propagation'
     testExit 2 k9 -T -- sh -c 'exit 2'

@@ -103,6 +103,51 @@ initEnv(struct Env *aEnv, size_t aEnvLen, char **envp)
 
 /* -------------------------------------------------------------------------- */
 static void
+purgeEnv(void)
+{
+    static const char envPrefix[] = "K9_";
+
+    /* Count the number of matching environment variables, then record
+     * a pointer to each of the matching variables because the array
+     * will likely mutate as each is purged. Once recorded, purge each
+     * of the matching variables. */
+
+    unsigned envLen = 0;
+
+    for (unsigned ix = 0; environ[ix]; ++ix)
+    {
+        if ( ! strncmp(envPrefix, environ[ix], sizeof(envPrefix)-1))
+            ++envLen;
+    }
+
+    const char *env[envLen];
+
+    for (unsigned ix = 0, ex = 0; environ[ix]; ++ix)
+    {
+        if ( ! strncmp(envPrefix, environ[ix], sizeof(envPrefix)-1))
+            env[ex++] = environ[ix];
+    }
+
+    for (unsigned ex = 0; ex < envLen; ++ex)
+    {
+        const char *eqPtr = strchr(env[ex], '=');
+        if ( ! eqPtr)
+            continue;
+
+        size_t nameLen = 1 + eqPtr - env[ex];
+
+        char name[nameLen];
+        memcpy(name, env[ex], nameLen);
+        name[nameLen-1] = 0;
+
+        if (unsetenv(name))
+            terminate(
+                errno, "Unable to remove environment variable '%s'", name);
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static void
 stripEnvPreload(struct Env *aPreload, const char *aLibrary)
 {
     while (aLibrary)
@@ -563,8 +608,7 @@ libk9_init(void)
                  * processes or programs do not need the parasite
                  * library. */
 
-                env[ENV_K9_ADDR].mEnv[0] = 0;
-
+                purgeEnv();
                 stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mEnv);
             }
         }
