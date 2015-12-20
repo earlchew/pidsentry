@@ -66,6 +66,9 @@
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Check for useless #include in *.c
  * Provide option to use PR_SET_PDEATHSIG instead of umbilical
+ * Correct monitoring child scheduling of competing deadlines
+ * Fix logging in parasite printing null for program name
+ * Fix vgcore being dropped everywhere
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -508,6 +511,31 @@ createPollEventText(
 }
 
 /* -------------------------------------------------------------------------- */
+struct StatusCodeText
+{
+    char mText[sizeof(((siginfo_t *) 0)->si_code) * CHAR_BIT + sizeof("-")];
+};
+
+static const char *
+createStatusCodeText(
+    struct StatusCodeText *aStatusCodeText, const siginfo_t *aSigInfo)
+{
+    switch (aSigInfo->si_code)
+    {
+    default:
+        sprintf(aStatusCodeText->mText, "%d", (int) aSigInfo->si_code);
+        return aStatusCodeText->mText;
+
+    case CLD_STOPPED:   return "stopped";
+    case CLD_EXITED:    return "exited";
+    case CLD_KILLED:    return "killed";
+    case CLD_DUMPED:    return "dumped";
+    case CLD_TRAPPED:   return "trapped";
+    case CLD_CONTINUED: return "continued";
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 struct PollFdClock
 {
     enum PollFdKind mKind;
@@ -761,6 +789,8 @@ struct PollFdTether
     {
         int      mPeriod_ms;    /* Timeout period if not -1 */
         uint64_t mSince_ns;     /* Last activity on tether */
+        unsigned mCycleCount;   /* Current number of cycles */
+        unsigned mCycleLimit;   /* Number of cycles before triggering */
         bool     mTriggered;    /* Timeout triggered */
     } mTimeout;
 
@@ -774,6 +804,46 @@ struct PollFdTether
 };
 
 static void
+resetPollFdTetherTimeout(struct PollFdTether *self)
+{
+    self->mTimeout.mSince_ns   = lapTimeSince(0, 0);
+    self->mTimeout.mCycleCount = 0;
+}
+
+static bool
+checkPollFdTetherTimeout(struct PollFdTether *self)
+{
+    bool checkTimeout = true;
+
+    if ( ! self->mTimeout.mTriggered)
+    {
+        int elapsedTime_ms =
+            toMilliSeconds(
+                lapTimeSince(&self->mTimeout.mSince_ns, 0));
+
+        debug(1,
+              "inactivity clock cycle %u elapsed %dms",
+              self->mTimeout.mCycleCount,
+              elapsedTime_ms);
+
+        if (elapsedTime_ms < self->mTimeout.mPeriod_ms)
+            checkTimeout = false;
+        else
+        {
+            self->mTimeout.mSince_ns = lapTimeSince(0, 0);
+
+            if (++self->mTimeout.mCycleCount >= self->mTimeout.mCycleLimit)
+            {
+                self->mTimeout.mCycleCount = self->mTimeout.mCycleLimit;
+                self->mTimeout.mTriggered  = true;
+            }
+        }
+    }
+
+    return checkTimeout;
+}
+
+static void
 pollFdStdin(void *self_, struct pollfd *aPollFds)
 {
     struct PollFdTether *self = self_;
@@ -783,7 +853,7 @@ pollFdStdin(void *self_, struct pollfd *aPollFds)
     ensure(STDIN_FILENO == aPollFds[POLL_FD_STDIN].fd);
     ensure( ! self->mClosed.mStdin);
 
-    self->mTimeout.mSince_ns = lapTimeSince(0, 0);
+    resetPollFdTetherTimeout(self);
 
     struct PollEventText pollEventText;
     debug(
@@ -816,7 +886,7 @@ pollFdStdout(void *self_, struct pollfd *aPollFds)
     ensure(STDOUT_FILENO == aPollFds[POLL_FD_STDOUT].fd);
     ensure( ! self->mClosed.mStdout);
 
-    self->mTimeout.mSince_ns = lapTimeSince(0, 0);
+    resetPollFdTetherTimeout(self);
 
     struct PollEventText pollEventText;
     debug(
@@ -977,15 +1047,23 @@ monitorChild(pid_t              aChildPid,
     if ( ! timeout_ms)
         timeout_ms = -1;
 
+    /* Divide the timeout into two cycles so that if the child process is
+     * stopped, the first cycle will have a chance to detect it and
+     * defer the timeout. */
+
+    const unsigned timeoutCycles = 2;
+
     struct PollFdTether pollfdtether =
     {
         .mKind = POLL_FD_STDIN,
 
         .mTimeout =
         {
-            .mPeriod_ms = timeout_ms,
-            .mSince_ns  = lapTimeSince(0, 0),
-            .mTriggered = false,
+            .mCycleCount = 0,
+            .mCycleLimit = timeoutCycles,
+            .mPeriod_ms  = timeout_ms / timeoutCycles,
+            .mSince_ns   = lapTimeSince(0, 0),
+            .mTriggered  = false,
         },
 
         .mClosed =
@@ -1094,8 +1172,9 @@ monitorChild(pid_t              aChildPid,
     /* It would be so much easier to use non-blocking IO, but O_NONBLOCK
      * is an attribute of the underlying open file, not of each
      * file descriptor. Since stdin and stdout are typically inherited
-     * from the parent, setting O_NONBLOCK affects all file descriptors
-     * referring to the same open file. */
+     * from the parent, setting O_NONBLOCK would affect all file descriptors
+     * referring to the same open file, so this approach cannot be
+     * dinner. */
 
     do
     {
@@ -1164,7 +1243,8 @@ monitorChild(pid_t              aChildPid,
 
         /* If a timeout is expected and a timeout occurred, and the
          * event loop was waiting for data from the child process,
-         * then declare the child terminated. */
+         * then declare the child terminated, except if the
+         * child is stopped. */
 
         if (-1 != pollfdtether.mTimeout.mPeriod_ms &&
             ! pollfdtether.mTimeout.mTriggered)
@@ -1175,17 +1255,53 @@ monitorChild(pid_t              aChildPid,
 
             debug(1, "inactivity clock %dms", elapsedTime_ms);
 
-            if (elapsedTime_ms >= pollfdtether.mTimeout.mPeriod_ms)
+            while (checkPollFdTetherTimeout(&pollfdtether))
             {
-                debug(0, "timeout after %ds", gOptions.mTimeout_s);
+                siginfo_t siginfo;
 
-                pollfdtether.mTimeout.mTriggered = true;
-
-                if ( ! termination.mTriggered)
+                siginfo.si_pid = 0;
+                if (waitid(P_PID,
+                           aChildPid,
+                           &siginfo,
+                           WSTOPPED | WNOHANG | WNOWAIT))
                 {
-                    termination.mTriggered = -1;
-                    termination.mSince_ns  = lapTimeSince(0, 0);
+                    if (ECHILD != errno)
+                        terminate(
+                            errno,
+                            "Unable to check for status of child pid %jd",
+                            (intmax_t) aChildPid);
+
+                    /* Fall through to trigger timeout */
                 }
+                else if (siginfo.si_pid == aChildPid &&
+                         (siginfo.si_code == CLD_TRAPPED ||
+                          siginfo.si_code == CLD_STOPPED))
+                {
+                    struct StatusCodeText statusCodeText;
+
+                    debug(
+                        0,
+                        "deferred timeout after %ds with child status %s",
+                        gOptions.mTimeout_s,
+                        createStatusCodeText(&statusCodeText, &siginfo));
+
+                    resetPollFdTetherTimeout(&pollfdtether);
+
+                    break;
+                }
+
+                if (pollfdtether.mTimeout.mTriggered)
+                {
+                    debug(0, "timeout after %ds", gOptions.mTimeout_s);
+
+                    if ( ! termination.mTriggered)
+                    {
+                        termination.mTriggered = -1;
+                        termination.mSince_ns  = lapTimeSince(0, 0);
+                    }
+                }
+
+                break;
             }
         }
 
