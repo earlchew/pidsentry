@@ -303,6 +303,15 @@ runTests()
       })
     [ x"$REPLY" = x$((128 + 9)) ]
 
+    testCase 'Stopped child'
+    testOutput OK = '"$(k9 -i -d -t 2 -D 2 -- sh -c '\''kill -STOP $$'\'' | {
+        read PARENT
+        read CHILD
+        sleep 8
+        kill -CONT $CHILD || { echo NOTOK ; exit 1 ; }
+        echo OK
+    })"'
+
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
