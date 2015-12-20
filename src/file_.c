@@ -331,8 +331,25 @@ waitFileReady_(const struct File *self,
 
     const uint64_t timeout_ns = aTimeout_ns ? *aTimeout_ns : 0;
 
-    while ( ! deadlineTimeExpired(&since, timeout_ns, &remaining))
+    while (1)
     {
+        uint64_t latchedMonotonic = monotonicTime();
+
+        /* In case the process is stopped after the time is
+         * latched, check once more if the fds are ready
+         * before checking the deadline. */
+
+        int events = poll(pollfd, NUMBEROF(pollfd), 0);
+        if (-1 == events)
+            goto Finally;
+
+        if (events)
+            break;
+
+        if (deadlineTimeExpired(&latchedMonotonic,
+                                &since, timeout_ns, &remaining))
+            break;
+
         int timeout_ms;
 
         if ( ! aTimeout_ns)

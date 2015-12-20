@@ -67,14 +67,22 @@ wallclockTime(void)
 /* -------------------------------------------------------------------------- */
 bool
 deadlineTimeExpired(
+    const uint64_t *self,
     uint64_t *aSince, uint64_t aDuration_ns, uint64_t *aRemaining_ns)
 {
     bool     expired;
     uint64_t remaining;
+    uint64_t monotonictime;
+
+    if ( ! self)
+    {
+        monotonictime = monotonicTime();
+        self          = &monotonictime;
+    }
 
     if (*aSince)
     {
-        uint64_t elapsed = monotonicTime() - *aSince;
+        uint64_t elapsed = *self - *aSince;
 
         if (elapsed >= aDuration_ns)
         {
@@ -94,13 +102,7 @@ deadlineTimeExpired(
          * caller gets to execute at least once before the deadline
          * expires. */
 
-        uint64_t since;
-
-        do
-            since = monotonicTime();
-        while ( ! since);
-
-        *aSince = since;
+        *aSince = *self ? *self : 1;
 
         remaining = aDuration_ns;
         expired   = false;
@@ -149,7 +151,7 @@ monotonicSleep(uint64_t aDuration)
     uint64_t since = 0;
     uint64_t remaining;
 
-    while ( ! deadlineTimeExpired(&since, aDuration, &remaining))
+    while ( ! deadlineTimeExpired(0, &since, aDuration, &remaining))
     {
         /* This approach avoids the problem of drifting sleep duration
          * caused by repeated signal delivery by fixing the wake time

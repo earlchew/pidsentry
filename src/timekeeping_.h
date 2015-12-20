@@ -92,6 +92,7 @@ lapTimeSince(uint64_t *aSince, uint64_t aPeriod_ns);
 /* -------------------------------------------------------------------------- */
 bool
 deadlineTimeExpired(
+    const uint64_t *self,
     uint64_t *aSince, uint64_t aDuration_ns, uint64_t *aRemaining_ns);
 
 /* -------------------------------------------------------------------------- */

@@ -370,7 +370,23 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
 
         do
         {
+            uint64_t latchedMonotonic = monotonicTime();
+
+            /* In case the process is stopped after the time is
+             * latched, check once more if the lock can be acquired
+             * before checking the deadline. */
+
+            if ( ! flock(aFd, aType | LOCK_NB))
+                break;
+
+            if (EINTR != errno && EWOULDBLOCK != errno)
+            {
+                err = errno ? errno : EPERM;
+                break;
+            }
+
             if (deadlineTimeExpired(
+                    &latchedMonotonic,
                     &deadlineTime, milliSeconds(aMilliSeconds), 0))
             {
                 err = EDEADLOCK;

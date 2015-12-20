@@ -55,7 +55,7 @@ TEST(TimeKeepingTest, DeadlineRunsOnce)
 {
     uint64_t since = 0;
 
-    EXPECT_FALSE(deadlineTimeExpired(&since, 0, 0));
+    EXPECT_FALSE(deadlineTimeExpired(0, &since, 0, 0));
 }
 
 TEST(TimeKeepingTest, DeadlineExpires)
@@ -66,12 +66,12 @@ TEST(TimeKeepingTest, DeadlineExpires)
     uint64_t remaining;
 
     auto startTimeOuter = monotonicTime();
-    EXPECT_FALSE(deadlineTimeExpired(&since, duration_ns, &remaining));
+    EXPECT_FALSE(deadlineTimeExpired(0, &since, duration_ns, &remaining));
     EXPECT_EQ(duration_ns, remaining);
     auto startTimeInner = monotonicTime();
 
     bool firstiteration = true;
-    while ( ! deadlineTimeExpired(&since, duration_ns, &remaining))
+    while ( ! deadlineTimeExpired(0, &since, duration_ns, &remaining))
     {
         EXPECT_TRUE(firstiteration || remaining);
         firstiteration = false;
