@@ -35,7 +35,7 @@
 extern "C" {
 #endif
 
-struct NanoSeconds;
+struct Duration;
 
 struct sockaddr_un;
 struct ucred;
@@ -72,20 +72,20 @@ int
 shutdownUnixSocketWriter(struct UnixSocket *self);
 
 int
-waitUnixSocketWriteReady(const struct UnixSocket  *self,
-                         const struct NanoSeconds *aTimeout);
+waitUnixSocketWriteReady(const struct UnixSocket *self,
+                         const struct Duration  *aTimeout);
 
 int
-waitUnixSocketReadReady(const struct UnixSocket  *self,
-                        const struct NanoSeconds *aTimeout);
+waitUnixSocketReadReady(const struct UnixSocket *self,
+                        const struct Duration   *aTimeout);
 
 int
 ownUnixSocketPeerName(const struct UnixSocket *self,
-                      struct sockaddr_un *aAddr);
+                      struct sockaddr_un      *aAddr);
 
 int
 ownUnixSocketName(const struct UnixSocket *self,
-                  struct sockaddr_un *aAddr);
+                  struct sockaddr_un      *aAddr);
 
 int
 ownUnixSocketError(const struct UnixSocket *self, int *aError);

@@ -235,9 +235,12 @@ closeFileOnExec(struct File *self, unsigned aCloseOnExec)
 
 /* -------------------------------------------------------------------------- */
 int
-lockFile(struct File *self, int aType, const struct FileLockTimeout *aTimeout)
+lockFile(struct File *self, int aType, const struct Duration *aTimeout)
 {
-    return lockFd(self->mFd, aType, aTimeout ? aTimeout->mMilliSeconds : 30000);
+    return lockFd(
+        self->mFd,
+        aType,
+        aTimeout ? *aTimeout : duration(NSECS(Seconds(30))));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -312,9 +315,9 @@ listenFileSocket(struct File *self, unsigned aQueueLen)
 
 /* -------------------------------------------------------------------------- */
 static int
-waitFileReady_(const struct File        *self,
-               unsigned                  aPollMask,
-               const struct NanoSeconds *aTimeout)
+waitFileReady_(const struct File     *self,
+               unsigned               aPollMask,
+               const struct Duration *aTimeout)
 {
     int rc = -1;
 
@@ -328,10 +331,10 @@ waitFileReady_(const struct File        *self,
     };
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
-    struct NanoSeconds    remaining;
+    struct Duration       remaining;
 
-    const struct NanoSeconds timeout =
-        NanoSeconds(aTimeout ? aTimeout->ns : 0);
+    const struct Duration timeout =
+        aTimeout ? *aTimeout : duration(NanoSeconds(0));
 
     while (1)
     {
@@ -360,7 +363,7 @@ waitFileReady_(const struct File        *self,
             if (deadlineTimeExpired(&since, timeout, &remaining, &tm))
                 break;
 
-            uint64_t remaining_ms = MSECS(remaining).ms;
+            uint64_t remaining_ms = MSECS(remaining.duration).ms;
 
             timeout_ms = remaining_ms;
 
@@ -396,15 +399,15 @@ Finally:
 }
 
 int
-waitFileWriteReady(const struct File        *self,
-                   const struct NanoSeconds *aTimeout)
+waitFileWriteReady(const struct File     *self,
+                   const struct Duration *aTimeout)
 {
     return waitFileReady_(self, POLLOUT, aTimeout);
 }
 
 int
-waitFileReadReady(const struct File        *self,
-                  const struct NanoSeconds *aTimeout)
+waitFileReadReady(const struct File     *self,
+                  const struct Duration *aTimeout)
 {
     return waitFileReady_(self, POLLPRI | POLLIN, aTimeout);
 }

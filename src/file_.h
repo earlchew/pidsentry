@@ -42,18 +42,13 @@ struct stat;
 struct sockaddr;
 struct ucred;
 
-struct NanoSeconds;
+struct Duration;
 
 struct File
 {
     int          mFd;
     struct File *mNext;
     struct File *mPrev;
-};
-
-struct FileLockTimeout
-{
-    unsigned mMilliSeconds;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -100,12 +95,12 @@ ftruncateFile(struct File *self, off_t aLength);
 
 /* -------------------------------------------------------------------------- */
 int
-waitFileWriteReady(const struct File *self,
-                   const struct NanoSeconds *aTimeout);
+waitFileWriteReady(const struct File     *self,
+                   const struct Duration *aTimeout);
 
 int
-waitFileReadReady(const struct File *self,
-                  const struct NanoSeconds *aTimeout);
+waitFileReadReady(const struct File     *self,
+                  const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */
 int
@@ -148,13 +143,10 @@ ownFileSocketPeerCred(const struct File *self, struct ucred *aCred);
 
 /* -------------------------------------------------------------------------- */
 int
-lockFile(struct File *self, int aType, const struct FileLockTimeout *aTimeout);
+lockFile(struct File *self, int aType, const struct Duration *aTimeout);
 
 int
 unlockFile(struct File *self);
-
-#define FILE_LOCK_MILLISECONDS(aTimeout) \
-    ( & ((struct FileLockTimeout) { .mMilliSeconds = (aTimeout) }))
 
 /* -------------------------------------------------------------------------- */
 

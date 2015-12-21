@@ -29,6 +29,8 @@
 #ifndef FD_H
 #define FD_H
 
+#include "timekeeping_.h"
+
 #include <stdbool.h>
 
 #include <sys/types.h>
@@ -66,7 +68,7 @@ ssize_t
 readFd(int aFd, char *aBuf, size_t aLen);
 
 int
-lockFd(int aFd, int aType, unsigned aMilliSeconds);
+lockFd(int aFd, int aType, struct Duration aTimeout);
 
 int
 unlockFd(int aFd);

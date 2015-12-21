@@ -76,7 +76,7 @@ TEST(UnixSocketTest, AbstractServer)
 
     struct UnixSocket peersock;
 
-    static const struct NanoSeconds zeroTimeout = NanoSeconds(0);
+    const struct Duration zeroTimeout = duration(NanoSeconds(0));
 
     EXPECT_EQ(0, acceptUnixSocket(&peersock, &serversock));
     EXPECT_EQ(1, waitUnixSocketWriteReady(&clientsock, &zeroTimeout));

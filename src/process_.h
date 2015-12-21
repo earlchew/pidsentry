@@ -110,7 +110,7 @@ unlockProcessLock(void);
 const char *
 ownProcessLockPath(void);
 
-struct NanoSeconds
+struct Duration
 ownProcessElapsedTime(void);
 
 struct MonotonicTime

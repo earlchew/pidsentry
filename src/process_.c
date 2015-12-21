@@ -1015,11 +1015,11 @@ extractProcessExitStatus(int aStatus)
 }
 
 /* -------------------------------------------------------------------------- */
-struct NanoSeconds
+struct Duration
 ownProcessElapsedTime(void)
 {
-    return NanoSeconds(
-        monotonicTime().monotonic.ns - sTimeBase.monotonic.ns);
+    return duration(
+        NanoSeconds(monotonicTime().monotonic.ns - sTimeBase.monotonic.ns));
 }
 
 /* -------------------------------------------------------------------------- */

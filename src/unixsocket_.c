@@ -287,16 +287,16 @@ shutdownUnixSocketWriter(struct UnixSocket *self)
 
 /* -------------------------------------------------------------------------- */
 int
-waitUnixSocketWriteReady(const struct UnixSocket  *self,
-                         const struct NanoSeconds *aTimeout)
+waitUnixSocketWriteReady(const struct UnixSocket *self,
+                         const struct Duration   *aTimeout)
 {
     return waitFileWriteReady(self->mFile, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
 int
-waitUnixSocketReadReady(const struct UnixSocket  *self,
-                        const struct NanoSeconds *aTimeout)
+waitUnixSocketReadReady(const struct UnixSocket *self,
+                        const struct Duration   *aTimeout)
 {
     return waitFileReadReady(self->mFile, aTimeout);
 }

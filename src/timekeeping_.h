@@ -77,6 +77,11 @@ struct Seconds
     };
 };
 
+struct Duration
+{
+    struct NanoSeconds duration;
+};
+
 struct MonotonicTime
 {
     struct NanoSeconds monotonic;
@@ -158,9 +163,12 @@ timeSpecFromNanoSeconds(struct NanoSeconds aNanoSeconds);
 
 /* -------------------------------------------------------------------------- */
 void
-monotonicSleep(struct NanoSeconds aDuration);
+monotonicSleep(struct Duration aPeriod);
 
 /* -------------------------------------------------------------------------- */
+struct Duration
+duration(struct NanoSeconds aDuration);
+
 struct EventClockTime
 eventclockTime(void);
 
@@ -173,15 +181,15 @@ wallclockTime(void);
 /* -------------------------------------------------------------------------- */
 struct NanoSeconds
 lapTimeSince(struct EventClockTime       *self,
-             struct NanoSeconds           aPeriod,
+             struct Duration              aPeriod,
              const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
 bool
 deadlineTimeExpired(
     struct EventClockTime       *self,
-    struct NanoSeconds           aDuration,
-    struct NanoSeconds          *aRemaining,
+    struct Duration              aPeriod,
+    struct Duration             *aRemaining,
     const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
@@ -200,7 +208,7 @@ popIntervalTimer(struct PushedIntervalTimer *aPause);
 /* -------------------------------------------------------------------------- */
 struct itimerval
 shortenIntervalTime(const struct itimerval *aTimer,
-                    struct NanoSeconds      aElapsed);
+                    struct Duration         aElapsed);
 
 /* -------------------------------------------------------------------------- */
 int

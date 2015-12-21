@@ -41,6 +41,13 @@ static unsigned             sInit;
 static struct MonotonicTime sEventClockTimeBase;
 
 /* -------------------------------------------------------------------------- */
+struct Duration
+duration(struct NanoSeconds aDuration)
+{
+    return (struct Duration) { .duration = aDuration };
+}
+
+/* -------------------------------------------------------------------------- */
 struct MonotonicTime
 monotonicTime(void)
 {
@@ -95,8 +102,8 @@ wallclockTime(void)
 bool
 deadlineTimeExpired(
     struct EventClockTime       *self,
-    struct NanoSeconds           aDuration,
-    struct NanoSeconds          *aRemaining,
+    struct Duration              aPeriod,
+    struct Duration             *aRemaining,
     const struct EventClockTime *aTime)
 {
     bool                  expired;
@@ -113,14 +120,14 @@ deadlineTimeExpired(
     {
         uint64_t elapsed_ns = aTime->eventclock.ns - self->eventclock.ns;
 
-        if (elapsed_ns >= aDuration.ns)
+        if (elapsed_ns >= aPeriod.duration.ns)
         {
             remaining_ns = 0;
             expired      = true;
         }
         else
         {
-            remaining_ns = aDuration.ns - elapsed_ns;
+            remaining_ns = aPeriod.duration.ns - elapsed_ns;
             expired      = false;
         }
     }
@@ -135,12 +142,12 @@ deadlineTimeExpired(
 
         ensure(self->eventclock.ns);
 
-        remaining_ns = aDuration.ns;
+        remaining_ns = aPeriod.duration.ns;
         expired      = false;
     }
 
     if (aRemaining)
-        aRemaining->ns = remaining_ns;
+        aRemaining->duration.ns = remaining_ns;
 
     return expired;
 }
@@ -148,7 +155,7 @@ deadlineTimeExpired(
 /* -------------------------------------------------------------------------- */
 struct NanoSeconds
 lapTimeSince(struct EventClockTime       *self,
-             struct NanoSeconds           aPeriod,
+             struct Duration              aPeriod,
              const struct EventClockTime *aTime)
 {
     struct EventClockTime tm;
@@ -165,9 +172,9 @@ lapTimeSince(struct EventClockTime       *self,
     {
         lapTime_ns = aTime->eventclock.ns - self->eventclock.ns;
 
-        if (aPeriod.ns && lapTime_ns >= aPeriod.ns)
+        if (aPeriod.duration.ns && lapTime_ns >= aPeriod.duration.ns)
             self->eventclock.ns =
-                aTime->eventclock.ns - lapTime_ns % aPeriod.ns;
+                aTime->eventclock.ns - lapTime_ns % aPeriod.duration.ns;
     }
     else
     {
@@ -183,23 +190,23 @@ lapTimeSince(struct EventClockTime       *self,
 
 /* -------------------------------------------------------------------------- */
 void
-monotonicSleep(struct NanoSeconds aDuration)
+monotonicSleep(struct Duration aPeriod)
 {
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
-    struct NanoSeconds    remaining;
+    struct Duration       remaining;
 
-    while ( ! deadlineTimeExpired(&since, aDuration, &remaining, 0))
+    while ( ! deadlineTimeExpired(&since, aPeriod, &remaining, 0))
     {
         /* This approach avoids the problem of drifting sleep duration
          * caused by repeated signal delivery by fixing the wake time
          * then re-calibrating the sleep time on each iteration. */
 
-        if (remaining.ns)
+        if (remaining.duration.ns)
         {
             struct timespec sleepTime =
             {
-                .tv_sec  = remaining.ns / (1000 * 1000 * 1000),
-                .tv_nsec = remaining.ns % (1000 * 1000 * 1000),
+                .tv_sec  = remaining.duration.ns / (1000 * 1000 * 1000),
+                .tv_nsec = remaining.duration.ns % (1000 * 1000 * 1000),
             };
 
             nanosleep(&sleepTime, 0);
@@ -264,7 +271,7 @@ timeSpecFromNanoSeconds(struct NanoSeconds aNanoSeconds)
 /* -------------------------------------------------------------------------- */
 struct itimerval
 shortenIntervalTime(const struct itimerval *aTimer,
-                    struct NanoSeconds      aElapsed)
+                    struct Duration         aElapsed)
 {
     struct itimerval shortenedTimer = *aTimer;
 
@@ -274,10 +281,10 @@ shortenIntervalTime(const struct itimerval *aTimer,
     struct NanoSeconds alarmPeriod =
         timeValToNanoSeconds(&shortenedTimer.it_interval);
 
-    if (alarmTime.ns > aElapsed.ns)
+    if (alarmTime.ns > aElapsed.duration.ns)
     {
         shortenedTimer.it_value = timeValFromNanoSeconds(
-            NanoSeconds(alarmTime.ns - aElapsed.ns));
+            NanoSeconds(alarmTime.ns - aElapsed.duration.ns));
     }
     else if (alarmTime.ns)
     {
@@ -287,8 +294,8 @@ shortenIntervalTime(const struct itimerval *aTimer,
         {
             shortenedTimer.it_value = timeValFromNanoSeconds(
                 NanoSeconds(
-                    alarmPeriod.ns - (aElapsed.ns -
-                                      alarmTime.ns) % alarmPeriod.ns));
+                    alarmPeriod.ns - (
+                        aElapsed.duration.ns - alarmTime.ns) % alarmPeriod.ns));
         }
     }
 
@@ -374,9 +381,10 @@ popIntervalTimer(struct PushedIntervalTimer *aPushedTimer)
     struct itimerval shortenedInterval =
         shortenIntervalTime(
             &aPushedTimer->mTimer,
-            NanoSeconds(
-                monotonicTime().monotonic.ns -
-                aPushedTimer->mMark.monotonic.ns));
+            duration(
+                NanoSeconds(
+                    monotonicTime().monotonic.ns -
+                    aPushedTimer->mMark.monotonic.ns)));
 
     if (setitimer(aPushedTimer->mType, &shortenedInterval, 0))
         goto Finally;

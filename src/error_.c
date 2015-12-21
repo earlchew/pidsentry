@@ -66,9 +66,9 @@ print_(
 {
     FINALLY
     ({
-        struct NanoSeconds elapsed_ns = ownProcessElapsedTime();
+        struct Duration elapsed = ownProcessElapsedTime();
 
-        uint64_t elapsed_ms = MSECS(elapsed_ns).ms;
+        uint64_t elapsed_ms = MSECS(elapsed.duration).ms;
         uint64_t elapsed_s;
         uint64_t elapsed_m;
         uint64_t elapsed_h;

@@ -830,7 +830,9 @@ checkPollFdTetherTimeout(struct PollFdTether         *self,
     if ( ! self->mTimeout.mTriggered)
     {
         int elapsedTime_ms = MSECS(
-            lapTimeSince(&self->mTimeout.mSince, NanoSeconds(0), aPollTime)).ms;
+            lapTimeSince(
+                &self->mTimeout.mSince,
+                duration(NanoSeconds(0)), aPollTime)).ms;
 
         debug(1,
               "inactivity clock cycle %u elapsed %dms",
@@ -1337,7 +1339,8 @@ monitorChild(pid_t              aChildPid,
         {
             int elapsedTime_ms = MSECS(
                 lapTimeSince(
-                    &pollfdtether.mTimeout.mSince, NanoSeconds(0), &polltm)).ms;
+                    &pollfdtether.mTimeout.mSince,
+                    duration(NanoSeconds(0)), &polltm)).ms;
 
             debug(1, "inactivity clock %dms", elapsedTime_ms);
 
@@ -1419,7 +1422,8 @@ monitorChild(pid_t              aChildPid,
                 : SECS(
                     lapTimeSince(
                         &termination.mSince,
-                        NSECS(Seconds(gOptions.mPacing_s)), &polltm)).s;
+                        duration(NSECS(Seconds(gOptions.mPacing_s))),
+                        &polltm)).s;
 
             debug(1, "post mortem clock %us", elapsedTime_s);
 
@@ -1568,7 +1572,7 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
 
                     debug(0, "delay for %" PRIu64 "ns", resolution);
 
-                    monotonicSleep(NanoSeconds(resolution));
+                    monotonicSleep(duration(NanoSeconds(resolution)));
 
                     break;
                 }

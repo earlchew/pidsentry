@@ -331,7 +331,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-lockFd(int aFd, int aType, unsigned aMilliSeconds)
+lockFd(int aFd, int aType, struct Duration aTimeout)
 {
     int err = 0;
     int rc = -1;
@@ -388,8 +388,7 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
                 }
             });
 
-            if (deadlineTimeExpired(
-                    &deadlineTime, NSECS(MilliSeconds(aMilliSeconds)), 0, &tm))
+            if (deadlineTimeExpired(&deadlineTime, aTimeout, 0, &tm))
             {
                 err = EDEADLOCK;
                 break;

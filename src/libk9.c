@@ -530,7 +530,7 @@ umbilicalMain_(void *aUmbilicalThread)
             errno,
             "Unable to send SIGTERM to process group");
 
-    monotonicSleep(NSECS(Seconds(30)));
+    monotonicSleep(duration(NSECS(Seconds(30))));
 
     if (kill(0, SIGKILL))
         terminate(
