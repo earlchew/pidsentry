@@ -384,7 +384,7 @@ runTests()
             SLAVE=$!
             sleep 4 # Wait for watchdog to send first signal
             read -t 0 && echo FAIL
-            sleep 9 # Watchdog should have terminated child and exited
+            sleep 10 # Watchdog should have terminated child and exited
             read -t 0 && echo OK || echo FAIL
             kill -9 $SLAVE 2>&-
             kill -9 $CHILD 2>&-

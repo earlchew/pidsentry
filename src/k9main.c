@@ -91,7 +91,9 @@ enum PollFdKind
 
 struct PollFdAction
 {
-    void (*mAction)(void *self, struct pollfd *aPollFds);
+    void (*mAction)(void                        *self,
+                    struct pollfd               *aPollFds,
+                    const struct EventClockTime *aPollTime);
     void  *mSelf;
 };
 
@@ -544,7 +546,9 @@ struct PollFdClock
 };
 
 static void
-pollFdClock(void *self_, struct pollfd *aPollFds)
+pollFdClock(void                        *self_,
+            struct pollfd               *aPollFds,
+            const struct EventClockTime *aPollTime)
 {
     struct PollFdClock *self = self_;
 
@@ -590,7 +594,9 @@ struct PollFdChild
 };
 
 static void
-pollFdChild(void *self_, struct pollfd *aPollFds)
+pollFdChild(void                        *self_,
+            struct pollfd               *aPollFds,
+            const struct EventClockTime *aPollTime)
 {
     struct PollFdChild *self = self_;
 
@@ -623,7 +629,9 @@ struct PollFdSignal
 };
 
 static void
-pollFdSignal(void *self_, struct pollfd *aPollFds)
+pollFdSignal(void                        *self_,
+             struct pollfd               *aPollFds,
+             const struct EventClockTime *aPollTime)
 {
     struct PollFdSignal *self = self_;
 
@@ -748,7 +756,9 @@ Finally:
 }
 
 static void
-pollFdUmbilical(void *self_, struct pollfd *aPollFds)
+pollFdUmbilical(void                        *self_,
+                struct pollfd               *aPollFds,
+                const struct EventClockTime *aPollTime)
 {
     struct PollFdUmbilical *self = self_;
 
@@ -812,14 +822,15 @@ resetPollFdTetherTimeout(struct PollFdTether *self)
 }
 
 static bool
-checkPollFdTetherTimeout(struct PollFdTether *self)
+checkPollFdTetherTimeout(struct PollFdTether         *self,
+                         const struct EventClockTime *aPollTime)
 {
     bool checkTimeout = true;
 
     if ( ! self->mTimeout.mTriggered)
     {
         int elapsedTime_ms = MSECS(
-            lapTimeSince(&self->mTimeout.mSince, NanoSeconds(0), 0)).ms;
+            lapTimeSince(&self->mTimeout.mSince, NanoSeconds(0), aPollTime)).ms;
 
         debug(1,
               "inactivity clock cycle %u elapsed %dms",
@@ -844,7 +855,9 @@ checkPollFdTetherTimeout(struct PollFdTether *self)
 }
 
 static void
-pollFdStdin(void *self_, struct pollfd *aPollFds)
+pollFdStdin(void                        *self_,
+            struct pollfd               *aPollFds,
+            const struct EventClockTime *aPollTime)
 {
     struct PollFdTether *self = self_;
 
@@ -877,7 +890,9 @@ pollFdStdin(void *self_, struct pollfd *aPollFds)
 }
 
 static void
-pollFdStdout(void *self_, struct pollfd *aPollFds)
+pollFdStdout(void                        *self_,
+             struct pollfd               *aPollFds,
+             const struct EventClockTime *aPollTime)
 {
     struct PollFdTether *self = self_;
 
@@ -1211,6 +1226,11 @@ monitorChild(pid_t              aChildPid,
 
         ensure(pollfdtether.mClosed.mStdin == pollfdtether.mClosed.mStdout);
 
+        /* Poll the file descriptors and process the file descriptor
+         * events before attempting to check for timeouts. This
+         * order of operations is important to deal robustly with
+         * slow clocks and stoppages. */
+
         debug(1, "poll wait");
 
         int rc = poll(
@@ -1226,18 +1246,85 @@ monitorChild(pid_t              aChildPid,
                 "Unable to poll for activity");
         }
 
-        /* When processing file descriptor events, do not loop in EINTR
-         * but instead allow the polling cycle to be re-run so that
-         * the event loop will not remain stuck processing a single
-         * file descriptor. */
+        /* Latch the event clock time here before quickly polling the
+         * file descriptors again. Deadlines will be compared against
+         * this latched time */
 
-        unsigned eventCount = 0;
+        struct EventClockTime polltm = eventclockTime();
 
-        if ( ! rc)
+        RACE
+        ({
+            while (1)
+            {
+                rc = poll(pollfds, NUMBEROF(pollfds), 0);
+
+                if (-1 == rc)
+                {
+                    if (EINTR == errno)
+                        continue;
+
+                    terminate(
+                        errno,
+                        "Unable to poll for activity");
+                }
+
+                break;
+            }
+        });
+
         {
-            ensure(-1 != pollfdtether.mTimeout.mPeriod_ms);
+            /* When processing file descriptor events, do not loop in EINTR
+             * but instead allow the polling cycle to be re-run so that
+             * the event loop will not remain stuck processing a single
+             * file descriptor. */
 
-            ++eventCount;
+            unsigned eventCount = 0;
+
+            if ( ! rc)
+            {
+                ensure(-1 != pollfdtether.mTimeout.mPeriod_ms);
+
+                ++eventCount;
+            }
+
+            /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
+             * no matter what the caller has subscribed for. Only pay
+             * attention to what was subscribed. */
+
+            debug(1, "poll scan of %d fds", rc);
+
+            for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
+            {
+                debug(
+                    1,
+                    "poll %s %d (%s) (%s)",
+                    pollfdNames[ix],
+                    pollfds[ix].fd,
+                    createPollEventText(
+                        &pollEventText, pollfds[ix].events),
+                    createPollEventText(
+                        &pollRcvdEventText, pollfds[ix].revents));
+
+                pollfds[ix].revents &= pollfds[ix].events;
+
+                if (pollfds[ix].revents)
+                {
+                    ensure(rc);
+
+                    ++eventCount;
+
+                    if (pollfdactions[ix].mAction)
+                        pollfdactions[ix].mAction(
+                            pollfdactions[ix].mSelf,
+                            pollfds,
+                            &polltm);
+                }
+            }
+
+            /* Ensure that the interpretation of the poll events is being
+             * correctly handled, to avoid a busy-wait poll loop. */
+
+            ensure(eventCount);
         }
 
         /* If a timeout is expected and a timeout occurred, and the
@@ -1250,11 +1337,11 @@ monitorChild(pid_t              aChildPid,
         {
             int elapsedTime_ms = MSECS(
                 lapTimeSince(
-                    &pollfdtether.mTimeout.mSince, NanoSeconds(0), 0)).ms;
+                    &pollfdtether.mTimeout.mSince, NanoSeconds(0), &polltm)).ms;
 
             debug(1, "inactivity clock %dms", elapsedTime_ms);
 
-            while (checkPollFdTetherTimeout(&pollfdtether))
+            while (checkPollFdTetherTimeout(&pollfdtether, &polltm))
             {
                 siginfo_t siginfo;
 
@@ -1332,7 +1419,7 @@ monitorChild(pid_t              aChildPid,
                 : SECS(
                     lapTimeSince(
                         &termination.mSince,
-                        NSECS(Seconds(gOptions.mPacing_s)), 0)).s;
+                        NSECS(Seconds(gOptions.mPacing_s)), &polltm)).s;
 
             debug(1, "post mortem clock %us", elapsedTime_s);
 
@@ -1360,42 +1447,6 @@ monitorChild(pid_t              aChildPid,
                         sigNum);
             }
         }
-
-        /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
-         * no matter what the caller has subscribed for. Only pay
-         * attention to what was subscribed. */
-
-        debug(1, "poll scan of %d fds", rc);
-
-        for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
-        {
-            debug(
-                1,
-                "poll %s %d (%s) (%s)",
-                pollfdNames[ix],
-                pollfds[ix].fd,
-                createPollEventText(&pollEventText, pollfds[ix].events),
-                createPollEventText(&pollRcvdEventText, pollfds[ix].revents));
-
-            pollfds[ix].revents &= pollfds[ix].events;
-
-            if (pollfds[ix].revents)
-            {
-                ensure(rc);
-
-                ++eventCount;
-
-                if (pollfdactions[ix].mAction)
-                    pollfdactions[ix].mAction(
-                        pollfdactions[ix].mSelf,
-                        pollfds);
-            }
-        }
-
-        /* Ensure that the interpretation of the poll events is being
-         * correctly handled, to avoid a busy-wait poll loop. */
-
-        ensure(eventCount);
 
     } while ( ! pollfdchild.mDead ||
                 sPollOutputEvents == pollfds[POLL_FD_STDOUT].events ||

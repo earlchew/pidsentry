@@ -33,6 +33,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <valgrind/valgrind.h>
+
 /* -------------------------------------------------------------------------- */
 bool
 testMode(void)
@@ -54,11 +56,16 @@ testAction(void)
 void
 testSleep(void)
 {
-    /* If test mode has been enabled, choose to sleep a short time
-     * a small percentage of the time. */
+    /* Unless running valgrind, if test mode has been enabled, choose to
+     * sleep a short time a small percentage of the time. Runs under
+     * valgrind are already slow enough to provide opportunities to
+     * exploit fault timing windows. */
 
-    if (testAction())
-        usleep(random() % (500 * 1000));
+    if ( ! RUNNING_ON_VALGRIND)
+    {
+        if (testAction())
+            usleep(random() % (500 * 1000));
+    }
 }
 
 /* -------------------------------------------------------------------------- */
