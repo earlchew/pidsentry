@@ -127,26 +127,32 @@ Seconds(uint64_t s)
     return (struct Seconds) { { s : s } };
 }
 
-#define NSECS(Time) (                                                   \
-    TimeScale_ns > sizeof(*(Time).Scale_)                               \
-    ? (struct NanoSeconds) { { Value_ : (                               \
-        (Time).Value_ * ( TimeScale_ns / sizeof(*(Time).Scale_) ) ) } } \
-    : (struct NanoSeconds) { { Value_ : (                               \
-        (Time).Value_ / ( sizeof(*(Time).Scale_) / TimeScale_ns ?: 1) ) } } )
+#define NSECS(Time)                                             \
+    ( (struct NanoSeconds)                                      \
+      { {                                                       \
+          Value_ : changeTimeScale_((Time).Value_,              \
+                                    sizeof(*(Time).Scale_),     \
+                                    TimeScale_ns)               \
+      } } )
 
-#define MSECS(Time) (                                                   \
-    TimeScale_ms > sizeof(*(Time).Scale_)                               \
-    ? (struct MilliSeconds) { { Value_ : (                              \
-        (Time).Value_ * ( TimeScale_ms / sizeof(*(Time).Scale_) ) ) } } \
-    : (struct MilliSeconds) { { Value_ : (                              \
-        (Time).Value_ / ( sizeof(*(Time).Scale_) / TimeScale_ms ?: 1) ) } } )
+#define MSECS(Time)                                             \
+    ( (struct MilliSeconds)                                     \
+      { {                                                       \
+          Value_ : changeTimeScale_((Time).Value_,              \
+                                    sizeof(*(Time).Scale_),     \
+                                    TimeScale_ms)               \
+      } } )
 
-#define SECS(Time) (                                                    \
-    TimeScale_s > sizeof(*(Time).Scale_)                                \
-    ? (struct Seconds) { { Value_ : (                                   \
-        (Time).Value_ * ( TimeScale_s / sizeof(*(Time).Scale_) ) ) } }  \
-    : (struct Seconds) { { Value_ : (                                   \
-        (Time).Value_ / ( sizeof(*(Time).Scale_) / TimeScale_s ?: 1) ) } } )
+#define SECS(Time)                                              \
+    ( (struct Seconds)                                          \
+      { {                                                       \
+          Value_ : changeTimeScale_((Time).Value_,              \
+                                    sizeof(*(Time).Scale_),     \
+                                    TimeScale_s)                \
+      } } )
+
+uint64_t
+changeTimeScale_(uint64_t aSrcTime, size_t aSrcScale, size_t aDstScale);
 
 /* -------------------------------------------------------------------------- */
 struct NanoSeconds

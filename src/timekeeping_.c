@@ -41,6 +41,49 @@ static unsigned             sInit;
 static struct MonotonicTime sEventClockTimeBase;
 
 /* -------------------------------------------------------------------------- */
+uint64_t
+changeTimeScale_(uint64_t aSrcTime, size_t aSrcScale, size_t aDstScale)
+{
+    if (aSrcScale < aDstScale)
+    {
+        /* When changing to a timescale with more resolution, take
+         * care to check for overflow of the representation. This is
+         * not likely to occur since the width of the representation
+         * allows the timescale to range far into the future, and if
+         * it does occur if probably indicative of a programming error. */
+
+        size_t scaleUp = aDstScale / aSrcScale;
+
+        uint64_t dstTime = aSrcTime * scaleUp;
+
+        if (dstTime / scaleUp != aSrcTime)
+            terminate(
+                0,
+                "Time scale overflow converting %" PRIu64
+                " from scale %zu to scale %zu",
+                aSrcTime,
+                aSrcScale,
+                aDstScale);
+
+        return dstTime;
+    }
+
+    if (aSrcScale > aDstScale)
+    {
+        /* The most common usage for timekeeping is to manage timeouts,
+         * so when changing to a timescale with less resolution, rounding
+         * up results in less surprising outcomes because a non-zero
+         * timeout rounds to a non-zero result. */
+
+        size_t scaleDown = aSrcScale / aDstScale;
+
+        return aSrcTime / scaleDown + !! (aSrcTime % scaleDown);
+    }
+
+    return aSrcTime;
+}
+
+/* -------------------------------------------------------------------------- */
 struct Duration
 duration(struct NanoSeconds aDuration)
 {

@@ -51,6 +51,73 @@ operator==(const struct itimerval &aLhs, const struct itimerval &aRhs)
         aLhs.it_interval == aRhs.it_interval;
 }
 
+TEST(TimeKeepingTest, NanoSecondConversion)
+{
+    {
+        struct NanoSeconds tm = NanoSeconds(1);
+
+        EXPECT_FALSE(MSECS(tm).ms - 1);
+        EXPECT_FALSE(SECS(tm).s - 1);
+    }
+
+    {
+        struct NanoSeconds tm = NanoSeconds(0 + 1000 * 1000);
+
+        EXPECT_FALSE(MSECS(tm).ms - 1);
+        EXPECT_FALSE(SECS(tm).s - 1);
+    }
+
+    {
+        struct NanoSeconds tm = NanoSeconds(1 + 1000 * 1000);
+
+        EXPECT_FALSE(MSECS(tm).ms - 2);
+        EXPECT_FALSE(SECS(tm).s - 1);
+    }
+
+    {
+        struct NanoSeconds tm = NanoSeconds(1000 * 1000 + 1000 * 1000 * 1000);
+
+        EXPECT_FALSE(MSECS(tm).ms - 1001);
+        EXPECT_FALSE(SECS(tm).s - 2);
+    }
+}
+
+TEST(TimeKeepingTest, MilliSecondConversion)
+{
+    {
+        struct MilliSeconds tm = MilliSeconds(1);
+
+        EXPECT_EQ(tm.ms, MSECS(NSECS(tm)).ms);
+
+        EXPECT_FALSE(SECS(tm).s - 1);
+    }
+
+    {
+        struct MilliSeconds tm = MilliSeconds(999);
+
+        EXPECT_EQ(tm.ms, MSECS(NSECS(tm)).ms);
+
+        EXPECT_FALSE(SECS(tm).s - 1);
+    }
+}
+
+TEST(TimeKeepingTest, SecondConversion)
+{
+    {
+        struct Seconds tm = Seconds(0);
+
+        EXPECT_FALSE(MSECS(tm).ms);
+        EXPECT_FALSE(NSECS(tm).ns);
+    }
+
+    {
+        struct Seconds tm = Seconds(1);
+
+        EXPECT_FALSE(MSECS(tm).ms - 1000);
+        EXPECT_FALSE(NSECS(tm).ns - 1000 * 1000 * 1000);
+    }
+}
+
 TEST(TimeKeepingTest, DeadlineRunsOnce)
 {
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
