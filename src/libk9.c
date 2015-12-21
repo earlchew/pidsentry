@@ -530,7 +530,7 @@ umbilicalMain_(void *aUmbilicalThread)
             errno,
             "Unable to send SIGTERM to process group");
 
-    monotonicSleep(milliSeconds(30 * 1000));
+    monotonicSleep(NSECS(Seconds(30)));
 
     if (kill(0, SIGKILL))
         terminate(
@@ -666,6 +666,11 @@ watchUmbilical(const char *aAddr)
 static void  __attribute__((constructor))
 libk9_init(void)
 {
+    if (Timekeeping_init())
+        terminate(
+            0,
+            "Unable to initialise timekeeping module");
+
     if (Error_init())
         terminate(
             0,
@@ -722,6 +727,11 @@ libk9_exit()
         terminate(
             0,
             "Unable to finalise error module");
+
+    if (Timekeeping_exit())
+        terminate(
+            0,
+            "Unable to finalise timekeeping module");
 }
 
 /* -------------------------------------------------------------------------- */

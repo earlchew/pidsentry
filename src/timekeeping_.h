@@ -39,61 +39,150 @@
 extern "C" {
 #endif
 
+enum TimeScale
+{
+    TimeScale_ns = 1000 * 1000 * 1000,
+    TimeScale_us = 1000 * 1000,
+    TimeScale_ms = 1000,
+    TimeScale_s  = 1,
+};
+
+struct NanoSeconds
+{
+    union
+    {
+        uint64_t ns;
+        uint64_t Value_;
+        char   (*Scale_)[TimeScale_ns];
+    };
+};
+
+struct MilliSeconds
+{
+    union
+    {
+        uint64_t ms;
+        uint64_t Value_;
+        char   (*Scale_)[TimeScale_ms];
+    };
+};
+
+struct Seconds
+{
+    union
+    {
+        uint64_t s;
+        uint64_t Value_;
+        char   (*Scale_)[TimeScale_s];
+    };
+};
+
+struct MonotonicTime
+{
+    struct NanoSeconds monotonic;
+};
+
+struct WallClockTime
+{
+    struct NanoSeconds wallclock;
+};
+
+struct EventClockTime
+{
+    struct NanoSeconds eventclock;
+};
+
 struct PushedIntervalTimer
 {
-    int              mType;
-    int              mSignal;
-    uint64_t         mMark;
-    struct sigaction mAction;
-    struct itimerval mTimer;
+    int                  mType;
+    int                  mSignal;
+    struct MonotonicTime mMark;
+    struct sigaction     mAction;
+    struct itimerval     mTimer;
 };
 
 /* -------------------------------------------------------------------------- */
-static inline uint64_t
-milliSeconds(uint64_t aMilliSeconds)
+#define EVENTCLOCKTIME_INIT ((struct EventClockTime) { { { ns : 0 } } })
+
+static inline struct NanoSeconds
+NanoSeconds(uint64_t ns)
 {
-    return aMilliSeconds * 1000 * 1000;
+    return (struct NanoSeconds) { { ns : ns } };
 }
 
-static inline uint64_t
-toMilliSeconds(uint64_t aNanoSeconds)
+static inline struct MilliSeconds
+MilliSeconds(uint64_t ms)
 {
-    return aNanoSeconds / (1000 * 1000);
+    return (struct MilliSeconds) { { ms : ms } };
 }
+
+static inline struct Seconds
+Seconds(uint64_t s)
+{
+    return (struct Seconds) { { s : s } };
+}
+
+#define NSECS(Time) (                                                   \
+    TimeScale_ns > sizeof(*(Time).Scale_)                               \
+    ? (struct NanoSeconds) { { Value_ : (                               \
+        (Time).Value_ * ( TimeScale_ns / sizeof(*(Time).Scale_) ) ) } } \
+    : (struct NanoSeconds) { { Value_ : (                               \
+        (Time).Value_ / ( sizeof(*(Time).Scale_) / TimeScale_ns ?: 1) ) } } )
+
+#define MSECS(Time) (                                                   \
+    TimeScale_ms > sizeof(*(Time).Scale_)                               \
+    ? (struct MilliSeconds) { { Value_ : (                              \
+        (Time).Value_ * ( TimeScale_ms / sizeof(*(Time).Scale_) ) ) } } \
+    : (struct MilliSeconds) { { Value_ : (                              \
+        (Time).Value_ / ( sizeof(*(Time).Scale_) / TimeScale_ms ?: 1) ) } } )
+
+#define SECS(Time) (                                                    \
+    TimeScale_s > sizeof(*(Time).Scale_)                                \
+    ? (struct Seconds) { { Value_ : (                                   \
+        (Time).Value_ * ( TimeScale_s / sizeof(*(Time).Scale_) ) ) } }  \
+    : (struct Seconds) { { Value_ : (                                   \
+        (Time).Value_ / ( sizeof(*(Time).Scale_) / TimeScale_s ?: 1) ) } } )
 
 /* -------------------------------------------------------------------------- */
-uint64_t
-timeValToTime(const struct timeval *aTimeVal);
+struct NanoSeconds
+timeValToNanoSeconds(const struct timeval *aTimeVal);
 
-uint64_t
-timeSpecToTime(const struct timespec *aTimeSpec);
+struct NanoSeconds
+timeSpecToNanoSeconds(const struct timespec *aTimeSpec);
 
 struct timeval
-timeValFromTime(uint64_t aNanoSeconds);
+timeValFromNanoSeconds(struct NanoSeconds aNanoSeconds);
 
 struct timespec
-timeSpecFromTime(uint64_t aNanoSeconds);
+timeSpecFromNanoSeconds(struct NanoSeconds aNanoSeconds);
 
 /* -------------------------------------------------------------------------- */
 void
-monotonicSleep(uint64_t aDuration);
+monotonicSleep(struct NanoSeconds aDuration);
 
 /* -------------------------------------------------------------------------- */
-uint64_t
+struct EventClockTime
+eventclockTime(void);
+
+struct MonotonicTime
 monotonicTime(void);
 
-uint64_t
+struct WallClockTime
 wallclockTime(void);
 
 /* -------------------------------------------------------------------------- */
-uint64_t
-lapTimeSince(uint64_t *aSince, uint64_t aPeriod_ns);
+struct NanoSeconds
+lapTimeSince(struct EventClockTime       *self,
+             struct NanoSeconds           aPeriod,
+             const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
 bool
 deadlineTimeExpired(
-    const uint64_t *self,
-    uint64_t *aSince, uint64_t aDuration_ns, uint64_t *aRemaining_ns);
+    struct EventClockTime       *self,
+    struct NanoSeconds           aDuration,
+    struct NanoSeconds          *aRemaining,
+    const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
 struct timespec
@@ -110,7 +199,15 @@ popIntervalTimer(struct PushedIntervalTimer *aPause);
 
 /* -------------------------------------------------------------------------- */
 struct itimerval
-shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsed);
+shortenIntervalTime(const struct itimerval *aTimer,
+                    struct NanoSeconds      aElapsed);
+
+/* -------------------------------------------------------------------------- */
+int
+Timekeeping_init(void);
+
+int
+Timekeeping_exit(void);
 
 /* -------------------------------------------------------------------------- */
 

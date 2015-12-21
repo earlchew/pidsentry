@@ -242,9 +242,10 @@ runChild(
                         "Unable to set K9_LOCK=%s", lockFileName);
                 debug(0, "env - K9_LOCK=%s", lockEnv);
 
-                uint64_t baseTime = ownProcessBaseTime();
+                struct MonotonicTime baseTime = ownProcessBaseTime();
 
-                const char *basetimeEnv = setEnvUInt64("K9_TIME", baseTime);
+                const char *basetimeEnv = setEnvUInt64("K9_TIME",
+                                                       baseTime.monotonic.ns);
                 if ( ! basetimeEnv)
                     terminate(
                         errno,
@@ -787,11 +788,11 @@ struct PollFdTether
 
     struct
     {
-        int      mPeriod_ms;    /* Timeout period if not -1 */
-        uint64_t mSince_ns;     /* Last activity on tether */
-        unsigned mCycleCount;   /* Current number of cycles */
-        unsigned mCycleLimit;   /* Number of cycles before triggering */
-        bool     mTriggered;    /* Timeout triggered */
+        int                   mPeriod_ms;  /* Timeout period if not -1 */
+        struct EventClockTime mSince;      /* Last activity on tether */
+        unsigned              mCycleCount; /* Current number of cycles */
+        unsigned              mCycleLimit; /* Cycles before triggering */
+        bool                  mTriggered;  /* Timeout triggered */
     } mTimeout;
 
     struct
@@ -806,7 +807,7 @@ struct PollFdTether
 static void
 resetPollFdTetherTimeout(struct PollFdTether *self)
 {
-    self->mTimeout.mSince_ns   = lapTimeSince(0, 0);
+    self->mTimeout.mSince      = eventclockTime();
     self->mTimeout.mCycleCount = 0;
 }
 
@@ -817,9 +818,8 @@ checkPollFdTetherTimeout(struct PollFdTether *self)
 
     if ( ! self->mTimeout.mTriggered)
     {
-        int elapsedTime_ms =
-            toMilliSeconds(
-                lapTimeSince(&self->mTimeout.mSince_ns, 0));
+        int elapsedTime_ms = MSECS(
+            lapTimeSince(&self->mTimeout.mSince, NanoSeconds(0), 0)).ms;
 
         debug(1,
               "inactivity clock cycle %u elapsed %dms",
@@ -830,7 +830,7 @@ checkPollFdTetherTimeout(struct PollFdTether *self)
             checkTimeout = false;
         else
         {
-            self->mTimeout.mSince_ns = lapTimeSince(0, 0);
+            self->mTimeout.mSince = eventclockTime();
 
             if (++self->mTimeout.mCycleCount >= self->mTimeout.mCycleLimit)
             {
@@ -1062,7 +1062,7 @@ monitorChild(pid_t              aChildPid,
             .mCycleCount = 0,
             .mCycleLimit = timeoutCycles,
             .mPeriod_ms  = timeout_ms / timeoutCycles,
-            .mSince_ns   = lapTimeSince(0, 0),
+            .mSince      = eventclockTime(),
             .mTriggered  = false,
         },
 
@@ -1161,11 +1161,10 @@ monitorChild(pid_t              aChildPid,
 
     struct
     {
-        uint64_t mSince_ns;     /* Termination timeline */
-        int      mTriggered;    /* Termination in progress */
+        struct EventClockTime mSince;     /* Termination timeline */
+        int                   mTriggered; /* Termination in progress */
     } termination =
     {
-        .mSince_ns  = 0,
         .mTriggered = false,
     };
 
@@ -1249,9 +1248,9 @@ monitorChild(pid_t              aChildPid,
         if (-1 != pollfdtether.mTimeout.mPeriod_ms &&
             ! pollfdtether.mTimeout.mTriggered)
         {
-            int elapsedTime_ms =
-                toMilliSeconds(
-                    lapTimeSince(&pollfdtether.mTimeout.mSince_ns, 0));
+            int elapsedTime_ms = MSECS(
+                lapTimeSince(
+                    &pollfdtether.mTimeout.mSince, NanoSeconds(0), 0)).ms;
 
             debug(1, "inactivity clock %dms", elapsedTime_ms);
 
@@ -1297,7 +1296,7 @@ monitorChild(pid_t              aChildPid,
                     if ( ! termination.mTriggered)
                     {
                         termination.mTriggered = -1;
-                        termination.mSince_ns  = lapTimeSince(0, 0);
+                        termination.mSince     = eventclockTime();
                     }
                 }
 
@@ -1320,7 +1319,7 @@ monitorChild(pid_t              aChildPid,
                 if ( ! termination.mTriggered)
                 {
                     termination.mTriggered = -1;
-                    termination.mSince_ns  = lapTimeSince(0, 0);
+                    termination.mSince     = eventclockTime();
                 }
             }
         }
@@ -1330,10 +1329,10 @@ monitorChild(pid_t              aChildPid,
             unsigned elapsedTime_s =
                 termination.mTriggered < 0
                 ? gOptions.mPacing_s
-                : toMilliSeconds(
+                : SECS(
                     lapTimeSince(
-                        &termination.mSince_ns,
-                        milliSeconds(gOptions.mPacing_s * 1000))) / 1000;
+                        &termination.mSince,
+                        NSECS(Seconds(gOptions.mPacing_s)), 0)).s;
 
             debug(1, "post mortem clock %us", elapsedTime_s);
 
@@ -1508,7 +1507,7 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
                 break;
 
             if ( ! pidFileTime.tv_nsec)
-                pidFileTime.tv_nsec = milliSeconds(900);
+                pidFileTime.tv_nsec = NSECS(MilliSeconds(900)).ns;
 
             for (uint64_t resolution = 1000; ; resolution *= 10)
             {
@@ -1518,7 +1517,7 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
 
                     debug(0, "delay for %" PRIu64 "ns", resolution);
 
-                    monotonicSleep(resolution);
+                    monotonicSleep(NanoSeconds(resolution));
 
                     break;
                 }
@@ -1921,6 +1920,11 @@ initK9soPath(void)
 int
 K9SO_MAIN(int argc, char **argv)
 {
+    if (Timekeeping_init())
+        terminate(
+            0,
+            "Unable to initialise timekeeping module");
+
     if (Process_init(argv[0]))
         terminate(
             errno,
@@ -1943,6 +1947,11 @@ K9SO_MAIN(int argc, char **argv)
         terminate(
             errno,
             "Unable to finalise process state");
+
+    if (Timekeeping_exit())
+        terminate(
+            0,
+            "Unable to finalise timekeeping module");
 
     return exitCode.mStatus;
 }

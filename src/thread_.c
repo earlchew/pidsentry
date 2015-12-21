@@ -94,9 +94,12 @@ lockMutex(pthread_mutex_t *self)
 
         const unsigned timeout_s = 600;
 
+        struct WallClockTime tm = wallclockTime();
+
         struct timespec deadline =
-            timeSpecFromTime(
-                wallclockTime() + milliSeconds(timeout_s * 60 * 1000));
+            timeSpecFromNanoSeconds(
+                NanoSeconds(
+                    tm.wallclock.ns + NSECS(Seconds(timeout_s * 60)).ns));
 
         if (errno = pthread_mutex_timedlock(self, &deadline))
             terminate(

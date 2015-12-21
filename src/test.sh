@@ -14,6 +14,7 @@ k9()
 testCase()
 {
     printf '\ntestCase - %s\n' "$1"
+    TESTCASE=$1
 }
 
 testTrace_()
@@ -34,6 +35,7 @@ testTrace()
 testFail()
 {
     testTrace_ FAIL "$@"
+    printf '\ntestCase - %s - FAILED\n' "$TESTCASE"
     exit 1
 }
 
@@ -373,12 +375,16 @@ runTests()
             trap : 15
             while : ; do sleep 1 ; done" |
         {
+            set -x
+            # t+3s : Watchdog times out child and issues kill -TERM
+            # t+7s : Watchdog escalates and issues kill -KILL
             read PARENT
             read CHILD
-            sleep 4 # Wait for watchdog to send first signal
             while : ; do sleep 1 ; kill $PARENT 2>&- ; done &
             SLAVE=$!
-            sleep 8
+            sleep 4 # Wait for watchdog to send first signal
+            read -t 0 && echo FAIL
+            sleep 9 # Watchdog should have terminated child and exited
             read -t 0 && echo OK || echo FAIL
             kill -9 $SLAVE 2>&-
             kill -9 $CHILD 2>&-

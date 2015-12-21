@@ -37,7 +37,7 @@ AM_CFLAGS     = $(TEST_CFLAGS)
 AM_CXXFLAGS   = $(TEST_CXXFLAGS)
 AM_LDFLAGS    =
 
-COMMON_FLAGS       = -D_GNU_SOURCE -Wall -Werror -pedantic -O2 -Wno-parentheses
+COMMON_FLAGS       = -D_GNU_SOURCE -Wall -Werror -O2 -Wno-parentheses
 COMMON_CFLAGS      = $(COMMON_FLAGS) -std=gnu99
 COMMON_CFLAGS     += -fdata-sections -ffunction-sections
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x \

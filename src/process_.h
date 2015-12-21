@@ -110,10 +110,10 @@ unlockProcessLock(void);
 const char *
 ownProcessLockPath(void);
 
-uint64_t
+struct NanoSeconds
 ownProcessElapsedTime(void);
 
-uint64_t
+struct MonotonicTime
 ownProcessBaseTime(void);
 
 const char*

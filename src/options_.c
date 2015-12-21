@@ -108,7 +108,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "cD:df:iL::n:oP:p:qsTt:u";
+    "+cD:df:iL::n:oP:p:qsTt:u";
 
 static struct option sLongOptions[] =
 {

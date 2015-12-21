@@ -32,6 +32,7 @@
 #include "error_.h"
 #include "fd_.h"
 #include "timekeeping_.h"
+#include "test_.h"
 
 #include <stdlib.h>
 #include <errno.h>
@@ -326,28 +327,31 @@ waitFileReady_(const struct File *self,
         },
     };
 
-    uint64_t since = 0;
-    uint64_t remaining;
+    struct EventClockTime since = EVENTCLOCKTIME_INIT;
+    struct NanoSeconds    remaining;
 
     const uint64_t timeout_ns = aTimeout_ns ? *aTimeout_ns : 0;
 
     while (1)
     {
-        uint64_t latchedMonotonic = monotonicTime();
+        struct EventClockTime tm = eventclockTime();
 
-        /* In case the process is stopped after the time is
-         * latched, check once more if the fds are ready
-         * before checking the deadline. */
+        RACE
+        ({
+            /* In case the process is stopped after the time is
+             * latched, check once more if the fds are ready
+             * before checking the deadline. */
 
-        int events = poll(pollfd, NUMBEROF(pollfd), 0);
-        if (-1 == events)
-            goto Finally;
+            int events = poll(pollfd, NUMBEROF(pollfd), 0);
+            if (-1 == events)
+                goto Finally;
 
-        if (events)
-            break;
+            if (events)
+                break;
+        });
 
-        if (deadlineTimeExpired(&latchedMonotonic,
-                                &since, timeout_ns, &remaining))
+        if (deadlineTimeExpired(
+                &since, NanoSeconds(timeout_ns), &remaining, &tm))
             break;
 
         int timeout_ms;
@@ -356,7 +360,7 @@ waitFileReady_(const struct File *self,
             timeout_ms = -1;
         else
         {
-            uint64_t remaining_ms = toMilliSeconds(remaining);
+            uint64_t remaining_ms = MSECS(remaining).ms;
 
             timeout_ms = remaining_ms;
 

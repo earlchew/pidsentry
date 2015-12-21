@@ -64,12 +64,12 @@ static struct ProcessLock  sProcessLock_[2];
 static struct ProcessLock *sProcessLock[2];
 static unsigned            sActiveProcessLock;
 
-static unsigned    sInit;
-static unsigned    sSigContext;
-static sigset_t    sSigSet;
-static const char *sArg0;
-static const char *sProgramName;
-static uint64_t    sTimeBase;
+static unsigned              sInit;
+static unsigned              sSigContext;
+static sigset_t              sSigSet;
+static const char           *sArg0;
+static const char           *sProgramName;
+static struct MonotonicTime  sTimeBase;
 
 /* -------------------------------------------------------------------------- */
 static struct sigaction sSigPipeAction =
@@ -1015,14 +1015,15 @@ extractProcessExitStatus(int aStatus)
 }
 
 /* -------------------------------------------------------------------------- */
-uint64_t
+struct NanoSeconds
 ownProcessElapsedTime(void)
 {
-    return monotonicTime() - sTimeBase;
+    return NanoSeconds(
+        monotonicTime().monotonic.ns - sTimeBase.monotonic.ns);
 }
 
 /* -------------------------------------------------------------------------- */
-uint64_t
+struct MonotonicTime
 ownProcessBaseTime(void)
 {
     return sTimeBase;

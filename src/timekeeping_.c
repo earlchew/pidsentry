@@ -37,7 +37,11 @@
 #include <sys/time.h>
 
 /* -------------------------------------------------------------------------- */
-uint64_t
+static unsigned             sInit;
+static struct MonotonicTime sEventClockTimeBase;
+
+/* -------------------------------------------------------------------------- */
+struct MonotonicTime
 monotonicTime(void)
 {
     struct timespec ts;
@@ -47,11 +51,34 @@ monotonicTime(void)
             errno,
             "Unable to fetch monotonic time");
 
-    return timeSpecToTime(&ts);
+    return (struct MonotonicTime) { .monotonic = timeSpecToNanoSeconds(&ts) };
 }
 
 /* -------------------------------------------------------------------------- */
-uint64_t
+static void
+eventclockTime_init_(void)
+{
+    /* Initialise the time base for the event clock, and ensure that
+     * the event clock will subsequently always return a non-zero result. */
+
+    sEventClockTimeBase = (struct MonotonicTime) {
+        .monotonic = NanoSeconds(monotonicTime().monotonic.ns - 1) };
+}
+
+struct EventClockTime
+eventclockTime(void)
+{
+    struct EventClockTime tm = {
+        .eventclock = NanoSeconds(
+            monotonicTime().monotonic.ns - sEventClockTimeBase.monotonic.ns) };
+
+    ensure(tm.eventclock.ns);
+
+    return tm;
+}
+
+/* -------------------------------------------------------------------------- */
+struct WallClockTime
 wallclockTime(void)
 {
     struct timespec ts;
@@ -61,38 +88,40 @@ wallclockTime(void)
             errno,
             "Unable to fetch monotonic time");
 
-    return timeSpecToTime(&ts);
+    return (struct WallClockTime) { .wallclock = timeSpecToNanoSeconds(&ts) };
 }
 
 /* -------------------------------------------------------------------------- */
 bool
 deadlineTimeExpired(
-    const uint64_t *self,
-    uint64_t *aSince, uint64_t aDuration_ns, uint64_t *aRemaining_ns)
+    struct EventClockTime       *self,
+    struct NanoSeconds           aDuration,
+    struct NanoSeconds          *aRemaining,
+    const struct EventClockTime *aTime)
 {
-    bool     expired;
-    uint64_t remaining;
-    uint64_t monotonictime;
+    bool                  expired;
+    uint64_t              remaining_ns;
+    struct EventClockTime tm;
 
-    if ( ! self)
+    if ( ! aTime)
     {
-        monotonictime = monotonicTime();
-        self          = &monotonictime;
+        tm   = eventclockTime();
+        aTime = &tm;
     }
 
-    if (*aSince)
+    if (self->eventclock.ns)
     {
-        uint64_t elapsed = *self - *aSince;
+        uint64_t elapsed_ns = aTime->eventclock.ns - self->eventclock.ns;
 
-        if (elapsed >= aDuration_ns)
+        if (elapsed_ns >= aDuration.ns)
         {
-            remaining = 0;
-            expired   = true;
+            remaining_ns = 0;
+            expired      = true;
         }
         else
         {
-            remaining = aDuration_ns - elapsed;
-            expired   = false;
+            remaining_ns = aDuration.ns - elapsed_ns;
+            expired      = false;
         }
     }
     else
@@ -102,67 +131,75 @@ deadlineTimeExpired(
          * caller gets to execute at least once before the deadline
          * expires. */
 
-        *aSince = *self ? *self : 1;
+        *self = *aTime;
 
-        remaining = aDuration_ns;
-        expired   = false;
+        ensure(self->eventclock.ns);
+
+        remaining_ns = aDuration.ns;
+        expired      = false;
     }
 
-    if (aRemaining_ns)
-        *aRemaining_ns = remaining;
+    if (aRemaining)
+        aRemaining->ns = remaining_ns;
 
     return expired;
 }
 
 /* -------------------------------------------------------------------------- */
-uint64_t
-lapTimeSince(uint64_t *aSince, uint64_t aPeriod)
+struct NanoSeconds
+lapTimeSince(struct EventClockTime       *self,
+             struct NanoSeconds           aPeriod,
+             const struct EventClockTime *aTime)
 {
-    uint64_t runningTime = monotonicTime();
-    uint64_t lapTime     = runningTime;
+    struct EventClockTime tm;
 
-    if (aSince)
+    if ( ! aTime)
     {
-        if (*aSince)
-        {
-            lapTime = runningTime - *aSince;
-
-            if (aPeriod && lapTime >= aPeriod)
-                *aSince = runningTime - lapTime % aPeriod;
-        }
-        else
-        {
-            lapTime = 0;
-
-            while ( ! runningTime)
-                runningTime = monotonicTime();
-
-            *aSince = runningTime;
-        }
+        tm   = eventclockTime();
+        aTime = &tm;
     }
 
-    return lapTime;
+    uint64_t lapTime_ns;
+
+    if (self->eventclock.ns)
+    {
+        lapTime_ns = aTime->eventclock.ns - self->eventclock.ns;
+
+        if (aPeriod.ns && lapTime_ns >= aPeriod.ns)
+            self->eventclock.ns =
+                aTime->eventclock.ns - lapTime_ns % aPeriod.ns;
+    }
+    else
+    {
+        lapTime_ns = 0;
+
+        *self = *aTime;
+
+        ensure(self->eventclock.ns);
+    }
+
+    return NanoSeconds(lapTime_ns);
 }
 
 /* -------------------------------------------------------------------------- */
 void
-monotonicSleep(uint64_t aDuration)
+monotonicSleep(struct NanoSeconds aDuration)
 {
-    uint64_t since = 0;
-    uint64_t remaining;
+    struct EventClockTime since = EVENTCLOCKTIME_INIT;
+    struct NanoSeconds    remaining;
 
-    while ( ! deadlineTimeExpired(0, &since, aDuration, &remaining))
+    while ( ! deadlineTimeExpired(&since, aDuration, &remaining, 0))
     {
         /* This approach avoids the problem of drifting sleep duration
          * caused by repeated signal delivery by fixing the wake time
          * then re-calibrating the sleep time on each iteration. */
 
-        if (remaining)
+        if (remaining.ns)
         {
             struct timespec sleepTime =
             {
-                .tv_sec  = remaining / (1000 * 1000 * 1000),
-                .tv_nsec = remaining % (1000 * 1000 * 1000),
+                .tv_sec  = remaining.ns / (1000 * 1000 * 1000),
+                .tv_nsec = remaining.ns % (1000 * 1000 * 1000),
             };
 
             nanosleep(&sleepTime, 0);
@@ -187,64 +224,71 @@ earliestTime(const struct timespec *aLhs, const struct timespec *aRhs)
 }
 
 /* -------------------------------------------------------------------------- */
-uint64_t
-timeValToTime(const struct timeval *aTimeVal)
+struct NanoSeconds
+timeValToNanoSeconds(const struct timeval *aTimeVal)
 {
     uint64_t ns = aTimeVal->tv_sec;
 
-    return (ns * 1000 * 1000 + aTimeVal->tv_usec) * 1000;
+    return NanoSeconds((ns * 1000 * 1000 + aTimeVal->tv_usec) * 1000);
 }
 
 /* -------------------------------------------------------------------------- */
 struct timeval
-timeValFromTime(uint64_t aNanoSeconds)
+timeValFromNanoSeconds(struct NanoSeconds aNanoSeconds)
 {
     return (struct timeval) {
-        .tv_sec  = aNanoSeconds / (1000 * 1000 * 1000),
-        .tv_usec = aNanoSeconds % (1000 * 1000 * 1000) / 1000,
+        .tv_sec  = aNanoSeconds.ns / (1000 * 1000 * 1000),
+        .tv_usec = aNanoSeconds.ns % (1000 * 1000 * 1000) / 1000,
     };
 }
 
 /* -------------------------------------------------------------------------- */
-uint64_t
-timeSpecToTime(const struct timespec *aTimeSpec)
+struct NanoSeconds
+timeSpecToNanoSeconds(const struct timespec *aTimeSpec)
 {
     uint64_t ns = aTimeSpec->tv_sec;
 
-    return (ns * 1000 * 1000 * 1000) + aTimeSpec->tv_nsec;
+    return NanoSeconds((ns * 1000 * 1000 * 1000) + aTimeSpec->tv_nsec);
 }
 
 /* -------------------------------------------------------------------------- */
 struct timespec
-timeSpecFromTime(uint64_t aNanoSeconds)
+timeSpecFromNanoSeconds(struct NanoSeconds aNanoSeconds)
 {
     return (struct timespec) {
-        .tv_sec  = aNanoSeconds / (1000 * 1000 * 1000),
-        .tv_nsec = aNanoSeconds % (1000 * 1000 * 1000),
+        .tv_sec  = aNanoSeconds.ns / (1000 * 1000 * 1000),
+        .tv_nsec = aNanoSeconds.ns % (1000 * 1000 * 1000),
     };
 }
 
 /* -------------------------------------------------------------------------- */
 struct itimerval
-shortenIntervalTime(const struct itimerval *aTimer, uint64_t aElapsedTime)
+shortenIntervalTime(const struct itimerval *aTimer,
+                    struct NanoSeconds      aElapsed)
 {
     struct itimerval shortenedTimer = *aTimer;
 
-    uint64_t alarmTime   = timeValToTime(&shortenedTimer.it_value);
-    uint64_t alarmPeriod = timeValToTime(&shortenedTimer.it_interval);
+    struct NanoSeconds alarmTime =
+        timeValToNanoSeconds(&shortenedTimer.it_value);
 
-    if (alarmTime > aElapsedTime)
+    struct NanoSeconds alarmPeriod =
+        timeValToNanoSeconds(&shortenedTimer.it_interval);
+
+    if (alarmTime.ns > aElapsed.ns)
     {
-        shortenedTimer.it_value = timeValFromTime(alarmTime - aElapsedTime);
+        shortenedTimer.it_value = timeValFromNanoSeconds(
+            NanoSeconds(alarmTime.ns - aElapsed.ns));
     }
-    else if (alarmTime)
+    else if (alarmTime.ns)
     {
-        if ( ! alarmPeriod)
+        if ( ! alarmPeriod.ns)
             shortenedTimer.it_value = shortenedTimer.it_interval;
         else
         {
-            shortenedTimer.it_value = timeValFromTime(
-                alarmPeriod - (aElapsedTime - alarmTime) % alarmPeriod);
+            shortenedTimer.it_value = timeValFromNanoSeconds(
+                NanoSeconds(
+                    alarmPeriod.ns - (aElapsed.ns -
+                                      alarmTime.ns) % alarmPeriod.ns));
         }
     }
 
@@ -328,8 +372,11 @@ popIntervalTimer(struct PushedIntervalTimer *aPushedTimer)
         goto Finally;
 
     struct itimerval shortenedInterval =
-        shortenIntervalTime(&aPushedTimer->mTimer,
-                            monotonicTime() - aPushedTimer->mMark);
+        shortenIntervalTime(
+            &aPushedTimer->mTimer,
+            NanoSeconds(
+                monotonicTime().monotonic.ns -
+                aPushedTimer->mMark.monotonic.ns));
 
     if (setitimer(aPushedTimer->mType, &shortenedInterval, 0))
         goto Finally;
@@ -341,6 +388,27 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+Timekeeping_init(void)
+{
+    if (++sInit == 1)
+    {
+        eventclockTime_init_();
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+Timekeeping_exit(void)
+{
+    --sInit;
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

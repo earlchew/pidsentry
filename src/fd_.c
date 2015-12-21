@@ -366,28 +366,30 @@ lockFd(int aFd, int aType, unsigned aMilliSeconds)
          * and cause flock() to return with EINTR. This allows
          * the deadline to be checked periodically. */
 
-        uint64_t deadlineTime = 0;
+        struct EventClockTime deadlineTime = EVENTCLOCKTIME_INIT;
 
         do
         {
-            uint64_t latchedMonotonic = monotonicTime();
+            struct EventClockTime tm = eventclockTime();
 
-            /* In case the process is stopped after the time is
-             * latched, check once more if the lock can be acquired
-             * before checking the deadline. */
+            RACE
+            ({
+                /* In case the process is stopped after the time is
+                 * latched, check once more if the lock can be acquired
+                 * before checking the deadline. */
 
-            if ( ! flock(aFd, aType | LOCK_NB))
-                break;
+                if ( ! flock(aFd, aType | LOCK_NB))
+                    break;
 
-            if (EINTR != errno && EWOULDBLOCK != errno)
-            {
-                err = errno ? errno : EPERM;
-                break;
-            }
+                if (EINTR != errno && EWOULDBLOCK != errno)
+                {
+                    err = errno ? errno : EPERM;
+                    break;
+                }
+            });
 
             if (deadlineTimeExpired(
-                    &latchedMonotonic,
-                    &deadlineTime, milliSeconds(aMilliSeconds), 0))
+                    &deadlineTime, NSECS(MilliSeconds(aMilliSeconds)), 0, &tm))
             {
                 err = EDEADLOCK;
                 break;
