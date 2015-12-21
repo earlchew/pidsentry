@@ -312,9 +312,9 @@ listenFileSocket(struct File *self, unsigned aQueueLen)
 
 /* -------------------------------------------------------------------------- */
 static int
-waitFileReady_(const struct File *self,
-               unsigned           aPollMask,
-               const uint64_t    *aTimeout_ns)
+waitFileReady_(const struct File        *self,
+               unsigned                  aPollMask,
+               const struct NanoSeconds *aTimeout)
 {
     int rc = -1;
 
@@ -330,7 +330,8 @@ waitFileReady_(const struct File *self,
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
     struct NanoSeconds    remaining;
 
-    const uint64_t timeout_ns = aTimeout_ns ? *aTimeout_ns : 0;
+    const struct NanoSeconds timeout =
+        NanoSeconds(aTimeout ? aTimeout->ns : 0);
 
     while (1)
     {
@@ -350,16 +351,15 @@ waitFileReady_(const struct File *self,
                 break;
         });
 
-        if (deadlineTimeExpired(
-                &since, NanoSeconds(timeout_ns), &remaining, &tm))
-            break;
-
         int timeout_ms;
 
-        if ( ! aTimeout_ns)
+        if ( ! aTimeout)
             timeout_ms = -1;
         else
         {
+            if (deadlineTimeExpired(&since, timeout, &remaining, &tm))
+                break;
+
             uint64_t remaining_ms = MSECS(remaining).ms;
 
             timeout_ms = remaining_ms;
@@ -396,17 +396,17 @@ Finally:
 }
 
 int
-waitFileWriteReady(const struct File *self,
-                   const uint64_t    *aTimeout_ns)
+waitFileWriteReady(const struct File        *self,
+                   const struct NanoSeconds *aTimeout)
 {
-    return waitFileReady_(self, POLLOUT, aTimeout_ns);
+    return waitFileReady_(self, POLLOUT, aTimeout);
 }
 
 int
-waitFileReadReady(const struct File *self,
-                  const uint64_t    *aTimeout_ns)
+waitFileReadReady(const struct File        *self,
+                  const struct NanoSeconds *aTimeout)
 {
-    return waitFileReady_(self, POLLPRI | POLLIN, aTimeout_ns);
+    return waitFileReady_(self, POLLPRI | POLLIN, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */

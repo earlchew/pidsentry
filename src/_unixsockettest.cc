@@ -29,6 +29,7 @@
 
 #include "unixsocket_.h"
 #include "fd_.h"
+#include "timekeeping_.h"
 
 #include <sys/un.h>
 
@@ -75,7 +76,7 @@ TEST(UnixSocketTest, AbstractServer)
 
     struct UnixSocket peersock;
 
-    static const uint64_t zeroTimeout = 0;
+    static const struct NanoSeconds zeroTimeout = NanoSeconds(0);
 
     EXPECT_EQ(0, acceptUnixSocket(&peersock, &serversock));
     EXPECT_EQ(1, waitUnixSocketWriteReady(&clientsock, &zeroTimeout));

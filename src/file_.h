@@ -42,6 +42,8 @@ struct stat;
 struct sockaddr;
 struct ucred;
 
+struct NanoSeconds;
+
 struct File
 {
     int          mFd;
@@ -99,11 +101,11 @@ ftruncateFile(struct File *self, off_t aLength);
 /* -------------------------------------------------------------------------- */
 int
 waitFileWriteReady(const struct File *self,
-                   const uint64_t    *aNanoSeconds);
+                   const struct NanoSeconds *aTimeout);
 
 int
 waitFileReadReady(const struct File *self,
-                  const uint64_t    *aNanoSeconds);
+                  const struct NanoSeconds *aTimeout);
 
 /* -------------------------------------------------------------------------- */
 int

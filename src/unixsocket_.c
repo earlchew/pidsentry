@@ -287,18 +287,18 @@ shutdownUnixSocketWriter(struct UnixSocket *self)
 
 /* -------------------------------------------------------------------------- */
 int
-waitUnixSocketWriteReady(const struct UnixSocket *self,
-                         const uint64_t          *aTimeout_ns)
+waitUnixSocketWriteReady(const struct UnixSocket  *self,
+                         const struct NanoSeconds *aTimeout)
 {
-    return waitFileWriteReady(self->mFile, aTimeout_ns);
+    return waitFileWriteReady(self->mFile, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
 int
-waitUnixSocketReadReady(const struct UnixSocket *self,
-                        const uint64_t          *aTimeout_ns)
+waitUnixSocketReadReady(const struct UnixSocket  *self,
+                        const struct NanoSeconds *aTimeout)
 {
-    return waitFileReadReady(self->mFile, aTimeout_ns);
+    return waitFileReadReady(self->mFile, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
