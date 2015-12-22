@@ -178,15 +178,13 @@ print_(
 
 /* -------------------------------------------------------------------------- */
 void
-ensure_(
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...)
+ensure_(const char *aFile, unsigned aLine, ...)
 {
     FINALLY
     ({
         va_list args;
 
-        va_start(args, aFmt);
+        va_start(args, aLine);
         print_(0, aFile, aLine, "Assertion failure - %s", args);
         va_end(args);
 

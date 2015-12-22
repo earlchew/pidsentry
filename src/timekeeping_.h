@@ -47,6 +47,7 @@ enum TimeScale
     TimeScale_s  = 1,
 };
 
+#define PRIu_NanoSecconds PRIu64
 struct NanoSeconds
 {
     union
@@ -57,6 +58,7 @@ struct NanoSeconds
     };
 };
 
+#define PRIu_MilliSeconds PRIu64
 struct MilliSeconds
 {
     union
@@ -67,6 +69,7 @@ struct MilliSeconds
     };
 };
 
+#define PRIu_Seconds PRIu64
 struct Seconds
 {
     union

@@ -46,19 +46,18 @@ extern "C" {
 void
 debug_(
     const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
+    const char *aFmt, ...)
+    __attribute__ ((__format__(__printf__, 3, 4)));
 
 /* -------------------------------------------------------------------------- */
 #define ensure(aPredicate)                                      \
     do                                                          \
         if ( ! (aPredicate))                                    \
-            ensure_(__FILE__, __LINE__, 0, # aPredicate);       \
+            ensure_(__FILE__, __LINE__, # aPredicate);          \
     while (0)
 
 void
-ensure_(
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
+ensure_(const char *aFile, unsigned aLine, ...);
 
 /* -------------------------------------------------------------------------- */
 #define warn(aErrCode, ...) \
@@ -68,7 +67,8 @@ void
 warn_(
     int aErrCode,
     const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
+    const char *aFmt, ...)
+    __attribute__ ((__format__(__printf__, 4, 5)));
 
 /* -------------------------------------------------------------------------- */
 #define terminate(aErrCode, ...) \
@@ -78,7 +78,8 @@ void
 terminate_(
     int aErrCode,
     const char *aFile, unsigned aLine,
-    const char *aFmt, ...);
+    const char *aFmt, ...)
+    __attribute__ ((__format__(__printf__, 4, 5), __noreturn__));
 
 /* -------------------------------------------------------------------------- */
 int

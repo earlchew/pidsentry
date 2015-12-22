@@ -251,7 +251,8 @@ runChild(
                 if ( ! basetimeEnv)
                     terminate(
                         errno,
-                        "Unable to set K9_TIME=%" PRIu64, baseTime);
+                        "Unable to set K9_TIME=%" PRIu_NanoSecconds,
+                        baseTime.monotonic.ns);
                 debug(0, "env - K9_TIME=%s", basetimeEnv);
 
                 struct sockaddr_un umbilicalSockAddr;
