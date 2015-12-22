@@ -205,7 +205,7 @@ lapTimeSince(struct EventClockTime       *self,
 
     if ( ! aTime)
     {
-        tm   = eventclockTime();
+        tm    = eventclockTime();
         aTime = &tm;
     }
 
