@@ -182,20 +182,22 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-    EXPECT_FALSE(lapTimeSince(&since, duration(NanoSeconds(0)), 0).ns);
+    EXPECT_FALSE(lapTimeSince(&since, duration(NanoSeconds(0)), 0).duration.ns);
 
     {
         monotonicSleep(period);
 
-        auto lapTime =
-            MSECS(lapTimeSince(&since, duration(NanoSeconds(0)), 0)).ms / 100;
+        auto lapTime = MSECS(
+            lapTimeSince(&since,
+                         duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         auto interval = MSECS(period.duration).ms / 100;
 
         EXPECT_EQ(1 * interval, lapTime);
 
-        lapTime =
-            MSECS(lapTimeSince(&since, duration(NanoSeconds(0)), 0)).ms / 100;
+        lapTime = MSECS(
+            lapTimeSince(&since,
+                         duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         EXPECT_EQ(1 * interval, lapTime);
     }
@@ -203,15 +205,17 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
     {
         monotonicSleep(period);
 
-        auto lapTime =
-            MSECS(lapTimeSince(&since, duration(NanoSeconds(0)), 0)).ms / 100;
+        auto lapTime = MSECS(
+            lapTimeSince(&since,
+                         duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         auto interval = MSECS(period.duration).ms / 100;
 
         EXPECT_EQ(2 * interval, lapTime);
 
-        lapTime =
-            MSECS(lapTimeSince(&since, duration(NanoSeconds(0)), 0)).ms / 100;
+        lapTime = MSECS(
+            lapTimeSince(&since,
+                         duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         EXPECT_EQ(2 * interval, lapTime);
     }
@@ -224,20 +228,21 @@ TEST(TimeKeepingTest, LapTimeSinceWithPeriod)
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-    EXPECT_FALSE(lapTimeSince(&since, duration(NanoSeconds(0)), 0).ns);
+    EXPECT_FALSE(lapTimeSince(&since,
+                              duration(NanoSeconds(0)), 0).duration.ns);
 
     {
         monotonicSleep(sleepPeriod);
 
-        uint64_t lapTime =
-            MSECS(lapTimeSince(&since, period, 0)).ms / 100;
+        uint64_t lapTime = MSECS(
+            lapTimeSince(&since, period, 0).duration).ms / 100;
 
         auto interval = MSECS(sleepPeriod.duration).ms / 100;
 
         EXPECT_EQ(1 * interval, lapTime);
 
-        lapTime =
-            MSECS(lapTimeSince(&since, period, 0)).ms / 100;
+        lapTime = MSECS(
+            lapTimeSince(&since, period, 0).duration).ms / 100;
 
         EXPECT_EQ(1 * interval, lapTime);
     }
@@ -245,15 +250,15 @@ TEST(TimeKeepingTest, LapTimeSinceWithPeriod)
     {
         monotonicSleep(sleepPeriod);
 
-        uint64_t lapTime =
-            MSECS(lapTimeSince(&since, period, 0)).ms / 100;
+        uint64_t lapTime = MSECS(
+            lapTimeSince(&since, period, 0).duration).ms / 100;
 
         auto interval = MSECS(sleepPeriod.duration).ms / 100;
 
         EXPECT_EQ(2 * interval, lapTime);
 
-        lapTime =
-            MSECS(lapTimeSince(&since, period, 0)).ms / 100;
+        lapTime = MSECS(
+            lapTimeSince(&since, period, 0).duration).ms / 100;
 
         EXPECT_EQ(2 * interval, lapTime);
     }

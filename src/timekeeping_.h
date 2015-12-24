@@ -188,7 +188,7 @@ struct WallClockTime
 wallclockTime(void);
 
 /* -------------------------------------------------------------------------- */
-struct NanoSeconds
+struct Duration
 lapTimeSince(struct EventClockTime       *self,
              struct Duration              aPeriod,
              const struct EventClockTime *aTime);

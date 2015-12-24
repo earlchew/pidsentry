@@ -196,7 +196,7 @@ deadlineTimeExpired(
 }
 
 /* -------------------------------------------------------------------------- */
-struct NanoSeconds
+struct Duration
 lapTimeSince(struct EventClockTime       *self,
              struct Duration              aPeriod,
              const struct EventClockTime *aTime)
@@ -228,7 +228,7 @@ lapTimeSince(struct EventClockTime       *self,
         ensure(self->eventclock.ns);
     }
 
-    return NanoSeconds(lapTime_ns);
+    return duration(NanoSeconds(lapTime_ns));
 }
 
 /* -------------------------------------------------------------------------- */

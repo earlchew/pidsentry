@@ -102,6 +102,25 @@ static const unsigned sPollOutputEvents    = POLLHUP|POLLERR|POLLOUT;
 static const unsigned sPollDisconnectEvent = POLLHUP|POLLERR;
 
 /* -------------------------------------------------------------------------- */
+enum PollFdTimerKind
+{
+    POLL_FD_TIMER_DUMMY,
+    POLL_FD_TIMER_KINDS
+};
+
+struct PollFdTimerAction
+{
+    void                (*mAction)(void                        *self,
+                                   struct PollFdTimerAction    *aPollFdTimer,
+                                   const struct EventClockTime *aPollTime,
+                                   const struct Duration       *aLapTime);
+    void                 *mSelf;
+    struct Duration       mPeriod;
+    struct EventClockTime mSince;
+    struct EventClockTime mDeadline;
+};
+
+/* -------------------------------------------------------------------------- */
 static pid_t
 runChild(
     char              **aCmd,
@@ -816,9 +835,10 @@ struct PollFdTether
 };
 
 static void
-resetPollFdTetherTimeout(struct PollFdTether *self)
+resetPollFdTetherTimeout(struct PollFdTether         *self,
+                         const struct EventClockTime *aPollTime)
 {
-    self->mTimeout.mSince      = eventclockTime();
+    self->mTimeout.mSince      = *aPollTime;
     self->mTimeout.mCycleCount = 0;
 }
 
@@ -826,25 +846,27 @@ static bool
 checkPollFdTetherTimeout(struct PollFdTether         *self,
                          const struct EventClockTime *aPollTime)
 {
+    ensure(0 < self->mTimeout.mPeriod_ms);
+
     bool checkTimeout = true;
 
     if ( ! self->mTimeout.mTriggered)
     {
-        int elapsedTime_ms = MSECS(
+        struct MilliSeconds elapsedTime = MSECS(
             lapTimeSince(
                 &self->mTimeout.mSince,
-                duration(NanoSeconds(0)), aPollTime)).ms;
+                duration(NanoSeconds(0)), aPollTime).duration);
 
         debug(1,
-              "inactivity clock cycle %u elapsed %dms",
+              "inactivity clock cycle %u elapsed %" PRIu_MilliSeconds "ms",
               self->mTimeout.mCycleCount,
-              elapsedTime_ms);
+              elapsedTime.ms);
 
-        if (elapsedTime_ms < self->mTimeout.mPeriod_ms)
+        if (elapsedTime.ms < self->mTimeout.mPeriod_ms)
             checkTimeout = false;
         else
         {
-            self->mTimeout.mSince = eventclockTime();
+            self->mTimeout.mSince = *aPollTime;
 
             if (++self->mTimeout.mCycleCount >= self->mTimeout.mCycleLimit)
             {
@@ -869,7 +891,7 @@ pollFdStdin(void                        *self_,
     ensure(STDIN_FILENO == aPollFds[POLL_FD_STDIN].fd);
     ensure( ! self->mClosed.mStdin);
 
-    resetPollFdTetherTimeout(self);
+    resetPollFdTetherTimeout(self, aPollTime);
 
     struct PollEventText pollEventText;
     debug(
@@ -904,7 +926,7 @@ pollFdStdout(void                        *self_,
     ensure(STDOUT_FILENO == aPollFds[POLL_FD_STDOUT].fd);
     ensure( ! self->mClosed.mStdout);
 
-    resetPollFdTetherTimeout(self);
+    resetPollFdTetherTimeout(self, aPollTime);
 
     struct PollEventText pollEventText;
     debug(
@@ -996,6 +1018,16 @@ pollFdStdout(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+void
+pollFdTimerDummy(void                        *self_,
+                 struct PollFdTimerAction    *aPollFdAction,
+                 const struct EventClockTime *aPollTime,
+                 const struct Duration       *aLapTime)
+{
+    debug(1, "@@@ DUMMY TIMER");
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 monitorChild(pid_t              aChildPid,
              struct UnixSocket *aUmbilicalSocket,
@@ -1054,10 +1086,10 @@ monitorChild(pid_t              aChildPid,
 
     int timeout_ms = gOptions.mTimeout_s * 1000;
 
-    if (timeout_ms / 1000 != gOptions.mTimeout_s || 0 > timeout_ms)
+    if (timeout_ms / 1000 != gOptions.mTimeout_s || 0 >= timeout_ms)
         terminate(
             0,
-            "Timeout overflows representation %d", gOptions.mTimeout_s);
+            "Invalid timeout value %d", gOptions.mTimeout_s);
 
     if ( ! gOptions.mTether)
         timeout_ms = 0;
@@ -1079,7 +1111,7 @@ monitorChild(pid_t              aChildPid,
         {
             .mCycleCount = 0,
             .mCycleLimit = timeoutCycles,
-            .mPeriod_ms  = timeout_ms / timeoutCycles,
+            .mPeriod_ms  = 0 > timeout_ms ? -1 : timeout_ms / timeoutCycles,
             .mSince      = eventclockTime(),
             .mTriggered  = false,
         },
@@ -1145,6 +1177,14 @@ monitorChild(pid_t              aChildPid,
         [POLL_FD_STDOUT]    = { pollFdStdout,    &pollfdtether },
     };
 
+    struct PollFdTimerAction pollfdtimeractions[POLL_FD_TIMER_KINDS] =
+    {
+        [POLL_FD_TIMER_DUMMY] =
+        {
+            pollFdTimerDummy, 0, duration(NSECS(Seconds(3)))
+        }
+    };
+
     struct ChildSignalPlan
     {
         pid_t mPid;
@@ -1193,6 +1233,8 @@ monitorChild(pid_t              aChildPid,
      * referring to the same open file, so this approach cannot be
      * dinner. */
 
+    struct EventClockTime polltm;
+
     do
     {
         if (0 > pollfdtether.mClosed.mStdout ||
@@ -1234,10 +1276,52 @@ monitorChild(pid_t              aChildPid,
          * order of operations is important to deal robustly with
          * slow clocks and stoppages. */
 
-        debug(1, "poll wait");
+        polltm = eventclockTime();
 
-        int rc = poll(
-            pollfds, NUMBEROF(pollfds), pollfdtether.mTimeout.mPeriod_ms);
+        struct Duration timeout   = duration(NanoSeconds(0));
+        size_t          numActive = 0;
+
+        for (size_t ix = 0; NUMBEROF(pollfdtimeractions) > ix; ++ix)
+        {
+            if (pollfdtimeractions[ix].mPeriod.duration.ns)
+            {
+                ++numActive;
+
+                struct Duration remaining;
+
+                if (deadlineTimeExpired(
+                        &pollfdtimeractions[ix].mSince,
+                        pollfdtimeractions[ix].mPeriod,
+                        &remaining,
+                        &polltm))
+                {
+                    timeout = duration(NanoSeconds(0));
+                    break;
+                }
+
+                if (timeout.duration.ns >
+                    remaining.duration.ns || ! timeout.duration.ns)
+                    timeout = remaining;
+            }
+        }
+
+        int timeout_ms;
+
+        if ( ! numActive)
+            timeout_ms = -1;
+        else
+        {
+            struct MilliSeconds timeoutDuration = MSECS(timeout.duration);
+
+            timeout_ms = timeoutDuration.ms;
+
+            if (0 > timeout_ms || timeoutDuration.ms != timeout_ms)
+                timeout_ms = INT_MAX;
+        }
+
+        debug(1, "poll wait %dms", timeout_ms);
+
+        int rc = poll(pollfds, NUMBEROF(pollfds), timeout_ms);
 
         if (-1 == rc)
         {
@@ -1253,7 +1337,7 @@ monitorChild(pid_t              aChildPid,
          * file descriptors again. Deadlines will be compared against
          * this latched time */
 
-        struct EventClockTime polltm = eventclockTime();
+        polltm = eventclockTime();
 
         RACE
         ({
@@ -1284,11 +1368,7 @@ monitorChild(pid_t              aChildPid,
             unsigned eventCount = 0;
 
             if ( ! rc)
-            {
-                ensure(-1 != pollfdtether.mTimeout.mPeriod_ms);
-
                 ++eventCount;
-            }
 
             /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
              * no matter what the caller has subscribed for. Only pay
@@ -1296,7 +1376,7 @@ monitorChild(pid_t              aChildPid,
 
             debug(1, "poll scan of %d fds", rc);
 
-            for (unsigned ix = 0; NUMBEROF(pollfds) > ix; ++ix)
+            for (size_t ix = 0; NUMBEROF(pollfds) > ix; ++ix)
             {
                 debug(
                     1,
@@ -1330,6 +1410,34 @@ monitorChild(pid_t              aChildPid,
             ensure(eventCount);
         }
 
+        /* With the file descriptors processed, any timeouts have had
+         * a chance to be recalibrated, and now the timers can be
+         * processed. */
+
+        for (size_t ix = 0; NUMBEROF(pollfdtimeractions) > ix; ++ix)
+        {
+            if (pollfdtimeractions[ix].mPeriod.duration.ns)
+            {
+                if (deadlineTimeExpired(
+                        &pollfdtimeractions[ix].mSince,
+                        pollfdtimeractions[ix].mPeriod,
+                        0,
+                        &polltm))
+                {
+                    struct Duration lapTime = lapTimeSince(
+                        &pollfdtimeractions[ix].mSince,
+                        pollfdtimeractions[ix].mPeriod,
+                        &polltm);
+
+                    pollfdtimeractions[ix].mAction(
+                        pollfdtimeractions[ix].mSelf,
+                        &pollfdtimeractions[ix],
+                        &polltm,
+                        &lapTime);
+                }
+            }
+        }
+
         /* If a timeout is expected and a timeout occurred, and the
          * event loop was waiting for data from the child process,
          * then declare the child terminated, except if the
@@ -1338,13 +1446,6 @@ monitorChild(pid_t              aChildPid,
         if (-1 != pollfdtether.mTimeout.mPeriod_ms &&
             ! pollfdtether.mTimeout.mTriggered)
         {
-            int elapsedTime_ms = MSECS(
-                lapTimeSince(
-                    &pollfdtether.mTimeout.mSince,
-                    duration(NanoSeconds(0)), &polltm)).ms;
-
-            debug(1, "inactivity clock %dms", elapsedTime_ms);
-
             while (checkPollFdTetherTimeout(&pollfdtether, &polltm))
             {
                 siginfo_t siginfo;
@@ -1375,7 +1476,7 @@ monitorChild(pid_t              aChildPid,
                         gOptions.mTimeout_s,
                         createStatusCodeText(&statusCodeText, &siginfo));
 
-                    resetPollFdTetherTimeout(&pollfdtether);
+                    resetPollFdTetherTimeout(&pollfdtether, &polltm);
 
                     break;
                 }
@@ -1387,7 +1488,7 @@ monitorChild(pid_t              aChildPid,
                     if ( ! termination.mTriggered)
                     {
                         termination.mTriggered = -1;
-                        termination.mSince     = eventclockTime();
+                        termination.mSince     = polltm;
                     }
                 }
 
@@ -1410,7 +1511,7 @@ monitorChild(pid_t              aChildPid,
                 if ( ! termination.mTriggered)
                 {
                     termination.mTriggered = -1;
-                    termination.mSince     = eventclockTime();
+                    termination.mSince     = polltm;
                 }
             }
         }
@@ -1424,7 +1525,7 @@ monitorChild(pid_t              aChildPid,
                     lapTimeSince(
                         &termination.mSince,
                         duration(NSECS(Seconds(gOptions.mPacing_s))),
-                        &polltm)).s;
+                        &polltm).duration).s;
 
             debug(1, "post mortem clock %us", elapsedTime_s);
 
