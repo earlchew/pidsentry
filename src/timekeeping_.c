@@ -196,6 +196,15 @@ deadlineTimeExpired(
 }
 
 /* -------------------------------------------------------------------------- */
+void
+lapTimeRestart(struct EventClockTime       *self,
+               const struct EventClockTime *aTime)
+{
+    if (self->eventclock.ns)
+        *self = aTime ? *aTime : eventclockTime();
+}
+
+/* -------------------------------------------------------------------------- */
 struct Duration
 lapTimeSince(struct EventClockTime       *self,
              struct Duration              aPeriod,

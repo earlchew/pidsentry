@@ -47,7 +47,10 @@ enum TimeScale
     TimeScale_s  = 1,
 };
 
-#define PRIu_NanoSecconds PRIu64
+#define PRIu_NanoSeconds PRIu64
+#define PRIs_NanoSeconds PRIu64 ".%09" PRIu64 "s"
+#define FMTs_NanoSeconds(NanoSeconds) \
+    ((NanoSeconds).ns / TimeScale_ns), ((NanoSeconds).ns % TimeScale_ns)
 struct NanoSeconds
 {
     union
@@ -58,7 +61,9 @@ struct NanoSeconds
     };
 };
 
-#define PRIu_MilliSeconds PRIu64
+#define PRIs_MilliSeconds PRIu64 ".%03" PRIu64 "s"
+#define FMTs_MilliSeconds(MilliSeconds) \
+    ((MilliSeconds).ms / 1000), ((MilliSeconds).ms % 1000)
 struct MilliSeconds
 {
     union
@@ -69,7 +74,8 @@ struct MilliSeconds
     };
 };
 
-#define PRIu_Seconds PRIu64
+#define PRIs_Seconds PRIu64 "s"
+#define FMTs_Seconds(Seconds) ((Seconds).s)
 struct Seconds
 {
     union
@@ -192,6 +198,10 @@ struct Duration
 lapTimeSince(struct EventClockTime       *self,
              struct Duration              aPeriod,
              const struct EventClockTime *aTime);
+
+void
+lapTimeRestart(struct EventClockTime       *self,
+               const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
 bool

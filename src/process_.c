@@ -333,7 +333,7 @@ watchProcessClock(const struct Pipe    *aClockPipe,
     if (sigaction(SIGALRM, &clockAction, 0))
         goto Finally;
 
-    /* Make sure that there are not timers already running. The
+    /* Make sure that there are no timers already running. The
      * interface only supports one clock instance. */
 
     struct itimerval clockTimer;
