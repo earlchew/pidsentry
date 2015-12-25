@@ -115,12 +115,14 @@ static const unsigned sPollDisconnectEvent = POLLHUP|POLLERR;
 enum PollFdTimerKind
 {
     POLL_FD_TIMER_TETHER,
+    POLL_FD_TIMER_ORPHAN,
     POLL_FD_TIMER_KINDS
 };
 
 static const char *sPollFdTimerNames[POLL_FD_TIMER_KINDS] =
 {
     [POLL_FD_TIMER_TETHER] = "tether",
+    [POLL_FD_TIMER_ORPHAN] = "orphan",
 };
 
 struct PollFdTimerAction
@@ -1016,15 +1018,12 @@ pollFdStdout(void                        *self_,
     } while (0);
 }
 
-/* -------------------------------------------------------------------------- */
-void
+static void
 pollFdTimerTether(void                        *self_,
                   struct PollFdTimerAction    *aPollFdTimerAction,
                   const struct EventClockTime *aPollTime,
                   const struct Duration       *aLapTime)
 {
-    debug(1, "@@@ TETHER TIMER");
-
     struct PollFdTether *self = self_;
 
     ensure(POLL_FD_STDIN == self->mKind);
@@ -1096,6 +1095,47 @@ pollFdTimerTether(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+struct PollFdTimerOrphan
+{
+    enum PollFdTimerKind mKind;
+
+    struct TerminationAgent *mTerminationAgent;
+};
+
+void
+pollFdTimerOrphan(void                        *self_,
+                  struct PollFdTimerAction    *aPollFdTimerAction,
+                  const struct EventClockTime *aPollTime,
+                  const struct Duration       *aLapTime)
+{
+    struct PollFdTimerOrphan *self = self_;
+
+    ensure(POLL_FD_TIMER_ORPHAN == self->mKind);
+
+    /* Using PR_SET_PDEATHSIG is very attractive however the detailed
+     * discussion at the end of this thread is important:
+     *
+     * https://bugzilla.kernel.org/show_bug.cgi?id=43300
+     *
+     * In the most general case, PR_SET_PDEATHSIG is useless because
+     * it tracks the termination of the parent thread, not the parent
+     * process. */
+
+    if (1 == getppid())
+    {
+        debug(0, "orphaned");
+
+        aPollFdTimerAction->mPeriod = duration(NanoSeconds(0));
+
+        if ( ! self->mTerminationAgent->mTriggered)
+        {
+            self->mTerminationAgent->mTriggered = -1;
+            self->mTerminationAgent->mSince     = *aPollTime;
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 monitorChild(pid_t              aChildPid,
              struct UnixSocket *aUmbilicalSocket,
@@ -1107,6 +1147,11 @@ monitorChild(pid_t              aChildPid,
     struct PollFdTimerAction pollfdtimeractions[POLL_FD_TIMER_KINDS] =
     {
         [POLL_FD_TIMER_TETHER] =
+        {
+            0, 0, duration(NSECS(Seconds(0)))
+        },
+
+        [POLL_FD_TIMER_ORPHAN] =
         {
             0, 0, duration(NSECS(Seconds(0)))
         },
@@ -1158,14 +1203,6 @@ monitorChild(pid_t              aChildPid,
         .mChildPid        = aChildPid,
         .mUmbilicalSocket = aUmbilicalSocket,
         .mUmbilicalPeer   = 0,
-    };
-
-    struct OrphanMonitor
-    {
-        bool mTriggered;        /* Process detected as orhpan */
-    } orphaned =
-    {
-        .mTriggered  = false,
     };
 
     struct TerminationAgent termination =
@@ -1226,6 +1263,26 @@ monitorChild(pid_t              aChildPid,
             NSECS(Seconds(
                 gOptions.mTether
                 ? gOptions.mTimeout_s : 0)).ns / timeoutCycles));
+
+    /* If requested to be aware when the watchdog becomes an orphan,
+     * check if init(8) is the parent of this process. If this is
+     * detected, start sending signals to the child to encourage it
+     * to exit. */
+
+    struct PollFdTimerOrphan pollfdtimerorphan =
+    {
+        .mKind = POLL_FD_TIMER_ORPHAN,
+
+        .mTerminationAgent = &termination,
+    };
+
+    if (gOptions.mOrphaned)
+    {
+        pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mAction = pollFdTimerOrphan;
+        pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mSelf   = &pollfdtimerorphan;
+        pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mPeriod =
+            duration(NSECS(Seconds(3)));
+    }
 
     /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
      * that it is best not to put too much trust in POLLHUP vs POLLIN,
@@ -1511,27 +1568,6 @@ monitorChild(pid_t              aChildPid,
                         &pollfdtimeractions[ix],
                         &polltm,
                         &lapTime);
-                }
-            }
-        }
-
-        /* If requested to be aware when the watchdog becomes an orphan,
-         * check if init(8) is the parent of this process. If this is
-         * detected, start sending signals to the child to encourage it
-         * to exit. */
-
-        if (gOptions.mOrphaned && ! orphaned.mTriggered)
-        {
-            if (1 == getppid())
-            {
-                debug(0, "orphaned");
-
-                orphaned.mTriggered = true;
-
-                if ( ! termination.mTriggered)
-                {
-                    termination.mTriggered = -1;
-                    termination.mSince     = polltm;
                 }
             }
         }
