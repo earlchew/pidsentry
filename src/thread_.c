@@ -47,6 +47,20 @@ createThread(pthread_t      *self,
 }
 
 /* -------------------------------------------------------------------------- */
+void *
+joinThread(pthread_t *self)
+{
+    void *rc = 0;
+
+    if (errno = pthread_join(*self, &rc))
+        terminate(
+            errno,
+            "Unable to join thread");
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 void
 createThreadAttr(pthread_attr_t *self)
 {

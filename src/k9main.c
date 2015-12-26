@@ -38,6 +38,7 @@
 #include "stdfdfiller_.h"
 #include "pidfile_.h"
 #include "process_.h"
+#include "thread_.h"
 #include "error_.h"
 #include "test_.h"
 #include "fd_.h"
@@ -81,8 +82,8 @@ static const char *sK9soPath;
 /* -------------------------------------------------------------------------- */
 enum PollFdKind
 {
-    POLL_FD_STDIN,
-    POLL_FD_STDOUT,
+    POLL_FD_INPUT,
+    POLL_FD_OUTPUT,
     POLL_FD_CHILD,
     POLL_FD_SIGNAL,
     POLL_FD_CLOCK,
@@ -94,8 +95,8 @@ static const char *sPollFdNames[POLL_FD_KINDS] =
 {
     [POLL_FD_CHILD]     = "child",
     [POLL_FD_SIGNAL]    = "signal",
-    [POLL_FD_STDOUT]    = "stdout",
-    [POLL_FD_STDIN]     = "stdin",
+    [POLL_FD_OUTPUT]    = "output",
+    [POLL_FD_INPUT]     = "input",
     [POLL_FD_CLOCK]     = "clock",
     [POLL_FD_UMBILICAL] = "umbilical",
 };
@@ -878,6 +879,8 @@ struct PollFdTether
     enum PollFdKind           mKind;
     struct PollFdTimerAction *mTimer;
 
+    int                            mSrcFd;
+    int                            mDstFd;
     pid_t                          mChildPid;
     unsigned                       mCycleCount; /* Current number of cycles */
     unsigned                       mCycleLimit; /* Cycles before triggering */
@@ -903,92 +906,92 @@ closePollFdTetherPipeline(struct PollFdTether *self,
      * of dup2, since that will ensure that the watchdog can clean
      * up nullPipe while leaving a valid stdin and stdout. */
 
-    if (STDIN_FILENO != dup2(self->mNullPipe->mRdFile->mFd, STDIN_FILENO))
+    if (self->mSrcFd != dup2(self->mNullPipe->mRdFile->mFd, self->mSrcFd))
         terminate(
             errno,
-            "Unable to dup null pipe to stdin");
+            "Unable to dup null pipe to fd %d", self->mSrcFd);
 
-    if (STDOUT_FILENO != dup2(self->mNullPipe->mWrFile->mFd, STDOUT_FILENO))
+    if (self->mDstFd != dup2(self->mNullPipe->mWrFile->mFd, self->mDstFd))
         terminate(
             errno,
-            "Unable to dup null pipe to stdout");
+            "Unable to dup null pipe to fd %d", self->mDstFd);
 
-    aPollFds[POLL_FD_STDIN].fd  = self->mNullPipe->mRdFile->mFd;
-    aPollFds[POLL_FD_STDOUT].fd = self->mNullPipe->mWrFile->mFd;
+    aPollFds[POLL_FD_INPUT].fd  = self->mNullPipe->mRdFile->mFd;
+    aPollFds[POLL_FD_OUTPUT].fd = self->mNullPipe->mWrFile->mFd;
 
-    aPollFds[POLL_FD_STDIN].events  = sPollDisconnectEvent;
-    aPollFds[POLL_FD_STDOUT].events = sPollDisconnectEvent;
+    aPollFds[POLL_FD_INPUT].events  = sPollDisconnectEvent;
+    aPollFds[POLL_FD_OUTPUT].events = sPollDisconnectEvent;
 }
 
 static void
-pollFdStdin(void                        *self_,
+pollFdInput(void                        *self_,
             struct pollfd               *aPollFds,
             const struct EventClockTime *aPollTime)
 {
     struct PollFdTether *self = self_;
 
-    ensure(POLL_FD_STDIN == self->mKind);
+    ensure(POLL_FD_INPUT == self->mKind);
 
     /* The pipeline might have been closed between the event loop
      * awakening, and the stdin callback being invoked. */
 
-    if (STDIN_FILENO == aPollFds[POLL_FD_STDIN].fd)
+    if (self->mSrcFd == aPollFds[POLL_FD_INPUT].fd)
     {
         resetPollFdTetherTimeout(self, aPollTime);
 
         struct PollEventText pollEventText;
         debug(
             1,
-            "poll stdin %s",
+            "poll input %s",
             createPollEventText(
                 &pollEventText,
-                aPollFds[POLL_FD_STDIN].revents));
+                aPollFds[POLL_FD_INPUT].revents));
 
-        ensure(aPollFds[POLL_FD_STDIN].events);
+        ensure(aPollFds[POLL_FD_INPUT].events);
 
         /* Close the pipeline if there is no more input available. In this
          * case the pipeline must be empty, otherwise POLL_FD_STDIN would
          * not have been ready. */
 
-        if ( ! (aPollFds[POLL_FD_STDIN].revents & POLLIN))
+        if ( ! (aPollFds[POLL_FD_INPUT].revents & POLLIN))
             closePollFdTetherPipeline(self, aPollFds);
         else
         {
-            aPollFds[POLL_FD_STDIN].fd      = self->mNullPipe->mRdFile->mFd;
-            aPollFds[POLL_FD_STDOUT].events = sPollOutputEvents;
+            aPollFds[POLL_FD_INPUT].fd      = self->mNullPipe->mRdFile->mFd;
+            aPollFds[POLL_FD_OUTPUT].events = sPollOutputEvents;
         }
     }
 }
 
 static void
-pollFdStdout(void                        *self_,
+pollFdOutput(void                        *self_,
              struct pollfd               *aPollFds,
              const struct EventClockTime *aPollTime)
 {
     struct PollFdTether *self = self_;
 
-    ensure(POLL_FD_STDIN == self->mKind);
+    ensure(POLL_FD_INPUT == self->mKind);
 
     /* The pipeline might have been closed between the event loop
      * awakening, and the stdout callback being invoked. */
 
-    if (STDOUT_FILENO == aPollFds[POLL_FD_STDOUT].fd)
+    if (self->mDstFd == aPollFds[POLL_FD_OUTPUT].fd)
     {
         resetPollFdTetherTimeout(self, aPollTime);
 
         struct PollEventText pollEventText;
         debug(
             1,
-            "poll stdout %s",
+            "poll output %s",
             createPollEventText(
                 &pollEventText,
-                aPollFds[POLL_FD_STDOUT].revents));
+                aPollFds[POLL_FD_OUTPUT].revents));
 
-        ensure(aPollFds[POLL_FD_STDOUT].events);
+        ensure(aPollFds[POLL_FD_OUTPUT].events);
 
         do
         {
-            if (aPollFds[POLL_FD_STDOUT].revents & POLLOUT)
+            if (aPollFds[POLL_FD_OUTPUT].revents & POLLOUT)
             {
                 int available;
 
@@ -997,10 +1000,11 @@ pollFdStdout(void                        *self_,
                  * process could change the capacity of the pipe
                  * at runtime. */
 
-                if (ioctl(STDIN_FILENO, FIONREAD, &available))
+                if (ioctl(self->mSrcFd, FIONREAD, &available))
                     terminate(
                         errno,
-                        "Unable to find amount of readable data in stdin");
+                        "Unable to find amount of readable data in fd %d",
+                        self->mSrcFd);
 
                 ensure(available);
 
@@ -1008,13 +1012,15 @@ pollFdStdout(void                        *self_,
                     available = 1 + random() % available;
 
                 ssize_t bytes = spliceFd(
-                    STDIN_FILENO,
-                    STDOUT_FILENO,
+                    self->mSrcFd,
+                    self->mDstFd,
                     available,
                     SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
 
                 debug(1,
-                      "spliced stdin to stdout %zd out of %d",
+                      "spliced fd %d to fd %d %zd out of %d",
+                      self->mSrcFd,
+                      self->mDstFd,
                       bytes,
                       available);
 
@@ -1062,8 +1068,8 @@ pollFdStdout(void                        *self_,
 
                     if (bytes >= available)
                     {
-                        aPollFds[POLL_FD_STDIN].fd      = STDIN_FILENO;
-                        aPollFds[POLL_FD_STDOUT].events = sPollDisconnectEvent;
+                        aPollFds[POLL_FD_INPUT].fd      = self->mSrcFd;
+                        aPollFds[POLL_FD_OUTPUT].events = sPollDisconnectEvent;
                     }
                     break;
                 }
@@ -1087,7 +1093,7 @@ pollFdTimerTether(void                        *self_,
 {
     struct PollFdTether *self = self_;
 
-    ensure(POLL_FD_STDIN == self->mKind);
+    ensure(POLL_FD_INPUT == self->mKind);
 
     /* The tether timer is only active if there is a tether and it was
      * configured with a timeout. The timeout expires if there was
@@ -1202,6 +1208,100 @@ pollFdTimerOrphan(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+struct MonitorChildThread
+{
+    pthread_t    mThread;
+    int          mSrcFd;
+    int          mDstFd;
+    struct Pipe *mNullPipe;
+};
+
+static void *
+monitorChildMain_(void *self_)
+{
+    struct MonitorChildThread *self = self_;
+
+    struct pollfd pollfds[2] =
+    {
+        { .fd = self->mSrcFd, .events = sPollInputEvents },
+        { .fd = self->mDstFd, .events = sPollDisconnectEvent },
+    };
+
+    while (1)
+    {
+        int rc = poll(pollfds, NUMBEROF(pollfds), -1);
+
+        if (-1 == rc)
+        {
+            if (EINTR == errno)
+                continue;
+
+            terminate(
+                errno,
+                "Unable to poll for activity from fd %d",
+                self->mSrcFd);
+        }
+
+        /* The output file descriptor must have been closed if:
+         *
+         *  o There is no input available, so the poll must have
+         *    returned because an output disconnection event was detected
+         *  o Input was available, but none could be written to the output
+         */
+
+        ensure(0 < rc);
+
+        int available;
+
+        if (ioctl(self->mSrcFd, FIONREAD, &available))
+            terminate(
+                errno,
+                "Unable to find amount of readable data in stdin");
+
+        if ( ! available)
+            break;
+
+        ssize_t bytes = spliceFd(
+            self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE);
+
+        if ( ! bytes)
+            break;
+
+        if (-1 == bytes)
+        {
+            if (EPIPE != errno)
+            {
+                switch (errno)
+                {
+                default:
+                    terminate(
+                        errno,
+                        "Unable to splice %d bytes to fd %d",
+                        available,
+                        self->mDstFd);
+
+                case EWOULDBLOCK:
+                case EINTR:
+                    break;
+                }
+            }
+        }
+    }
+
+    if (self->mDstFd != dup2(self->mNullPipe->mWrFile->mFd, self->mDstFd))
+        terminate(
+            errno,
+            "Unable to dup null pipe to fd %d", self->mDstFd);
+
+    if (self->mSrcFd != dup2(self->mNullPipe->mRdFile->mFd, self->mSrcFd))
+        terminate(
+            errno,
+            "Unable to dup null pipe to fd %d", self->mSrcFd);
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 monitorChild(pid_t              aChildPid,
              struct UnixSocket *aUmbilicalSocket,
@@ -1236,6 +1336,14 @@ monitorChild(pid_t              aChildPid,
         terminate(
             errno,
             "Unable to create null pipe");
+    if (closePipeOnExec(&nullPipe, O_CLOEXEC))
+        terminate(
+            errno,
+            "Unable to set close on exec for null pipe");
+    if (nonblockingPipe(&nullPipe))
+        terminate(
+            errno,
+            "Unable to mark null pipe non-blocking");
 
     struct PollFdClock pollfdclock = { .mKind = POLL_FD_CLOCK };
 
@@ -1247,6 +1355,10 @@ monitorChild(pid_t              aChildPid,
         terminate(
             errno,
             "Unable to set close on exec for clock pipe");
+    if (nonblockingPipe(&pollfdclock.mClockPipe))
+        terminate(
+            errno,
+            "Unable to mark clock pipe non-blocking");
 
     struct timeval clockPeriod = { .tv_sec = 3 };
 
@@ -1302,6 +1414,41 @@ monitorChild(pid_t              aChildPid,
     pollfdtimertermination.mTimer->mAction = pollFdTimerTermination;
     pollfdtimertermination.mTimer->mSelf   = &pollfdtimertermination;
 
+    /* Create a thread and transport pipe to use a blocking copy
+     * to transfer data from a local pipe to stdout. This is
+     * primarily because SPLICE_F_NONBLOCK cannot guarantee that
+     * the operation is non-blocking unless both source and destination
+     * file descriptors are also themselves non-blocking.
+     *
+     * The child thread is used to perform a potentially blocking
+     * transfer between an intermediate pipe and stdout, while
+     * the main monitoring thread deals exclusively with non-blocking
+     * file descriptors. */
+
+    struct Pipe transportPipe;
+
+    if (createPipe(&transportPipe))
+        terminate(
+            errno,
+            "Unable to create transport pipe");
+    if (closePipeOnExec(&transportPipe, O_CLOEXEC))
+        terminate(
+            errno,
+            "Unable to set close on exec for transport pipe");
+    if (nonblockingPipe(&transportPipe))
+        terminate(
+            errno,
+            "Unable to mark transport pipe non-blocking");
+
+    struct MonitorChildThread childThread =
+    {
+        .mSrcFd    = transportPipe.mRdFile->mFd,
+        .mDstFd    = STDOUT_FILENO,
+        .mNullPipe = &nullPipe,
+    };
+
+    createThread(&childThread.mThread, 0, monitorChildMain_, &childThread);
+
     int timeout_ms = gOptions.mTimeout_s * 1000;
 
     if (timeout_ms / 1000 != gOptions.mTimeout_s || 0 > timeout_ms)
@@ -1323,9 +1470,11 @@ monitorChild(pid_t              aChildPid,
 
     struct PollFdTether pollfdtether =
     {
-        .mKind  = POLL_FD_STDIN,
+        .mKind  = POLL_FD_INPUT,
         .mTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
 
+        .mSrcFd       = STDIN_FILENO,
+        .mDstFd       = transportPipe.mWrFile->mFd,
         .mChildPid    = aChildPid,
         .mCycleCount  = 0,
         .mCycleLimit  = timeoutCycles,
@@ -1386,13 +1535,32 @@ monitorChild(pid_t              aChildPid,
         [POLL_FD_UMBILICAL] = {
             .fd     = aUmbilicalSocket->mFile->mFd,
             .events = sPollInputEvents },
-        [POLL_FD_STDIN] = {
-            .fd     = STDIN_FILENO,
+        [POLL_FD_INPUT] = {
+            .fd     = pollfdtether.mSrcFd,
             .events = sPollInputEvents, },
-        [POLL_FD_STDOUT] = {
-            .fd     = STDOUT_FILENO,
+        [POLL_FD_OUTPUT] = {
+            .fd     = pollfdtether.mDstFd,
             .events = sPollDisconnectEvent },
     };
+
+    /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
+     * open file, rather than of each file descriptor. Since stdin and
+     * stdout are typically inherited from the parent, setting O_NONBLOCK
+     * would affect all file descriptors referring to the same open file,
+     so this approach cannot be employed directly. */
+
+    if ( ! gOptions.mTether)
+        closePollFdTetherPipeline(&pollfdtether, pollfds);
+
+    for (size_t ix = 0; NUMBEROF(pollfds) > ix; ++ix)
+    {
+        if ( ! ownFdNonBlocking(pollfds[ix].fd))
+            terminate(
+                0,
+                "Expected %s fd %d to be non-blocking",
+                sPollFdNames[ix],
+                pollfds[ix].fd);
+    }
 
     struct PollFdAction pollfdactions[POLL_FD_KINDS] =
     {
@@ -1400,19 +1568,9 @@ monitorChild(pid_t              aChildPid,
         [POLL_FD_CHILD]     = { pollFdChild,     &pollfdchild },
         [POLL_FD_SIGNAL]    = { pollFdSignal,    &pollfdsignal },
         [POLL_FD_UMBILICAL] = { pollFdUmbilical, &pollfdumbilical },
-        [POLL_FD_STDIN]     = { pollFdStdin,     &pollfdtether },
-        [POLL_FD_STDOUT]    = { pollFdStdout,    &pollfdtether },
+        [POLL_FD_INPUT]     = { pollFdInput,     &pollfdtether },
+        [POLL_FD_OUTPUT]    = { pollFdOutput,    &pollfdtether },
     };
-
-    /* It would be so much easier to use non-blocking IO, but O_NONBLOCK
-     * is an attribute of the underlying open file, not of each
-     * file descriptor. Since stdin and stdout are typically inherited
-     * from the parent, setting O_NONBLOCK would affect all file descriptors
-     * referring to the same open file, so this approach cannot be
-     * dinner. */
-
-    if ( ! gOptions.mTether)
-        closePollFdTetherPipeline(&pollfdtether, pollfds);
 
     struct EventClockTime polltm;
 
@@ -1596,13 +1754,20 @@ monitorChild(pid_t              aChildPid,
         }
 
     } while ( ! pollfdchild.mDead ||
-                STDOUT_FILENO == pollfds[POLL_FD_STDOUT].fd ||
-                STDIN_FILENO  == pollfds[POLL_FD_STDIN].fd);
+                pollfdtether.mDstFd == pollfds[POLL_FD_OUTPUT].fd ||
+                pollfdtether.mSrcFd == pollfds[POLL_FD_INPUT].fd);
 
     if (closeUnixSocket(pollfdumbilical.mUmbilicalPeer))
         terminate(
             errno,
             "Unable to close umbilical peer");
+
+    (void) joinThread(&childThread.mThread);
+
+    if (closePipe(&transportPipe))
+        terminate(
+            errno,
+            "Unable to close transport pipe");
 
     if (unwatchProcessClock())
         terminate(
@@ -1817,11 +1982,25 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create stdin, stdout, stderr filler");
 
+    /* Only the reading end of the tether is marked non-blocking. The
+     * writing end must be used by the child process, so is not marked
+     * non-blocking. */
+
     struct Pipe tetherPipe;
     if (createPipe(&tetherPipe))
         terminate(
             errno,
             "Unable to create tether pipe");
+
+    if (closeFileOnExec(tetherPipe.mRdFile, O_CLOEXEC))
+        terminate(
+            errno,
+            "Unable to set close on exec for tether");
+
+    if (nonblockingFile(tetherPipe.mRdFile))
+        terminate(
+            errno,
+            "Unable to mark tether non-blocking");
 
     struct UnixSocket umbilicalSocket;
     if (createUnixSocket(&umbilicalSocket, 0, 0, 0))

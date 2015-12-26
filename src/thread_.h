@@ -42,6 +42,9 @@ createThread(pthread_t      *self,
              void           *aThread(void *),
              void           *aContext);
 
+void *
+joinThread(pthread_t *self);
+
 /* -------------------------------------------------------------------------- */
 void
 createThreadAttr(pthread_attr_t *self);

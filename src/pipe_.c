@@ -187,6 +187,27 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+nonblockingPipe(struct Pipe *self)
+{
+    int rc = -1;
+
+    if (nonblockingFile(self->mRdFile) ||
+        nonblockingFile(self->mWrFile))
+    {
+        goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 closePipe(struct Pipe *self)
 {
     int rc = -1;

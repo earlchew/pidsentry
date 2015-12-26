@@ -65,6 +65,9 @@ closePipeWriter(struct Pipe *self);
 int
 closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec);
 
+int
+nonblockingPipe(struct Pipe *self);
+
 /* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
