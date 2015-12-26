@@ -63,10 +63,11 @@
 /* TODO
  *
  * cmdRunCommand() is too big, break it up
+ * monitorChild() is too big, break it up
+ * Use a thread rather than the SIGALRM hack
+ * Correct monitoring child scheduling of competing deadlines
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Check for useless #include in *.c
- * Provide option to use PR_SET_PDEATHSIG instead of umbilical
- * Correct monitoring child scheduling of competing deadlines
  * Fix logging in parasite printing null for program name
  * Fix vgcore being dropped everywhere
  */
@@ -877,25 +878,11 @@ struct PollFdTether
     enum PollFdKind           mKind;
     struct PollFdTimerAction *mTimer;
 
-    struct
-    {
-        int                   mPeriod_ms;  /* Timeout period if not -1 */
-        struct EventClockTime mSince;      /* Last activity on tether */
-        unsigned              mCycleCount; /* Current number of cycles */
-        unsigned              mCycleLimit; /* Cycles before triggering */
-        bool                  mTriggered;  /* Timeout triggered */
-    } mTimeoutx;
-
     pid_t                          mChildPid;
+    unsigned                       mCycleCount; /* Current number of cycles */
+    unsigned                       mCycleLimit; /* Cycles before triggering */
     struct PollFdTimerTermination *mTermination;
-
-    struct
-    {
-        int mStdout;
-        int mStdin;
-    } mClosed;
-
-    struct Pipe *mNullPipe;
+    struct Pipe                   *mNullPipe;
 };
 
 static void
@@ -903,7 +890,34 @@ resetPollFdTetherTimeout(struct PollFdTether         *self,
                          const struct EventClockTime *aPollTime)
 {
     lapTimeRestart(&self->mTimer->mSince, aPollTime);
-    self->mTimeoutx.mCycleCount = 0;
+    self->mCycleCount = 0;
+}
+
+static void
+closePollFdTetherPipeline(struct PollFdTether *self,
+                          struct pollfd       *aPollFds)
+{
+    debug(0, "closing stdin and stdout");
+
+    /* When closing the pipline, close stdin and stdout using the side-effect
+     * of dup2, since that will ensure that the watchdog can clean
+     * up nullPipe while leaving a valid stdin and stdout. */
+
+    if (STDIN_FILENO != dup2(self->mNullPipe->mRdFile->mFd, STDIN_FILENO))
+        terminate(
+            errno,
+            "Unable to dup null pipe to stdin");
+
+    if (STDOUT_FILENO != dup2(self->mNullPipe->mWrFile->mFd, STDOUT_FILENO))
+        terminate(
+            errno,
+            "Unable to dup null pipe to stdout");
+
+    aPollFds[POLL_FD_STDIN].fd  = self->mNullPipe->mRdFile->mFd;
+    aPollFds[POLL_FD_STDOUT].fd = self->mNullPipe->mWrFile->mFd;
+
+    aPollFds[POLL_FD_STDIN].events  = sPollDisconnectEvent;
+    aPollFds[POLL_FD_STDOUT].events = sPollDisconnectEvent;
 }
 
 static void
@@ -915,29 +929,34 @@ pollFdStdin(void                        *self_,
 
     ensure(POLL_FD_STDIN == self->mKind);
 
-    ensure(STDIN_FILENO == aPollFds[POLL_FD_STDIN].fd);
-    ensure( ! self->mClosed.mStdin);
+    /* The pipeline might have been closed between the event loop
+     * awakening, and the stdin callback being invoked. */
 
-    resetPollFdTetherTimeout(self, aPollTime);
-
-    struct PollEventText pollEventText;
-    debug(
-        1,
-        "poll stdin %s",
-        createPollEventText(
-            &pollEventText,
-            aPollFds[POLL_FD_STDIN].revents));
-
-    ensure(aPollFds[POLL_FD_STDIN].events);
-
-    if ( ! (aPollFds[POLL_FD_STDIN].revents & POLLIN))
-        self->mClosed.mStdin = -1;
-    else
+    if (STDIN_FILENO == aPollFds[POLL_FD_STDIN].fd)
     {
-        aPollFds[POLL_FD_STDIN].fd = self->mNullPipe->mRdFile->mFd;
+        resetPollFdTetherTimeout(self, aPollTime);
 
-        aPollFds[POLL_FD_STDOUT].events = sPollOutputEvents;
-        aPollFds[POLL_FD_STDIN].events  = sPollDisconnectEvent;
+        struct PollEventText pollEventText;
+        debug(
+            1,
+            "poll stdin %s",
+            createPollEventText(
+                &pollEventText,
+                aPollFds[POLL_FD_STDIN].revents));
+
+        ensure(aPollFds[POLL_FD_STDIN].events);
+
+        /* Close the pipeline if there is no more input available. In this
+         * case the pipeline must be empty, otherwise POLL_FD_STDIN would
+         * not have been ready. */
+
+        if ( ! (aPollFds[POLL_FD_STDIN].revents & POLLIN))
+            closePollFdTetherPipeline(self, aPollFds);
+        else
+        {
+            aPollFds[POLL_FD_STDIN].fd      = self->mNullPipe->mRdFile->mFd;
+            aPollFds[POLL_FD_STDOUT].events = sPollOutputEvents;
+        }
     }
 }
 
@@ -950,110 +969,115 @@ pollFdStdout(void                        *self_,
 
     ensure(POLL_FD_STDIN == self->mKind);
 
-    ensure(STDOUT_FILENO == aPollFds[POLL_FD_STDOUT].fd);
-    ensure( ! self->mClosed.mStdout);
+    /* The pipeline might have been closed between the event loop
+     * awakening, and the stdout callback being invoked. */
 
-    resetPollFdTetherTimeout(self, aPollTime);
-
-    struct PollEventText pollEventText;
-    debug(
-        1,
-        "poll stdout %s",
-        createPollEventText(
-            &pollEventText,
-            aPollFds[POLL_FD_STDOUT].revents));
-
-    ensure(aPollFds[POLL_FD_STDOUT].events);
-
-    do
+    if (STDOUT_FILENO == aPollFds[POLL_FD_STDOUT].fd)
     {
-        if (aPollFds[POLL_FD_STDOUT].revents & POLLOUT)
+        resetPollFdTetherTimeout(self, aPollTime);
+
+        struct PollEventText pollEventText;
+        debug(
+            1,
+            "poll stdout %s",
+            createPollEventText(
+                &pollEventText,
+                aPollFds[POLL_FD_STDOUT].revents));
+
+        ensure(aPollFds[POLL_FD_STDOUT].events);
+
+        do
         {
-            int available;
-
-            /* Use FIONREAD to dynamically determine the amount
-             * of data in stdin, remembering that the child
-             * process could change the capacity of the pipe
-             * at runtime. */
-
-            if (ioctl(STDIN_FILENO, FIONREAD, &available))
-                terminate(
-                    errno,
-                    "Unable to find amount of readable data in stdin");
-
-            ensure(available);
-
-            if (testAction() && available)
-                available = 1 + random() % available;
-
-            ssize_t bytes = spliceFd(
-                STDIN_FILENO,
-                STDOUT_FILENO,
-                available,
-                SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
-
-            debug(1,
-                  "spliced stdin to stdout %zd out of %d",
-                  bytes,
-                  available);
-
-            /* If the child has closed its end of the tether, the
-             * watchdog will read EOF on the tether. Continue running
-             * the event loop until the child terminates. */
-
-            if (-1 == bytes)
+            if (aPollFds[POLL_FD_STDOUT].revents & POLLOUT)
             {
-                if (EPIPE != errno)
+                int available;
+
+                /* Use FIONREAD to dynamically determine the amount
+                 * of data in stdin, remembering that the child
+                 * process could change the capacity of the pipe
+                 * at runtime. */
+
+                if (ioctl(STDIN_FILENO, FIONREAD, &available))
+                    terminate(
+                        errno,
+                        "Unable to find amount of readable data in stdin");
+
+                ensure(available);
+
+                if (testAction() && available)
+                    available = 1 + random() % available;
+
+                ssize_t bytes = spliceFd(
+                    STDIN_FILENO,
+                    STDOUT_FILENO,
+                    available,
+                    SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
+
+                debug(1,
+                      "spliced stdin to stdout %zd out of %d",
+                      bytes,
+                      available);
+
+                /* If the child has closed its end of the tether, the
+                 * watchdog will read EOF on the tether. Continue running
+                 * the event loop until the child terminates. */
+
+                if (-1 == bytes)
                 {
-                    switch (errno)
+                    if (EPIPE != errno)
                     {
-                    default:
-                        terminate(
-                            errno,
-                            "Unable to write to stdout");
+                        switch (errno)
+                        {
+                        default:
+                            terminate(
+                                errno,
+                                "Unable to write to stdout");
 
-                        /* Although SPLICE_F_NONBLOCK is used, the underlying
-                         * file descriptor for stdout might be blocking and
-                         * must not be made non-blocking since that file
-                         * descriptor was likely inherited and might be
-                         * shared with other processes.
-                         *
-                         * Rely on the periodic SIGALRM to force splice
-                         * to return with EINTR if the call ends up blocking.
-                         * This means that it is important that EINTR
-                         * not simply retry the splice, but re-run the
-                         * entire event loop. */
+                            /* Although SPLICE_F_NONBLOCK is used, the
+                             * underlying file descriptor for stdout might
+                             * be blocking and must not be made non-blocking
+                             * since that file descriptor was likely inherited
+                             * and might be shared with other processes.
+                             *
+                             * Rely on the periodic SIGALRM to force splice
+                             * to return with EINTR if the call ends
+                             * up blocking. This means that it is important
+                             * that EINTR not simply retry the splice, but
+                             * re-run the entire event loop. */
 
-                    case EWOULDBLOCK:
-                    case EINTR:
+                        case EWOULDBLOCK:
+                        case EINTR:
+                            break;
+                        }
+
                         break;
                     }
+                }
+                else if (bytes)
+                {
+                    /* Continue polling stdout unless all the available
+                     * data on stdin was transferred because this might
+                     * be the last chunk of data on stdin before it was
+                     * closed so there will be no more available. */
 
+                    if (bytes >= available)
+                    {
+                        aPollFds[POLL_FD_STDIN].fd      = STDIN_FILENO;
+                        aPollFds[POLL_FD_STDOUT].events = sPollDisconnectEvent;
+                    }
                     break;
                 }
             }
-            else if (bytes)
-            {
-                /* Continue polling stdout unless all the available
-                 * data on stdin was transferred because this might
-                 * be the last chunk of data on stdin before it was
-                 * closed so there will be no more available. */
 
-                if (bytes >= available)
-                {
-                    aPollFds[POLL_FD_STDIN].fd = STDIN_FILENO;
+            /* If the far end of stdout has been closed, then there is
+             * no point reading any more data from stdin since there
+             * will be nowhere to put the data. */
 
-                    aPollFds[POLL_FD_STDOUT].events= sPollDisconnectEvent;
-                    aPollFds[POLL_FD_STDIN].events = sPollInputEvents;
-                }
-                break;
-            }
-        }
+            closePollFdTetherPipeline(self, aPollFds);
+            break;
 
-        self->mClosed.mStdout = -1;
-        break;
-
-    } while (0);
+        } while (0);
+    }
 }
 
 static void
@@ -1091,14 +1115,14 @@ pollFdTimerTether(void                        *self_,
                     "deferred timeout due to child status %s",
                     createStatusCodeText(&statusCodeText, &siginfo));
 
-                self->mTimeoutx.mCycleCount = 0;
+                self->mCycleCount = 0;
                 break;
             }
 
-            if (++self->mTimeoutx.mCycleCount < self->mTimeoutx.mCycleLimit)
+            if (++self->mCycleCount < self->mCycleLimit)
                 break;
 
-            self->mTimeoutx.mCycleCount = self->mTimeoutx.mCycleLimit;
+            self->mCycleCount = self->mCycleLimit;
         }
         else
         {
@@ -1299,28 +1323,14 @@ monitorChild(pid_t              aChildPid,
 
     struct PollFdTether pollfdtether =
     {
-        .mKind = POLL_FD_STDIN,
-
-        .mTimeoutx =
-        {
-            .mCycleCount = 0,
-            .mCycleLimit = timeoutCycles,
-            .mPeriod_ms  = 0 > timeout_ms ? -1 : timeout_ms / timeoutCycles,
-            .mSince      = eventclockTime(),
-            .mTriggered  = false,
-        },
+        .mKind  = POLL_FD_STDIN,
+        .mTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
 
         .mChildPid    = aChildPid,
+        .mCycleCount  = 0,
+        .mCycleLimit  = timeoutCycles,
         .mTermination = &pollfdtimertermination,
-        .mTimer       = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
-
-        .mClosed =
-        {
-            .mStdout = gOptions.mTether ? 0 : -1,
-            .mStdin  = gOptions.mTether ? 0 : -1,
-        },
-
-        .mNullPipe = &nullPipe,
+        .mNullPipe    = &nullPipe,
     };
 
     pollfdtether.mTimer->mAction = pollFdTimerTether;
@@ -1401,44 +1411,13 @@ monitorChild(pid_t              aChildPid,
      * referring to the same open file, so this approach cannot be
      * dinner. */
 
+    if ( ! gOptions.mTether)
+        closePollFdTetherPipeline(&pollfdtether, pollfds);
+
     struct EventClockTime polltm;
 
     do
     {
-        if (0 > pollfdtether.mClosed.mStdout ||
-            0 > pollfdtether.mClosed.mStdin)
-        {
-            pollfdtether.mClosed.mStdout = 1;
-            pollfdtether.mClosed.mStdin  = 1;
-
-            debug(0, "closing stdin and stdout");
-
-            /* If the far end of stdout has been closed, close stdin
-             * using the side-effect of dup2. Use of dup2 ensures
-             * that the watchdog continues to have a valid stdin.
-             *
-             * Also duplicating the file descriptors allows nullPipe
-             * to be cleaned up while leaving a valid stdin and stdout. */
-
-            if (STDIN_FILENO != dup2(nullPipe.mRdFile->mFd, STDIN_FILENO))
-                terminate(
-                    errno,
-                    "Unable to dup null pipe to stdin");
-
-            if (STDOUT_FILENO != dup2(nullPipe.mWrFile->mFd, STDOUT_FILENO))
-                terminate(
-                    errno,
-                    "Unable to dup null pipe to stdout");
-
-            pollfds[POLL_FD_STDIN].fd  = STDIN_FILENO;
-            pollfds[POLL_FD_STDOUT].fd = STDOUT_FILENO;
-
-            pollfds[POLL_FD_STDOUT].events = sPollDisconnectEvent;
-            pollfds[POLL_FD_STDIN].events  = sPollDisconnectEvent;
-        }
-
-        ensure(pollfdtether.mClosed.mStdin == pollfdtether.mClosed.mStdout);
-
         /* Poll the file descriptors and process the file descriptor
          * events before attempting to check for timeouts. This
          * order of operations is important to deal robustly with
@@ -1617,8 +1596,8 @@ monitorChild(pid_t              aChildPid,
         }
 
     } while ( ! pollfdchild.mDead ||
-                sPollOutputEvents == pollfds[POLL_FD_STDOUT].events ||
-                sPollInputEvents  == pollfds[POLL_FD_STDIN].events);
+                STDOUT_FILENO == pollfds[POLL_FD_STDOUT].fd ||
+                STDIN_FILENO  == pollfds[POLL_FD_STDIN].fd);
 
     if (closeUnixSocket(pollfdumbilical.mUmbilicalPeer))
         terminate(
