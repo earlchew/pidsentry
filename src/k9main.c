@@ -116,21 +116,22 @@ enum PollFdTimerKind
 {
     POLL_FD_TIMER_TETHER,
     POLL_FD_TIMER_ORPHAN,
+    POLL_FD_TIMER_TERMINATION,
     POLL_FD_TIMER_KINDS
 };
 
 static const char *sPollFdTimerNames[POLL_FD_TIMER_KINDS] =
 {
-    [POLL_FD_TIMER_TETHER] = "tether",
-    [POLL_FD_TIMER_ORPHAN] = "orphan",
+    [POLL_FD_TIMER_TETHER]      = "tether",
+    [POLL_FD_TIMER_ORPHAN]      = "orphan",
+    [POLL_FD_TIMER_TERMINATION] = "termination",
 };
 
 struct PollFdTimerAction
 {
     void                (*mAction)(void                        *self,
                                    struct PollFdTimerAction    *aPollFdTimer,
-                                   const struct EventClockTime *aPollTime,
-                                   const struct Duration       *aLapTime);
+                                   const struct EventClockTime *aPollTime);
     void                 *mSelf;
     struct Duration       mPeriod;
     struct EventClockTime mSince;
@@ -828,15 +829,53 @@ pollFdUmbilical(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
-struct TerminationAgent
+struct ChildSignalPlan
 {
-    struct EventClockTime mSince;     /* Termination timeline */
-    int                   mTriggered; /* Termination in progress */
+    pid_t mPid;
+    int   mSig;
 };
 
+struct PollFdTimerTermination
+{
+    enum PollFdTimerKind      mKind;
+    struct PollFdTimerAction *mTimer;
+
+    struct Duration               mPeriod;
+    const struct ChildSignalPlan *mPlan;
+};
+
+void
+pollFdTimerTermination(void                        *self_,
+                       struct PollFdTimerAction    *aPollFdTimerAction,
+                       const struct EventClockTime *aPollTime)
+{
+    struct PollFdTimerTermination *self = self_;
+
+    pid_t pidNum = self->mPlan->mPid;
+    int   sigNum = self->mPlan->mSig;
+
+    if (self->mPlan[1].mPid)
+        ++self->mPlan;
+
+    warn(
+        0,
+        "Killing child pid %jd with signal %d",
+        (intmax_t) pidNum,
+        sigNum);
+
+    if (kill(pidNum, sigNum) && ESRCH != errno)
+        terminate(
+            errno,
+            "Unable to kill child pid %jd with signal %d",
+            (intmax_t) pidNum,
+            sigNum);
+}
+
+/* -------------------------------------------------------------------------- */
 struct PollFdTether
 {
-    enum PollFdKind mKind;
+    enum PollFdKind           mKind;
+    struct PollFdTimerAction *mTimer;
 
     struct
     {
@@ -847,9 +886,8 @@ struct PollFdTether
         bool                  mTriggered;  /* Timeout triggered */
     } mTimeoutx;
 
-    pid_t                     mChildPid;
-    struct TerminationAgent  *mTerminationAgent;
-    struct PollFdTimerAction *mTimer;
+    pid_t                          mChildPid;
+    struct PollFdTimerTermination *mTermination;
 
     struct
     {
@@ -1021,8 +1059,7 @@ pollFdStdout(void                        *self_,
 static void
 pollFdTimerTether(void                        *self_,
                   struct PollFdTimerAction    *aPollFdTimerAction,
-                  const struct EventClockTime *aPollTime,
-                  const struct Duration       *aLapTime)
+                  const struct EventClockTime *aPollTime)
 {
     struct PollFdTether *self = self_;
 
@@ -1051,9 +1088,7 @@ pollFdTimerTether(void                        *self_,
 
                 debug(
                     0,
-                    "deferred timeout after %" PRIs_MilliSeconds
-                    " with child status %s",
-                    FMTs_MilliSeconds(MSECS(aLapTime->duration)),
+                    "deferred timeout due to child status %s",
                     createStatusCodeText(&statusCodeText, &siginfo));
 
                 self->mTimeoutx.mCycleCount = 0;
@@ -1085,10 +1120,14 @@ pollFdTimerTether(void                        *self_,
 
         aPollFdTimerAction->mPeriod = duration(NanoSeconds(0));
 
-        if ( ! self->mTerminationAgent->mTriggered)
+        if ( ! self->mTermination->mTimer->mSince.eventclock.ns)
         {
-            self->mTerminationAgent->mTriggered = -1;
-            self->mTerminationAgent->mSince     = *aPollTime;
+            self->mTermination->mTimer->mPeriod = self->mTermination->mPeriod;
+
+            lapTimeSkip(
+                &self->mTermination->mTimer->mSince,
+                self->mTermination->mTimer->mPeriod,
+                aPollTime);
         }
 
     } while (0);
@@ -1099,14 +1138,13 @@ struct PollFdTimerOrphan
 {
     enum PollFdTimerKind mKind;
 
-    struct TerminationAgent *mTerminationAgent;
+    struct PollFdTimerTermination *mTermination;
 };
 
 void
 pollFdTimerOrphan(void                        *self_,
                   struct PollFdTimerAction    *aPollFdTimerAction,
-                  const struct EventClockTime *aPollTime,
-                  const struct Duration       *aLapTime)
+                  const struct EventClockTime *aPollTime)
 {
     struct PollFdTimerOrphan *self = self_;
 
@@ -1127,10 +1165,14 @@ pollFdTimerOrphan(void                        *self_,
 
         aPollFdTimerAction->mPeriod = duration(NanoSeconds(0));
 
-        if ( ! self->mTerminationAgent->mTriggered)
+        if ( ! self->mTermination->mTimer->mSince.eventclock.ns)
         {
-            self->mTerminationAgent->mTriggered = -1;
-            self->mTerminationAgent->mSince     = *aPollTime;
+            self->mTermination->mTimer->mPeriod = self->mTermination->mPeriod;
+
+            lapTimeSkip(
+                &self->mTermination->mTimer->mSince,
+                self->mTermination->mTimer->mPeriod,
+                aPollTime);
         }
     }
 }
@@ -1152,6 +1194,11 @@ monitorChild(pid_t              aChildPid,
         },
 
         [POLL_FD_TIMER_ORPHAN] =
+        {
+            0, 0, duration(NSECS(Seconds(0)))
+        },
+
+        [POLL_FD_TIMER_TERMINATION] =
         {
             0, 0, duration(NSECS(Seconds(0)))
         },
@@ -1205,10 +1252,31 @@ monitorChild(pid_t              aChildPid,
         .mUmbilicalPeer   = 0,
     };
 
-    struct TerminationAgent termination =
+    struct ChildSignalPlan sharedPgrpPlan[] =
     {
-        .mTriggered = false,
+        { aChildPid, SIGTERM },
+        { aChildPid, SIGKILL },
+        { 0 }
     };
+
+    struct ChildSignalPlan ownPgrpPlan[] =
+    {
+        {  aChildPid, SIGTERM },
+        { -aChildPid, SIGTERM },
+        { -aChildPid, SIGKILL },
+        { 0 }
+    };
+
+    struct PollFdTimerTermination pollfdtimertermination =
+    {
+        .mKind   = POLL_FD_TIMER_TERMINATION,
+        .mTimer  = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
+        .mPeriod = duration(NSECS(Seconds(gOptions.mPacing_s))),
+        .mPlan   = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
+    };
+
+    pollfdtimertermination.mTimer->mAction = pollFdTimerTermination;
+    pollfdtimertermination.mTimer->mSelf   = &pollfdtimertermination;
 
     int timeout_ms = gOptions.mTimeout_s * 1000;
 
@@ -1242,9 +1310,9 @@ monitorChild(pid_t              aChildPid,
             .mTriggered  = false,
         },
 
-        .mChildPid         = aChildPid,
-        .mTerminationAgent = &termination,
-        .mTimer            = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
+        .mChildPid    = aChildPid,
+        .mTermination = &pollfdtimertermination,
+        .mTimer       = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
 
         .mClosed =
         {
@@ -1273,7 +1341,7 @@ monitorChild(pid_t              aChildPid,
     {
         .mKind = POLL_FD_TIMER_ORPHAN,
 
-        .mTerminationAgent = &termination,
+        .mTermination = &pollfdtimertermination,
     };
 
     if (gOptions.mOrphaned)
@@ -1325,30 +1393,6 @@ monitorChild(pid_t              aChildPid,
         [POLL_FD_STDIN]     = { pollFdStdin,     &pollfdtether },
         [POLL_FD_STDOUT]    = { pollFdStdout,    &pollfdtether },
     };
-
-    struct ChildSignalPlan
-    {
-        pid_t mPid;
-        int   mSig;
-    };
-
-    struct ChildSignalPlan sharedPgrpPlan[] =
-    {
-        { aChildPid, SIGTERM },
-        { aChildPid, SIGKILL },
-        { 0 }
-    };
-
-    struct ChildSignalPlan ownPgrpPlan[] =
-    {
-        {  aChildPid, SIGTERM },
-        { -aChildPid, SIGTERM },
-        { -aChildPid, SIGKILL },
-        { 0 }
-    };
-
-    const struct ChildSignalPlan *childSignalPlan =
-        gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan;
 
     /* It would be so much easier to use non-blocking IO, but O_NONBLOCK
      * is an attribute of the underlying open file, not of each
@@ -1498,7 +1542,7 @@ monitorChild(pid_t              aChildPid,
              * no matter what the caller has subscribed for. Only pay
              * attention to what was subscribed. */
 
-            debug(1, "poll scan of %d fds", rc);
+            debug(1, "poll fd scan length %d", rc);
 
             for (size_t ix = 0; NUMBEROF(pollfds) > ix; ++ix)
             {
@@ -1554,59 +1598,21 @@ monitorChild(pid_t              aChildPid,
                      * prepare for the next timer cycle, unless it needs
                      * to cancel the timer. */
 
-                    struct Duration lapTime = lapTimeSince(
+                    (void) lapTimeSince(
                         &pollfdtimeractions[ix].mSince,
                         pollfdtimeractions[ix].mPeriod,
                         &polltm);
 
-                    debug(1, "expire %s timer after %" PRIs_MilliSeconds,
+                    debug(1, "expire %s timer with period %" PRIs_MilliSeconds,
                           sPollFdTimerNames[ix],
-                          FMTs_MilliSeconds(MSECS(lapTime.duration)));
+                          FMTs_MilliSeconds(
+                              MSECS(pollfdtimeractions[ix].mPeriod.duration)));
 
                     pollfdtimeractions[ix].mAction(
                         pollfdtimeractions[ix].mSelf,
                         &pollfdtimeractions[ix],
-                        &polltm,
-                        &lapTime);
+                        &polltm);
                 }
-            }
-        }
-
-        if (termination.mTriggered)
-        {
-            unsigned elapsedTime_s =
-                termination.mTriggered < 0
-                ? gOptions.mPacing_s
-                : SECS(
-                    lapTimeSince(
-                        &termination.mSince,
-                        duration(NSECS(Seconds(gOptions.mPacing_s))),
-                        &polltm).duration).s;
-
-            debug(1, "post mortem clock %us", elapsedTime_s);
-
-            if (gOptions.mPacing_s <= elapsedTime_s)
-            {
-                termination.mTriggered = 1;
-
-                pid_t pidNum = childSignalPlan->mPid;
-                int   sigNum = childSignalPlan->mSig;
-
-                if (childSignalPlan[1].mPid)
-                    ++childSignalPlan;
-
-                warn(
-                    0,
-                    "Killing child pid %jd with signal %d",
-                    (intmax_t) pidNum,
-                    sigNum);
-
-                if (kill(pidNum, sigNum) && ESRCH != errno)
-                    terminate(
-                        errno,
-                        "Unable to kill child pid %jd with signal %d",
-                        (intmax_t) pidNum,
-                        sigNum);
             }
         }
 

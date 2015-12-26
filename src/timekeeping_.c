@@ -197,6 +197,17 @@ deadlineTimeExpired(
 
 /* -------------------------------------------------------------------------- */
 void
+lapTimeSkip(struct EventClockTime       *self,
+            struct Duration              aPeriod,
+            const struct EventClockTime *aTime)
+{
+    self->eventclock = NanoSeconds(
+        (aTime ? *aTime
+               : eventclockTime()).eventclock.ns - aPeriod.duration.ns);
+}
+
+/* -------------------------------------------------------------------------- */
+void
 lapTimeRestart(struct EventClockTime       *self,
                const struct EventClockTime *aTime)
 {
