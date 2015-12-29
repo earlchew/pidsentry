@@ -29,6 +29,8 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
+#include "timescale_.h"
+
 #include <inttypes.h>
 #include <sys/types.h>
 #include <limits.h>
@@ -52,6 +54,18 @@ enum ForkProcessOption
     ForkProcessSetProcessGroup,
 };
 
+enum ProcessSigMaskAction
+{
+    ProcessSigMaskUnblock = -1,
+    ProcessSigMaskSet     = 0,
+    ProcessSigMaskBlock   = +1,
+};
+
+struct PushedProcessSigMask
+{
+    sigset_t mSigSet;
+};
+
 /* -------------------------------------------------------------------------- */
 #define PROCESS_DIRNAME_FMT_  "/proc/%jd"
 
@@ -66,6 +80,16 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid);
 /* -------------------------------------------------------------------------- */
 int
 purgeProcessOrphanedFds(void);
+
+/* -------------------------------------------------------------------------- */
+int
+pushProcessSigMask(
+    struct PushedProcessSigMask *self,
+    enum ProcessSigMaskAction    aAction,
+    const int                   *aSigList);
+
+int
+popProcessSigMask(struct PushedProcessSigMask *self);
 
 /* -------------------------------------------------------------------------- */
 int
@@ -87,8 +111,8 @@ int
 resetProcessSigPipe(void);
 
 int
-watchProcessClock(const struct Pipe    *aClockPipe,
-                  const struct timeval *aClockPeriod);
+watchProcessClock(const struct Pipe *aClockPipe,
+                  struct Duration    aClockPeriod);
 
 int
 unwatchProcessClock(void);

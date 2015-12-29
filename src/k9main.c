@@ -86,7 +86,6 @@ enum PollFdKind
     POLL_FD_OUTPUT,
     POLL_FD_CHILD,
     POLL_FD_SIGNAL,
-    POLL_FD_CLOCK,
     POLL_FD_UMBILICAL,
     POLL_FD_KINDS
 };
@@ -97,7 +96,6 @@ static const char *sPollFdNames[POLL_FD_KINDS] =
     [POLL_FD_SIGNAL]    = "signal",
     [POLL_FD_OUTPUT]    = "output",
     [POLL_FD_INPUT]     = "input",
-    [POLL_FD_CLOCK]     = "clock",
     [POLL_FD_UMBILICAL] = "umbilical",
 };
 
@@ -578,58 +576,252 @@ createStatusCodeText(
 }
 
 /* -------------------------------------------------------------------------- */
-struct PollFdClock
+/* Tether Drain Thread
+ *
+ * The purpose of the tether drain thread is to isolate the event loop
+ * in the main thread from blocking that might arise when writing to
+ * the destination file descriptor. The destination file descriptor
+ * cannot be guaranteed to be non-blocking because it is inherited
+ * when the watchdog process is started. */
+
+struct TetherDrainThread
 {
-    enum PollFdKind mKind;
-    struct Pipe     mClockPipe;
+    pthread_t   mThread;
+    struct Pipe mDrainPipe;
+    struct File mOutputFile;
+
+    struct
+    {
+        pthread_mutex_t mMutex;
+        struct Duration mTimeout;
+    } mCompletion;
 };
 
-static void
-pollFdClock(void                        *self_,
-            struct pollfd               *aPollFds,
-            const struct EventClockTime *aPollTime)
+static void *
+tetherDrainThreadMain_(void *self_)
 {
-    struct PollFdClock *self = self_;
+    struct TetherDrainThread *self = self_;
 
-    ensure(POLL_FD_CLOCK == self->mKind);
+    int srcFd = self->mDrainPipe.mRdFile->mFd;
+    int dstFd = self->mOutputFile.mFd;
 
-    /* The clock is used to deliver SIGALRM to the process
-     * periodically to ensure that blocking operations will
-     * return with EINTR so that the event loop remains
-     * responsive. */
+    struct PushedProcessSigMask pushedSigMask;
 
-    struct PollEventText pollEventText;
-    debug(
-        1,
-        "clock tick %s",
-        createPollEventText(
-            &pollEventText,
-            aPollFds[POLL_FD_CLOCK].revents));
+    const int sigList[] = { SIGALRM, 0 };
 
-    unsigned char clockTick;
+    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskUnblock, sigList))
+        terminate(
+            errno,
+            "Unable to push process signal mask");
 
-    ssize_t len = read(self->mClockPipe.mRdFile->mFd, &clockTick, 1);
-
-    if (-1 == len)
+    struct pollfd pollfds[2] =
     {
-        if (EINTR != errno)
+        { .fd = srcFd, .events = sPollInputEvents },
+        { .fd = dstFd, .events = sPollDisconnectEvent },
+    };
+
+    struct Duration       timeout    = Duration(NanoSeconds(0));
+    struct EventClockTime eventclock = EVENTCLOCKTIME_INIT;
+
+    while (1)
+    {
+        if (timeout.duration.ns)
+        {
+            struct Duration remaining;
+            bool            expired =
+                deadlineTimeExpired(&eventclock, timeout, &remaining, 0);
+
+            debug(1, "tether drain time remaining %" PRIs_MilliSeconds,
+                  FMTs_MilliSeconds(MSECS(remaining.duration)));
+
+            if (expired)
+                break;
+        }
+        else
+        {
+            lockMutex(&self->mCompletion.mMutex);
+            timeout = self->mCompletion.mTimeout;
+            unlockMutex(&self->mCompletion.mMutex);
+        }
+
+        int rc = poll(pollfds, NUMBEROF(pollfds), -1);
+
+        if (-1 == rc)
+        {
+            if (EINTR == errno)
+                continue;
+
             terminate(
                 errno,
-                "Unable to read clock tick from queue");
+                "Unable to poll for activity from fd %d", srcFd);
+        }
+
+        /* The output file descriptor must have been closed if:
+         *
+         *  o There is no input available, so the poll must have
+         *    returned because an output disconnection event was detected
+         *  o Input was available, but none could be written to the output
+         */
+
+        ensure(0 < rc);
+
+        int available;
+
+        if (ioctl(srcFd, FIONREAD, &available))
+            terminate(
+                errno,
+                "Unable to find amount of readable data in fd %d", srcFd);
+
+        if ( ! available)
+        {
+            debug(0, "tether drain input empty");
+            break;
+        }
+
+        /* This splice(2) call will likely block if it is unable to
+         * write all the data to the output file descriptor immediately.
+         * Note that it cannot block on reading the input file descriptor
+         * because that file descriptor is private to this process, the
+         * amount of input available is known and is only read by this
+         * thread. */
+
+        ssize_t bytes = spliceFd(srcFd, dstFd, available, SPLICE_F_MOVE);
+
+        if ( ! bytes)
+        {
+            debug(0, "tether drain output closed");
+            break;
+        }
+
+        if (-1 == bytes)
+        {
+            if (EPIPE == errno)
+            {
+                debug(0, "tether drain output broken");
+                break;
+            }
+
+            if (EWOULDBLOCK != errno && EINTR != errno)
+                terminate(
+                    errno,
+                    "Unable to splice %d bytes to fd %d",
+                    available,
+                    dstFd);
+        }
+        else
+        {
+            debug(1, "drained %zd bytes to fd %d", bytes, dstFd);
+        }
     }
-    else if ( ! len)
-    {
+
+    if (popProcessSigMask(&pushedSigMask))
         terminate(
-            0,
-            "Clock tick queue closed unexpectedly");
+            errno,
+            "Unable to push process signal mask");
+
+    if (closePipeReader(&self->mDrainPipe))
+        terminate(errno, "Unable to close drain pipe reader");
+
+    debug(0, "tether drain emptied");
+
+    return 0;
+}
+
+static void
+createTetherDrainThread(struct TetherDrainThread *self, int aDstFd)
+{
+    if (createFile(&self->mOutputFile, dup(aDstFd)))
+        terminate(errno, "Unable to dup fd %d to output file", aDstFd);
+
+    if (createPipe(&self->mDrainPipe, 0))
+        terminate(errno, "Unable to create drain pipe");
+
+    if (closeFileOnExec(self->mDrainPipe.mWrFile, O_CLOEXEC))
+        terminate(errno, "Unable to set close on exec for drain pipe");
+
+    if (nonblockingFile(self->mDrainPipe.mWrFile))
+        terminate(errno, "Unable to mark drain pipe non-blocking");
+
+    struct PushedProcessSigMask pushedSigMask;
+
+    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
+        terminate(errno, "Unable to push process signal mask");
+
+    if (errno = pthread_mutex_init(&self->mCompletion.mMutex, 0))
+        terminate(errno, "Unable to create completion mutex");
+
+    self->mCompletion.mTimeout = Duration(NanoSeconds(0));
+
+    createThread(&self->mThread, 0, tetherDrainThreadMain_, self);
+
+    if (popProcessSigMask(&pushedSigMask))
+        terminate(errno, "Unable to restore signal mask");
+}
+
+static void
+flushTetherDrainThread(struct TetherDrainThread *self)
+{
+    debug(0, "flushing drain thread");
+
+    if (watchProcessClock(0, Duration(NSECS(Seconds(1)))))
+        terminate(
+            errno,
+            "Unable to configure synchronisation clock");
+
+    {
+        lockMutex(&self->mCompletion.mMutex);
+        self->mCompletion.mTimeout = Duration(
+            NSECS(Seconds(gOptions.mPacing_s)));
+        unlockMutex(&self->mCompletion.mMutex);
     }
 }
 
+static void
+closeTetherDrainThread(struct TetherDrainThread *self)
+{
+    ensure(self->mCompletion.mTimeout.duration.ns);
+
+    /* Note that the drain thread might be blocked on splice(2). The
+     * concurrent process clock ticks are enough to cause splice(2)
+     * to periodically return EINTR, allowing the drain thread to
+     * check its deadline. */
+
+    debug(0, "synchronising drain thread");
+
+    if (closePipeWriter(&self->mDrainPipe))
+        terminate(errno, "Unable to close drain pipe writer");
+
+    (void) joinThread(&self->mThread);
+
+    if (unwatchProcessClock())
+        terminate(
+            errno,
+            "Unable to configure synchronisation clock");
+
+    if (errno = pthread_mutex_destroy(&self->mCompletion.mMutex))
+        terminate(errno, "Unable to destroy completion mutex");
+
+    if (closePipe(&self->mDrainPipe))
+        terminate(errno, "Unable to close drain pipe");
+
+    if (closeFile(&self->mOutputFile))
+        terminate(errno, "Unable to close output file");
+}
+
 /* -------------------------------------------------------------------------- */
+/* Child Termination
+ *
+ * The watchdog will receive SIGCHLD when the child process terminates,
+ * though no direct indication will be received if the child process
+ * performs an execv(2). The SIGCHLD signal will be delivered to the
+ * event loop on a pipe, at which point the child process is known
+ * to be dead. */
+
 struct PollFdChild
 {
-    enum PollFdKind mKind;
-    bool            mDead;
+    enum PollFdKind           mKind;
+    bool                      mDead;
+    struct TetherDrainThread *mTetherDrainThread;
 };
 
 static void
@@ -641,13 +833,10 @@ pollFdChild(void                        *self_,
 
     ensure(POLL_FD_CHILD == self->mKind);
 
-        /* Record when the child has terminated, but do not exit
-         * the event loop until all the IO has been flushed. */
-
     struct PollEventText pollEventText;
     debug(
         1,
-        "poll child %s",
+        "detected child %s",
         createPollEventText(
             &pollEventText,
             aPollFds[POLL_FD_CHILD].revents));
@@ -656,10 +845,23 @@ pollFdChild(void                        *self_,
 
     aPollFds[POLL_FD_CHILD].events = 0;
 
+    /* Record when the child has terminated, but do not exit
+     * the event loop until all the IO has been flushed. With the
+     * child terminated, no further input can be produced so indicate
+     * to the drain thread that it should start flushing data now. */
+
     self->mDead = true;
+
+    flushTetherDrainThread(self->mTetherDrainThread);
 }
 
 /* -------------------------------------------------------------------------- */
+/* Deliver Signal to Child Process
+ *
+ * Signals received by the watchdog process are propagated to the child
+ * process, so that the watchdog acts as a proxy for the child process
+ * as far as supervisor programs such as init(8) are concerned. */
+
 struct PollFdSignal
 {
     enum PollFdKind mKind;
@@ -677,20 +879,22 @@ pollFdSignal(void                        *self_,
     ensure(POLL_FD_SIGNAL == self->mKind);
 
     /* Propagate signals to the child process. Signals are queued
-     * by the local signal handler to the inherent race in the
+     * by the local signal handler to overcome the inherent race in the
      * fork() idiom:
      *
      *     pid_t childPid = fork();
      *
-     * The fork() completes before childPid can be assigned. This
-     * event loop only runs after the fork() is complete and
-     * any signals received before the fork() will be queued for
-     * delivery. */
+     * The fork() completes before childPid can be assigned, and if a
+     * signal arrives in the interim, the childPid is not yet recorded.
+     *
+     * To overcome this, any signals received before the fork() will be
+     * queued for delivery by the event loop which only runs after the
+     * fork() is complete and childPid is recorded. */
 
     struct PollEventText pollEventText;
     debug(
         1,
-        "poll signal %s",
+        "detected signal %s",
         createPollEventText(
             &pollEventText,
             aPollFds[POLL_FD_SIGNAL].revents));
@@ -732,6 +936,15 @@ pollFdSignal(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+/* Maintain Umbilical Connection to Child Process
+ *
+ * The umbilical connection to the child process allows the child to
+ * monitor the watchdog so that the child can terminate if it detects
+ * that the watchdog is no longer present. This is important in
+ * scenarios where the supervisor init(8) kills the watchdog without
+ * giving the watchdog a chance to clean up, or if the watchdog
+ * fails catatrophically. */
+
 struct PollFdUmbilical
 {
     enum PollFdKind    mKind;
@@ -757,8 +970,8 @@ pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
 
     /* Require that the remote peer be the process being monitored.
      * The connection will be dropped if the process uses execv() to
-     * run another program, and then re-established when the new
-     * program creates its own umbilical connection. */
+     * run another program, and requiring that it then be re-established
+     * when the new program creates its own umbilical connection. */
 
     struct ucred cred;
 
@@ -810,7 +1023,7 @@ pollFdUmbilical(void                        *self_,
     struct PollEventText pollEventText;
     debug(
         1,
-        "poll umbilical %s",
+        "detected umbilical %s",
         createPollEventText(
             &pollEventText,
             aPollFds[POLL_FD_UMBILICAL].revents));
@@ -831,6 +1044,12 @@ pollFdUmbilical(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+/* Child Termination State Machine
+ *
+ * When it is necessary to terminate the child process, first request
+ * that the child terminate by sending it SIGTERM, and if the child
+ * does not terminate, resort to sending SIGKILL. */
+
 struct ChildSignalPlan
 {
     pid_t mPid;
@@ -874,6 +1093,14 @@ pollFdTimerTermination(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+/* Watchdog Tether
+ *
+ * The main tether used by the watchdog to monitor the child process requires
+ * the child process to maintain some activity on the tether to demonstrate
+ * that the child is functioning correctly. Activity on the tether oscillates
+ * between the tether itself being ready for reading, and the drain being
+ * ready to accept the tether data. */
+
 struct PollFdTether
 {
     enum PollFdKind           mKind;
@@ -900,7 +1127,10 @@ static void
 closePollFdTetherPipeline(struct PollFdTether *self,
                           struct pollfd       *aPollFds)
 {
-    debug(0, "closing stdin and stdout");
+    debug(0,
+          "closing tether input fd %d and output fd %d",
+          self->mSrcFd,
+          self->mDstFd);
 
     /* When closing the pipline, close stdin and stdout using the side-effect
      * of dup2, since that will ensure that the watchdog can clean
@@ -942,7 +1172,7 @@ pollFdInput(void                        *self_,
         struct PollEventText pollEventText;
         debug(
             1,
-            "poll input %s",
+            "detected input %s",
             createPollEventText(
                 &pollEventText,
                 aPollFds[POLL_FD_INPUT].revents));
@@ -951,7 +1181,7 @@ pollFdInput(void                        *self_,
 
         /* Close the pipeline if there is no more input available. In this
          * case the pipeline must be empty, otherwise POLL_FD_STDIN would
-         * not have been ready. */
+         * not have been recognised by the poll as being ready. */
 
         if ( ! (aPollFds[POLL_FD_INPUT].revents & POLLIN))
             closePollFdTetherPipeline(self, aPollFds);
@@ -982,7 +1212,7 @@ pollFdOutput(void                        *self_,
         struct PollEventText pollEventText;
         debug(
             1,
-            "poll output %s",
+            "detected output %s",
             createPollEventText(
                 &pollEventText,
                 aPollFds[POLL_FD_OUTPUT].revents));
@@ -1011,6 +1241,16 @@ pollFdOutput(void                        *self_,
                 if (testAction() && available)
                     available = 1 + random() % available;
 
+                /* The amount of data available for reading in the
+                 * tether cannot be guaranteed since another process
+                 * might share that file descriptor and have drained
+                 * the tether by the time splice(2) tries to transfer
+                 * the data. Use of SPLICE_F_NONBLOCK should prevent
+                 * the splice from blocking as it transfers data out
+                 * of the tether, and splice(2) will not block transferring
+                 * data into the tether drain because the tether drain
+                 * has been opened with O_NONBLOCK. */
+
                 ssize_t bytes = spliceFd(
                     self->mSrcFd,
                     self->mDstFd,
@@ -1025,8 +1265,9 @@ pollFdOutput(void                        *self_,
                       available);
 
                 /* If the child has closed its end of the tether, the
-                 * watchdog will read EOF on the tether. Continue running
-                 * the event loop until the child terminates. */
+                 * watchdog will read zero bytes from the tether. In
+                 * this case continue running the event loop until the
+                 * child terminates. */
 
                 if (-1 == bytes)
                 {
@@ -1058,13 +1299,20 @@ pollFdOutput(void                        *self_,
 
                         break;
                     }
+
+                    /* Receiving an EPIPE means that the tether drain has
+                     * been closed. Just like the case where the child has
+                     * closed the tether, continue running the event loop
+                     * until the child terminates. */
                 }
                 else if (bytes)
                 {
-                    /* Continue polling stdout unless all the available
-                     * data on stdin was transferred because this might
-                     * be the last chunk of data on stdin before it was
-                     * closed so there will be no more available. */
+                    /* Continue polling the tether drain unless all the
+                     * available input from the child was transferred.
+                     *
+                     * This is purely an optimisation because if switching
+                     * to polling the tether will return that it has
+                     * more input available. */
 
                     if (bytes >= available)
                     {
@@ -1075,8 +1323,8 @@ pollFdOutput(void                        *self_,
                 }
             }
 
-            /* If the far end of stdout has been closed, then there is
-             * no point reading any more data from stdin since there
+            /* If the far end of tether drain has been closed, then there is
+             * no point reading any more data from the tether since there
              * will be nowhere to put the data. */
 
             closePollFdTetherPipeline(self, aPollFds);
@@ -1148,7 +1396,7 @@ pollFdTimerTether(void                        *self_,
 
         debug(0, "timeout after %ds", gOptions.mTimeout_s);
 
-        aPollFdTimerAction->mPeriod = duration(NanoSeconds(0));
+        aPollFdTimerAction->mPeriod = Duration(NanoSeconds(0));
 
         if ( ! self->mTermination->mTimer->mSince.eventclock.ns)
         {
@@ -1193,7 +1441,7 @@ pollFdTimerOrphan(void                        *self_,
     {
         debug(0, "orphaned");
 
-        aPollFdTimerAction->mPeriod = duration(NanoSeconds(0));
+        aPollFdTimerAction->mPeriod = Duration(NanoSeconds(0));
 
         if ( ! self->mTermination->mTimer->mSince.eventclock.ns)
         {
@@ -1205,100 +1453,6 @@ pollFdTimerOrphan(void                        *self_,
                 aPollTime);
         }
     }
-}
-
-/* -------------------------------------------------------------------------- */
-struct MonitorChildThread
-{
-    pthread_t    mThread;
-    int          mSrcFd;
-    int          mDstFd;
-    struct Pipe *mNullPipe;
-};
-
-static void *
-monitorChildMain_(void *self_)
-{
-    struct MonitorChildThread *self = self_;
-
-    struct pollfd pollfds[2] =
-    {
-        { .fd = self->mSrcFd, .events = sPollInputEvents },
-        { .fd = self->mDstFd, .events = sPollDisconnectEvent },
-    };
-
-    while (1)
-    {
-        int rc = poll(pollfds, NUMBEROF(pollfds), -1);
-
-        if (-1 == rc)
-        {
-            if (EINTR == errno)
-                continue;
-
-            terminate(
-                errno,
-                "Unable to poll for activity from fd %d",
-                self->mSrcFd);
-        }
-
-        /* The output file descriptor must have been closed if:
-         *
-         *  o There is no input available, so the poll must have
-         *    returned because an output disconnection event was detected
-         *  o Input was available, but none could be written to the output
-         */
-
-        ensure(0 < rc);
-
-        int available;
-
-        if (ioctl(self->mSrcFd, FIONREAD, &available))
-            terminate(
-                errno,
-                "Unable to find amount of readable data in stdin");
-
-        if ( ! available)
-            break;
-
-        ssize_t bytes = spliceFd(
-            self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE);
-
-        if ( ! bytes)
-            break;
-
-        if (-1 == bytes)
-        {
-            if (EPIPE != errno)
-            {
-                switch (errno)
-                {
-                default:
-                    terminate(
-                        errno,
-                        "Unable to splice %d bytes to fd %d",
-                        available,
-                        self->mDstFd);
-
-                case EWOULDBLOCK:
-                case EINTR:
-                    break;
-                }
-            }
-        }
-    }
-
-    if (self->mDstFd != dup2(self->mNullPipe->mWrFile->mFd, self->mDstFd))
-        terminate(
-            errno,
-            "Unable to dup null pipe to fd %d", self->mDstFd);
-
-    if (self->mSrcFd != dup2(self->mNullPipe->mRdFile->mFd, self->mSrcFd))
-        terminate(
-            errno,
-            "Unable to dup null pipe to fd %d", self->mSrcFd);
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1314,17 +1468,17 @@ monitorChild(pid_t              aChildPid,
     {
         [POLL_FD_TIMER_TETHER] =
         {
-            0, 0, duration(NSECS(Seconds(0)))
+            0, 0, Duration(NSECS(Seconds(0)))
         },
 
         [POLL_FD_TIMER_ORPHAN] =
         {
-            0, 0, duration(NSECS(Seconds(0)))
+            0, 0, Duration(NSECS(Seconds(0)))
         },
 
         [POLL_FD_TIMER_TERMINATION] =
         {
-            0, 0, duration(NSECS(Seconds(0)))
+            0, 0, Duration(NSECS(Seconds(0)))
         },
     };
 
@@ -1332,45 +1486,31 @@ monitorChild(pid_t              aChildPid,
     struct PollEventText pollRcvdEventText;
 
     struct Pipe nullPipe;
-    if (createPipe(&nullPipe))
+    if (createPipe(&nullPipe, O_CLOEXEC | O_NONBLOCK))
         terminate(
             errno,
             "Unable to create null pipe");
-    if (closePipeOnExec(&nullPipe, O_CLOEXEC))
-        terminate(
-            errno,
-            "Unable to set close on exec for null pipe");
-    if (nonblockingPipe(&nullPipe))
-        terminate(
-            errno,
-            "Unable to mark null pipe non-blocking");
 
-    struct PollFdClock pollfdclock = { .mKind = POLL_FD_CLOCK };
+    /* Create a thread and drain pipe to use a blocking copy
+     * to transfer data from a local pipe to stdout. This is
+     * primarily because SPLICE_F_NONBLOCK cannot guarantee that
+     * the operation is non-blocking unless both source and destination
+     * file descriptors are also themselves non-blocking.
+     *
+     * The child thread is used to perform a potentially blocking
+     * transfer between an intermediate pipe and stdout, while
+     * the main monitoring thread deals exclusively with non-blocking
+     * file descriptors. */
 
-    if (createPipe(&pollfdclock.mClockPipe))
-        terminate(
-            errno,
-            "Unable to create clock pipe");
-    if (closePipeOnExec(&pollfdclock.mClockPipe, O_CLOEXEC))
-        terminate(
-            errno,
-            "Unable to set close on exec for clock pipe");
-    if (nonblockingPipe(&pollfdclock.mClockPipe))
-        terminate(
-            errno,
-            "Unable to mark clock pipe non-blocking");
+    struct TetherDrainThread tetherDrainThread;
 
-    struct timeval clockPeriod = { .tv_sec = 3 };
-
-    if (watchProcessClock(&pollfdclock.mClockPipe, &clockPeriod))
-        terminate(
-            errno,
-            "Unable to install process clock watch");
+    createTetherDrainThread(&tetherDrainThread, STDOUT_FILENO);
 
     struct PollFdChild pollfdchild =
     {
-        .mKind  = POLL_FD_CHILD,
-        .mDead = false,
+        .mKind              = POLL_FD_CHILD,
+        .mDead              = false,
+        .mTetherDrainThread = &tetherDrainThread,
     };
 
     struct PollFdSignal pollfdsignal =
@@ -1407,47 +1547,12 @@ monitorChild(pid_t              aChildPid,
     {
         .mKind   = POLL_FD_TIMER_TERMINATION,
         .mTimer  = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
-        .mPeriod = duration(NSECS(Seconds(gOptions.mPacing_s))),
+        .mPeriod = Duration(NSECS(Seconds(gOptions.mPacing_s))),
         .mPlan   = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
     };
 
     pollfdtimertermination.mTimer->mAction = pollFdTimerTermination;
     pollfdtimertermination.mTimer->mSelf   = &pollfdtimertermination;
-
-    /* Create a thread and transport pipe to use a blocking copy
-     * to transfer data from a local pipe to stdout. This is
-     * primarily because SPLICE_F_NONBLOCK cannot guarantee that
-     * the operation is non-blocking unless both source and destination
-     * file descriptors are also themselves non-blocking.
-     *
-     * The child thread is used to perform a potentially blocking
-     * transfer between an intermediate pipe and stdout, while
-     * the main monitoring thread deals exclusively with non-blocking
-     * file descriptors. */
-
-    struct Pipe transportPipe;
-
-    if (createPipe(&transportPipe))
-        terminate(
-            errno,
-            "Unable to create transport pipe");
-    if (closePipeOnExec(&transportPipe, O_CLOEXEC))
-        terminate(
-            errno,
-            "Unable to set close on exec for transport pipe");
-    if (nonblockingPipe(&transportPipe))
-        terminate(
-            errno,
-            "Unable to mark transport pipe non-blocking");
-
-    struct MonitorChildThread childThread =
-    {
-        .mSrcFd    = transportPipe.mRdFile->mFd,
-        .mDstFd    = STDOUT_FILENO,
-        .mNullPipe = &nullPipe,
-    };
-
-    createThread(&childThread.mThread, 0, monitorChildMain_, &childThread);
 
     int timeout_ms = gOptions.mTimeout_s * 1000;
 
@@ -1474,7 +1579,7 @@ monitorChild(pid_t              aChildPid,
         .mTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
 
         .mSrcFd       = STDIN_FILENO,
-        .mDstFd       = transportPipe.mWrFile->mFd,
+        .mDstFd       = tetherDrainThread.mDrainPipe.mWrFile->mFd,
         .mChildPid    = aChildPid,
         .mCycleCount  = 0,
         .mCycleLimit  = timeoutCycles,
@@ -1486,7 +1591,7 @@ monitorChild(pid_t              aChildPid,
     pollfdtether.mTimer->mSelf   = &pollfdtether;
     pollfdtether.mTimer->mSince  = EVENTCLOCKTIME_INIT;
     pollfdtether.mTimer->mPeriod =
-        duration(NanoSeconds(
+        Duration(NanoSeconds(
             NSECS(Seconds(
                 gOptions.mTether
                 ? gOptions.mTimeout_s : 0)).ns / timeoutCycles));
@@ -1508,7 +1613,7 @@ monitorChild(pid_t              aChildPid,
         pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mAction = pollFdTimerOrphan;
         pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mSelf   = &pollfdtimerorphan;
         pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mPeriod =
-            duration(NSECS(Seconds(3)));
+            Duration(NSECS(Seconds(3)));
     }
 
     /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
@@ -1523,9 +1628,6 @@ monitorChild(pid_t              aChildPid,
 
     struct pollfd pollfds[POLL_FD_KINDS] =
     {
-        [POLL_FD_CLOCK] = {
-            .fd     = pollfdclock.mClockPipe.mRdFile->mFd,
-            .events = sPollInputEvents },
         [POLL_FD_CHILD] = {
             .fd     = aTermPipe->mRdFile->mFd,
             .events = sPollInputEvents },
@@ -1564,7 +1666,6 @@ monitorChild(pid_t              aChildPid,
 
     struct PollFdAction pollfdactions[POLL_FD_KINDS] =
     {
-        [POLL_FD_CLOCK]     = { pollFdClock,     &pollfdclock },
         [POLL_FD_CHILD]     = { pollFdChild,     &pollfdchild },
         [POLL_FD_SIGNAL]    = { pollFdSignal,    &pollfdsignal },
         [POLL_FD_UMBILICAL] = { pollFdUmbilical, &pollfdumbilical },
@@ -1583,7 +1684,8 @@ monitorChild(pid_t              aChildPid,
 
         polltm = eventclockTime();
 
-        struct Duration timeout   = duration(NanoSeconds(0));
+        struct Duration timeout   = Duration(NanoSeconds(0));
+        size_t          chosen    = NUMBEROF(pollfdtimeractions);
         size_t          numActive = 0;
 
         for (size_t ix = 0; NUMBEROF(pollfdtimeractions) > ix; ++ix)
@@ -1600,15 +1702,22 @@ monitorChild(pid_t              aChildPid,
                         &remaining,
                         &polltm))
                 {
-                    timeout = duration(NanoSeconds(0));
+                    chosen  = ix;
+                    timeout = Duration(NanoSeconds(0));
                     break;
                 }
 
                 if (timeout.duration.ns >
                     remaining.duration.ns || ! timeout.duration.ns)
+                {
+                    chosen  = ix;
                     timeout = remaining;
+                }
             }
         }
+
+        if (NUMBEROF(pollfdtimeractions) != chosen)
+            debug(1, "choose %s deadline", sPollFdTimerNames[chosen]);
 
         int timeout_ms;
 
@@ -1679,7 +1788,7 @@ monitorChild(pid_t              aChildPid,
              * no matter what the caller has subscribed for. Only pay
              * attention to what was subscribed. */
 
-            debug(1, "poll fd scan length %d", rc);
+            debug(1, "polled result %d", rc);
 
             for (size_t ix = 0; NUMBEROF(pollfds) > ix; ++ix)
             {
@@ -1762,22 +1871,7 @@ monitorChild(pid_t              aChildPid,
             errno,
             "Unable to close umbilical peer");
 
-    (void) joinThread(&childThread.mThread);
-
-    if (closePipe(&transportPipe))
-        terminate(
-            errno,
-            "Unable to close transport pipe");
-
-    if (unwatchProcessClock())
-        terminate(
-            errno,
-            "Unable to remove process clock watch");
-
-    if (closePipe(&pollfdclock.mClockPipe))
-        terminate(
-            errno,
-            "Unable to close clock pipe");
+    closeTetherDrainThread(&tetherDrainThread);
 
     if (closePipe(&nullPipe))
         terminate(
@@ -1880,7 +1974,7 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
 
                     debug(0, "delay for %" PRIu64 "ns", resolution);
 
-                    monotonicSleep(duration(NanoSeconds(resolution)));
+                    monotonicSleep(Duration(NanoSeconds(resolution)));
 
                     break;
                 }
@@ -1987,7 +2081,7 @@ cmdRunCommand(char **aCmd)
      * non-blocking. */
 
     struct Pipe tetherPipe;
-    if (createPipe(&tetherPipe))
+    if (createPipe(&tetherPipe, 0))
         terminate(
             errno,
             "Unable to create tether pipe");
@@ -2009,7 +2103,7 @@ cmdRunCommand(char **aCmd)
             "Unable to create umbilical socket");
 
     struct Pipe termPipe;
-    if (createPipe(&termPipe))
+    if (createPipe(&termPipe, 0))
         terminate(
             errno,
             "Unable to create termination pipe");
@@ -2019,7 +2113,7 @@ cmdRunCommand(char **aCmd)
             "Unable to set close on exec for termination pipe");
 
     struct Pipe sigPipe;
-    if (createPipe(&sigPipe))
+    if (createPipe(&sigPipe, 0))
         terminate(
             errno,
             "Unable to create signal pipe");
@@ -2041,7 +2135,7 @@ cmdRunCommand(char **aCmd)
     if (ignoreProcessSigPipe())
         terminate(
             errno,
-            "Unable to ignore pipe signal");
+            "Unable to ignore SIGPIPE");
 
     /* Only identify the watchdog process after all the signal
      * handlers have been installed. The functional tests can
@@ -2058,7 +2152,7 @@ cmdRunCommand(char **aCmd)
         });
 
     struct Pipe syncPipe;
-    if (createPipe(&syncPipe))
+    if (createPipe(&syncPipe, 0))
         terminate(
             errno,
             "Unable to create sync pipe");
@@ -2218,7 +2312,7 @@ cmdRunCommand(char **aCmd)
     if (resetProcessSigPipe())
         terminate(
             errno,
-            "Unable to reset pipe signal");
+            "Unable to reset SIGPIPE");
 
     if (unwatchProcessSignals())
         terminate(

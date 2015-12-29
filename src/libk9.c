@@ -530,7 +530,7 @@ umbilicalMain_(void *aUmbilicalThread)
             errno,
             "Unable to send SIGTERM to process group");
 
-    monotonicSleep(duration(NSECS(Seconds(30))));
+    monotonicSleep(Duration(NSECS(Seconds(30))));
 
     if (kill(0, SIGKILL))
         terminate(
@@ -605,18 +605,12 @@ watchUmbilical(const char *aAddr)
              * is not a target of any signals intended for the process
              * being monitored. */
 
-            sigset_t prevmask;
-            sigset_t nextmask;
+            struct PushedProcessSigMask pushedSigMask;
 
-            if (sigfillset(&nextmask))
+            if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
                 terminate(
                     errno,
-                    "Unable to fill signal mask");
-
-            if (pthread_sigmask(SIG_SETMASK, &nextmask, &prevmask))
-                terminate(
-                    errno,
-                    "Unable to set signal mask");
+                    "Unable to push process signal mask");
 
             pthread_attr_t umbilicalThreadAttr;
 
@@ -630,10 +624,10 @@ watchUmbilical(const char *aAddr)
 
             destroyThreadAttr(&umbilicalThreadAttr);
 
-            if (pthread_sigmask(SIG_SETMASK, &prevmask, 0))
+            if (popProcessSigMask(&pushedSigMask))
                 terminate(
                     errno,
-                    "Unable to restore signal mask");
+                    "Unable to pop process signal mask");
         }
 
         debug(0, "umbilical thread starting");

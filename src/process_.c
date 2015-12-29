@@ -44,6 +44,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <string.h>
+#include <pthread.h>
 
 #include <sys/file.h>
 #include <sys/wait.h>
@@ -60,16 +61,32 @@ struct ProcessLock
     int              mLock;
 };
 
+static pthread_mutex_t     sProcessMutex    = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t     sProcessSigMutex = PTHREAD_MUTEX_INITIALIZER;
 static struct ProcessLock  sProcessLock_[2];
 static struct ProcessLock *sProcessLock[2];
 static unsigned            sActiveProcessLock;
 
-static unsigned              sInit;
-static unsigned              sSigContext;
-static sigset_t              sSigSet;
-static const char           *sArg0;
-static const char           *sProgramName;
-static struct MonotonicTime  sTimeBase;
+static unsigned                     sInit;
+static __thread unsigned            sSigContext;
+static struct PushedProcessSigMask  sSigMask;
+static const char                  *sArg0;
+static const char                  *sProgramName;
+static struct MonotonicTime         sTimeBase;
+
+/* -------------------------------------------------------------------------- */
+static sigset_t
+filledSigSet(void)
+{
+    sigset_t sigset;
+
+    if (sigfillset(&sigset))
+        terminate(
+            errno,
+            "Unable to create filled signal set");
+
+    return sigset;
+}
 
 /* -------------------------------------------------------------------------- */
 static struct sigaction sSigPipeAction =
@@ -83,12 +100,13 @@ ignoreProcessSigPipe(void)
     int rc = -1;
 
     struct sigaction prevAction;
-    struct sigaction pipeAction =
+    struct sigaction nextAction =
     {
         .sa_handler = SIG_IGN,
+        .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGPIPE, &pipeAction, &prevAction))
+    if (sigaction(SIGPIPE, &nextAction, &prevAction))
         goto Finally;
 
     sSigPipeAction = prevAction;
@@ -163,6 +181,70 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+int
+pushProcessSigMask(
+    struct PushedProcessSigMask *self,
+    enum ProcessSigMaskAction   aAction,
+    const int                  *aSigList)
+{
+    int rc = -1;
+
+    int maskAction;
+    switch (aAction)
+    {
+    default: errno = EINVAL; goto Finally;
+    case ProcessSigMaskUnblock: maskAction = SIG_UNBLOCK; break;
+    case ProcessSigMaskSet:     maskAction = SIG_SETMASK; break;
+    case ProcessSigMaskBlock:   maskAction = SIG_BLOCK;   break;
+    }
+
+    sigset_t sigset;
+
+    if ( ! aSigList)
+    {
+        if (sigfillset(&sigset))
+            goto Finally;
+    }
+    else
+    {
+        if (sigemptyset(&sigset))
+            goto Finally;
+        for (size_t ix = 0; aSigList[ix]; ++ix)
+        {
+            if (sigaddset(&sigset, aSigList[ix]))
+                goto Finally;
+        }
+    }
+
+    if (pthread_sigmask(maskAction, &sigset, &self->mSigSet))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+popProcessSigMask(struct PushedProcessSigMask *self)
+{
+    int rc = -1;
+
+    if (pthread_sigmask(SIG_SETMASK, &self->mSigSet, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 static int sDeadChildRdFd_ = -1;
 static int sDeadChildWrFd_ = -1;
 
@@ -223,6 +305,7 @@ watchProcessChildren(const struct Pipe *aTermPipe)
     struct sigaction childAction =
     {
         .sa_handler = deadChild_,
+        .sa_mask    = filledSigSet(),
     };
 
     if (sigaction(SIGCHLD, &childAction, 0))
@@ -244,8 +327,10 @@ unwatchProcessChildren(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int sClockTickRdFd_ = -1;
-static int sClockTickWrFd_ = -1;
+static int              sClockTickRdFd_ = -1;
+static int              sClockTickWrFd_ = -1;
+static struct Duration  sClockTickPeriod;
+static struct sigaction sClockTickSigAction;
 
 static void
 clockTick_(int aSigNum)
@@ -255,16 +340,22 @@ clockTick_(int aSigNum)
         int clockTickRdFd = sClockTickRdFd_;
         int clockTickWrFd = sClockTickWrFd_;
 
-        debug(1,
-              "queued clock tick to fd %d from fd %d",
-              clockTickRdFd, clockTickWrFd);
-
-        if (writeSignal_(clockTickWrFd, aSigNum))
+        if (-1 == clockTickWrFd)
+            debug(1, "received clock tick");
+        else
         {
-            if (EBADF != errno && EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to indicate clock tick to fd %d", clockTickWrFd);
+            debug(1,
+                  "queued clock tick to fd %d from fd %d",
+                  clockTickRdFd, clockTickWrFd);
+
+            if (writeSignal_(clockTickWrFd, aSigNum))
+            {
+                if (EBADF != errno && EWOULDBLOCK != errno)
+                    terminate(
+                        errno,
+                        "Unable to indicate clock tick to fd %d",
+                        clockTickWrFd);
+            }
         }
     }
     --sSigContext;
@@ -275,27 +366,24 @@ resetProcessClockWatch_(void)
 {
     int rc = -1;
 
-    if (-1 != sClockTickWrFd_)
+    if (sClockTickPeriod.duration.ns)
     {
         sClockTickWrFd_ = -1;
         sClockTickRdFd_ = -1;
 
         struct itimerval disableClock =
-            {
-                .it_value    = { .tv_sec = 0 },
-                .it_interval = { .tv_sec = 0 },
-            };
+        {
+            .it_value    = { .tv_sec = 0 },
+            .it_interval = { .tv_sec = 0 },
+        };
 
         if (setitimer(ITIMER_REAL, &disableClock, 0))
             goto Finally;
 
-        struct sigaction clockAction =
-            {
-                .sa_handler = SIG_DFL,
-            };
-
-        if (sigaction(SIGALRM, &clockAction, 0))
+        if (sigaction(SIGALRM, &sClockTickSigAction, 0))
             goto Finally;
+
+        sClockTickPeriod = Duration(NanoSeconds(0));
     }
 
     rc = 0;
@@ -308,30 +396,45 @@ Finally:
 }
 
 int
-watchProcessClock(const struct Pipe    *aClockPipe,
-                  const struct timeval *aClockPeriod)
+watchProcessClock(const struct Pipe *aClockPipe,
+                  struct Duration    aClockPeriod)
 {
     int rc = -1;
-
-    /* It is ok to mark the clock pipe non-blocking because this
-     * file descriptor is not shared with any other process. */
-
-    sClockTickRdFd_ = aClockPipe->mRdFile->mFd;
-    sClockTickWrFd_ = aClockPipe->mWrFile->mFd;
-
-    if (nonblockingFd(sClockTickRdFd_))
-        goto Finally;
-
-    if (nonblockingFd(sClockTickWrFd_))
-        goto Finally;
 
     struct sigaction clockAction =
     {
         .sa_handler = clockTick_,
+        .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGALRM, &clockAction, 0))
+    if (sigaction(SIGALRM, &clockAction, &sClockTickSigAction))
         goto Finally;
+
+    /* Ensure that the selected clock period is non-zero. A zero
+     * clock period would mean that clock is disabled. */
+
+    if ( ! aClockPeriod.duration.ns)
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    sClockTickPeriod = aClockPeriod;
+
+    /* It is ok to mark the clock pipe non-blocking because this
+     * file descriptor is not shared with any other process. */
+
+    if (aClockPipe)
+    {
+        sClockTickRdFd_ = aClockPipe->mRdFile->mFd;
+        sClockTickWrFd_ = aClockPipe->mWrFile->mFd;
+
+        if (nonblockingFd(sClockTickRdFd_))
+            goto Finally;
+
+        if (nonblockingFd(sClockTickWrFd_))
+            goto Finally;
+    }
 
     /* Make sure that there are no timers already running. The
      * interface only supports one clock instance. */
@@ -347,17 +450,8 @@ watchProcessClock(const struct Pipe    *aClockPipe,
         goto Finally;
     }
 
-    /* Ensure that the selected clock period is non-zero. A zero
-     * clock period would mean that clock is disabled. */
-
-    if ( ! aClockPeriod->tv_sec && ! aClockPeriod->tv_usec)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
-
-    clockTimer.it_value    = *aClockPeriod;
-    clockTimer.it_interval = *aClockPeriod;
+    clockTimer.it_value    = timeValFromNanoSeconds(sClockTickPeriod.duration);
+    clockTimer.it_interval = clockTimer.it_value;
 
     if (setitimer(ITIMER_REAL, &clockTimer, 0))
         goto Finally;
@@ -442,6 +536,7 @@ watchProcessSignals(const struct Pipe *aSigPipe)
         struct sigaction watchAction =
         {
             .sa_handler = caughtSignal_,
+            .sa_mask    = filledSigSet(),
         };
 
         if (sigaction(watchedSig->mSigNum,
@@ -710,7 +805,9 @@ Process_init(const char *aArg0)
 
         srandom(getpid());
 
-        if (sigprocmask(SIG_SETMASK, 0, &sSigSet))
+        const int sigList[] = { SIGALRM, 0 };
+
+        if (pushProcessSigMask(&sSigMask, ProcessSigMaskBlock, sigList))
             goto Finally;
 
         if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
@@ -763,13 +860,21 @@ Finally:
 int
 lockProcessLock(void)
 {
-    int rc = -1;
+    int  rc     = -1;
+    bool locked = false;
 
     if (sSigContext)
     {
+        if (errno = pthread_mutex_lock(&sProcessSigMutex))
+            goto Finally;
+
         errno = EWOULDBLOCK;
         goto Finally;
     }
+
+    if (errno = pthread_mutex_lock(&sProcessMutex))
+        goto Finally;
+    locked = true;
 
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
@@ -780,7 +885,14 @@ lockProcessLock(void)
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        if (rc)
+        {
+            if (locked)
+                pthread_mutex_unlock(&sProcessMutex);
+        }
+    });
 
     return rc;
 }
@@ -793,6 +905,9 @@ unlockProcessLock(void)
 
     if (sSigContext)
     {
+        if (errno = pthread_mutex_unlock(&sProcessSigMutex))
+            goto Finally;
+
         errno = EWOULDBLOCK;
         goto Finally;
     }
@@ -800,6 +915,9 @@ unlockProcessLock(void)
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
     if (processLock && unlockProcessLock_(processLock))
+        goto Finally;
+
+    if (errno = pthread_mutex_unlock(&sProcessMutex))
         goto Finally;
 
     rc = 0;
@@ -856,7 +974,10 @@ forkProcess(enum ForkProcessOption aOption)
     ensure(
         sProcessLock[sActiveProcessLock] == &sProcessLock_[sActiveProcessLock]);
 
-    pid_t rc = -1;
+    pid_t rc     = -1;
+    bool  locked = false;
+
+    struct PushedProcessSigMask *pushedSigMask = 0;
 
     /* The child process needs separate process lock. It cannot share
      * the process lock with the parent because flock(2) distinguishes
@@ -872,6 +993,10 @@ forkProcess(enum ForkProcessOption aOption)
 
     ensure( ! sProcessLock[inactiveProcessLock]);
 
+    if (errno = pthread_mutex_lock(&sProcessMutex))
+        goto Finally;
+    locked = true;
+
     if (createProcessLock_(&sProcessLock_[inactiveProcessLock]))
         goto Finally;
     sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
@@ -879,17 +1004,11 @@ forkProcess(enum ForkProcessOption aOption)
     /* If required, temporarily block all signals so that the child will not
      * receive signals which it cannot handle. */
 
-    sigset_t signalSet;
-    sigset_t prevSignalSet;
+    struct PushedProcessSigMask pushedSigMask_;
 
-    if (sigfillset(&signalSet))
+    if (pushProcessSigMask(&pushedSigMask_, ProcessSigMaskBlock, 0))
         goto Finally;
-
-    if (sigemptyset(&prevSignalSet))
-        goto Finally;
-
-    if (sigprocmask(SIG_BLOCK, &signalSet, &prevSignalSet))
-        goto Finally;
+    pushedSigMask = &pushedSigMask_;
 
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
@@ -915,10 +1034,6 @@ forkProcess(enum ForkProcessOption aOption)
             if (setpgid(childPid, childPid))
                 goto Finally;
         }
-
-        if (sigprocmask(SIG_SETMASK, &prevSignalSet, 0))
-            goto Finally;
-
         break;
 
     case -1:
@@ -949,10 +1064,16 @@ forkProcess(enum ForkProcessOption aOption)
                 errno,
                 "Unable to reset signal handlers");
 
-        if (sigprocmask(SIG_SETMASK, &sSigSet, 0))
+        pushedSigMask = 0;
+        if (popProcessSigMask(&pushedSigMask_))
             terminate(
                 errno,
-                "Unable to reset signal set");
+                "Unable to pop process signal mask");
+
+        if (popProcessSigMask(&sSigMask))
+            terminate(
+                errno,
+                "Unable to restore process signal mask");
 
         break;
     }
@@ -963,11 +1084,22 @@ Finally:
 
     FINALLY
     ({
+        if (pushedSigMask)
+        {
+            if (popProcessSigMask(pushedSigMask))
+                terminate(
+                    errno,
+                    "Unable to pop process signal mask");
+        }
+
         if (closeProcessLock_(sProcessLock[inactiveProcessLock]))
             terminate(
                 errno,
                 "Unable to close process lock");
         sProcessLock[inactiveProcessLock] = 0;
+
+        if (locked)
+            pthread_mutex_unlock(&sProcessMutex);
     });
 
     return rc;
@@ -1018,7 +1150,7 @@ extractProcessExitStatus(int aStatus)
 struct Duration
 ownProcessElapsedTime(void)
 {
-    return duration(
+    return Duration(
         NanoSeconds(monotonicTime().monotonic.ns - sTimeBase.monotonic.ns));
 }
 

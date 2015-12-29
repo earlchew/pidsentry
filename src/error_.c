@@ -52,6 +52,81 @@ gettid(void)
 }
 
 /* -------------------------------------------------------------------------- */
+static void
+dprint_(
+    int aErrCode,
+    intmax_t aPid,
+    intmax_t aTid,
+    uint64_t aElapsed_h,
+    uint64_t aElapsed_m,
+    uint64_t aElapsed_s,
+    uint64_t aElapsed_ms,
+    const char *aFile, unsigned aLine,
+    const char *aFmt, va_list aArgs)
+{
+    int lockErr = errno;
+
+    if ( ! aFile)
+        dprintf(STDERR_FILENO, "%s: ", ownProcessName());
+    else
+    {
+        if (aPid == aTid)
+        {
+            dprintf(
+                STDERR_FILENO,
+                "%s: [%04" PRIu64 ":%02" PRIu64
+                ":%02" PRIu64
+                ".%03" PRIu64 " %jd %s:%u] ",
+                ownProcessName(),
+                aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
+                aPid, aFile, aLine);
+        }
+        else
+        {
+            dprintf(
+                STDERR_FILENO,
+                "%s: [%04" PRIu64 ":%02" PRIu64
+                ":%02" PRIu64
+                ".%03" PRIu64 " %jd:%jd %s:%u] ",
+                ownProcessName(),
+                aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
+                aPid, aTid, aFile, aLine);
+        }
+
+        if (EWOULDBLOCK != lockErr)
+            dprintf(STDERR_FILENO, "- lock error %d - ", lockErr);
+    }
+
+    vdprintf(STDERR_FILENO, aFmt, aArgs);
+    if (aErrCode)
+        dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
+    else
+        dprintf(STDERR_FILENO, "\n");
+}
+
+static void
+dprintf_(
+    int aErrCode,
+    intmax_t aPid,
+    intmax_t aTid,
+    uint64_t aElapsed_h,
+    uint64_t aElapsed_m,
+    uint64_t aElapsed_s,
+    uint64_t aElapsed_ms,
+    const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
+{
+    va_list args;
+
+    va_start(args, aFmt);
+    dprint_(aErrCode,
+            aPid, aTid,
+            aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
+            aFile, aLine, aFmt, args);
+    va_end(args);
+}
+
+/* -------------------------------------------------------------------------- */
 static struct {
     char  *mBuf;
     size_t mSize;
@@ -81,7 +156,20 @@ print_(
         intmax_t pid = getpid();
         intmax_t tid = gettid();
 
-        if (sPrintBuf.mFile && lockProcessLock())
+        int locked = !! sPrintBuf.mFile;
+
+        if (locked)
+        {
+            if (lockProcessLock())
+            {
+                if (EWOULDBLOCK == errno)
+                    locked = -1;
+                else
+                    locked = 0;
+            }
+        }
+
+        if (0 >= locked)
         {
             /* Note that there is an old defect which causes dprintf()
              * to race with fork():
@@ -91,44 +179,11 @@ print_(
              * The symptom is that the child process will terminate with
              * SIGSEGV in fresetlockfiles(). */
 
-            int lockErr = errno;
-
-            if ( ! aFile)
-                dprintf(STDERR_FILENO, "%s: ", ownProcessName());
-            else
-            {
-                if (pid == tid)
-                {
-                    dprintf(
-                        STDERR_FILENO,
-                        "%s: [%04" PRIu64 ":%02" PRIu64
-                        ":%02" PRIu64
-                        ".%03" PRIu64 " %jd %s:%u] ",
-                        ownProcessName(),
-                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                        pid, aFile, aLine);
-                }
-                else
-                {
-                    dprintf(
-                        STDERR_FILENO,
-                        "%s: [%04" PRIu64 ":%02" PRIu64
-                        ":%02" PRIu64
-                        ".%03" PRIu64 " %jd:%jd %s:%u] ",
-                        ownProcessName(),
-                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                        pid, tid, aFile, aLine);
-                }
-
-                if (EWOULDBLOCK != lockErr)
-                    dprintf(STDERR_FILENO, "- lock error %d - ", lockErr);
-            }
-
-            vdprintf(STDERR_FILENO, aFmt, aArgs);
-            if (aErrCode)
-                dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
-            else
-                dprintf(STDERR_FILENO, "\n");
+            dprint_(aErrCode,
+                    pid, tid,
+                    elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                    aFile, aLine,
+                    aFmt, aArgs);
         }
         else
         {
@@ -170,8 +225,23 @@ print_(
             fflush(sPrintBuf.mFile);
 
             writeFd(STDERR_FILENO, sPrintBuf.mBuf, sPrintBuf.mSize);
+        }
 
-            unlockProcessLock();
+        if (locked)
+        {
+            if (unlockProcessLock())
+            {
+                if (0 > locked && EWOULDBLOCK != errno || 0 < locked)
+                {
+                    dprintf_(
+                        errno,
+                        pid, tid,
+                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                        __FILE__, __LINE__,
+                        "Unable to release process lock");
+                    abort();
+                }
+            }
         }
     });
 }

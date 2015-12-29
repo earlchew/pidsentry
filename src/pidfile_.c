@@ -101,7 +101,7 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
      * unit test can verify operation of the lock in the reasonable
      * amount of time. */
 
-    const struct Duration testmodeTimeout = duration(NSECS(Seconds(3)));
+    const struct Duration testmodeTimeout = Duration(NSECS(Seconds(3)));
 
     testSleep();
 

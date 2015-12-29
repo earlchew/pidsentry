@@ -1,6 +1,6 @@
 /* -*- c-basic-offset:4; indent-tabs-mode:nil -*- vi: set sw=4 et: */
 /*
-// Copyright (c) 2013, Earl Chew
+// Copyright (c) 2015, Earl Chew
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,52 +26,19 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef PIPE_H
-#define PIPE_H
 
-#include "file_.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-struct Pipe
+int main(int argc, char **argv)
 {
-    struct File  mRdFile_;
-    struct File *mRdFile;
-    struct File  mWrFile_;
-    struct File *mWrFile;
-};
+    long stdoutFlags = fcntl(STDOUT_FILENO, F_GETFL);
+    long stderrFlags = fcntl(STDERR_FILENO, F_GETFL);
 
-/* -------------------------------------------------------------------------- */
-int
-createPipe(struct Pipe *self, unsigned aFlags);
-
-int
-closePipe(struct Pipe *self);
-
-int
-detachPipeReader(struct Pipe *self);
-
-int
-detachPipeWriter(struct Pipe *self);
-
-int
-closePipeReader(struct Pipe *self);
-
-int
-closePipeWriter(struct Pipe *self);
-
-int
-closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec);
-
-int
-nonblockingPipe(struct Pipe *self);
-
-/* -------------------------------------------------------------------------- */
-
-#ifdef __cplusplus
+    return
+        (-1 == stdoutFlags) ||
+        (-1 == stderrFlags) ||
+        (stdoutFlags & O_NONBLOCK) ||
+        (stderrFlags & O_NONBLOCK) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-#endif
-
-#endif /* PIPE_H */

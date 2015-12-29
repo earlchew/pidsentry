@@ -122,12 +122,12 @@ TEST(TimeKeepingTest, DeadlineRunsOnce)
 {
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-    EXPECT_FALSE(deadlineTimeExpired(&since, duration(NanoSeconds(0)), 0, 0));
+    EXPECT_FALSE(deadlineTimeExpired(&since, Duration(NanoSeconds(0)), 0, 0));
 }
 
 TEST(TimeKeepingTest, DeadlineExpires)
 {
-    auto period = duration(NSECS(MilliSeconds(1000)));
+    auto period = Duration(NSECS(MilliSeconds(1000)));
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
     struct Duration       remaining;
@@ -162,7 +162,7 @@ TEST(TimeKeepingTest, DeadlineExpires)
 
 TEST(TimeKeepingTest, MonotonicSleep)
 {
-    auto period = duration(NSECS(MilliSeconds(1000)));
+    auto period = Duration(NSECS(MilliSeconds(1000)));
 
     auto startTime = monotonicTime();
     monotonicSleep(period);
@@ -178,18 +178,18 @@ TEST(TimeKeepingTest, MonotonicSleep)
 
 TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
 {
-    auto period = duration(NSECS(MilliSeconds(1000)));
+    auto period = Duration(NSECS(MilliSeconds(1000)));
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-    EXPECT_FALSE(lapTimeSince(&since, duration(NanoSeconds(0)), 0).duration.ns);
+    EXPECT_FALSE(lapTimeSince(&since, Duration(NanoSeconds(0)), 0).duration.ns);
 
     {
         monotonicSleep(period);
 
         auto lapTime = MSECS(
             lapTimeSince(&since,
-                         duration(NanoSeconds(0)), 0).duration).ms / 100;
+                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         auto interval = MSECS(period.duration).ms / 100;
 
@@ -197,7 +197,7 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
 
         lapTime = MSECS(
             lapTimeSince(&since,
-                         duration(NanoSeconds(0)), 0).duration).ms / 100;
+                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         EXPECT_EQ(1 * interval, lapTime);
     }
@@ -207,7 +207,7 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
 
         auto lapTime = MSECS(
             lapTimeSince(&since,
-                         duration(NanoSeconds(0)), 0).duration).ms / 100;
+                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         auto interval = MSECS(period.duration).ms / 100;
 
@@ -215,7 +215,7 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
 
         lapTime = MSECS(
             lapTimeSince(&since,
-                         duration(NanoSeconds(0)), 0).duration).ms / 100;
+                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
 
         EXPECT_EQ(2 * interval, lapTime);
     }
@@ -223,13 +223,13 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
 
 TEST(TimeKeepingTest, LapTimeSinceWithPeriod)
 {
-    auto sleepPeriod = duration(NSECS(MilliSeconds(1000)));
-    auto period      = duration(NSECS(MilliSeconds(5000)));
+    auto sleepPeriod = Duration(NSECS(MilliSeconds(1000)));
+    auto period      = Duration(NSECS(MilliSeconds(5000)));
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
     EXPECT_FALSE(lapTimeSince(&since,
-                              duration(NanoSeconds(0)), 0).duration.ns);
+                              Duration(NanoSeconds(0)), 0).duration.ns);
 
     {
         monotonicSleep(sleepPeriod);
@@ -337,7 +337,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 1))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 1))));
 
     // Elapsed time is less that the outstanding alarm time.
     alarmVal.it_value    = two;
@@ -348,7 +348,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 1))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 1))));
 
     // Elapsed time equals the outstanding alarm time.
     alarmVal.it_value    = two;
@@ -359,7 +359,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 2))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 2))));
 
     // Elapsed time exceeds the outstanding alarm time.
     alarmVal.it_value    = two;
@@ -370,7 +370,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 3))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 3))));
 
     // Elapsed time exceeds the outstanding alarm time and the next interval.
     alarmVal.it_value    = two;
@@ -381,7 +381,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 8))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 8))));
 
     alarmVal.it_value    = two;
     alarmVal.it_interval = three;
@@ -391,7 +391,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 9))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 9))));
 
     alarmVal.it_value    = two;
     alarmVal.it_interval = three;
@@ -401,7 +401,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 10))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 10))));
 
     alarmVal.it_value    = two;
     alarmVal.it_interval = three;
@@ -411,7 +411,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
 
     EXPECT_EQ(shortenedVal,
               shortenIntervalTime(&alarmVal,
-                                  duration(NanoSeconds(nsTime_1_0 * 11))));
+                                  Duration(NanoSeconds(nsTime_1_0 * 11))));
 }
 
 TEST(TimeKeepingTest, PushIntervalTimer)

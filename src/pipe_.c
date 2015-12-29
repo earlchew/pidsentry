@@ -34,15 +34,22 @@
 
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 
 /* -------------------------------------------------------------------------- */
 int
-createPipe(struct Pipe *self)
+createPipe(struct Pipe *self, unsigned aFlags)
 {
     int rc = -1;
 
     self->mRdFile = 0;
     self->mWrFile = 0;
+
+    if (aFlags & ~ (O_CLOEXEC | O_NONBLOCK))
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
 
     int fd[2];
 
@@ -66,6 +73,18 @@ createPipe(struct Pipe *self)
     self->mWrFile = &self->mWrFile_;
 
     fd[1] = -1;
+
+    if (aFlags & O_CLOEXEC)
+    {
+        if (closePipeOnExec(self, O_CLOEXEC))
+            goto Finally;
+    }
+
+    if (aFlags & O_NONBLOCK)
+    {
+        if (nonblockingPipe(self))
+            goto Finally;
+    }
 
     rc = 0;
 

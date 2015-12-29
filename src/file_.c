@@ -240,7 +240,7 @@ lockFile(struct File *self, int aType, const struct Duration *aTimeout)
     return lockFd(
         self->mFd,
         aType,
-        aTimeout ? *aTimeout : duration(NSECS(Seconds(30))));
+        aTimeout ? *aTimeout : Duration(NSECS(Seconds(30))));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -334,7 +334,7 @@ waitFileReady_(const struct File     *self,
     struct Duration       remaining;
 
     const struct Duration timeout =
-        aTimeout ? *aTimeout : duration(NanoSeconds(0));
+        aTimeout ? *aTimeout : Duration(NanoSeconds(0));
 
     while (1)
     {

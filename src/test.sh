@@ -71,6 +71,27 @@ testOutput()
 runTest()
 {
     :
+    testCase 'Child shares process group'
+    set -x
+    k9 -i -dd -- ps -o pid,pgid,cmd | {
+        read PARENT
+        read CHILD
+        read HEADING
+        PARENTPGID=
+        CHILDPGID=
+        while read PID PGID CMD ; do
+            /bin/echo "$PARENT - $CHILD - $PID $PGID $CMD"
+            if [ x"$PARENT" = x"$PID" ] ; then
+                CHILDPGID=$PGID
+            elif [ x"$CHILD" = x"$PID" ] ; then
+                PARENTPGID=$PGID
+            fi
+        done >&2
+        [ -n "$PARENTPGID" ]
+        [ -n "$CHILDPGID" ]
+        [ x"$PARENTPGID" = x"$CHILDPGID" ]
+    }
+    exit $?
 }
 
 runTests()

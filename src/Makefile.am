@@ -53,6 +53,7 @@ k9dir       = $(datadir)/k9
 k9_PROGRAMS         = k9
 check_SCRIPTS       = test.sh
 check_PROGRAMS      = _splicetest
+check_PROGRAMS     += _isblockingtest
 check_PROGRAMS     += _timekeepingtest
 check_PROGRAMS     += _envtest
 check_PROGRAMS     += _unixsockettest
@@ -92,6 +93,9 @@ _envtest_LDADD   = $(TEST_LIBS)
 
 _unixsockettest_SOURCES = _unixsockettest.cc
 _unixsockettest_LDADD   = $(TEST_LIBS)
+
+_isblockingtest_SOURCES = _isblockingtest.c
+_isblockingtest_LDADD   = $(TEST_LIBS)
 
 include libk9__la.am
 $(call WILDCARD,libk9__la,libk9__la_SOURCES,[a-z]*_.[ch])
