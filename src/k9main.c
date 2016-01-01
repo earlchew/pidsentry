@@ -603,6 +603,12 @@ tetherThreadMain_(void *self_)
     int dstFd     = STDOUT_FILENO;
     int controlFd = self->mControlPipe.mRdFile->mFd;
 
+    /* The file descriptor for stdin is a pipe created by the watchdog
+     * so it is known to be nonblocking. The file descriptor for stdout
+     * is inherited, so it is likely blocking. */
+
+    ensure(nonblockingFd(srcFd));
+
     /* The tether thread is configured to receive SIGALRM, but
      * these signals are not delivered until the thread is
      * flushed after the child process has terminated. */
