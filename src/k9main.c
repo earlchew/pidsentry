@@ -1974,7 +1974,7 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to set close on exec for signal pipe");
 
-    if (watchProcessSignals(&sigPipe))
+    if (watchProcessSignals(&sigPipe, 0))
         terminate(
             errno,
             "Unable to add watch on signals");

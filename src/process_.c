@@ -472,8 +472,9 @@ unwatchProcessClock(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int sSignalRdFd_ = -1;
-static int sSignalWrFd_ = -1;
+static int    sSignalRdFd_ = -1;
+static int    sSignalWrFd_ = -1;
+static void (*sSignalObserver_)(int aSigNum);
 
 static struct SignalWatch {
     int              mSigNum;
@@ -492,42 +493,53 @@ caughtSignal_(int aSigNum)
 {
     ++sSigContext;
     {
+        if (sSignalObserver_)
+        {
+            debug(1, "observed signal %d", aSigNum);
+            sSignalObserver_(aSigNum);
+        }
+
         int signalRdFd = sSignalRdFd_;
         int signalWrFd = sSignalWrFd_;
 
-        debug(1,
-              "queued signal %d from fd %d to fd %d",
-              aSigNum,
-              signalWrFd,
-              signalRdFd);
-
-        if (writeSignal_(signalWrFd, aSigNum))
+        if (-1 != signalWrFd)
         {
-            if (EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to queue signal %d on fd %d", aSigNum, signalWrFd);
+            debug(1,
+                  "queued signal %d on fd %d to fd %d",
+                  aSigNum,
+                  signalWrFd,
+                  signalRdFd);
+
+            if (writeSignal_(signalWrFd, aSigNum))
+            {
+                if (EWOULDBLOCK != errno)
+                    terminate(
+                        errno,
+                        "Unable to queue signal %d on fd %d to fd %d",
+                        aSigNum, signalWrFd, signalRdFd);
+            }
         }
     }
     --sSigContext;
 }
 
 int
-watchProcessSignals(const struct Pipe *aSigPipe)
+watchProcessSignals(const struct Pipe *aSigPipe,
+                    void               aSigObserver(int aSigNum))
 {
     int rc = -1;
 
     /* It is ok to mark the signal pipe non-blocking because this
      * file descriptor is not shared with any other process. */
 
-    sSignalRdFd_ = aSigPipe->mRdFile->mFd;
-    sSignalWrFd_ = aSigPipe->mWrFile->mFd;
+    if (aSigPipe)
+    {
+        if (nonblockingFd(aSigPipe->mRdFile->mFd))
+            goto Finally;
 
-    if (nonblockingFd(sSignalRdFd_))
-        goto Finally;
-
-    if (nonblockingFd(sSignalWrFd_))
-        goto Finally;
+        if (nonblockingFd(aSigPipe->mWrFile->mFd))
+            goto Finally;
+    }
 
     for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
     {
@@ -546,6 +558,14 @@ watchProcessSignals(const struct Pipe *aSigPipe)
 
         watchedSig->mWatched = true;
     }
+
+    if (aSigPipe)
+    {
+        sSignalRdFd_ = aSigPipe->mRdFile->mFd;
+        sSignalWrFd_ = aSigPipe->mWrFile->mFd;
+    }
+
+    sSignalObserver_ = aSigObserver;
 
     rc = 0;
 
@@ -601,8 +621,9 @@ resetProcessSignalsWatch_(void)
         }
     }
 
-    sSignalWrFd_ = -1;
-    sSignalRdFd_ = -1;
+    sSignalWrFd_     = -1;
+    sSignalRdFd_     = -1;
+    sSignalObserver_ = 0;
 
     if (rc)
         errno = err;
