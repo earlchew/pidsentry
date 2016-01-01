@@ -818,12 +818,12 @@ closeTetherThread(struct TetherThread *self)
 {
     ensure(self->mFlushed);
 
-    /* Note that the drain thread might be blocked on splice(2). The
+    /* Note that the tether thread might be blocked on splice(2). The
      * concurrent process clock ticks are enough to cause splice(2)
-     * to periodically return EINTR, allowing the drain thread to
+     * to periodically return EINTR, allowing the tether thread to
      * check its deadline. */
 
-    debug(0, "synchronising drain thread");
+    debug(0, "synchronising tether thread");
 
     (void) joinThread(&self->mThread);
 
@@ -879,7 +879,7 @@ pollFdChild(void                        *self_,
     /* Record when the child has terminated, but do not exit
      * the event loop until all the IO has been flushed. With the
      * child terminated, no further input can be produced so indicate
-     * to the drain thread that it should start flushing data now. */
+     * to the tether thread that it should start flushing data now. */
 
     self->mDead = true;
 
@@ -1128,9 +1128,9 @@ pollFdTimerTermination(void                        *self_,
  *
  * The main tether used by the watchdog to monitor the child process requires
  * the child process to maintain some activity on the tether to demonstrate
- * that the child is functioning correctly. Activity on the tether oscillates
- * between the tether itself being ready for reading, and the drain being
- * ready to accept the tether data. */
+ * that the child is functioning correctly. Data transfer on the tether
+ * occurs in a separate thread since it might block. The main thread
+ * is non-blocking and waits for the tether to be closed. */
 
 struct PollFdTether
 {
@@ -1141,7 +1141,7 @@ struct PollFdTether
     struct PollFdTimerTermination *mTermination;
     struct Pipe                   *mNullPipe;
 
-    bool     mDrained;
+    bool     mDisconnected;
     pid_t    mChildPid;
     unsigned mCycleCount;       /* Current number of cycles */
     unsigned mCycleLimit;       /* Cycles before triggering */
@@ -1151,11 +1151,11 @@ static void
 disconnectPollFdTether(struct PollFdTether *self,
                        struct pollfd       *aPollFds)
 {
-    debug(0, "disconnect tether drain");
+    debug(0, "disconnect tether control");
 
     aPollFds[POLL_FD_TETHER].fd = self->mNullPipe->mRdFile->mFd;
 
-    self->mDrained = true;
+    self->mDisconnected = true;
 }
 
 static void
@@ -1167,7 +1167,7 @@ pollFdTether(void                        *self_,
 
     ensure(POLL_FD_TETHER == self->mKind);
 
-    /* The tether drain control pipe will be closed when the tether drain
+    /* The tether thread control pipe will be closed when the tether
      * is shut down between the child process and watchdog, */
 
     disconnectPollFdTether(self, aPollFds);
@@ -1351,11 +1351,10 @@ monitorChild(pid_t              aChildPid,
             errno,
             "Unable to create null pipe");
 
-    /* Create a thread and drain pipe to use a blocking copy
-     * to transfer data from a local pipe to stdout. This is
-     * primarily because SPLICE_F_NONBLOCK cannot guarantee that
-     * the operation is non-blocking unless both source and destination
-     * file descriptors are also themselves non-blocking.
+    /* Create a thread to use a blocking copy to transfer data from a
+     * local pipe to stdout. This is primarily because SPLICE_F_NONBLOCK
+     * cannot guarantee that the operation is non-blocking unless both
+     * source and destination file descriptors are also themselves non-blocking.
      *
      * The child thread is used to perform a potentially blocking
      * transfer between an intermediate pipe and stdout, while
@@ -1442,10 +1441,10 @@ monitorChild(pid_t              aChildPid,
         .mTermination = &pollfdtimertermination,
         .mNullPipe    = &nullPipe,
 
-        .mDrained     = false,
-        .mChildPid    = aChildPid,
-        .mCycleCount  = 0,
-        .mCycleLimit  = timeoutCycles,
+        .mDisconnected = false,
+        .mChildPid     = aChildPid,
+        .mCycleCount   = 0,
+        .mCycleLimit   = timeoutCycles,
     };
 
     pollfdtether.mTimer->mAction = pollFdTimerTether;
@@ -1717,7 +1716,7 @@ monitorChild(pid_t              aChildPid,
             }
         }
 
-    } while ( ! pollfdchild.mDead || ! pollfdtether.mDrained);
+    } while ( ! pollfdchild.mDead || ! pollfdtether.mDisconnected);
 
     if (closeUnixSocket(pollfdumbilical.mUmbilicalPeer))
         terminate(
