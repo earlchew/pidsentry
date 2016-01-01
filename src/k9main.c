@@ -169,19 +169,13 @@ runChild(
     }
     else
     {
+        /* The forked child has all its signal handlers reset, but
+         * note that the parent will wait for the child to synchronise
+         * before sending it signals, so that there is no race here. */
+
         childPid = getpid();
 
         debug(0, "starting child process");
-
-        /* Unwatch the signals so that the child process will be
-         * responsive to signals from the parent. Note that the parent
-         * will wait for the child to synchronise before sending it
-         * signals, so that there is no race here. */
-
-        if (unwatchProcessSignals())
-            terminate(
-                errno,
-                "Unable to remove watch from signals");
 
         /* Close the StdFdFiller in case this will free up stdin, stdout or
          * stderr. The remaining operations will close the remaining
