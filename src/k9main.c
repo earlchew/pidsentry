@@ -138,13 +138,14 @@ struct PollFdTimerAction
 /* -------------------------------------------------------------------------- */
 static pid_t
 runChild(
-    char              **aCmd,
-    struct StdFdFiller *aStdFdFiller,
-    struct Pipe        *aTetherPipe,
-    struct UnixSocket  *aUmbilicalSocket,
-    struct Pipe        *aSyncPipe,
-    struct Pipe        *aTermPipe,
-    struct Pipe        *aSigPipe)
+    char                        **aCmd,
+    struct StdFdFiller           *aStdFdFiller,
+    struct Pipe                  *aTetherPipe,
+    struct UnixSocket            *aUmbilicalSocket,
+    struct Pipe                  *aSyncPipe,
+    struct Pipe                  *aTermPipe,
+    struct Pipe                  *aSigPipe,
+    struct PushedProcessSigMask  *aSigMask)
 {
     pid_t rc = -1;
 
@@ -169,13 +170,18 @@ runChild(
     }
     else
     {
+        childPid = getpid();
+
+        debug(0, "starting child process");
+
         /* The forked child has all its signal handlers reset, but
          * note that the parent will wait for the child to synchronise
          * before sending it signals, so that there is no race here. */
 
-        childPid = getpid();
-
-        debug(0, "starting child process");
+        if (popProcessSigMask(aSigMask))
+            terminate(
+                errno,
+                "Unable to restore process signal mask");
 
         /* Close the StdFdFiller in case this will free up stdin, stdout or
          * stderr. The remaining operations will close the remaining
@@ -1989,6 +1995,12 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to ignore SIGPIPE");
 
+    struct PushedProcessSigMask pushedSigMask;
+    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
+        terminate(
+            errno,
+            "Unable to push process signal mask");
+
     /* Only identify the watchdog process after all the signal
      * handlers have been installed. The functional tests can
      * use this as an indicator that the watchdog is ready to
@@ -2012,7 +2024,8 @@ cmdRunCommand(char **aCmd)
     pid_t childPid = runChild(aCmd,
                               &stdFdFiller,
                               &tetherPipe, &umbilicalSocket,
-                              &syncPipe, &termPipe, &sigPipe);
+                              &syncPipe, &termPipe, &sigPipe,
+                              &pushedSigMask);
     if (-1 == childPid)
         terminate(
             errno,
@@ -2067,6 +2080,11 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to close sync pipe");
+
+    if (popProcessSigMask(&pushedSigMask))
+        terminate(
+            errno,
+            "Unable to restore process signal mask");
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
