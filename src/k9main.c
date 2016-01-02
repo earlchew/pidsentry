@@ -65,7 +65,7 @@
  *
  * cmdRunCommand() is too big, break it up
  * monitorChild() is too big, break it up
- * Use a thread rather than the SIGALRM hack
+ * Periodically poll umbilical
  * Correct monitoring child scheduling of competing deadlines
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Check for useless #include in *.c
@@ -137,8 +137,62 @@ struct PollFdTimerAction
 struct ChildProcess
 {
     pid_t mPid;
+
+    struct Pipe        mTetherPipe;
+    struct UnixSocket  mUmbilicalSocket;
+    struct Pipe        mTermPipe;
 };
 
+/* -------------------------------------------------------------------------- */
+static void
+createChild(struct ChildProcess *self)
+{
+    self->mPid = 0;
+
+    /* Only the reading end of the tether is marked non-blocking. The
+     * writing end must be used by the child process (and perhaps inherited
+     * by any subsequent process that it forks), so only the reading
+     * end is marked non-blocking. */
+
+    if (createPipe(&self->mTetherPipe, 0))
+        terminate(
+            errno,
+            "Unable to create tether pipe");
+
+    if (closeFileOnExec(self->mTetherPipe.mRdFile, O_CLOEXEC))
+        terminate(
+            errno,
+            "Unable to set close on exec for tether");
+
+    if (nonblockingFile(self->mTetherPipe.mRdFile))
+        terminate(
+            errno,
+            "Unable to mark tether non-blocking");
+
+    if (createUnixSocket(&self->mUmbilicalSocket, 0, 0, 0))
+        terminate(
+            errno,
+            "Unable to create umbilical socket");
+
+    if (createPipe(&self->mTermPipe, O_CLOEXEC | O_NONBLOCK))
+        terminate(
+            errno,
+            "Unable to create termination pipe");
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+reapChild(void *self_)
+{
+    struct ChildProcess *self = self_;
+
+    if (closePipeWriter(&self->mTermPipe))
+        terminate(
+            errno,
+            "Unable to close termination pipe writer");
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 killChild(void *self_, int aSigNum)
 {
@@ -165,14 +219,11 @@ killChild(void *self_, int aSigNum)
 
 /* -------------------------------------------------------------------------- */
 static int
-createChild(
+forkChild(
     struct ChildProcess          *self,
     char                        **aCmd,
     struct StdFdFiller           *aStdFdFiller,
-    struct Pipe                  *aTetherPipe,
-    struct UnixSocket            *aUmbilicalSocket,
     struct Pipe                  *aSyncPipe,
-    struct Pipe                  *aTermPipe,
     struct PushedProcessSigMask  *aSigMask)
 {
     int rc = -1;
@@ -216,7 +267,7 @@ createChild(
                 errno,
                 "Unable to close stdin, stdout and stderr fillers");
 
-        if (closePipe(aTermPipe))
+        if (closePipe(&self->mTermPipe))
             terminate(
                 errno,
                 "Unable to close termination pipe");
@@ -266,7 +317,7 @@ createChild(
              * because it might turn out that the writing end
              * will not need to be duplicated. */
 
-            if (closePipeReader(aTetherPipe))
+            if (closePipeReader(&self->mTetherPipe))
                 terminate(
                     errno,
                     "Unable to close tether pipe reader");
@@ -309,7 +360,8 @@ createChild(
                 debug(0, "env - K9_TIME=%s", basetimeEnv);
 
                 struct sockaddr_un umbilicalSockAddr;
-                if (ownUnixSocketName(aUmbilicalSocket, &umbilicalSockAddr))
+                if (ownUnixSocketName(
+                        &self->mUmbilicalSocket, &umbilicalSockAddr))
                     terminate(
                         errno,
                         "Unable to find address of umbilical socket");
@@ -375,7 +427,7 @@ createChild(
                 debug(0, "env - LD_PRELOAD=%s", ldpreloadEnv);
             }
 
-            if (closeUnixSocket(aUmbilicalSocket))
+            if (closeUnixSocket(&self->mUmbilicalSocket))
                 terminate(
                     errno,
                     "Unable to close umbilical socket");
@@ -385,7 +437,7 @@ createChild(
                 int tetherFd = *gOptions.mTether;
 
                 if (0 > tetherFd)
-                    tetherFd = aTetherPipe->mWrFile->mFd;
+                    tetherFd = self->mTetherPipe.mWrFile->mFd;
 
                 char tetherArg[sizeof(int) * CHAR_BIT + 1];
 
@@ -455,18 +507,18 @@ createChild(
                     }
                 }
 
-                if (tetherFd == aTetherPipe->mWrFile->mFd)
+                if (tetherFd == self->mTetherPipe.mWrFile->mFd)
                     break;
 
-                if (dup2(aTetherPipe->mWrFile->mFd, tetherFd) != tetherFd)
+                if (dup2(self->mTetherPipe.mWrFile->mFd, tetherFd) != tetherFd)
                     terminate(
                         errno,
                         "Unable to dup tether pipe fd %d to fd %d",
-                        aTetherPipe->mWrFile->mFd,
+                        self->mTetherPipe.mWrFile->mFd,
                         tetherFd);
             }
 
-            if (closePipe(aTetherPipe))
+            if (closePipe(&self->mTetherPipe))
                 terminate(
                     errno,
                     "Unable to close tether pipe");
@@ -503,6 +555,21 @@ static int
 closeChild(struct ChildProcess *self)
 {
     int status;
+
+    if (closeUnixSocket(&self->mUmbilicalSocket))
+        terminate(
+            errno,
+            "Unable to close umbilical socket");
+
+    if (closePipe(&self->mTetherPipe))
+        terminate(
+            errno,
+            "Unable to close tether pipe");
+
+    if (closePipe(&self->mTermPipe))
+        terminate(
+            errno,
+            "Unable to close termination pipe");
 
     if (reapProcess(self->mPid, &status))
         terminate(
@@ -1266,9 +1333,7 @@ pollFdTimerOrphan(void                        *self_,
 
 /* -------------------------------------------------------------------------- */
 static void
-monitorChild(struct ChildProcess *self,
-             struct UnixSocket   *aUmbilicalSocket,
-             struct Pipe         *aTermPipe)
+monitorChild(struct ChildProcess *self)
 {
     debug(0, "start monitoring child");
 
@@ -1324,7 +1389,7 @@ monitorChild(struct ChildProcess *self,
     {
         .mKind            = POLL_FD_UMBILICAL,
         .mChildPid        = self->mPid,
-        .mUmbilicalSocket = aUmbilicalSocket,
+        .mUmbilicalSocket = &self->mUmbilicalSocket,
         .mUmbilicalPeer   = 0,
     };
 
@@ -1430,10 +1495,10 @@ monitorChild(struct ChildProcess *self,
     struct pollfd pollfds[POLL_FD_KINDS] =
     {
         [POLL_FD_CHILD] = {
-            .fd     = aTermPipe->mRdFile->mFd,
-            .events = sPollInputEvents },
+            .fd     = self->mTermPipe.mRdFile->mFd,
+            .events = sPollDisconnectEvent },
         [POLL_FD_UMBILICAL] = {
-            .fd     = aUmbilicalSocket->mFile->mFd,
+            .fd     = self->mUmbilicalSocket.mFile->mFd,
             .events = sPollInputEvents },
         [POLL_FD_TETHER] = {
             .fd     = pollfdtether.mThread->mControlPipe.mRdFile->mFd,
@@ -1854,6 +1919,11 @@ cmdRunCommand(char **aCmd)
 {
     ensure(aCmd);
 
+    if (ignoreProcessSigPipe())
+        terminate(
+            errno,
+            "Unable to ignore SIGPIPE");
+
     /* The instance of the StdFdFiller guarantees that any further file
      * descriptors that are opened will not be mistaken for stdin,
      * stdout or stderr. */
@@ -1865,51 +1935,8 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create stdin, stdout, stderr filler");
 
-    /* Only the reading end of the tether is marked non-blocking. The
-     * writing end must be used by the child process, so is not marked
-     * non-blocking. */
-
-    struct Pipe tetherPipe;
-    if (createPipe(&tetherPipe, 0))
-        terminate(
-            errno,
-            "Unable to create tether pipe");
-
-    if (closeFileOnExec(tetherPipe.mRdFile, O_CLOEXEC))
-        terminate(
-            errno,
-            "Unable to set close on exec for tether");
-
-    if (nonblockingFile(tetherPipe.mRdFile))
-        terminate(
-            errno,
-            "Unable to mark tether non-blocking");
-
-    struct UnixSocket umbilicalSocket;
-    if (createUnixSocket(&umbilicalSocket, 0, 0, 0))
-        terminate(
-            errno,
-            "Unable to create umbilical socket");
-
-    struct Pipe termPipe;
-    if (createPipe(&termPipe, 0))
-        terminate(
-            errno,
-            "Unable to create termination pipe");
-    if (closePipeOnExec(&termPipe, O_CLOEXEC))
-        terminate(
-            errno,
-            "Unable to set close on exec for termination pipe");
-
-    if (watchProcessChildren(&termPipe))
-        terminate(
-            errno,
-            "Unable to add watch on child process termination");
-
-    if (ignoreProcessSigPipe())
-        terminate(
-            errno,
-            "Unable to ignore SIGPIPE");
+    struct ChildProcess childProcess;
+    createChild(&childProcess);
 
     struct PushedProcessSigMask pushedSigMask;
     if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
@@ -1917,10 +1944,10 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to push process signal mask");
 
-    struct ChildProcess childProcess =
-    {
-        .mPid = 0,
-    };
+    if (watchProcessChildren(0, reapChild, &childProcess))
+        terminate(
+            errno,
+            "Unable to add watch on child process termination");
 
     if (watchProcessSignals(0, killChild, &childProcess))
         terminate(
@@ -1947,12 +1974,7 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create sync pipe");
 
-    if (createChild(&childProcess,
-                    aCmd,
-                    &stdFdFiller,
-                    &tetherPipe, &umbilicalSocket,
-                    &syncPipe, &termPipe,
-                    &pushedSigMask))
+    if (forkChild(&childProcess, aCmd, &stdFdFiller, &syncPipe, &pushedSigMask))
         terminate(
             errno,
             "Unable to fork child");
@@ -2027,7 +2049,8 @@ cmdRunCommand(char **aCmd)
      * watchdog does not contribute any more references to the
      * original stdin file table entry. */
 
-    if (STDIN_FILENO != dup2(tetherPipe.mRdFile->mFd, STDIN_FILENO))
+    if (STDIN_FILENO != dup2(
+            childProcess.mTetherPipe.mRdFile->mFd, STDIN_FILENO))
         terminate(
             errno,
             "Unable to dup tether pipe to stdin");
@@ -2082,11 +2105,6 @@ cmdRunCommand(char **aCmd)
         }
     }
 
-    if (closePipe(&tetherPipe))
-        terminate(
-            errno,
-            "Unable to close tether pipe");
-
     if (purgeProcessOrphanedFds())
         terminate(
             errno,
@@ -2096,35 +2114,17 @@ cmdRunCommand(char **aCmd)
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(&childProcess, &umbilicalSocket, &termPipe);
+    monitorChild(&childProcess);
 
     if (unwatchProcessSignals())
         terminate(
             errno,
             "Unable to remove watch from signals");
 
-    /* With the running child terminated, it is ok to close the
-     * umbilical pipe because the child has no more use for it. */
-
-    if (closeUnixSocket(&umbilicalSocket))
-        terminate(
-            errno,
-            "Unable to close umbilical socket");
-
-    if (resetProcessSigPipe())
-        terminate(
-            errno,
-            "Unable to reset SIGPIPE");
-
     if (unwatchProcessChildren())
         terminate(
             errno,
             "Unable to remove watch on child process termination");
-
-    if (closePipe(&termPipe))
-        terminate(
-            errno,
-            "Unable to close termination pipe");
 
     if (pidFile)
     {
@@ -2152,6 +2152,11 @@ cmdRunCommand(char **aCmd)
     int status = closeChild(&childProcess);
 
     debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
+
+    if (resetProcessSigPipe())
+        terminate(
+            errno,
+            "Unable to reset SIGPIPE");
 
     return extractProcessExitStatus(status);
 }

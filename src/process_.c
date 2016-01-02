@@ -245,27 +245,39 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int sDeadChildRdFd_ = -1;
-static int sDeadChildWrFd_ = -1;
+static int    sDeadChildRdFd_ = -1;
+static int    sDeadChildWrFd_ = -1;
+static void (*sDeadChildAction_)(void *aDeadChildObserver);
+static void  *sDeadChildObserver_;
 
 static void
 deadChild_(int aSigNum)
 {
     ++sSigContext;
     {
+        if (sDeadChildAction_)
+        {
+            debug(1, "observed dead child");
+            sDeadChildAction_(sDeadChildObserver_);
+        }
+
         int deadChildRdFd = sDeadChildRdFd_;
         int deadChildWrFd = sDeadChildWrFd_;
 
-        debug(1,
-              "queued dead child to fd %d from fd %d",
-              deadChildRdFd, deadChildWrFd);
-
-        if (writeSignal_(deadChildWrFd, aSigNum))
+        if (-1 != deadChildWrFd)
         {
-            if (EBADF != errno && EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to indicate dead child to fd %d", deadChildWrFd);
+            debug(1,
+                  "queued dead child to fd %d from fd %d",
+                  deadChildRdFd, deadChildWrFd);
+
+            if (writeSignal_(deadChildWrFd, aSigNum))
+            {
+                if (EBADF != errno && EWOULDBLOCK != errno)
+                    terminate(
+                        errno,
+                        "Unable to indicate dead child to fd %d",
+                        deadChildWrFd);
+            }
         }
     }
     --sSigContext;
@@ -274,8 +286,10 @@ deadChild_(int aSigNum)
 static int
 resetProcessChildrenWatch_(void)
 {
-    sDeadChildWrFd_ = -1;
-    sDeadChildRdFd_ = -1;
+    sDeadChildWrFd_     = -1;
+    sDeadChildRdFd_     = -1;
+    sDeadChildAction_   = 0;
+    sDeadChildObserver_ = 0;
 
     struct sigaction childAction =
     {
@@ -286,21 +300,29 @@ resetProcessChildrenWatch_(void)
 }
 
 int
-watchProcessChildren(const struct Pipe *aTermPipe)
+watchProcessChildren(const struct Pipe *aTermPipe,
+                     void               aChildAction(void *aChildObserver),
+                     void              *aChildObserver)
 {
     int rc = -1;
 
     /* It is ok to mark the termination pipe non-blocking because this
      * file descriptor is not shared with any other process. */
 
-    sDeadChildRdFd_ = aTermPipe->mRdFile->mFd;
-    sDeadChildWrFd_ = aTermPipe->mWrFile->mFd;
+    if (aTermPipe)
+    {
+        if (nonblockingFd(sDeadChildRdFd_))
+        {
+            errno = EINVAL;
+            goto Finally;
+        }
 
-    if (nonblockingFd(sDeadChildRdFd_))
-        goto Finally;
-
-    if (nonblockingFd(sDeadChildWrFd_))
-        goto Finally;
+        if (nonblockingFd(sDeadChildWrFd_))
+        {
+            errno = EINVAL;
+            goto Finally;
+        }
+    }
 
     struct sigaction childAction =
     {
@@ -310,6 +332,15 @@ watchProcessChildren(const struct Pipe *aTermPipe)
 
     if (sigaction(SIGCHLD, &childAction, 0))
         goto Finally;
+
+    if (aTermPipe)
+    {
+        sDeadChildRdFd_ = aTermPipe->mRdFile->mFd;
+        sDeadChildWrFd_ = aTermPipe->mWrFile->mFd;
+    }
+
+    sDeadChildAction_   = aChildAction;
+    sDeadChildObserver_ = aChildObserver;
 
     rc = 0;
 
@@ -426,14 +457,17 @@ watchProcessClock(const struct Pipe *aClockPipe,
 
     if (aClockPipe)
     {
-        sClockTickRdFd_ = aClockPipe->mRdFile->mFd;
-        sClockTickWrFd_ = aClockPipe->mWrFile->mFd;
-
         if (nonblockingFd(sClockTickRdFd_))
+        {
+            errno = EINVAL;
             goto Finally;
+        }
 
         if (nonblockingFd(sClockTickWrFd_))
+        {
+            errno = EINVAL;
             goto Finally;
+        }
     }
 
     /* Make sure that there are no timers already running. The
@@ -455,6 +489,12 @@ watchProcessClock(const struct Pipe *aClockPipe,
 
     if (setitimer(ITIMER_REAL, &clockTimer, 0))
         goto Finally;
+
+    if (aClockPipe)
+    {
+        sClockTickRdFd_ = aClockPipe->mRdFile->mFd;
+        sClockTickWrFd_ = aClockPipe->mWrFile->mFd;
+    }
 
     rc = 0;
 

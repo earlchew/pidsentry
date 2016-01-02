@@ -93,7 +93,9 @@ popProcessSigMask(struct PushedProcessSigMask *self);
 
 /* -------------------------------------------------------------------------- */
 int
-watchProcessChildren(const struct Pipe *aTermPipe);
+watchProcessChildren(const struct Pipe *aTermPipe,
+                     void               aSigAction(void *aSigObserver),
+                     void              *aSigObserver);
 
 int
 unwatchProcessChildren(void);
