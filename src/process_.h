@@ -100,7 +100,9 @@ unwatchProcessChildren(void);
 
 int
 watchProcessSignals(const struct Pipe *aSigPipe,
-                    void               aSigObserver(int aSigNum));
+                    void               aSigAction(void *aSigObserver,
+                                                  int   aSigNum),
+                    void              *aSigObserver);
 
 int
 unwatchProcessSignals(void);

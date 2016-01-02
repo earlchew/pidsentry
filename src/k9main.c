@@ -136,8 +136,39 @@ struct PollFdTimerAction
 };
 
 /* -------------------------------------------------------------------------- */
-static pid_t
-runChild(
+struct ChildProcess
+{
+    pid_t mPid;
+};
+
+static void
+killChild(void *self_, int aSigNum)
+{
+    struct ChildProcess *self = self_;
+
+    if (self->mPid)
+    {
+        debug(0,
+              "sending signal %d to child pid %jd",
+              aSigNum,
+              (intmax_t) self->mPid);
+
+        if (kill(self->mPid, aSigNum))
+        {
+            if (ESRCH != errno)
+                terminate(
+                    errno,
+                    "Unable to deliver signal %d to child pid %jd",
+                    aSigNum,
+                    (intmax_t) self->mPid);
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+createChild(
+    struct ChildProcess          *self,
     char                        **aCmd,
     struct StdFdFiller           *aStdFdFiller,
     struct Pipe                  *aTetherPipe,
@@ -147,7 +178,7 @@ runChild(
     struct Pipe                  *aSigPipe,
     struct PushedProcessSigMask  *aSigMask)
 {
-    pid_t rc = -1;
+    int rc = -1;
 
     /* Both the parent and child share the same signal handler configuration.
      * In particular, no custom signal handlers are configured, so
@@ -164,11 +195,7 @@ runChild(
     if (-1 == childPid)
         goto Finally;
 
-    if (childPid)
-    {
-        debug(0, "running child process %jd", (intmax_t) childPid);
-    }
-    else
+    if ( ! childPid)
     {
         childPid = getpid();
 
@@ -466,7 +493,11 @@ runChild(
             "Unable to execute '%s'", aCmd[0]);
     }
 
-    rc = childPid;
+    debug(0, "running child process %jd", (intmax_t) childPid);
+
+    self->mPid = childPid;
+
+    rc = 0;
 
 Finally:
 
@@ -477,15 +508,15 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-reapChild(pid_t aChildPid)
+closeChild(struct ChildProcess *self)
 {
     int status;
 
-    if (reapProcess(aChildPid, &status))
+    if (reapProcess(self->mPid, &status))
         terminate(
             errno,
             "Unable to reap child pid '%jd'",
-            (intmax_t) aChildPid);
+            (intmax_t) self->mPid);
 
     return status;
 }
@@ -1323,10 +1354,10 @@ pollFdTimerOrphan(void                        *self_,
 
 /* -------------------------------------------------------------------------- */
 static void
-monitorChild(pid_t              aChildPid,
-             struct UnixSocket *aUmbilicalSocket,
-             struct Pipe       *aTermPipe,
-             struct Pipe       *aSigPipe)
+monitorChild(struct ChildProcess *self,
+             struct UnixSocket   *aUmbilicalSocket,
+             struct Pipe         *aTermPipe,
+             struct Pipe         *aSigPipe)
 {
     debug(0, "start monitoring child");
 
@@ -1381,30 +1412,30 @@ monitorChild(pid_t              aChildPid,
     struct PollFdSignal pollfdsignal =
     {
         .mKind     = POLL_FD_SIGNAL,
-        .mChildPid = aChildPid,
+        .mChildPid = self->mPid,
         .mSigPipe  = aSigPipe,
     };
 
     struct PollFdUmbilical pollfdumbilical =
     {
         .mKind            = POLL_FD_UMBILICAL,
-        .mChildPid        = aChildPid,
+        .mChildPid        = self->mPid,
         .mUmbilicalSocket = aUmbilicalSocket,
         .mUmbilicalPeer   = 0,
     };
 
     struct ChildSignalPlan sharedPgrpPlan[] =
     {
-        { aChildPid, SIGTERM },
-        { aChildPid, SIGKILL },
+        { self->mPid, SIGTERM },
+        { self->mPid, SIGKILL },
         { 0 }
     };
 
     struct ChildSignalPlan ownPgrpPlan[] =
     {
-        {  aChildPid, SIGTERM },
-        { -aChildPid, SIGTERM },
-        { -aChildPid, SIGKILL },
+        {  self->mPid, SIGTERM },
+        { -self->mPid, SIGTERM },
+        { -self->mPid, SIGKILL },
         { 0 }
     };
 
@@ -1448,7 +1479,7 @@ monitorChild(pid_t              aChildPid,
         .mNullPipe    = &nullPipe,
 
         .mDisconnected = false,
-        .mChildPid     = aChildPid,
+        .mChildPid     = self->mPid,
         .mCycleCount   = 0,
         .mCycleLimit   = timeoutCycles,
     };
@@ -1980,7 +2011,12 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to set close on exec for signal pipe");
 
-    if (watchProcessSignals(&sigPipe, 0))
+    struct ChildProcess childProcess =
+    {
+        .mPid = 0,
+    };
+
+    if (watchProcessSignals(&sigPipe, killChild, &childProcess))
         terminate(
             errno,
             "Unable to add watch on signals");
@@ -2021,12 +2057,12 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create sync pipe");
 
-    pid_t childPid = runChild(aCmd,
-                              &stdFdFiller,
-                              &tetherPipe, &umbilicalSocket,
-                              &syncPipe, &termPipe, &sigPipe,
-                              &pushedSigMask);
-    if (-1 == childPid)
+    if (createChild(&childProcess,
+                    aCmd,
+                    &stdFdFiller,
+                    &tetherPipe, &umbilicalSocket,
+                    &syncPipe, &termPipe, &sigPipe,
+                    &pushedSigMask))
         terminate(
             errno,
             "Unable to fork child");
@@ -2047,7 +2083,7 @@ cmdRunCommand(char **aCmd)
         case -1:
             pid = getpid(); break;
         case 0:
-            pid = childPid; break;
+            pid = childProcess.mPid; break;
         }
 
         pidFile = &pidFile_;
@@ -2062,7 +2098,8 @@ cmdRunCommand(char **aCmd)
     if (gOptions.mIdentify)
         RACE
         ({
-            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid))
+            if (-1 == dprintf(STDOUT_FILENO,
+                              "%jd\n", (intmax_t) childProcess.mPid))
                 terminate(
                     errno,
                     "Unable to print child pid");
@@ -2169,7 +2206,7 @@ cmdRunCommand(char **aCmd)
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(childPid, &umbilicalSocket, &termPipe, &sigPipe);
+    monitorChild(&childProcess, &umbilicalSocket, &termPipe, &sigPipe);
 
     /* With the running child terminated, it is ok to close the
      * umbilical pipe because the child has no more use for it. */
@@ -2223,9 +2260,11 @@ cmdRunCommand(char **aCmd)
      * that any competing reader that manages to sucessfully lock and
      * read the pid file will see that the process exists. */
 
-    debug(0, "reaping child pid %jd", (intmax_t) childPid);
+    debug(0, "reaping child pid %jd", (intmax_t) childProcess.mPid);
 
-    int status = reapChild(childPid);
+    pid_t childPid = childProcess.mPid;
+
+    int status = closeChild(&childProcess);
 
     debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
 

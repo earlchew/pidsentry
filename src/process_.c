@@ -474,7 +474,8 @@ unwatchProcessClock(void)
 /* -------------------------------------------------------------------------- */
 static int    sSignalRdFd_ = -1;
 static int    sSignalWrFd_ = -1;
-static void (*sSignalObserver_)(int aSigNum);
+static void (*sSignalAction_)(void *aSigObserver, int aSigNum);
+static void  *sSignalObserver_;
 
 static struct SignalWatch {
     int              mSigNum;
@@ -493,10 +494,10 @@ caughtSignal_(int aSigNum)
 {
     ++sSigContext;
     {
-        if (sSignalObserver_)
+        if (sSignalAction_)
         {
             debug(1, "observed signal %d", aSigNum);
-            sSignalObserver_(aSigNum);
+            sSignalAction_(sSignalObserver_, aSigNum);
         }
 
         int signalRdFd = sSignalRdFd_;
@@ -525,7 +526,9 @@ caughtSignal_(int aSigNum)
 
 int
 watchProcessSignals(const struct Pipe *aSigPipe,
-                    void               aSigObserver(int aSigNum))
+                    void               aSigAction(void *aSigObserver,
+                                                  int   aSigNum),
+                    void              *aSigObserver)
 {
     int rc = -1;
 
@@ -566,6 +569,7 @@ watchProcessSignals(const struct Pipe *aSigPipe,
     }
 
     sSignalObserver_ = aSigObserver;
+    sSignalAction_   = aSigAction;
 
     rc = 0;
 
