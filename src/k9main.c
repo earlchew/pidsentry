@@ -930,7 +930,6 @@ closeTetherThread(struct TetherThread *self)
 struct PollFdChild
 {
     enum PollFdKind      mKind;
-    bool                 mDead;
     struct TetherThread *mTetherThread;
     struct Pipe         *mNullPipe;
 };
@@ -961,8 +960,6 @@ pollFdChild(void                        *self_,
      * the event loop until all the IO has been flushed. With the
      * child terminated, no further input can be produced so indicate
      * to the tether thread that it should start flushing data now. */
-
-    self->mDead = true;
 
     flushTetherThread(self->mTetherThread);
 }
@@ -1148,7 +1145,6 @@ struct PollFdTether
     struct PollFdTimerTermination *mTermination;
     struct Pipe                   *mNullPipe;
 
-    bool     mDisconnected;
     pid_t    mChildPid;
     unsigned mCycleCount;       /* Current number of cycles */
     unsigned mCycleLimit;       /* Cycles before triggering */
@@ -1162,8 +1158,6 @@ disconnectPollFdTether(struct PollFdTether *self,
 
     aPollFds[POLL_FD_TETHER].fd     = self->mNullPipe->mRdFile->mFd;
     aPollFds[POLL_FD_TETHER].events = 0;
-
-    self->mDisconnected = true;
 }
 
 static void
@@ -1341,20 +1335,9 @@ monitorChild(struct ChildProcess *self)
 
     struct PollFdTimerAction pollfdtimeractions[POLL_FD_TIMER_KINDS] =
     {
-        [POLL_FD_TIMER_TETHER] =
-        {
-            0, 0, Duration(NSECS(Seconds(0)))
-        },
-
-        [POLL_FD_TIMER_ORPHAN] =
-        {
-            0, 0, Duration(NSECS(Seconds(0)))
-        },
-
-        [POLL_FD_TIMER_TERMINATION] =
-        {
-            0, 0, Duration(NSECS(Seconds(0)))
-        },
+        [POLL_FD_TIMER_TETHER]      = { 0 },
+        [POLL_FD_TIMER_ORPHAN]      = { 0 },
+        [POLL_FD_TIMER_TERMINATION] = { 0 },
     };
 
     struct Pipe nullPipe;
@@ -1380,7 +1363,6 @@ monitorChild(struct ChildProcess *self)
     struct PollFdChild pollfdchild =
     {
         .mKind         = POLL_FD_CHILD,
-        .mDead         = false,
         .mTetherThread = &tetherThread,
         .mNullPipe     = &nullPipe,
     };
@@ -1447,7 +1429,6 @@ monitorChild(struct ChildProcess *self)
         .mTermination = &pollfdtimertermination,
         .mNullPipe    = &nullPipe,
 
-        .mDisconnected = false,
         .mChildPid     = self->mPid,
         .mCycleCount   = 0,
         .mCycleLimit   = timeoutCycles,
