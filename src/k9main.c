@@ -84,7 +84,6 @@ enum PollFdKind
 {
     POLL_FD_TETHER,
     POLL_FD_CHILD,
-    POLL_FD_SIGNAL,
     POLL_FD_UMBILICAL,
     POLL_FD_KINDS
 };
@@ -93,7 +92,6 @@ static const char *sPollFdNames[POLL_FD_KINDS] =
 {
     [POLL_FD_TETHER]    = "tether",
     [POLL_FD_CHILD]     = "child",
-    [POLL_FD_SIGNAL]    = "signal",
     [POLL_FD_UMBILICAL] = "umbilical",
 };
 
@@ -175,7 +173,6 @@ createChild(
     struct UnixSocket            *aUmbilicalSocket,
     struct Pipe                  *aSyncPipe,
     struct Pipe                  *aTermPipe,
-    struct Pipe                  *aSigPipe,
     struct PushedProcessSigMask  *aSigMask)
 {
     int rc = -1;
@@ -223,11 +220,6 @@ createChild(
             terminate(
                 errno,
                 "Unable to close termination pipe");
-
-        if (closePipe(aSigPipe))
-            terminate(
-                errno,
-                "Unable to close signal pipe");
 
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
@@ -924,86 +916,6 @@ pollFdChild(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
-/* Deliver Signal to Child Process
- *
- * Signals received by the watchdog process are propagated to the child
- * process, so that the watchdog acts as a proxy for the child process
- * as far as supervisor programs such as init(8) are concerned. */
-
-struct PollFdSignal
-{
-    enum PollFdKind mKind;
-    pid_t           mChildPid;
-    struct Pipe    *mSigPipe;
-};
-
-static void
-pollFdSignal(void                        *self_,
-             struct pollfd               *aPollFds,
-             const struct EventClockTime *aPollTime)
-{
-    struct PollFdSignal *self = self_;
-
-    ensure(POLL_FD_SIGNAL == self->mKind);
-
-    /* Propagate signals to the child process. Signals are queued
-     * by the local signal handler to overcome the inherent race in the
-     * fork() idiom:
-     *
-     *     pid_t childPid = fork();
-     *
-     * The fork() completes before childPid can be assigned, and if a
-     * signal arrives in the interim, the childPid is not yet recorded.
-     *
-     * To overcome this, any signals received before the fork() will be
-     * queued for delivery by the event loop which only runs after the
-     * fork() is complete and childPid is recorded. */
-
-    struct PollEventText pollEventText;
-    debug(
-        1,
-        "detected signal %s",
-        createPollEventText(
-            &pollEventText,
-            aPollFds[POLL_FD_SIGNAL].revents));
-
-    unsigned char sigNum;
-
-    ssize_t len = read(self->mSigPipe->mRdFile->mFd, &sigNum, 1);
-
-    if (-1 == len)
-    {
-        if (EINTR != errno)
-            terminate(
-                errno,
-                "Unable to read signal from queue");
-    }
-    else if ( ! len)
-    {
-        terminate(
-            0,
-            "Signal queue closed unexpectedly");
-    }
-    else
-    {
-        debug(1,
-              "deliver signal %d to child pid %jd",
-              sigNum,
-              (intmax_t) self->mChildPid);
-
-        if (kill(self->mChildPid, sigNum))
-        {
-            if (ESRCH != errno)
-                warn(
-                    errno,
-                    "Unable to deliver signal %d to child pid %jd",
-                    sigNum,
-                    (intmax_t) self->mChildPid);
-        }
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 /* Maintain Umbilical Connection to Child Process
  *
  * The umbilical connection to the child process allows the child to
@@ -1356,8 +1268,7 @@ pollFdTimerOrphan(void                        *self_,
 static void
 monitorChild(struct ChildProcess *self,
              struct UnixSocket   *aUmbilicalSocket,
-             struct Pipe         *aTermPipe,
-             struct Pipe         *aSigPipe)
+             struct Pipe         *aTermPipe)
 {
     debug(0, "start monitoring child");
 
@@ -1407,13 +1318,6 @@ monitorChild(struct ChildProcess *self,
         .mKind         = POLL_FD_CHILD,
         .mDead         = false,
         .mTetherThread = &tetherThread,
-    };
-
-    struct PollFdSignal pollfdsignal =
-    {
-        .mKind     = POLL_FD_SIGNAL,
-        .mChildPid = self->mPid,
-        .mSigPipe  = aSigPipe,
     };
 
     struct PollFdUmbilical pollfdumbilical =
@@ -1528,9 +1432,6 @@ monitorChild(struct ChildProcess *self,
         [POLL_FD_CHILD] = {
             .fd     = aTermPipe->mRdFile->mFd,
             .events = sPollInputEvents },
-        [POLL_FD_SIGNAL] = {
-            .fd     = aSigPipe->mRdFile->mFd,
-            .events = sPollInputEvents },
         [POLL_FD_UMBILICAL] = {
             .fd     = aUmbilicalSocket->mFile->mFd,
             .events = sPollInputEvents },
@@ -1561,7 +1462,6 @@ monitorChild(struct ChildProcess *self,
     struct PollFdAction pollfdactions[POLL_FD_KINDS] =
     {
         [POLL_FD_CHILD]     = { pollFdChild,     &pollfdchild },
-        [POLL_FD_SIGNAL]    = { pollFdSignal,    &pollfdsignal },
         [POLL_FD_UMBILICAL] = { pollFdUmbilical, &pollfdumbilical },
         [POLL_FD_TETHER]    = { pollFdTether,    &pollfdtether },
     };
@@ -2001,26 +1901,6 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to set close on exec for termination pipe");
 
-    struct Pipe sigPipe;
-    if (createPipe(&sigPipe, 0))
-        terminate(
-            errno,
-            "Unable to create signal pipe");
-    if (closePipeOnExec(&sigPipe, O_CLOEXEC))
-        terminate(
-            errno,
-            "Unable to set close on exec for signal pipe");
-
-    struct ChildProcess childProcess =
-    {
-        .mPid = 0,
-    };
-
-    if (watchProcessSignals(&sigPipe, killChild, &childProcess))
-        terminate(
-            errno,
-            "Unable to add watch on signals");
-
     if (watchProcessChildren(&termPipe))
         terminate(
             errno,
@@ -2036,6 +1916,16 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to push process signal mask");
+
+    struct ChildProcess childProcess =
+    {
+        .mPid = 0,
+    };
+
+    if (watchProcessSignals(0, killChild, &childProcess))
+        terminate(
+            errno,
+            "Unable to add watch on signals");
 
     /* Only identify the watchdog process after all the signal
      * handlers have been installed. The functional tests can
@@ -2061,7 +1951,7 @@ cmdRunCommand(char **aCmd)
                     aCmd,
                     &stdFdFiller,
                     &tetherPipe, &umbilicalSocket,
-                    &syncPipe, &termPipe, &sigPipe,
+                    &syncPipe, &termPipe,
                     &pushedSigMask))
         terminate(
             errno,
@@ -2206,7 +2096,12 @@ cmdRunCommand(char **aCmd)
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(&childProcess, &umbilicalSocket, &termPipe, &sigPipe);
+    monitorChild(&childProcess, &umbilicalSocket, &termPipe);
+
+    if (unwatchProcessSignals())
+        terminate(
+            errno,
+            "Unable to remove watch from signals");
 
     /* With the running child terminated, it is ok to close the
      * umbilical pipe because the child has no more use for it. */
@@ -2221,20 +2116,10 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to reset SIGPIPE");
 
-    if (unwatchProcessSignals())
-        terminate(
-            errno,
-            "Unable to remove watch from signals");
-
     if (unwatchProcessChildren())
         terminate(
             errno,
             "Unable to remove watch on child process termination");
-
-    if (closePipe(&sigPipe))
-        terminate(
-            errno,
-            "Unable to close signal pipe");
 
     if (closePipe(&termPipe))
         terminate(
