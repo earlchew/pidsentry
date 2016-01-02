@@ -129,7 +129,10 @@ closeFile(struct File *self)
     if (self)
     {
         if (-1 == self->mFd)
+        {
+            errno = EBADF;
             goto Finally;
+        }
 
         if (close(self->mFd))
             goto Finally;
