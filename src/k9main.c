@@ -72,6 +72,7 @@
  * Check for useless #include in *.c
  * Fix logging in parasite printing null for program name
  * Fix vgcore being dropped everywhere
+ * Refactor struct PollEventText
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -667,6 +668,174 @@ struct TetherThread
     } mActivity;
 };
 
+enum TetherFdKind
+{
+    TETHER_FD_CONTROL,
+    TETHER_FD_INPUT,
+    TETHER_FD_OUTPUT,
+    TETHER_FD_KINDS
+};
+
+static const char *sTetherFdNames[] =
+{
+    [TETHER_FD_CONTROL] = "control",
+    [TETHER_FD_INPUT]   = "input",
+    [TETHER_FD_OUTPUT]  = "output",
+};
+
+enum TetherFdTimerKind
+{
+    TETHER_FD_TIMER_DISCONNECT,
+    TETHER_FD_TIMER_KINDS
+};
+
+static const char *sTetherFdTimerNames[] =
+{
+    [TETHER_FD_TIMER_DISCONNECT] = "disconnection",
+};
+
+struct TetherPoll
+{
+    struct TetherThread     *mThread;
+    int                      mSrcFd;
+    int                      mDstFd;
+
+    struct pollfd            mPollfds[TETHER_FD_KINDS];
+    struct PollFdAction      mPollfdactions[TETHER_FD_KINDS];
+    struct PollFdTimerAction mPollfdtimeractions[TETHER_FD_TIMER_KINDS];
+};
+
+static void
+polltethercontrol(void                        *self_,
+                  struct pollfd               *aPollFds,
+                  const struct EventClockTime *aPollTime)
+{
+    struct TetherPoll *self = self_;
+
+    char buf[1];
+
+    if (0 > readFd(self->mPollfds[TETHER_FD_CONTROL].fd, buf, sizeof(buf)))
+        terminate(
+            errno,
+            "Unable to read tether control");
+
+    debug(0, "tether disconnection request received");
+
+    self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
+        Duration(NSECS(Seconds(gOptions.mPacing_s)));
+}
+
+static void
+polltetherdrain(void                        *self_,
+                struct pollfd               *aPollFds,
+                const struct EventClockTime *aPollTime)
+{
+    struct TetherPoll *self = self_;
+
+    if (aPollFds[TETHER_FD_CONTROL].events)
+    {
+        {
+            lockMutex(&self->mThread->mActivity.mMutex);
+            self->mThread->mActivity.mSince = eventclockTime();
+            unlockMutex(&self->mThread->mActivity.mMutex);
+        }
+
+        bool drained = true;
+
+        do
+        {
+            /* The output file descriptor must have been closed if:
+             *
+             *  o There is no input available, so the poll must have
+             *    returned because an output disconnection event was detected
+             *  o Input was available, but none could be written to the output
+             */
+
+            int available;
+
+            if (ioctl(self->mSrcFd, FIONREAD, &available))
+                terminate(
+                    errno,
+                    "Unable to find amount of readable data in fd %d",
+                    self->mSrcFd);
+
+            if ( ! available)
+            {
+                debug(0, "tether drain input empty");
+                break;
+            }
+
+            /* This splice(2) call will likely block if it is unable to
+             * write all the data to the output file descriptor immediately.
+             * Note that it cannot block on reading the input file descriptor
+             * because that file descriptor is private to this process, the
+             * amount of input available is known and is only read by this
+             * thread. */
+
+            ssize_t bytes = spliceFd(
+                self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE);
+
+            if ( ! bytes)
+            {
+                debug(0, "tether drain output closed");
+                break;
+            }
+
+            if (-1 == bytes)
+            {
+                if (EPIPE == errno)
+                {
+                    debug(0, "tether drain output broken");
+                    break;
+                }
+
+                if (EWOULDBLOCK != errno && EINTR != errno)
+                    terminate(
+                        errno,
+                        "Unable to splice %d bytes from fd %d to fd %d",
+                        available,
+                        self->mSrcFd,
+                        self->mDstFd);
+            }
+            else
+            {
+                debug(1,
+                      "drained %zd bytes from fd %d to fd %d",
+                      bytes, self->mSrcFd, self->mDstFd);
+            }
+
+            drained = false;
+
+        } while (0);
+
+        if (drained)
+            aPollFds[TETHER_FD_CONTROL].events = 0;
+    }
+}
+
+static void
+polltetherdisconnected(void                        *self_,
+                       struct PollFdTimerAction    *aPollFdTimer,
+                       const struct EventClockTime *aPollTime)
+{
+    struct TetherPoll *self = self_;
+
+    self->mPollfds[TETHER_FD_CONTROL].events = 0;
+
+    self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
+        Duration(NanoSeconds(0));
+}
+
+static bool
+polltethercompletion(void                     *self_,
+                     struct pollfd            *aPollFds,
+                     struct PollFdTimerAction *aPollFdTimer)
+{
+    struct TetherPoll *self = self_;
+
+    return ! self->mPollfds[TETHER_FD_CONTROL].events;
+}
+
 static void *
 tetherThreadMain_(void *self_)
 {
@@ -695,144 +864,57 @@ tetherThreadMain_(void *self_)
             errno,
             "Unable to push process signal mask");
 
-    enum TetherFdKind
+    struct TetherPoll tetherpoll =
     {
-        TETHER_FD_CONTROL,
-        TETHER_FD_INPUT,
-        TETHER_FD_OUTPUT,
-        TETHER_FD_KINDS
+        .mThread = self,
+        .mSrcFd  = srcFd,
+        .mDstFd  = dstFd,
+
+        .mPollfds =
+        {
+            [TETHER_FD_CONTROL]= {.fd= controlFd,.events= sPollInputEvents },
+            [TETHER_FD_INPUT]  = {.fd= srcFd,    .events= sPollInputEvents },
+            [TETHER_FD_OUTPUT] = {.fd= dstFd,    .events= sPollDisconnectEvent},
+        },
+
+        .mPollfdactions =
+        {
+            [TETHER_FD_CONTROL] = { polltethercontrol, &tetherpoll },
+            [TETHER_FD_INPUT]   = { polltetherdrain,   &tetherpoll },
+            [TETHER_FD_OUTPUT]  = { polltetherdrain,   &tetherpoll },
+        },
+
+        .mPollfdtimeractions =
+        {
+            [TETHER_FD_TIMER_DISCONNECT] =
+            {
+                polltetherdisconnected, &tetherpoll
+            },
+        },
     };
 
-    struct pollfd pollfds[TETHER_FD_KINDS] =
-    {
-        [TETHER_FD_CONTROL]= { .fd = controlFd,.events = sPollInputEvents },
-        [TETHER_FD_INPUT]  = { .fd = srcFd,    .events = sPollInputEvents },
-        [TETHER_FD_OUTPUT] = { .fd = dstFd,    .events = sPollDisconnectEvent },
-    };
+    struct PollFd pollfd;
+    if (createPollFd(
+            &pollfd,
+            tetherpoll.mPollfds,
+            tetherpoll.mPollfdactions,
+            sTetherFdNames, TETHER_FD_KINDS,
+            tetherpoll.mPollfdtimeractions,
+            sTetherFdTimerNames, TETHER_FD_TIMER_KINDS,
+            polltethercompletion, &tetherpoll))
+        terminate(
+            errno,
+            "Unable to initialise polling loop");
 
-    struct Duration       timeout    = Duration(NanoSeconds(0));
-    struct EventClockTime eventclock = EVENTCLOCKTIME_INIT;
-    struct Duration       remaining;
+    if (runPollFdLoop(&pollfd))
+        terminate(
+            errno,
+            "Unable to run polling loop");
 
-    while ( ! timeout.duration.ns ||
-            ! deadlineTimeExpired(&eventclock, timeout, &remaining, 0))
-    {
-        if (timeout.duration.ns)
-            debug(1, "tether drain time remaining %" PRIs_MilliSeconds,
-                  FMTs_MilliSeconds(MSECS(remaining.duration)));
-
-        /* Polling is required here because events of interest could
-         * occur independently on both the input and output file
-         * descriptors. */
-
-        int rc = poll(pollfds, NUMBEROF(pollfds), -1);
-
-        if (-1 == rc)
-        {
-            if (EINTR != errno)
-                terminate(
-                    errno,
-                    "Unable to poll for activity from fd %d", srcFd);
-        }
-
-        while (1)
-        {
-            int rc = poll(pollfds, NUMBEROF(pollfds), 0);
-
-            if (-1 == rc)
-            {
-                if (EINTR == errno)
-                    continue;
-
-                terminate(
-                    errno,
-                    "Unable to poll for activity from fd %d", srcFd);
-            }
-
-            break;
-        }
-
-        if (pollfds[TETHER_FD_CONTROL].revents)
-        {
-            char buf[1];
-
-            if (0 > readFd(controlFd, buf, sizeof(buf)))
-                break;
-
-            timeout = Duration(NSECS(Seconds(gOptions.mPacing_s)));
-        }
-
-        /* The tether must be attended to if there is any input available
-         * (or the input has been closed), or the output has been closed. */
-
-        if(pollfds[TETHER_FD_INPUT].revents ||
-           pollfds[TETHER_FD_OUTPUT].revents)
-        {
-            {
-                lockMutex(&self->mActivity.mMutex);
-                self->mActivity.mSince = eventclockTime();
-                unlockMutex(&self->mActivity.mMutex);
-            }
-
-            /* The output file descriptor must have been closed if:
-             *
-             *  o There is no input available, so the poll must have
-             *    returned because an output disconnection event was detected
-             *  o Input was available, but none could be written to the output
-             */
-
-            int available;
-
-            if (ioctl(srcFd, FIONREAD, &available))
-                terminate(
-                    errno,
-                    "Unable to find amount of readable data in fd %d", srcFd);
-
-            if ( ! available)
-            {
-                debug(0, "tether drain input empty");
-                break;
-            }
-
-            /* This splice(2) call will likely block if it is unable to
-             * write all the data to the output file descriptor immediately.
-             * Note that it cannot block on reading the input file descriptor
-             * because that file descriptor is private to this process, the
-             * amount of input available is known and is only read by this
-             * thread. */
-
-            ssize_t bytes = spliceFd(srcFd, dstFd, available, SPLICE_F_MOVE);
-
-            if ( ! bytes)
-            {
-                debug(0, "tether drain output closed");
-                break;
-            }
-
-            if (-1 == bytes)
-            {
-                if (EPIPE == errno)
-                {
-                    debug(0, "tether drain output broken");
-                    break;
-                }
-
-                if (EWOULDBLOCK != errno && EINTR != errno)
-                    terminate(
-                        errno,
-                        "Unable to splice %d bytes from fd %d to fd %d",
-                        available,
-                        srcFd,
-                        dstFd);
-            }
-            else
-            {
-                debug(1,
-                      "drained %zd bytes from fd %d to fd %d",
-                      bytes, srcFd, dstFd);
-            }
-        }
-    }
+    if (closePollFd(&pollfd))
+        terminate(
+            errno,
+            "Unable to close polling loop");
 
     if (popProcessSigMask(&pushedSigMask))
         terminate(
