@@ -40,6 +40,7 @@
 #include "process_.h"
 #include "thread_.h"
 #include "error_.h"
+#include "pollfd_.h"
 #include "test_.h"
 #include "fd_.h"
 #include "dl_.h"
@@ -95,14 +96,6 @@ static const char *sPollFdNames[POLL_FD_KINDS] =
     [POLL_FD_UMBILICAL] = "umbilical",
 };
 
-struct PollFdAction
-{
-    void (*mAction)(void                        *self,
-                    struct pollfd               *aPollFds,
-                    const struct EventClockTime *aPollTime);
-    void  *mSelf;
-};
-
 static const unsigned sPollInputEvents     = POLLHUP|POLLERR|POLLPRI|POLLIN;
 static const unsigned sPollOutputEvents    = POLLHUP|POLLERR|POLLOUT;
 static const unsigned sPollDisconnectEvent = POLLHUP|POLLERR;
@@ -121,16 +114,6 @@ static const char *sPollFdTimerNames[POLL_FD_TIMER_KINDS] =
     [POLL_FD_TIMER_TETHER]      = "tether",
     [POLL_FD_TIMER_ORPHAN]      = "orphan",
     [POLL_FD_TIMER_TERMINATION] = "termination",
-};
-
-struct PollFdTimerAction
-{
-    void                (*mAction)(void                        *self,
-                                   struct PollFdTimerAction    *aPollFdTimer,
-                                   const struct EventClockTime *aPollTime);
-    void                 *mSelf;
-    struct Duration       mPeriod;
-    struct EventClockTime mSince;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -949,6 +932,7 @@ struct PollFdChild
     enum PollFdKind      mKind;
     bool                 mDead;
     struct TetherThread *mTetherThread;
+    struct Pipe         *mNullPipe;
 };
 
 static void
@@ -970,6 +954,7 @@ pollFdChild(void                        *self_,
 
     ensure(aPollFds[POLL_FD_CHILD].events);
 
+    aPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
     aPollFds[POLL_FD_CHILD].events = 0;
 
     /* Record when the child has terminated, but do not exit
@@ -1090,6 +1075,12 @@ pollFdUmbilical(void                        *self_,
     }
 }
 
+static int
+closeFdUmbilical(struct PollFdUmbilical *self)
+{
+    return closeUnixSocket(self->mUmbilicalPeer);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Child Termination State Machine
  *
@@ -1169,7 +1160,8 @@ disconnectPollFdTether(struct PollFdTether *self,
 {
     debug(0, "disconnect tether control");
 
-    aPollFds[POLL_FD_TETHER].fd = self->mNullPipe->mRdFile->mFd;
+    aPollFds[POLL_FD_TETHER].fd     = self->mNullPipe->mRdFile->mFd;
+    aPollFds[POLL_FD_TETHER].events = 0;
 
     self->mDisconnected = true;
 }
@@ -1332,6 +1324,16 @@ pollFdTimerOrphan(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+static bool
+pollfdcompletion(void                     *self_,
+                 struct pollfd            *aPollFds,
+                 struct PollFdTimerAction *aPollFdTimer)
+{
+    return
+        ! (aPollFds[POLL_FD_CHILD].events | aPollFds[POLL_FD_TETHER].events);
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 monitorChild(struct ChildProcess *self)
 {
@@ -1354,9 +1356,6 @@ monitorChild(struct ChildProcess *self)
             0, 0, Duration(NSECS(Seconds(0)))
         },
     };
-
-    struct PollEventText pollEventText;
-    struct PollEventText pollRcvdEventText;
 
     struct Pipe nullPipe;
     if (createPipe(&nullPipe, O_CLOEXEC | O_NONBLOCK))
@@ -1383,6 +1382,7 @@ monitorChild(struct ChildProcess *self)
         .mKind         = POLL_FD_CHILD,
         .mDead         = false,
         .mTetherThread = &tetherThread,
+        .mNullPipe     = &nullPipe,
     };
 
     struct PollFdUmbilical pollfdumbilical =
@@ -1531,196 +1531,27 @@ monitorChild(struct ChildProcess *self)
         [POLL_FD_TETHER]    = { pollFdTether,    &pollfdtether },
     };
 
-    struct EventClockTime polltm;
+    struct PollFd pollfd;
+    if (createPollFd(
+            &pollfd,
+            pollfds, pollfdactions, sPollFdNames, POLL_FD_KINDS,
+            pollfdtimeractions, sPollFdTimerNames, POLL_FD_TIMER_KINDS,
+            pollfdcompletion, 0))
+        terminate(
+            errno,
+            "Unable to initialise polling loop");
 
-    do
-    {
-        /* Poll the file descriptors and process the file descriptor
-         * events before attempting to check for timeouts. This
-         * order of operations is important to deal robustly with
-         * slow clocks and stoppages. */
+    if (runPollFdLoop(&pollfd))
+        terminate(
+            errno,
+            "Unable to run polling loop");
 
-        polltm = eventclockTime();
+    if (closePollFd(&pollfd))
+        terminate(
+            errno,
+            "Unable to close polling loop");
 
-        struct Duration timeout   = Duration(NanoSeconds(0));
-        size_t          chosen    = NUMBEROF(pollfdtimeractions);
-        size_t          numActive = 0;
-
-        for (size_t ix = 0; NUMBEROF(pollfdtimeractions) > ix; ++ix)
-        {
-            if (pollfdtimeractions[ix].mPeriod.duration.ns)
-            {
-                ++numActive;
-
-                struct Duration remaining;
-
-                if (deadlineTimeExpired(
-                        &pollfdtimeractions[ix].mSince,
-                        pollfdtimeractions[ix].mPeriod,
-                        &remaining,
-                        &polltm))
-                {
-                    chosen  = ix;
-                    timeout = Duration(NanoSeconds(0));
-                    break;
-                }
-
-                if (timeout.duration.ns >
-                    remaining.duration.ns || ! timeout.duration.ns)
-                {
-                    chosen  = ix;
-                    timeout = remaining;
-                }
-            }
-        }
-
-        if (NUMBEROF(pollfdtimeractions) != chosen)
-            debug(1, "choose %s deadline", sPollFdTimerNames[chosen]);
-
-        int timeout_ms;
-
-        if ( ! numActive)
-            timeout_ms = -1;
-        else
-        {
-            struct MilliSeconds timeoutDuration = MSECS(timeout.duration);
-
-            timeout_ms = timeoutDuration.ms;
-
-            if (0 > timeout_ms || timeoutDuration.ms != timeout_ms)
-                timeout_ms = INT_MAX;
-        }
-
-        debug(1, "poll wait %dms", timeout_ms);
-
-        int rc = poll(pollfds, NUMBEROF(pollfds), timeout_ms);
-
-        if (-1 == rc)
-        {
-            if (EINTR != errno)
-                terminate(
-                    errno,
-                    "Unable to poll for activity");
-        }
-
-        /* Latch the event clock time here before quickly polling the
-         * file descriptors again. Deadlines will be compared against
-         * this latched time */
-
-        polltm = eventclockTime();
-
-        RACE
-        ({
-            while (1)
-            {
-                rc = poll(pollfds, NUMBEROF(pollfds), 0);
-
-                if (-1 == rc)
-                {
-                    if (EINTR == errno)
-                        continue;
-
-                    terminate(
-                        errno,
-                        "Unable to poll for activity");
-                }
-
-                break;
-            }
-        });
-
-        {
-            /* When processing file descriptor events, do not loop in EINTR
-             * but instead allow the polling cycle to be re-run so that
-             * the event loop will not remain stuck processing a single
-             * file descriptor. */
-
-            unsigned eventCount = 0;
-
-            if ( ! rc)
-                ++eventCount;
-
-            /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
-             * no matter what the caller has subscribed for. Only pay
-             * attention to what was subscribed. */
-
-            debug(1, "polled result %d", rc);
-
-            for (size_t ix = 0; NUMBEROF(pollfds) > ix; ++ix)
-            {
-                debug(
-                    1,
-                    "poll %s %d (%s) (%s)",
-                    sPollFdNames[ix],
-                    pollfds[ix].fd,
-                    createPollEventText(
-                        &pollEventText, pollfds[ix].events),
-                    createPollEventText(
-                        &pollRcvdEventText, pollfds[ix].revents));
-
-                pollfds[ix].revents &= pollfds[ix].events;
-
-                if (pollfds[ix].revents)
-                {
-                    ensure(rc);
-
-                    ++eventCount;
-
-                    if (pollfdactions[ix].mAction)
-                        pollfdactions[ix].mAction(
-                            pollfdactions[ix].mSelf,
-                            pollfds,
-                            &polltm);
-                }
-            }
-
-            /* Ensure that the interpretation of the poll events is being
-             * correctly handled, to avoid a busy-wait poll loop. */
-
-            ensure(eventCount);
-        }
-
-        /* With the file descriptors processed, any timeouts have had
-         * a chance to be recalibrated, and now the timers can be
-         * processed. */
-
-        for (size_t ix = 0; NUMBEROF(pollfdtimeractions) > ix; ++ix)
-        {
-            if (pollfdtimeractions[ix].mPeriod.duration.ns)
-            {
-                if (deadlineTimeExpired(
-                        &pollfdtimeractions[ix].mSince,
-                        pollfdtimeractions[ix].mPeriod,
-                        0,
-                        &polltm))
-                {
-                    /* Compute the lap time, and as a side-effect set
-                     * the deadline for the next timer cycle. This means
-                     * that the timer action need not do anything to
-                     * prepare for the next timer cycle, unless it needs
-                     * to cancel or otherwise reschedule the timer. */
-
-                    (void) lapTimeSince(
-                        &pollfdtimeractions[ix].mSince,
-                        pollfdtimeractions[ix].mPeriod,
-                        &polltm);
-
-                    debug(1, "expire %s timer with period %" PRIs_MilliSeconds,
-                          sPollFdTimerNames[ix],
-                          FMTs_MilliSeconds(
-                              MSECS(pollfdtimeractions[ix].mPeriod.duration)));
-
-                    pollfdtimeractions[ix].mAction(
-                        pollfdtimeractions[ix].mSelf,
-                        &pollfdtimeractions[ix],
-                        &polltm);
-                }
-            }
-        }
-
-    } while ( ! pollfdchild.mDead || ! pollfdtether.mDisconnected);
-
-    if (closeUnixSocket(pollfdumbilical.mUmbilicalPeer))
+    if (closeFdUmbilical(&pollfdumbilical))
         terminate(
             errno,
             "Unable to close umbilical peer");
@@ -2003,9 +1834,15 @@ cmdRunCommand(char **aCmd)
         announceChild(pid, pidFile, pidFileName);
     }
 
+    if (popProcessSigMask(&pushedSigMask))
+        terminate(
+            errno,
+            "Unable to restore process signal mask");
+
     /* The creation time of the child process is earlier than
      * the creation time of the pidfile. With the pidfile created,
-     * release the waiting child process. */
+     * and the signal delivery to the child activated, identify
+     * and release the waiting child process. */
 
     if (gOptions.mIdentify)
         RACE
@@ -2029,11 +1866,6 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to close sync pipe");
-
-    if (popProcessSigMask(&pushedSigMask))
-        terminate(
-            errno,
-            "Unable to restore process signal mask");
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
