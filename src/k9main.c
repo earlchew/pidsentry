@@ -117,9 +117,10 @@ struct ChildProcess
 {
     pid_t mPid;
 
-    struct Pipe        mTetherPipe;
     struct UnixSocket  mUmbilicalSocket;
     struct Pipe        mTermPipe;
+    struct Pipe        mTetherPipe_;
+    struct Pipe       *mTetherPipe;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -133,17 +134,18 @@ createChild(struct ChildProcess *self)
      * by any subsequent process that it forks), so only the reading
      * end is marked non-blocking. */
 
-    if (createPipe(&self->mTetherPipe, 0))
+    if (createPipe(&self->mTetherPipe_, 0))
         terminate(
             errno,
             "Unable to create tether pipe");
+    self->mTetherPipe = &self->mTetherPipe_;
 
-    if (closeFileOnExec(self->mTetherPipe.mRdFile, O_CLOEXEC))
+    if (closeFileOnExec(self->mTetherPipe->mRdFile, O_CLOEXEC))
         terminate(
             errno,
             "Unable to set close on exec for tether");
 
-    if (nonblockingFile(self->mTetherPipe.mRdFile))
+    if (nonblockingFile(self->mTetherPipe->mRdFile))
         terminate(
             errno,
             "Unable to mark tether non-blocking");
@@ -296,7 +298,7 @@ forkChild(
              * because it might turn out that the writing end
              * will not need to be duplicated. */
 
-            if (closePipeReader(&self->mTetherPipe))
+            if (closePipeReader(self->mTetherPipe))
                 terminate(
                     errno,
                     "Unable to close tether pipe reader");
@@ -416,7 +418,7 @@ forkChild(
                 int tetherFd = *gOptions.mTether;
 
                 if (0 > tetherFd)
-                    tetherFd = self->mTetherPipe.mWrFile->mFd;
+                    tetherFd = self->mTetherPipe->mWrFile->mFd;
 
                 char tetherArg[sizeof(int) * CHAR_BIT + 1];
 
@@ -486,18 +488,18 @@ forkChild(
                     }
                 }
 
-                if (tetherFd == self->mTetherPipe.mWrFile->mFd)
+                if (tetherFd == self->mTetherPipe->mWrFile->mFd)
                     break;
 
-                if (dup2(self->mTetherPipe.mWrFile->mFd, tetherFd) != tetherFd)
+                if (dup2(self->mTetherPipe->mWrFile->mFd, tetherFd) != tetherFd)
                     terminate(
                         errno,
                         "Unable to dup tether pipe fd %d to fd %d",
-                        self->mTetherPipe.mWrFile->mFd,
+                        self->mTetherPipe->mWrFile->mFd,
                         tetherFd);
             }
 
-            if (closePipe(&self->mTetherPipe))
+            if (closePipe(self->mTetherPipe))
                 terminate(
                     errno,
                     "Unable to close tether pipe");
@@ -530,6 +532,19 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static void
+closeChildTether(struct ChildProcess *self)
+{
+    ensure(self->mTetherPipe);
+
+    if (closePipe(self->mTetherPipe))
+        terminate(
+            errno,
+            "Unable to close tether pipe");
+    self->mTetherPipe = 0;
+}
+
+/* -------------------------------------------------------------------------- */
 static int
 closeChild(struct ChildProcess *self)
 {
@@ -540,10 +555,11 @@ closeChild(struct ChildProcess *self)
             errno,
             "Unable to close umbilical socket");
 
-    if (closePipe(&self->mTetherPipe))
+    if (closePipe(self->mTetherPipe))
         terminate(
             errno,
             "Unable to close tether pipe");
+    self->mTetherPipe = 0;
 
     if (closePipe(&self->mTermPipe))
         terminate(
@@ -879,9 +895,16 @@ flushTetherThread(struct TetherThread *self)
     char buf[1] = { 0 };
 
     if (sizeof(buf) != writeFile(self->mControlPipe.mWrFile, buf, sizeof(buf)))
-        terminate(
-            errno,
-            "Unable to flush tether thread");
+    {
+        /* This code will race the tether thread which might finished
+         * because it already has detected that the child process has
+         * terminated and closed its file descriptors. */
+
+        if (EPIPE != errno)
+            terminate(
+                errno,
+                "Unable to flush tether thread");
+    }
 
     self->mFlushed = true;
 }
@@ -1857,7 +1880,7 @@ cmdRunCommand(char **aCmd)
      * original stdin file table entry. */
 
     if (STDIN_FILENO != dup2(
-            childProcess.mTetherPipe.mRdFile->mFd, STDIN_FILENO))
+            childProcess.mTetherPipe->mRdFile->mFd, STDIN_FILENO))
         terminate(
             errno,
             "Unable to dup tether pipe to stdin");
@@ -1911,6 +1934,13 @@ cmdRunCommand(char **aCmd)
                     "Unable to close %s", sDevNullPath);
         }
     }
+
+    /* Now that the tether has been duplicated onto stdin and stdout
+     * as required, it is important to close the tether to ensure that
+     * the only possible references to the tether pipe remain in the
+     * child process, if required, and stdin and stdout in this process. */
+
+    closeChildTether(&childProcess);
 
     if (purgeProcessOrphanedFds())
         terminate(
