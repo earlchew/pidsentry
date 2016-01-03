@@ -75,6 +75,26 @@ static const char                  *sProgramName;
 static struct MonotonicTime         sTimeBase;
 
 /* -------------------------------------------------------------------------- */
+const char *
+createProcessStatusCodeText(
+    struct ProcessStatusCodeText *aStatusCodeText, const siginfo_t *aSigInfo)
+{
+    switch (aSigInfo->si_code)
+    {
+    default:
+        sprintf(aStatusCodeText->mText, "%d", (int) aSigInfo->si_code);
+        return aStatusCodeText->mText;
+
+    case CLD_STOPPED:   return "stopped";
+    case CLD_EXITED:    return "exited";
+    case CLD_KILLED:    return "killed";
+    case CLD_DUMPED:    return "dumped";
+    case CLD_TRAPPED:   return "trapped";
+    case CLD_CONTINUED: return "continued";
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 static sigset_t
 filledSigSet(void)
 {

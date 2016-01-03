@@ -83,6 +83,21 @@ struct PollFd
     } mCompletion;
 };
 
+struct PollEventText
+{
+    char mText[
+        sizeof(unsigned) * CHAR_BIT +
+        sizeof(
+            " "
+            "0x "
+            "IN "
+            "PRI "
+            "OUT "
+            "ERR "
+            "HUP "
+            "NVAL ")];
+};
+
 /* -------------------------------------------------------------------------- */
 int
 createPollFd(struct PollFd            *self,
@@ -104,6 +119,11 @@ runPollFdLoop(struct PollFd *self);
 
 int
 closePollFd(struct PollFd *self);
+
+/* -------------------------------------------------------------------------- */
+const char *
+createPollEventText(
+    struct PollEventText *aPollEventText, unsigned aPollEventMask);
 
 /* -------------------------------------------------------------------------- */
 

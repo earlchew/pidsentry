@@ -40,21 +40,6 @@
 #include <sys/poll.h>
 
 /* -------------------------------------------------------------------------- */
-struct PollEventText
-{
-    char mText[
-        sizeof(unsigned) * CHAR_BIT +
-        sizeof(
-            " "
-            "0x "
-            "IN "
-            "PRI "
-            "OUT "
-            "ERR "
-            "HUP "
-            "NVAL ")];
-};
-
 static char *
 pollEventTextBit_(char *aBuf, unsigned *aMask, unsigned aBit, const char *aText)
 {
@@ -73,7 +58,7 @@ pollEventTextBit_(char *aBuf, unsigned *aMask, unsigned aBit, const char *aText)
 #define pollEventTextBit_(aBuf, aMask, aBit) \
     pollEventTextBit_((aBuf), (aMask), (aBit), # aBit)
 
-static const char *
+const char *
 createPollEventText(
     struct PollEventText *aPollEventText, unsigned aPollEventMask)
 {

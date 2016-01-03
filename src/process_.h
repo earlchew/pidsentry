@@ -32,8 +32,10 @@
 #include "timescale_.h"
 
 #include <inttypes.h>
-#include <sys/types.h>
 #include <limits.h>
+#include <signal.h>
+
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,6 +67,16 @@ struct PushedProcessSigMask
 {
     sigset_t mSigSet;
 };
+
+/* -------------------------------------------------------------------------- */
+struct ProcessStatusCodeText
+{
+    char mText[sizeof(((siginfo_t *) 0)->si_code) * CHAR_BIT + sizeof("-")];
+};
+
+const char *
+createProcessStatusCodeText(
+    struct ProcessStatusCodeText *aStatusCodeText, const siginfo_t *aSigInfo);
 
 /* -------------------------------------------------------------------------- */
 #define PROCESS_DIRNAME_FMT_  "/proc/%jd"

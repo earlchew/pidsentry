@@ -72,7 +72,6 @@
  * Check for useless #include in *.c
  * Fix logging in parasite printing null for program name
  * Fix vgcore being dropped everywhere
- * Refactor struct PollEventText
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -562,89 +561,6 @@ closeChild(struct ChildProcess *self)
             (intmax_t) self->mPid);
 
     return status;
-}
-
-/* -------------------------------------------------------------------------- */
-struct PollEventText
-{
-    char mText[
-        sizeof(unsigned) * CHAR_BIT +
-        sizeof(
-            " "
-            "0x "
-            "IN "
-            "PRI "
-            "OUT "
-            "ERR "
-            "HUP "
-            "NVAL ")];
-};
-
-static char *
-pollEventTextBit_(char *aBuf, unsigned *aMask, unsigned aBit, const char *aText)
-{
-    char *buf = aBuf;
-
-    if (*aMask & aBit)
-    {
-        *aMask ^= aBit;
-        *buf++ = ' ';
-        buf = stpcpy(buf, aText + sizeof("POLL") - 1);
-    }
-
-    return buf;
-}
-
-#define pollEventTextBit_(aBuf, aMask, aBit) \
-    pollEventTextBit_((aBuf), (aMask), (aBit), # aBit)
-
-static const char *
-createPollEventText(
-    struct PollEventText *aPollEventText, unsigned aPollEventMask)
-{
-    unsigned mask = aPollEventMask;
-
-    char *buf = aPollEventText->mText;
-
-    buf[0] = 0;
-    buf[1] = 0;
-
-    buf = pollEventTextBit_(buf, &mask, POLLIN);
-    buf = pollEventTextBit_(buf, &mask, POLLPRI);
-    buf = pollEventTextBit_(buf, &mask, POLLOUT);
-    buf = pollEventTextBit_(buf, &mask, POLLERR);
-    buf = pollEventTextBit_(buf, &mask, POLLHUP);
-    buf = pollEventTextBit_(buf, &mask, POLLNVAL);
-
-    if (mask)
-        sprintf(buf, " 0x%x", mask);
-
-    return aPollEventText->mText + 1;
-}
-
-/* -------------------------------------------------------------------------- */
-struct StatusCodeText
-{
-    char mText[sizeof(((siginfo_t *) 0)->si_code) * CHAR_BIT + sizeof("-")];
-};
-
-static const char *
-createStatusCodeText(
-    struct StatusCodeText *aStatusCodeText, const siginfo_t *aSigInfo)
-{
-    switch (aSigInfo->si_code)
-    {
-    default:
-        sprintf(aStatusCodeText->mText, "%d", (int) aSigInfo->si_code);
-        return aStatusCodeText->mText;
-
-    case CLD_STOPPED:   return "stopped";
-    case CLD_EXITED:    return "exited";
-    case CLD_KILLED:    return "killed";
-    case CLD_DUMPED:    return "dumped";
-    case CLD_TRAPPED:   return "trapped";
-    case CLD_CONTINUED: return "continued";
-    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1285,12 +1201,12 @@ pollFdTimerTether(void                        *self_,
                 (siginfo.si_code == CLD_TRAPPED ||
                  siginfo.si_code == CLD_STOPPED))
             {
-                struct StatusCodeText statusCodeText;
+                struct ProcessStatusCodeText statusCodeText;
 
                 debug(
                     0,
                     "deferred timeout due to child status %s",
-                    createStatusCodeText(&statusCodeText, &siginfo));
+                    createProcessStatusCodeText(&statusCodeText, &siginfo));
 
                 self->mCycleCount = 0;
                 break;
