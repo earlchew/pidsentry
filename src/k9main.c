@@ -926,7 +926,7 @@ closeTetherThread(struct TetherThread *self)
     if (unwatchProcessClock())
         terminate(
             errno,
-            "Unable to configure synchronisation clock");
+            "Unable to reset synchronisation clock");
 
     if (errno = pthread_mutex_destroy(&self->mActivity.mMutex))
         terminate(errno, "Unable to destroy activity mutex");
