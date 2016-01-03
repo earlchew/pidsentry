@@ -1476,8 +1476,8 @@ monitorChild(struct ChildProcess *self)
             .fd     = self->mUmbilicalSocket.mFile->mFd,
             .events = POLL_INPUTEVENTS },
         [POLL_FD_TETHER] = {
-            .fd     = pollfdtether.mThread->mControlPipe.mRdFile->mFd,
-            .events = POLL_INPUTEVENTS, },
+            .fd     = pollfdtether.mThread->mControlPipe.mWrFile->mFd,
+            .events = POLL_DISCONNECTEVENT, },
     };
 
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
