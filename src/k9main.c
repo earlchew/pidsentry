@@ -96,10 +96,6 @@ static const char *sPollFdNames[POLL_FD_KINDS] =
     [POLL_FD_UMBILICAL] = "umbilical",
 };
 
-static const unsigned sPollInputEvents     = POLLHUP|POLLERR|POLLPRI|POLLIN;
-static const unsigned sPollOutputEvents    = POLLHUP|POLLERR|POLLOUT;
-static const unsigned sPollDisconnectEvent = POLLHUP|POLLERR;
-
 /* -------------------------------------------------------------------------- */
 enum PollFdTimerKind
 {
@@ -788,9 +784,9 @@ tetherThreadMain_(void *self_)
 
         .mPollfds =
         {
-            [TETHER_FD_CONTROL]= {.fd= controlFd,.events= sPollInputEvents },
-            [TETHER_FD_INPUT]  = {.fd= srcFd,    .events= sPollInputEvents },
-            [TETHER_FD_OUTPUT] = {.fd= dstFd,    .events= sPollDisconnectEvent},
+            [TETHER_FD_CONTROL]= {.fd= controlFd,.events= POLL_INPUTEVENTS },
+            [TETHER_FD_INPUT]  = {.fd= srcFd,    .events= POLL_INPUTEVENTS },
+            [TETHER_FD_OUTPUT] = {.fd= dstFd,    .events= POLL_DISCONNECTEVENT},
         },
 
         .mPollfdactions =
@@ -1475,13 +1471,13 @@ monitorChild(struct ChildProcess *self)
     {
         [POLL_FD_CHILD] = {
             .fd     = self->mTermPipe.mRdFile->mFd,
-            .events = sPollDisconnectEvent },
+            .events = POLL_DISCONNECTEVENT },
         [POLL_FD_UMBILICAL] = {
             .fd     = self->mUmbilicalSocket.mFile->mFd,
-            .events = sPollInputEvents },
+            .events = POLL_INPUTEVENTS },
         [POLL_FD_TETHER] = {
             .fd     = pollfdtether.mThread->mControlPipe.mRdFile->mFd,
-            .events = sPollInputEvents, },
+            .events = POLL_INPUTEVENTS, },
     };
 
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
