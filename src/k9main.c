@@ -232,14 +232,9 @@ forkChild(
 
         /* The forked child has all its signal handlers reset, but
          * note that the parent will wait for the child to synchronise
-         * before sending it signals, so that there is no race here. */
-
-        if (popProcessSigMask(aSigMask))
-            terminate(
-                errno,
-                "Unable to restore process signal mask");
-
-        /* Close the StdFdFiller in case this will free up stdin, stdout or
+         * before sending it signals, so that there is no race here.
+         *
+         * Close the StdFdFiller in case this will free up stdin, stdout or
          * stderr. The remaining operations will close the remaining
          * unwanted file descriptors. */
 
@@ -1748,6 +1743,12 @@ cmdRunCommand(char **aCmd)
 {
     ensure(aCmd);
 
+    struct PushedProcessSigMask pushedSigMask;
+    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
+        terminate(
+            errno,
+            "Unable to push process signal mask");
+
     if (ignoreProcessSigPipe())
         terminate(
             errno,
@@ -1766,12 +1767,6 @@ cmdRunCommand(char **aCmd)
 
     struct ChildProcess childProcess;
     createChild(&childProcess);
-
-    struct PushedProcessSigMask pushedSigMask;
-    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
-        terminate(
-            errno,
-            "Unable to push process signal mask");
 
     if (watchProcessChildren(0, reapChild, &childProcess))
         terminate(

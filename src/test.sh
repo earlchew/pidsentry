@@ -167,6 +167,23 @@ runTests()
       [ x"${REPLY%% *}" = x"${REPLY#* }" ]
     done
 
+    testCase 'Test blocked signals in child'
+    testOutput "0000000000000000" = '$(
+        k9 -- grep SigBlk /proc/self/status |
+        {
+            read HEADING SIGNALS
+            /bin/echo "$SIGNALS"
+        }
+    )'
+    testCase 'Test ignored signals in child'
+    testOutput "0000000000000000" = '$(
+        k9 -- grep SigIgn /proc/self/status |
+        {
+            read HEADING SIGNALS
+            /bin/echo "$SIGNALS"
+        }
+    )'
+
     testCase 'Environment propagation'
     testOutput '0' = '"$(
         k9 -- sh -c '\''date ; printenv'\'' | grep "^K9_" | wc -l)"'
