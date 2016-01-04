@@ -581,9 +581,10 @@ closeChild(struct ChildProcess *self)
 
 struct TetherThread
 {
-    pthread_t   mThread;
-    struct Pipe mControlPipe;
-    bool        mFlushed;
+    pthread_t    mThread;
+    struct Pipe  mControlPipe;
+    struct Pipe *mNullPipe;
+    bool         mFlushed;
 
     struct {
         pthread_mutex_t       mMutex;
@@ -844,6 +845,16 @@ tetherThreadMain_(void *self_)
             errno,
             "Unable to push process signal mask");
 
+    /* Close the input file descriptor so that there is a chance
+     * to propagte SIGPIPE to the child process. */
+
+    if (dup2(self->mNullPipe->mRdFile->mFd, srcFd) != srcFd)
+        terminate(
+            errno,
+            "Unable to dup fd %d to fd %d",
+            self->mNullPipe->mRdFile->mFd,
+            srcFd);
+
     if (closePipeReader(&self->mControlPipe))
         terminate(errno, "Unable to close tether thread control");
 
@@ -853,7 +864,7 @@ tetherThreadMain_(void *self_)
 }
 
 static void
-createTetherThread(struct TetherThread *self, int aDstFd)
+createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 {
     if (createPipe(&self->mControlPipe, O_CLOEXEC | O_NONBLOCK))
         terminate(errno, "Unable to create tether control pipe");
@@ -861,6 +872,7 @@ createTetherThread(struct TetherThread *self, int aDstFd)
     if (errno = pthread_mutex_init(&self->mActivity.mMutex, 0))
         terminate(errno, "Unable to create activity mutex");
 
+    self->mNullPipe        = aNullPipe;
     self->mActivity.mSince = eventclockTime();
     self->mFlushed         = false;
 
@@ -1370,7 +1382,7 @@ monitorChild(struct ChildProcess *self)
 
     struct TetherThread tetherThread;
 
-    createTetherThread(&tetherThread, STDOUT_FILENO);
+    createTetherThread(&tetherThread, &nullPipe);
 
     struct PollFdChild pollfdchild =
     {
