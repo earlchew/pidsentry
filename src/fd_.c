@@ -331,9 +331,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-lockFd(int aFd, int aType, struct Duration aTimeout)
+lockFd(int aFd, int aType)
 {
-    int err = 0;
     int rc = -1;
 
     if (LOCK_EX != aType && LOCK_SH != aType)
@@ -342,87 +341,7 @@ lockFd(int aFd, int aType, struct Duration aTimeout)
         goto Finally;
     }
 
-    /* Try to acquire the lock immediately. In many cases this will
-     * succeed, and there will not be any need to block. */
-
-    if (testAction() || flock(aFd, aType | LOCK_NB))
-    {
-        /* Disable the timer and SIGALRM action so that a new
-         * timer and action can be installed to provide some
-         * protection against deadlocks. */
-
-        static const struct itimerval flockTimer =
-        {
-            .it_value    = { .tv_sec = 1 },
-            .it_interval = { .tv_sec = 1 },
-        };
-
-        struct PushedIntervalTimer pushedTimer;
-
-        if (pushIntervalTimer(&pushedTimer, ITIMER_REAL, &flockTimer))
-            goto Finally;
-
-        /* The installed timer will inject periodic SIGALRM signals
-         * and cause flock() to return with EINTR. This allows
-         * the deadline to be checked periodically. */
-
-        struct EventClockTime deadlineTime = EVENTCLOCKTIME_INIT;
-
-        do
-        {
-            struct EventClockTime tm = eventclockTime();
-
-            RACE
-            ({
-                /* In case the process is stopped after the time is
-                 * latched, check once more if the lock can be acquired
-                 * before checking the deadline. */
-
-                if ( ! flock(aFd, aType | LOCK_NB))
-                    break;
-
-                if (EINTR != errno && EWOULDBLOCK != errno)
-                {
-                    err = errno ? errno : EPERM;
-                    break;
-                }
-            });
-
-            if (deadlineTimeExpired(&deadlineTime, aTimeout, 0, &tm))
-            {
-                err = EDEADLOCK;
-                break;
-            }
-
-            /* Very infrequently block here to exercise the EINTR
-             * functionality of the delivered SIGALRM signal. */
-
-            if (testAction() && 1 > random() % 10)
-            {
-                struct timeval timeout =
-                {
-                    .tv_sec = 24 * 60 * 60,
-                };
-
-                ensure(-1 == select(0, 0, 0, 0, &timeout) && EINTR == errno);
-            }
-
-            if ( ! flock(aFd, aType))
-                break;
-
-            if (EINTR != errno)
-            {
-                err = errno ? errno : EPERM;
-                break;
-            }
-
-        } while (1);
-
-        if (popIntervalTimer(&pushedTimer))
-            goto Finally;
-    }
-
-    if (err)
+    if (flock(aFd, aType))
         goto Finally;
 
     rc = 0;
@@ -430,9 +349,6 @@ lockFd(int aFd, int aType, struct Duration aTimeout)
 Finally:
 
     FINALLY({});
-
-    if (err)
-        errno = err;
 
     return rc;
 }

@@ -238,12 +238,9 @@ closeFileOnExec(struct File *self, unsigned aCloseOnExec)
 
 /* -------------------------------------------------------------------------- */
 int
-lockFile(struct File *self, int aType, const struct Duration *aTimeout)
+lockFile(struct File *self, int aType)
 {
-    return lockFd(
-        self->mFd,
-        aType,
-        aTimeout ? *aTimeout : Duration(NSECS(Seconds(30))));
+    return lockFd(self->mFd, aType);
 }
 
 /* -------------------------------------------------------------------------- */

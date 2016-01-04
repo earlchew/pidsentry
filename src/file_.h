@@ -143,7 +143,7 @@ ownFileSocketPeerCred(const struct File *self, struct ucred *aCred);
 
 /* -------------------------------------------------------------------------- */
 int
-lockFile(struct File *self, int aType, const struct Duration *aTimeout);
+lockFile(struct File *self, int aType);
 
 int
 unlockFile(struct File *self);

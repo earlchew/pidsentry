@@ -832,7 +832,7 @@ lockProcessLock_(struct ProcessLock *self)
     {
         ensure(LOCK_UN == self->mLock);
 
-        if (lockFile(self->mFile, LOCK_EX, 0))
+        if (lockFile(self->mFile, LOCK_EX))
             goto Finally;
 
         self->mLock = LOCK_EX;

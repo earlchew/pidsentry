@@ -68,7 +68,7 @@ ssize_t
 readFd(int aFd, char *aBuf, size_t aLen);
 
 int
-lockFd(int aFd, int aType, struct Duration aTimeout);
+lockFd(int aFd, int aType);
 
 int
 unlockFd(int aFd);
