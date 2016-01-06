@@ -102,14 +102,16 @@ enum PollFdTimerKind
     POLL_FD_TIMER_TETHER,
     POLL_FD_TIMER_ORPHAN,
     POLL_FD_TIMER_TERMINATION,
+    POLL_FD_TIMER_DISCONNECTION,
     POLL_FD_TIMER_KINDS
 };
 
 static const char *sPollFdTimerNames[POLL_FD_TIMER_KINDS] =
 {
-    [POLL_FD_TIMER_TETHER]      = "tether",
-    [POLL_FD_TIMER_ORPHAN]      = "orphan",
-    [POLL_FD_TIMER_TERMINATION] = "termination",
+    [POLL_FD_TIMER_TETHER]        = "tether",
+    [POLL_FD_TIMER_ORPHAN]        = "orphan",
+    [POLL_FD_TIMER_TERMINATION]   = "termination",
+    [POLL_FD_TIMER_DISCONNECTION] = "disconnection",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -890,11 +892,22 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 }
 
 static void
+pingTetherThread(struct TetherThread *self)
+{
+    debug(0, "ping tether thread");
+
+    if (errno = pthread_kill(self->mThread, SIGALRM))
+        terminate(
+            errno,
+            "Unable to signal tether thread");
+}
+
+static void
 flushTetherThread(struct TetherThread *self)
 {
     debug(0, "flushing tether thread");
 
-    if (watchProcessClock(0, Duration(NSECS(Seconds(1)))))
+    if (watchProcessClock(0, Duration(NanoSeconds(0))))
         terminate(
             errno,
             "Unable to configure synchronisation clock");
@@ -953,9 +966,11 @@ closeTetherThread(struct TetherThread *self)
 
 struct PollFdChild
 {
-    enum PollFdKind      mKind;
-    struct TetherThread *mTetherThread;
-    struct Pipe         *mNullPipe;
+    enum PollFdKind mKind;
+
+    struct TetherThread      *mTetherThread;
+    struct PollFdTimerAction *mDisconnectionTimer;
+    struct Pipe              *mNullPipe;
 };
 
 static void
@@ -986,6 +1001,22 @@ pollFdChild(void                        *self_,
      * to the tether thread that it should start flushing data now. */
 
     flushTetherThread(self->mTetherThread);
+
+    self->mDisconnectionTimer->mPeriod = Duration(NSECS(Seconds(1)));
+}
+
+static void
+pollFdTimerChild(void                        *self_,
+                 struct PollFdTimerAction    *aPollFdTimerAction,
+                 const struct EventClockTime *aPollTime)
+{
+    struct PollFdChild *self = self_;
+
+    ensure(POLL_FD_CHILD == self->mKind);
+
+    debug(0, "disconnecting tether thread");
+
+    pingTetherThread(self->mTetherThread);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1164,7 +1195,7 @@ struct PollFdTether
 {
     enum PollFdKind mKind;
 
-    struct PollFdTimerAction      *mTimer;
+    struct PollFdTimerAction      *mTetherTimer;
     struct TetherThread           *mThread;
     struct PollFdTimerTermination *mTermination;
     struct Pipe                   *mNullPipe;
@@ -1359,9 +1390,10 @@ monitorChild(struct ChildProcess *self)
 
     struct PollFdTimerAction pollfdtimeractions[POLL_FD_TIMER_KINDS] =
     {
-        [POLL_FD_TIMER_TETHER]      = { 0 },
-        [POLL_FD_TIMER_ORPHAN]      = { 0 },
-        [POLL_FD_TIMER_TERMINATION] = { 0 },
+        [POLL_FD_TIMER_TETHER]        = { 0 },
+        [POLL_FD_TIMER_ORPHAN]        = { 0 },
+        [POLL_FD_TIMER_TERMINATION]   = { 0 },
+        [POLL_FD_TIMER_DISCONNECTION] = { 0 },
     };
 
     struct Pipe nullPipe;
@@ -1386,10 +1418,16 @@ monitorChild(struct ChildProcess *self)
 
     struct PollFdChild pollfdchild =
     {
-        .mKind         = POLL_FD_CHILD,
-        .mTetherThread = &tetherThread,
-        .mNullPipe     = &nullPipe,
+        .mKind               = POLL_FD_CHILD,
+        .mDisconnectionTimer = &pollfdtimeractions[POLL_FD_TIMER_DISCONNECTION],
+        .mTetherThread       = &tetherThread,
+        .mNullPipe           = &nullPipe,
     };
+
+    pollfdchild.mDisconnectionTimer->mAction = pollFdTimerChild;
+    pollfdchild.mDisconnectionTimer->mSelf   = &pollfdchild;
+    pollfdchild.mDisconnectionTimer->mSince  = EVENTCLOCKTIME_INIT;
+    pollfdchild.mDisconnectionTimer->mPeriod = Duration(NanoSeconds(0));
 
     struct PollFdUmbilical pollfdumbilical =
     {
@@ -1448,7 +1486,7 @@ monitorChild(struct ChildProcess *self)
     {
         .mKind = POLL_FD_TETHER,
 
-        .mTimer       = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
+        .mTetherTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
         .mThread      = &tetherThread,
         .mTermination = &pollfdtimertermination,
         .mNullPipe    = &nullPipe,
@@ -1458,10 +1496,10 @@ monitorChild(struct ChildProcess *self)
         .mCycleLimit   = timeoutCycles,
     };
 
-    pollfdtether.mTimer->mAction = pollFdTimerTether;
-    pollfdtether.mTimer->mSelf   = &pollfdtether;
-    pollfdtether.mTimer->mSince  = EVENTCLOCKTIME_INIT;
-    pollfdtether.mTimer->mPeriod =
+    pollfdtether.mTetherTimer->mAction = pollFdTimerTether;
+    pollfdtether.mTetherTimer->mSelf   = &pollfdtether;
+    pollfdtether.mTetherTimer->mSince  = EVENTCLOCKTIME_INIT;
+    pollfdtether.mTetherTimer->mPeriod =
         Duration(NanoSeconds(
             NSECS(Seconds(
                 gOptions.mTether
