@@ -378,10 +378,13 @@ unwatchProcessChildren(void)
 }
 
 /* -------------------------------------------------------------------------- */
+static struct Duration  sClockTickPeriod;
 static int              sClockTickRdFd_ = -1;
 static int              sClockTickWrFd_ = -1;
-static struct Duration  sClockTickPeriod;
-static struct sigaction sClockTickSigAction;
+static struct sigaction sClockTickSigAction =
+{
+    .sa_handler = SIG_ERR,
+};
 
 static void
 clockTick_(int aSigNum)
@@ -417,7 +420,8 @@ resetProcessClockWatch_(void)
 {
     int rc = -1;
 
-    if (sClockTickPeriod.duration.ns)
+    if (SIG_ERR != sClockTickSigAction.sa_handler ||
+        (sClockTickSigAction.sa_flags & SA_SIGINFO))
     {
         sClockTickWrFd_ = -1;
         sClockTickRdFd_ = -1;
@@ -433,6 +437,9 @@ resetProcessClockWatch_(void)
 
         if (sigaction(SIGALRM, &sClockTickSigAction, 0))
             goto Finally;
+
+        sClockTickSigAction.sa_handler = SIG_ERR;
+        sClockTickSigAction.sa_flags = 0;
 
         sClockTickPeriod = Duration(NanoSeconds(0));
     }
@@ -452,25 +459,18 @@ watchProcessClock(const struct Pipe *aClockPipe,
 {
     int rc = -1;
 
+    struct sigaction prevAction_;
+    struct sigaction *prevAction = 0;
+
     struct sigaction clockAction =
     {
         .sa_handler = clockTick_,
         .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGALRM, &clockAction, &sClockTickSigAction))
+    if (sigaction(SIGALRM, &clockAction, &prevAction_))
         goto Finally;
-
-    /* Ensure that the selected clock period is non-zero. A zero
-     * clock period would mean that clock is disabled. */
-
-    if ( ! aClockPeriod.duration.ns)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
-
-    sClockTickPeriod = aClockPeriod;
+    prevAction = &prevAction_;
 
     /* It is ok to mark the clock pipe non-blocking because this
      * file descriptor is not shared with any other process. */
@@ -516,11 +516,24 @@ watchProcessClock(const struct Pipe *aClockPipe,
         sClockTickWrFd_ = aClockPipe->mWrFile->mFd;
     }
 
+    sClockTickSigAction = *prevAction;
+    sClockTickPeriod    = aClockPeriod;
+
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        if (rc)
+        {
+            if (prevAction)
+                if (sigaction(SIGALRM, prevAction, 0))
+                    terminate(
+                        errno,
+                        "Unable to revert SIGALRM handler");
+        }
+    });
 
     return rc;
 }
