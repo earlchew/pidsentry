@@ -54,15 +54,16 @@ gettid(void)
 /* -------------------------------------------------------------------------- */
 static void
 dprint_(
-    int aErrCode,
-    intmax_t aPid,
-    intmax_t aTid,
-    uint64_t aElapsed_h,
-    uint64_t aElapsed_m,
-    uint64_t aElapsed_s,
-    uint64_t aElapsed_ms,
-    const char *aFile, unsigned aLine,
-    const char *aFmt, va_list aArgs)
+    int                    aErrCode,
+    intmax_t               aPid,
+    intmax_t               aTid,
+    const struct Duration *aElapsed,
+    uint64_t               aElapsed_h,
+    uint64_t               aElapsed_m,
+    uint64_t               aElapsed_s,
+    uint64_t               aElapsed_ms,
+    const char            *aFile, unsigned aLine,
+    const char            *aFmt, va_list aArgs)
 {
     int lockErr = errno;
 
@@ -72,25 +73,39 @@ dprint_(
     {
         if (aPid == aTid)
         {
-            dprintf(
-                STDERR_FILENO,
-                "%s: [%04" PRIu64 ":%02" PRIu64
-                ":%02" PRIu64
-                ".%03" PRIu64 " %jd %s:%u] ",
-                ownProcessName(),
-                aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
-                aPid, aFile, aLine);
+            if (aElapsed->duration.ns)
+                dprintf(
+                    STDERR_FILENO,
+                    "%s: [%04" PRIu64 ":%02" PRIu64
+                    ":%02" PRIu64
+                    ".%03" PRIu64 " %jd %s:%u] ",
+                    ownProcessName(),
+                    aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
+                    aPid, aFile, aLine);
+            else
+                dprintf(
+                    STDERR_FILENO,
+                    "%s: [%jd %s:%u] ",
+                    ownProcessName(),
+                    aPid, aFile, aLine);
         }
         else
         {
-            dprintf(
-                STDERR_FILENO,
-                "%s: [%04" PRIu64 ":%02" PRIu64
-                ":%02" PRIu64
-                ".%03" PRIu64 " %jd:%jd %s:%u] ",
-                ownProcessName(),
-                aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
-                aPid, aTid, aFile, aLine);
+            if (aElapsed->duration.ns)
+                dprintf(
+                    STDERR_FILENO,
+                    "%s: [%04" PRIu64 ":%02" PRIu64
+                    ":%02" PRIu64
+                    ".%03" PRIu64 " %jd:%jd %s:%u] ",
+                    ownProcessName(),
+                    aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
+                    aPid, aTid, aFile, aLine);
+            else
+                dprintf(
+                    STDERR_FILENO,
+                    "%s: [%jd:%jd %s:%u] ",
+                    ownProcessName(),
+                    aPid, aTid, aFile, aLine);
         }
 
         if (EWOULDBLOCK != lockErr)
@@ -106,22 +121,23 @@ dprint_(
 
 static void
 dprintf_(
-    int aErrCode,
-    intmax_t aPid,
-    intmax_t aTid,
-    uint64_t aElapsed_h,
-    uint64_t aElapsed_m,
-    uint64_t aElapsed_s,
-    uint64_t aElapsed_ms,
-    const char *aFile, unsigned aLine,
-    const char *aFmt, ...)
+    int                    aErrCode,
+    intmax_t               aPid,
+    intmax_t               aTid,
+    const struct Duration *aElapsed,
+    uint64_t               aElapsed_h,
+    uint64_t               aElapsed_m,
+    uint64_t               aElapsed_s,
+    uint64_t               aElapsed_ms,
+    const char            *aFile, unsigned aLine,
+    const char            *aFmt, ...)
 {
     va_list args;
 
     va_start(args, aFmt);
     dprint_(aErrCode,
             aPid, aTid,
-            aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
+            aElapsed, aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
             aFile, aLine, aFmt, args);
     va_end(args);
 }
@@ -183,7 +199,7 @@ print_(
 
             dprint_(aErrCode,
                     pid, tid,
-                    elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                    &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                     aFile, aLine,
                     aFmt, aArgs);
         }
@@ -197,25 +213,39 @@ print_(
             {
                 if (pid == tid)
                 {
-                    fprintf(
-                        sPrintBuf.mFile,
-                        "%s: [%04" PRIu64 ":%02" PRIu64
-                        ":%02" PRIu64
-                        ".%03" PRIu64 " %jd %s:%u] ",
-                        ownProcessName(),
-                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                        pid, aFile, aLine);
+                    if (elapsed.duration.ns)
+                        fprintf(
+                            sPrintBuf.mFile,
+                            "%s: [%04" PRIu64 ":%02" PRIu64
+                            ":%02" PRIu64
+                            ".%03" PRIu64 " %jd %s:%u] ",
+                            ownProcessName(),
+                            elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                            pid, aFile, aLine);
+                    else
+                        fprintf(
+                            sPrintBuf.mFile,
+                            "%s: [%jd %s:%u] ",
+                            ownProcessName(),
+                            pid, aFile, aLine);
                 }
                 else
                 {
-                    fprintf(
-                        sPrintBuf.mFile,
-                        "%s: [%04" PRIu64 ":%02" PRIu64
-                        ":%02" PRIu64
-                        ".%03" PRIu64 " %jd:%jd %s:%u] ",
-                        ownProcessName(),
-                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                        pid, tid, aFile, aLine);
+                    if (elapsed.duration.ns)
+                        fprintf(
+                            sPrintBuf.mFile,
+                            "%s: [%04" PRIu64 ":%02" PRIu64
+                            ":%02" PRIu64
+                            ".%03" PRIu64 " %jd:%jd %s:%u] ",
+                            ownProcessName(),
+                            elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                            pid, tid, aFile, aLine);
+                    else
+                        fprintf(
+                            sPrintBuf.mFile,
+                            "%s: [%jd:%jd %s:%u] ",
+                            ownProcessName(),
+                            pid, tid, aFile, aLine);
                 }
             }
 
@@ -238,7 +268,7 @@ print_(
                     dprintf_(
                         errno,
                         pid, tid,
-                        elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                        &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                         __FILE__, __LINE__,
                         "Unable to release process lock");
                     abort();

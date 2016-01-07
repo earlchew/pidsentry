@@ -895,8 +895,17 @@ Process_init(const char *aArg0)
     {
         ensure( ! sProcessLock[sActiveProcessLock]);
 
-        sArg0     = aArg0;
+        sArg0 = aArg0;
+
+        /* Ensure that the recorded time base is non-zero to allow it
+         * to be distinguished from the case that it was not recorded
+         * at all, and also ensure that the measured elapsed process
+         * time is always non-zero. */
+
         sTimeBase = monotonicTime();
+        do
+            --sTimeBase.monotonic.ns;
+        while ( ! sTimeBase.monotonic.ns);
 
         sProgramName = strrchr(sArg0, '/');
         sProgramName = sProgramName ? sProgramName + 1 : sArg0;
@@ -1250,8 +1259,12 @@ extractProcessExitStatus(int aStatus)
 struct Duration
 ownProcessElapsedTime(void)
 {
-    return Duration(
-        NanoSeconds(monotonicTime().monotonic.ns - sTimeBase.monotonic.ns));
+    return
+        Duration(
+            NanoSeconds(
+                sTimeBase.monotonic.ns
+                ? monotonicTime().monotonic.ns - sTimeBase.monotonic.ns
+                : 0));
 }
 
 /* -------------------------------------------------------------------------- */
