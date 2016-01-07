@@ -29,11 +29,12 @@
 
 #include "parse_.h"
 #include "macros_.h"
+#include "error_.h"
 
 #include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
-
+#include <string.h>
 #include <limits.h>
 
 /* -------------------------------------------------------------------------- */
@@ -184,6 +185,111 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+createParseArgListCSV(struct ParseArgList *self, const char *aArg)
+{
+    int rc = -1;
+
+    self->mArgs = 0;
+    self->mArgv = 0;
+    self->mArgc = 0;
+
+    if (aArg)
+    {
+        /* Count the number of separators to determine the number of
+         * words in the list. There is some ambiguity in the case that there
+         * is only one word, but that will be fixed up at the end. */
+
+        size_t wordcount = 1;
+        for (size_t ix = 0; aArg[ix]; ++ix)
+        {
+            if (',' == aArg[ix])
+                ++wordcount;
+        }
+
+        self->mArgs = strdup(aArg);
+        if ( ! self->mArgs)
+            goto Finally;
+
+        self->mArgv = malloc(sizeof(*self->mArgv) * (wordcount + 1));
+        if ( ! self->mArgv)
+            goto Finally;
+
+        for (char *chptr = self->mArgs; ; )
+        {
+            while (*chptr && isspace((unsigned char) *chptr))
+                ++chptr;
+
+            char *headptr = chptr;
+
+            self->mArgv[self->mArgc++] = headptr;
+
+            char *tailptr = 0;
+
+            while (*chptr)
+            {
+                if (',' == *chptr)
+                {
+                    tailptr  = chptr;
+                    *chptr++ = 0;
+                    break;
+                }
+                ++chptr;
+            }
+
+            if ( ! tailptr)
+                tailptr = chptr;
+
+            ensure( ! *tailptr);
+
+            while (tailptr != headptr)
+            {
+                if ( ! isspace((unsigned char) tailptr[-1]))
+                    break;
+                --tailptr;
+            }
+
+            *tailptr = 0;
+
+            if (self->mArgc == wordcount)
+            {
+                ensure( ! *chptr);
+                break;
+            }
+        }
+
+        ensure(self->mArgc == wordcount);
+
+        self->mArgv[self->mArgc] = 0;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+        {
+            free(self->mArgs);
+            free(self->mArgv);
+        }
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+closeParseArgList(struct ParseArgList *self)
+{
+    free(self->mArgs);
+    free(self->mArgv);
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

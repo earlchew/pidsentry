@@ -57,6 +57,7 @@ check_PROGRAMS     += _isblockingtest
 check_PROGRAMS     += _timekeepingtest
 check_PROGRAMS     += _envtest
 check_PROGRAMS     += _unixsockettest
+check_PROGRAMS     += _parsetest
 noinst_PROGRAMS     = #bioscall-asm
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
@@ -90,6 +91,9 @@ _timekeepingtest_LDADD   = $(TEST_LIBS)
 
 _envtest_SOURCES = _envtest.cc
 _envtest_LDADD   = $(TEST_LIBS)
+
+_parsetest_SOURCES = _parsetest.cc
+_parsetest_LDADD   = $(TEST_LIBS)
 
 _unixsockettest_SOURCES = _unixsockettest.cc
 _unixsockettest_LDADD   = $(TEST_LIBS)

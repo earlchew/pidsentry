@@ -37,6 +37,20 @@
 extern "C" {
 #endif
 
+struct ParseArgList
+{
+    unsigned mArgc;
+    char   **mArgv;
+    char    *mArgs;
+};
+
+/* -------------------------------------------------------------------------- */
+int
+createParseArgListCSV(struct ParseArgList *self, const char *aArg);
+
+int
+closeParseArgList(struct ParseArgList *self);
+
 /* -------------------------------------------------------------------------- */
 int
 parseInt(const char *aArg, int *aValue);
