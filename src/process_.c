@@ -1207,7 +1207,9 @@ Finally:
 const char *
 ownProcessName(void)
 {
-    return sProgramName;
+    extern const char *__progname;
+
+    return sProgramName ? sProgramName : __progname;
 }
 
 /* -------------------------------------------------------------------------- */
