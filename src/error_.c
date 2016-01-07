@@ -158,7 +158,9 @@ print_(
 
         int locked = !! sPrintBuf.mFile;
 
-        if (locked)
+        if ( ! locked)
+            errno = EWOULDBLOCK;
+        else
         {
             if (lockProcessLock())
             {
