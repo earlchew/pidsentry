@@ -155,8 +155,10 @@ showUsage_(void)
 void
 initOptions()
 {
-    gOptions.mTimeout.mTether_s = DEFAULT_TETHER_TIMEOUT_S;
-    gOptions.mTimeout.mSignal_s = DEFAULT_SIGNAL_PERIOD_S;
+    gOptions.mTimeout.mTether_s    = DEFAULT_TETHER_TIMEOUT_S;
+    gOptions.mTimeout.mSignal_s    = DEFAULT_SIGNAL_PERIOD_S;
+    gOptions.mTimeout.mUmbilical_s = DEFAULT_UMBILICAL_TIMEOUT_S;
+    gOptions.mTimeout.mDrain_s     = DEFAULT_DRAIN_TIMEOUT_S;
 
     gOptions.mTetherFd = STDOUT_FILENO;
     gOptions.mTether   = &gOptions.mTetherFd;

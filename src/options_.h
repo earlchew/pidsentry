@@ -53,8 +53,10 @@ struct Options
     bool        mOrphaned;
     struct
     {
-        unsigned mSignal_s;
         unsigned mTether_s;
+        unsigned mUmbilical_s;
+        unsigned mSignal_s;
+        unsigned mDrain_s;
     } mTimeout;
 };
 
