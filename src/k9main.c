@@ -218,6 +218,8 @@ forkChild(
      * This is safe because that would cause one of end the termPipe
      * to close, and the other end will eventually notice. */
 
+    pid_t watchdogPid = getpid();
+
     pid_t childPid = forkProcess(
         gOptions.mSetPgid
         ? ForkProcessSetProcessGroup
@@ -311,6 +313,13 @@ forkChild(
                         errno,
                         "Unable to set K9_PID=%jd", (intmax_t) childPid);
                 debug(0, "env - K9_PID=%s", pidEnv);
+
+                const char *ppidEnv = setEnvPid("K9_PPID", watchdogPid);
+                if ( ! ppidEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_PPID=%jd", (intmax_t) watchdogPid);
+                debug(0, "env - K9_PPID=%s", ppidEnv);
 
                 const char *lockFileName = ownProcessLockPath();
 

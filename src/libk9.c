@@ -65,6 +65,7 @@ enum EnvKind
     ENV_K9_SO,
     ENV_K9_ADDR,
     ENV_K9_PID,
+    ENV_K9_PPID,
     ENV_K9_TIME,
     ENV_K9_TIMEOUT,
     ENV_KINDS
@@ -320,6 +321,7 @@ struct UmbilicalThread
     intmax_t                  *mStack;
     struct UnixSocket          mSock;
     struct Duration            mTimeout;
+    pid_t                      mWatchdogPid;
     int                        mStatus;
     int                       *mErrno;
 };
@@ -560,7 +562,9 @@ umbilicalMain_(void *aUmbilicalThread)
 
 /* -------------------------------------------------------------------------- */
 static void
-watchUmbilical(const char *aAddr, const struct Duration *aTimeout)
+watchUmbilical(const char            *aAddr,
+               pid_t                  aWatchdogPid,
+               const struct Duration *aTimeout)
 {
     static struct UmbilicalThread umbilicalThread;
 
@@ -587,11 +591,12 @@ watchUmbilical(const char *aAddr, const struct Duration *aTimeout)
         static const pthread_mutex_t mutexInit = PTHREAD_MUTEX_INITIALIZER;
         static const pthread_cond_t  condInit  = PTHREAD_COND_INITIALIZER;
 
-        umbilicalThread.mTimeout = *aTimeout;
-        umbilicalThread.mMutex   = mutexInit;
-        umbilicalThread.mCond    = condInit;
-        umbilicalThread.mState   = UMBILICAL_STOPPED;
-        umbilicalThread.mErrno   = 0;
+        umbilicalThread.mTimeout     = *aTimeout;
+        umbilicalThread.mWatchdogPid = aWatchdogPid;
+        umbilicalThread.mMutex       = mutexInit;
+        umbilicalThread.mCond        = condInit;
+        umbilicalThread.mState       = UMBILICAL_STOPPED;
+        umbilicalThread.mErrno       = 0;
 
         if (connectUnixSocket(
                 &umbilicalThread.mSock, umbilicalAddr.sun_path, addrLen+1))
@@ -698,6 +703,7 @@ libk9_init(void)
         [ENV_K9_SO]      = { "K9_SO" },
         [ENV_K9_ADDR]    = { "K9_ADDR" },
         [ENV_K9_PID]     = { "K9_PID" },
+        [ENV_K9_PPID]    = { "K9_PPID" },
         [ENV_K9_TIME]    = { "K9_TIME" },
         [ENV_K9_TIMEOUT] = { "K9_TIMEOUT" },
     };
@@ -707,41 +713,58 @@ libk9_init(void)
     if (env[ENV_K9_PID].mValue)
     {
         pid_t pid;
-        if ( ! parsePid(env[ENV_K9_PID].mValue, &pid))
+        if (parsePid(env[ENV_K9_PID].mValue, &pid))
+            terminate(
+                errno,
+                "Unable to parse pid '%s'",
+                env[ENV_K9_PID].mValue);
+
+        if (pid == getpid())
         {
-            if (pid == getpid())
-            {
-                /* This is the child process to be monitored. The
-                 * child process might exec() another program, so
-                 * leave the environment variables in place to
-                 * monitor the new program . */
+            /* This is the child process to be monitored. The
+             * child process might exec() another program, so
+             * leave the environment variables in place to
+             * monitor the new program . */
 
-                if ( ! env[ENV_K9_TIMEOUT].mValue)
-                    terminate(
-                        0,
-                        "No umbilical timeout specified");
+            if ( ! env[ENV_K9_TIMEOUT].mValue)
+                terminate(
+                    0,
+                    "No umbilical timeout specified");
 
-                unsigned umbilicalTimeout_s;
-                if (parseUInt(env[ENV_K9_TIMEOUT].mValue, &umbilicalTimeout_s))
-                    terminate(
-                        errno,
-                        "Unable to parse umbilical timeout: %s",
-                        env[ENV_K9_TIMEOUT].mValue);
+            unsigned umbilicalTimeout_s;
+            if (parseUInt(env[ENV_K9_TIMEOUT].mValue, &umbilicalTimeout_s))
+                terminate(
+                    errno,
+                    "Unable to parse umbilical timeout: %s",
+                    env[ENV_K9_TIMEOUT].mValue);
 
-                struct Duration umbilicalTimeout = Duration(
-                    NSECS(Seconds(umbilicalTimeout_s)));
+            struct Duration umbilicalTimeout = Duration(
+                NSECS(Seconds(umbilicalTimeout_s)));
 
-                watchUmbilical(env[ENV_K9_ADDR].mValue, &umbilicalTimeout);
-            }
-            else
-            {
-                /* This is a grandchild process. Any descendant
-                 * processes or programs do not need the parasite
-                 * library. */
+            if ( ! env[ENV_K9_PPID].mValue)
+                terminate(
+                    0,
+                    "No watchdog pid specified");
 
-                purgeEnv();
-                stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mValue);
-            }
+            pid_t watchdogPid;
+            if (parsePid(env[ENV_K9_PPID].mValue, &watchdogPid))
+                terminate(
+                    errno,
+                    "Unable to parse watchdog pid '%s'",
+                    env[ENV_K9_PPID].mValue);
+
+            watchUmbilical(env[ENV_K9_ADDR].mValue,
+                           watchdogPid,
+                           &umbilicalTimeout);
+        }
+        else
+        {
+            /* This is a grandchild process. Any descendant
+             * processes or programs do not need the parasite
+             * library. */
+
+            purgeEnv();
+            stripEnvPreload(&env[ENV_LD_PRELOAD], env[ENV_K9_SO].mValue);
         }
     }
 }
