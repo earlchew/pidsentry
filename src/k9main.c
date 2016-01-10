@@ -767,6 +767,11 @@ tetherThreadMain_(void *self_)
 {
     struct TetherThread *self = self_;
 
+    /* Do not open, or close files in this thread because it will race
+     * the main thread forking the child process. When forking the
+     * child process, it is important to control the file descriptors
+     * inherited by the chlid. */
+
     int srcFd     = STDIN_FILENO;
     int dstFd     = STDOUT_FILENO;
     int controlFd = self->mControlPipe.mRdFile->mFd;
@@ -857,8 +862,11 @@ tetherThreadMain_(void *self_)
             self->mNullPipe->mRdFile->mFd,
             srcFd);
 
-    if (closePipeReader(&self->mControlPipe))
-        terminate(errno, "Unable to close tether thread control");
+    /* Shut down the end of the control pipe controlled by this thread,
+     * without closing the control pipe file descriptor itself. */
+
+    if (dup2(self->mNullPipe->mRdFile->mFd, controlFd) != controlFd)
+        terminate(errno, "Unable to shut down tether thread control");
 
     debug(0, "tether emptied");
 
