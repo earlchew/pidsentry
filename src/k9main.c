@@ -358,6 +358,15 @@ forkChild(
                         "Unable to set K9_ADDR=%s", umbilicalAddr);
                 debug(0, "env - K9_ADDR=%s", umbilicalEnv);
 
+                const char *umbilicalTimeoutEnv =
+                    setEnvUInt("K9_TIMEOUT", gOptions.mTimeout.mUmbilical_s);
+                if ( ! umbilicalTimeoutEnv)
+                    terminate(
+                        errno,
+                        "Unable to set K9_TIMEOUT=%u",
+                        gOptions.mTimeout.mUmbilical_s);
+                debug(0, "env - K9_TIMEOUT=%s", umbilicalTimeoutEnv);
+
                 const char *sopathEnv = setEnvString("K9_SO", sK9soPath);
                 if ( ! sopathEnv)
                     terminate(
