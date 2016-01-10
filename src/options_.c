@@ -45,9 +45,10 @@
 
 struct Options gOptions;
 
-#define DEFAULT_TETHER_TIMEOUT_S 30
-#define DEFAULT_SIGNAL_PERIOD_S  30
-#define DEFAULT_DRAIN_TIMEOUT_S  30
+#define DEFAULT_TETHER_TIMEOUT_S    30
+#define DEFAULT_UMBILICAL_TIMEOUT_S 30
+#define DEFAULT_SIGNAL_PERIOD_S     30
+#define DEFAULT_DRAIN_TIMEOUT_S     30
 
 /* -------------------------------------------------------------------------- */
 static const char sUsage[] =
@@ -99,16 +100,18 @@ static const char sUsage[] =
 "      useful if the child will create its own family of processes\n"
 "      and the watchdog is not itself being supervised.\n"
 "      [Default: Do not place child in its own process group\n"
-"  --timeout T | -t T\n"
-"      Specify the timeout list T. The list T comprises up to three\n"
-"      comma separated values: U, V and W. Each of the values is either\n"
-"      empty or a non-negative integer. The value U, if present, is the\n"
-"      timeout in seconds for activity on the tether from the child process.\n"
-"      The value V, if present, is the delay in seconds between signals\n"
-"      when terminating the child process. The value W, if present, is the\n"
-"      value in seconds to wait for data to be drained from the tether to\n"
-"      stdout of the watchdog. [Default: U,V,W = "
+"  --timeout L | -t L\n"
+"      Specify the timeout list L. The list L comprises up to four\n"
+"      comma separated values: T, U, V and W. Each of the values is either\n"
+"      empty, in which case the value is not changed, or a non-negative\n"
+"      indicating a new value.\n"
+"        T  timeout in seconds for activity on the tether\n"
+"        U  timeout in seconds for activity on the umbilical\n"
+"        V  delay in seconds between signals to terminate the child\n"
+"        W  timeout in to drain data from the tether to stdout\n"
+"      [Default: T,U,V,W = "
     STRINGIFY(DEFAULT_TETHER_TIMEOUT_S)
+    STRINGIFY(DEFAULT_UMBILICAL_TIMEOUT_S)
     STRINGIFY(DEFAULT_SIGNAL_PERIOD_S)
     STRINGIFY(DEFAULT_DRAIN_TIMEOUT_S) "]\n"
 "  --untethered | -u\n"
