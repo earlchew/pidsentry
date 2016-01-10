@@ -307,7 +307,7 @@ runTests()
     [ x"$REPLY" = x$((128 + 9)) ]
 
     testCase 'Stopped child'
-    testOutput OK = '"$(k9 -i -d -t 2 -D 2 -- sh -c '\''kill -STOP $$'\'' | {
+    testOutput OK = '"$(k9 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
         read PARENT
         read CHILD
         sleep 8
@@ -372,7 +372,7 @@ runTests()
 
     testCase 'Fixed termination deadline'
     testOutput OK = '$(
-        k9 -T -i -dd -t 3 -D 4 -- sh -cx "
+        k9 -T -i -dd -t 3,,4 -- sh -cx "
             trap : 15
             while : ; do sleep 1 ; done" |
         {

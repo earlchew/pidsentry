@@ -61,9 +61,6 @@ static const char sUsage[] =
 "      When running with a tether, do not run the child with an umbilical\n"
 "      connection. An umbilical cord allows the child terminate immediately\n"
 "      the watchdog is absent. [Default: Use an umbilical cord]\n"
-"  --delay N | -D N\n"
-"      Specify the delay N in seconds between signals when terminating\n"
-"      the child process. [Default: " STRINGIFY(DEFAULT_EXIT_PACING_S) "]\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
@@ -126,7 +123,6 @@ static struct option sLongOptions[] =
 {
     { "cordless",   0, 0, 'c' },
     { "debug",      0, 0, 'd' },
-    { "delay",      1, 0, 'D' },
     { "fd",         1, 0, 'f' },
     { "identify",   0, 0, 'i' },
     { "library",    1, 0, 'L' },
@@ -268,12 +264,6 @@ processOptions(int argc, char **argv)
 
         case 'd':
             ++gOptions.mDebug;
-            break;
-
-        case 'D':
-            pidFileOnly = -1;
-            if (parseUInt(optarg, &gOptions.mTimeout.mSignal_s))
-                terminate(0, "Badly formed delay - '%s'", optarg);
             break;
 
         case 'f':
