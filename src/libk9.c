@@ -66,6 +66,7 @@ enum EnvKind
     ENV_K9_ADDR,
     ENV_K9_PID,
     ENV_K9_TIME,
+    ENV_K9_TIMEOUT,
     ENV_KINDS
 };
 
@@ -318,6 +319,7 @@ struct UmbilicalThread
     intmax_t                   mStack_[PTHREAD_STACK_MIN / sizeof(intmax_t)];
     intmax_t                  *mStack;
     struct UnixSocket          mSock;
+    struct Duration            mTimeout;
     int                        mStatus;
     int                       *mErrno;
 };
@@ -394,7 +396,12 @@ watchUmbilical_(void *aUmbilicalThread)
     {
         debug(0, "waiting on umbilical socket");
 
-        switch (waitFileReadReady(&umbilicalFile, 0))
+        const struct Duration *timeout =
+            umbilicalThread->mTimeout.duration.ns
+            ? &umbilicalThread->mTimeout
+            : 0;
+
+        switch (waitFileReadReady(&umbilicalFile, timeout))
         {
         default:
             break;
@@ -406,6 +413,15 @@ watchUmbilical_(void *aUmbilicalThread)
             break;
 
         case 0:
+
+            /* If nothing is available from the umbilical socket after
+             * the timeout period expires, then assume that the watchdog
+             * itself is stuck. */
+
+            terminate(
+                0,
+                "Umbilical connection timed out");
+
             continue;
         }
 
@@ -544,7 +560,7 @@ umbilicalMain_(void *aUmbilicalThread)
 
 /* -------------------------------------------------------------------------- */
 static void
-watchUmbilical(const char *aAddr)
+watchUmbilical(const char *aAddr, const struct Duration *aTimeout)
 {
     static struct UmbilicalThread umbilicalThread;
 
@@ -571,10 +587,11 @@ watchUmbilical(const char *aAddr)
         static const pthread_mutex_t mutexInit = PTHREAD_MUTEX_INITIALIZER;
         static const pthread_cond_t  condInit  = PTHREAD_COND_INITIALIZER;
 
-        umbilicalThread.mMutex = mutexInit;
-        umbilicalThread.mCond  = condInit;
-        umbilicalThread.mState = UMBILICAL_STOPPED;
-        umbilicalThread.mErrno = 0;
+        umbilicalThread.mTimeout = *aTimeout;
+        umbilicalThread.mMutex   = mutexInit;
+        umbilicalThread.mCond    = condInit;
+        umbilicalThread.mState   = UMBILICAL_STOPPED;
+        umbilicalThread.mErrno   = 0;
 
         if (connectUnixSocket(
                 &umbilicalThread.mSock, umbilicalAddr.sun_path, addrLen+1))
@@ -682,6 +699,7 @@ libk9_init(void)
         [ENV_K9_ADDR]    = { "K9_ADDR" },
         [ENV_K9_PID]     = { "K9_PID" },
         [ENV_K9_TIME]    = { "K9_TIME" },
+        [ENV_K9_TIMEOUT] = { "K9_TIMEOUT" },
     };
 
     initEnv(env, NUMBEROF(env), environ);
@@ -698,7 +716,22 @@ libk9_init(void)
                  * leave the environment variables in place to
                  * monitor the new program . */
 
-                watchUmbilical(env[ENV_K9_ADDR].mValue);
+                if ( ! env[ENV_K9_TIMEOUT].mValue)
+                    terminate(
+                        0,
+                        "No umbilical timeout specified");
+
+                unsigned umbilicalTimeout_s;
+                if (parseUInt(env[ENV_K9_TIMEOUT].mValue, &umbilicalTimeout_s))
+                    terminate(
+                        errno,
+                        "Unable to parse umbilical timeout: %s",
+                        env[ENV_K9_TIMEOUT].mValue);
+
+                struct Duration umbilicalTimeout = Duration(
+                    NSECS(Seconds(umbilicalTimeout_s)));
+
+                watchUmbilical(env[ENV_K9_ADDR].mValue, &umbilicalTimeout);
             }
             else
             {
