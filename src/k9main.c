@@ -648,7 +648,7 @@ polltethercontrol(void                        *self_,
     debug(0, "tether disconnection request received");
 
     self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
-        Duration(NSECS(Seconds(gOptions.mSignalPeriod_s)));
+        Duration(NSECS(Seconds(gOptions.mTimeout.mSignal_s)));
 }
 
 static void
@@ -1311,7 +1311,7 @@ pollFdTimerTether(void                        *self_,
         /* Once the timeout has expired, the timer can be cancelled because
          * there is no further need to run this state machine. */
 
-        debug(0, "timeout after %ds", gOptions.mTetherTimeout_s);
+        debug(0, "timeout after %ds", gOptions.mTimeout.mTether_s);
 
         aPollFdTimerAction->mPeriod = Duration(NanoSeconds(0));
 
@@ -1456,7 +1456,7 @@ monitorChild(struct ChildProcess *self)
     {
         .mKind   = POLL_FD_TIMER_TERMINATION,
         .mTimer  = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
-        .mPeriod = Duration(NSECS(Seconds(gOptions.mSignalPeriod_s))),
+        .mPeriod = Duration(NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
         .mPlan   = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
     };
 
@@ -1495,7 +1495,7 @@ monitorChild(struct ChildProcess *self)
         Duration(NanoSeconds(
             NSECS(Seconds(
                 gOptions.mTether
-                ? gOptions.mTetherTimeout_s : 0)).ns / timeoutCycles));
+                ? gOptions.mTimeout.mTether_s : 0)).ns / timeoutCycles));
 
     /* If requested to be aware when the watchdog becomes an orphan,
      * check if init(8) is the parent of this process. If this is

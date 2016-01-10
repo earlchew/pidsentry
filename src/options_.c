@@ -155,8 +155,8 @@ showUsage_(void)
 void
 initOptions()
 {
-    gOptions.mTetherTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
-    gOptions.mSignalPeriod_s  = DEFAULT_SIGNAL_PERIOD_S;
+    gOptions.mTimeout.mTether_s = DEFAULT_TETHER_TIMEOUT_S;
+    gOptions.mTimeout.mSignal_s = DEFAULT_SIGNAL_PERIOD_S;
 
     gOptions.mTetherFd = STDOUT_FILENO;
     gOptions.mTether   = &gOptions.mTetherFd;
@@ -192,8 +192,9 @@ processTimeoutOption(const char *aArg)
         goto Finally;
     }
 
-    if (parseUInt(argList->mArgv[0],
-                  &gOptions.mTetherTimeout_s) || 0 > gOptions.mTetherTimeout_s)
+    if (parseUInt(
+            argList->mArgv[0],
+            &gOptions.mTimeout.mTether_s) || 0 > gOptions.mTimeout.mTether_s)
     {
         errno = EINVAL;
         goto Finally;
@@ -251,9 +252,7 @@ processOptions(int argc, char **argv)
 
         case 'D':
             pidFileOnly = -1;
-            if (parseUInt(
-                    optarg,
-                    &gOptions.mSignalPeriod_s) || 0 >= gOptions.mSignalPeriod_s)
+            if (parseUInt(optarg, &gOptions.mTimeout.mSignal_s))
                 terminate(0, "Badly formed delay - '%s'", optarg);
             break;
 

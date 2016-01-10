@@ -42,8 +42,6 @@ struct Options
     const char *mName;
     pid_t       mPid;
     const char *mPidFile;
-    unsigned    mSignalPeriod_s;
-    unsigned    mTetherTimeout_s;
     int         mTetherFd;
     const int  *mTether;
     unsigned    mDebug;
@@ -53,6 +51,11 @@ struct Options
     bool        mQuiet;
     bool        mTest;
     bool        mOrphaned;
+    struct
+    {
+        unsigned mSignal_s;
+        unsigned mTether_s;
+    } mTimeout;
 };
 
 extern struct Options gOptions;
