@@ -660,8 +660,11 @@ polltethercontrol(void                        *self_,
 
     debug(0, "tether disconnection request received");
 
+    /* Note that gOptions.mTimeout.mDrain_s might be zero to indicate
+     * that the no drain timeout is to be enforced. */
+
     self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
-        Duration(NSECS(Seconds(gOptions.mTimeout.mSignal_s)));
+        Duration(NSECS(Seconds(gOptions.mTimeout.mDrain_s)));
 }
 
 static void
@@ -759,10 +762,13 @@ polltetherdisconnected(void                        *self_,
 {
     struct TetherPoll *self = self_;
 
-    self->mPollfds[TETHER_FD_CONTROL].events = 0;
+    /* Once the tether drain timeout expires, disable the timer, and
+     * force completion of the tether thread. */
 
     self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
         Duration(NanoSeconds(0));
+
+    self->mPollfds[TETHER_FD_CONTROL].events = 0;
 }
 
 static bool
@@ -1550,7 +1556,7 @@ monitorChild(struct ChildProcess *self)
         .mCycleLimit   = timeoutCycles,
     };
 
-    /* Note that a zero value for gOptions.mTetherTimeout_s will
+    /* Note that a zero value for gOptions.mTimeout.mTether_s will
      * disable the tether timeout in which case the watchdog will
      * supervise the child, but not impose any timing requirements
      * on activity on the tether. */
