@@ -398,12 +398,14 @@ watchUmbilical_(void *aUmbilicalThread)
     {
         debug(0, "waiting on umbilical socket");
 
-        const struct Duration *timeout =
-            umbilicalThread->mTimeout.duration.ns
-            ? &umbilicalThread->mTimeout
-            : 0;
+        struct Duration updatePeriod = Duration(
+            NanoSeconds(umbilicalThread->mTimeout.duration.ns / 2));
 
-        switch (waitFileReadReady(&umbilicalFile, timeout))
+        struct EventClockTime timeoutSince = eventclockTime();
+
+        switch (waitFileReadReady(
+                    &umbilicalFile,
+                    updatePeriod.duration.ns ? &updatePeriod : 0))
         {
         default:
             break;
@@ -419,6 +421,19 @@ watchUmbilical_(void *aUmbilicalThread)
             /* If nothing is available from the umbilical socket after
              * the timeout period expires, then assume that the watchdog
              * itself is stuck. */
+
+            if (ProcessStateRunning !=
+                findProcessState(umbilicalThread->mWatchdogPid))
+            {
+                debug(0, "umbilical timeout deferred");
+
+                timeoutSince = eventclockTime();
+            }
+
+            if (umbilicalThread->mTimeout.duration.ns >
+                lapTimeSince(&timeoutSince,
+                             Duration(NanoSeconds(0)), 0).duration.ns)
+                continue;
 
             terminate(
                 0,
