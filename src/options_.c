@@ -188,18 +188,36 @@ processTimeoutOption(const char *aArg)
         goto Finally;
     argList = &argList_;
 
-    if (1 > argList->mArgc || 3 < argList->mArgc)
+    if (1 > argList->mArgc || 4 < argList->mArgc)
     {
         errno = EINVAL;
         goto Finally;
     }
 
-    if (parseUInt(
-            argList->mArgv[0],
-            &gOptions.mTimeout.mTether_s) || 0 > gOptions.mTimeout.mTether_s)
-    {
-        errno = EINVAL;
+    if (parseUInt(argList->mArgv[0], &gOptions.mTimeout.mTether_s))
         goto Finally;
+
+    if (1 < argList->mArgc && *argList->mArgv[1])
+    {
+        if (parseUInt(argList->mArgv[1], &gOptions.mTimeout.mUmbilical_s))
+            goto Finally;
+    }
+
+    if (2 < argList->mArgc && *argList->mArgv[2])
+    {
+        if (parseUInt(argList->mArgv[2], &gOptions.mTimeout.mSignal_s))
+            goto Finally;
+        if (0 >= gOptions.mTimeout.mSignal_s)
+        {
+            errno = EINVAL;
+            goto Finally;
+        }
+    }
+
+    if (3 < argList->mArgc && *argList->mArgv[3])
+    {
+        if (parseUInt(argList->mArgv[3], &gOptions.mTimeout.mDrain_s))
+            goto Finally;
     }
 
     rc = 0;
