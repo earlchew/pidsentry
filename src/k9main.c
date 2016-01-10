@@ -581,6 +581,13 @@ closeChild(struct ChildProcess *self)
  * cannot be guaranteed to be non-blocking because it is inherited
  * when the watchdog process is started. */
 
+enum TetherThreadState
+{
+    TETHER_THREAD_STOPPED,
+    TETHER_THREAD_RUNNING,
+    TETHER_THREAD_STOPPING,
+};
+
 struct TetherThread
 {
     pthread_t    mThread;
@@ -592,6 +599,12 @@ struct TetherThread
         pthread_mutex_t       mMutex;
         struct EventClockTime mSince;
     } mActivity;
+
+    struct {
+        pthread_mutex_t        mMutex;
+        pthread_cond_t         mCond;
+        enum TetherThreadState mValue;
+    } mState;
 };
 
 enum TetherFdKind
@@ -767,6 +780,12 @@ tetherThreadMain_(void *self_)
 {
     struct TetherThread *self = self_;
 
+    {
+        lockMutex(&self->mState.mMutex);
+        self->mState.mValue = TETHER_THREAD_RUNNING;
+        unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
+    }
+
     /* Do not open, or close files in this thread because it will race
      * the main thread forking the child process. When forking the
      * child process, it is important to control the file descriptors
@@ -870,6 +889,15 @@ tetherThreadMain_(void *self_)
 
     debug(0, "tether emptied");
 
+    {
+        lockMutex(&self->mState.mMutex);
+
+        while (TETHER_THREAD_RUNNING == self->mState.mValue)
+            waitCond(&self->mState.mCond, &self->mState.mMutex);
+
+        unlockMutex(&self->mState.mMutex);
+    }
+
     return 0;
 }
 
@@ -882,8 +910,15 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
     if (errno = pthread_mutex_init(&self->mActivity.mMutex, 0))
         terminate(errno, "Unable to create activity mutex");
 
+    if (errno = pthread_mutex_init(&self->mState.mMutex, 0))
+        terminate(errno, "Unable to create state mutex");
+
+    if (errno = pthread_cond_init(&self->mState.mCond, 0))
+        terminate(errno, "Unable to create state condition");
+
     self->mNullPipe        = aNullPipe;
     self->mActivity.mSince = eventclockTime();
+    self->mState.mValue    = TETHER_THREAD_STOPPED;
     self->mFlushed         = false;
 
     {
@@ -896,6 +931,15 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 
         if (popProcessSigMask(&pushedSigMask))
             terminate(errno, "Unable to restore signal mask");
+    }
+
+    {
+        lockMutex(&self->mState.mMutex);
+
+        while (TETHER_THREAD_STOPPED == self->mState.mValue)
+            waitCond(&self->mState.mCond, &self->mState.mMutex);
+
+        unlockMutex(&self->mState.mMutex);
     }
 }
 
@@ -949,12 +993,27 @@ closeTetherThread(struct TetherThread *self)
 
     debug(0, "synchronising tether thread");
 
+    {
+        lockMutex(&self->mState.mMutex);
+
+        ensure(TETHER_THREAD_RUNNING == self->mState.mValue);
+        self->mState.mValue = TETHER_THREAD_STOPPING;
+
+        unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
+    }
+
     (void) joinThread(&self->mThread);
 
     if (unwatchProcessClock())
         terminate(
             errno,
             "Unable to reset synchronisation clock");
+
+    if (errno = pthread_cond_destroy(&self->mState.mCond))
+        terminate(errno, "Unable to destroy state condition");
+
+    if (errno = pthread_mutex_destroy(&self->mState.mMutex))
+        terminate(errno, "Unable to destroy state mutex");
 
     if (errno = pthread_mutex_destroy(&self->mActivity.mMutex))
         terminate(errno, "Unable to destroy activity mutex");
