@@ -769,6 +769,94 @@ findProcessStartTime(pid_t aPid)
 }
 
 /* -------------------------------------------------------------------------- */
+int
+findProcessState(pid_t aPid)
+{
+    int     rc      = -1;
+    int     statfd  = -1;
+    char   *statbuf = 0;
+    size_t  statlen = 0;
+    char   *statend = statbuf;
+
+    struct ProcessDirName processDirName;
+
+    initProcessDirName(&processDirName, aPid);
+
+    static const char sProcessStatFileNameFmt[] = "%s/stat";
+
+    char processStatFileName[strlen(processDirName.mDirName) +
+                             sizeof(sProcessStatFileNameFmt)];
+
+    sprintf(processStatFileName,
+            sProcessStatFileNameFmt, processDirName.mDirName);
+
+    statfd = open(processStatFileName, O_RDONLY);
+    if (-1 == statfd)
+        goto Finally;
+
+    while (1)
+    {
+        size_t buflen = statlen - (statend - statbuf);
+        if ( ! buflen)
+        {
+            statlen = 2 * statlen + 1;
+            char *buf = realloc(statbuf, statlen);
+            if ( ! buf)
+                goto Finally;
+            statend  = (statend - statbuf) + buf;
+            statbuf = buf;
+            continue;
+        }
+
+        ssize_t rdlen = read(statfd, statend, buflen);
+        if (-1 == rdlen)
+            goto Finally;
+        if ( ! rdlen)
+            break;
+        statend += rdlen;
+    }
+
+    for (char *bufptr = statend; bufptr != statbuf; --bufptr)
+    {
+        if (')' == bufptr[-1])
+        {
+            size_t statlen = statend - bufptr;
+
+            if (1 < statlen && ' ' == *bufptr)
+            {
+                switch (bufptr[1])
+                {
+                default:
+                    errno = ENOSYS;
+                    goto Finally;
+
+                case 'R': rc = ProcessStateRunning;  break;
+                case 'S': rc = ProcessStateSleeping; break;
+                case 'D': rc = ProcessStateWaiting;  break;
+                case 'Z': rc = ProcessStateZombie;   break;
+                case 'T': rc = ProcessStateStopped;  break;
+                case 't': rc = ProcessStateTraced;   break;
+                case 'X': rc = ProcessStateDead;     break;
+                }
+            }
+            break;
+        }
+    }
+
+Finally:
+
+    FINALLY
+    ({
+        if (-1 != statfd)
+            close(statfd);
+
+        free(statbuf);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 static int
 createProcessLock_(struct ProcessLock *self)
 {

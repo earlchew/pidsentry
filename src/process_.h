@@ -68,6 +68,17 @@ struct PushedProcessSigMask
     sigset_t mSigSet;
 };
 
+enum ProcessState
+{
+    ProcessStateRunning,
+    ProcessStateSleeping,
+    ProcessStateWaiting,
+    ProcessStateZombie,
+    ProcessStateStopped,
+    ProcessStateTraced,
+    ProcessStateDead
+};
+
 /* -------------------------------------------------------------------------- */
 struct ProcessStatusCodeText
 {
@@ -165,6 +176,9 @@ findProcessStartTime(pid_t aPid);
 
 struct ExitCode
 extractProcessExitStatus(int aStatus);
+
+int
+findProcessState(pid_t aPid);
 
 /* -------------------------------------------------------------------------- */
 int
