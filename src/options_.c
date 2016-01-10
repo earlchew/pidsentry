@@ -46,7 +46,8 @@
 struct Options gOptions;
 
 #define DEFAULT_TETHER_TIMEOUT_S 30
-#define DEFAULT_EXIT_PACING_S    30
+#define DEFAULT_SIGNAL_PERIOD_S  30
+#define DEFAULT_DRAIN_TIMEOUT_S  30
 
 /* -------------------------------------------------------------------------- */
 static const char sUsage[] =
@@ -98,10 +99,18 @@ static const char sUsage[] =
 "      useful if the child will create its own family of processes\n"
 "      and the watchdog is not itself being supervised.\n"
 "      [Default: Do not place child in its own process group\n"
-"  --timeout N | -t N\n"
-"      Specify the timeout N in seconds for activity on tether from\n"
-"      the child process. Set N to 0 to avoid imposing any timeout at\n"
-"      all. [Default: N = " STRINGIFY(DEFAULT_TETHER_TIMEOUT) "]\n"
+"  --timeout T | -t T\n"
+"      Specify the timeout list T. The list T comprises up to three\n"
+"      comma separated values: U, V and W. Each of the values is either\n"
+"      empty or a non-negative integer. The value U, if present, is the\n"
+"      timeout in seconds for activity on the tether from the child process.\n"
+"      The value V, if present, is the delay in seconds between signals\n"
+"      when terminating the child process. The value W, if present, is the\n"
+"      value in seconds to wait for data to be drained from the tether to\n"
+"      stdout of the watchdog. [Default: U,V,W = "
+    STRINGIFY(DEFAULT_TETHER_TIMEOUT_S)
+    STRINGIFY(DEFAULT_SIGNAL_PERIOD_S)
+    STRINGIFY(DEFAULT_DRAIN_TIMEOUT_S) "]\n"
 "  --untethered | -u\n"
 "      Run child process without a tether and only watch for termination.\n"
 "      [Default: Tether child process]\n"
@@ -143,10 +152,11 @@ showUsage_(void)
 void
 initOptions()
 {
-    gOptions.mTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
-    gOptions.mPacing_s  = DEFAULT_EXIT_PACING_S;
-    gOptions.mTetherFd  = STDOUT_FILENO;
-    gOptions.mTether    = &gOptions.mTetherFd;
+    gOptions.mTetherTimeout_s = DEFAULT_TETHER_TIMEOUT_S;
+    gOptions.mSignalPeriod_s  = DEFAULT_SIGNAL_PERIOD_S;
+
+    gOptions.mTetherFd = STDOUT_FILENO;
+    gOptions.mTether   = &gOptions.mTetherFd;
 
     if (getEnvUInt("K9_DEBUG", &gOptions.mDebug))
     {
@@ -158,6 +168,45 @@ initOptions()
                 "Unable to configure debug setting %s",
                 getenv("K9_DEBUG"));
     }
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+processTimeoutOption(const char *aArg)
+{
+    int rc = -1;
+
+    struct ParseArgList *argList = 0;
+
+    struct ParseArgList argList_;
+    if (createParseArgListCSV(&argList_, aArg))
+        goto Finally;
+    argList = &argList_;
+
+    if (1 > argList->mArgc || 3 < argList->mArgc)
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    if (parseInt(argList->mArgv[0],
+                 &gOptions.mTetherTimeout_s) || 0 > gOptions.mTetherTimeout_s)
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (argList)
+            closeParseArgList(argList);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -199,8 +248,9 @@ processOptions(int argc, char **argv)
 
         case 'D':
             pidFileOnly = -1;
-            if (parseUInt(optarg,
-                          &gOptions.mPacing_s) || 0 >= gOptions.mPacing_s)
+            if (parseUInt(
+                    optarg,
+                    &gOptions.mSignalPeriod_s) || 0 >= gOptions.mSignalPeriod_s)
                 terminate(0, "Badly formed delay - '%s'", optarg);
             break;
 
@@ -268,8 +318,7 @@ processOptions(int argc, char **argv)
 
         case 't':
             pidFileOnly = -1;
-            if (parseInt(optarg,
-                         &gOptions.mTimeout_s) || 0 > gOptions.mTimeout_s)
+            if (processTimeoutOption(optarg))
                 terminate(0, "Badly formed timeout - '%s'", optarg);
             break;
 

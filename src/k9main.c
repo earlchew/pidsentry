@@ -648,7 +648,7 @@ polltethercontrol(void                        *self_,
     debug(0, "tether disconnection request received");
 
     self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
-        Duration(NSECS(Seconds(gOptions.mPacing_s)));
+        Duration(NSECS(Seconds(gOptions.mSignalPeriod_s)));
 }
 
 static void
@@ -1311,7 +1311,7 @@ pollFdTimerTether(void                        *self_,
         /* Once the timeout has expired, the timer can be cancelled because
          * there is no further need to run this state machine. */
 
-        debug(0, "timeout after %ds", gOptions.mTimeout_s);
+        debug(0, "timeout after %ds", gOptions.mTetherTimeout_s);
 
         aPollFdTimerAction->mPeriod = Duration(NanoSeconds(0));
 
@@ -1456,19 +1456,19 @@ monitorChild(struct ChildProcess *self)
     {
         .mKind   = POLL_FD_TIMER_TERMINATION,
         .mTimer  = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
-        .mPeriod = Duration(NSECS(Seconds(gOptions.mPacing_s))),
+        .mPeriod = Duration(NSECS(Seconds(gOptions.mSignalPeriod_s))),
         .mPlan   = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
     };
 
     pollfdtimertermination.mTimer->mAction = pollFdTimerTermination;
     pollfdtimertermination.mTimer->mSelf   = &pollfdtimertermination;
 
-    int timeout_ms = gOptions.mTimeout_s * 1000;
+    int timeout_ms = gOptions.mTetherTimeout_s * 1000;
 
-    if (timeout_ms / 1000 != gOptions.mTimeout_s || 0 > timeout_ms)
+    if (timeout_ms / 1000 != gOptions.mTetherTimeout_s || 0 > timeout_ms)
         terminate(
             0,
-            "Invalid timeout value %d", gOptions.mTimeout_s);
+            "Invalid timeout value %d", gOptions.mTetherTimeout_s);
 
     if ( ! gOptions.mTether)
         timeout_ms = 0;
@@ -1503,7 +1503,7 @@ monitorChild(struct ChildProcess *self)
         Duration(NanoSeconds(
             NSECS(Seconds(
                 gOptions.mTether
-                ? gOptions.mTimeout_s : 0)).ns / timeoutCycles));
+                ? gOptions.mTetherTimeout_s : 0)).ns / timeoutCycles));
 
     /* If requested to be aware when the watchdog becomes an orphan,
      * check if init(8) is the parent of this process. If this is

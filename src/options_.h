@@ -42,8 +42,8 @@ struct Options
     const char *mName;
     pid_t       mPid;
     const char *mPidFile;
-    unsigned    mPacing_s;
-    int         mTimeout_s;
+    unsigned    mSignalPeriod_s;
+    int         mTetherTimeout_s;
     int         mTetherFd;
     const int  *mTether;
     unsigned    mDebug;
