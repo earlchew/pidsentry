@@ -105,10 +105,10 @@ static const char sUsage[] =
 "      comma separated values: T, U, V and W. Each of the values is either\n"
 "      empty, in which case the value is not changed, or a non-negative\n"
 "      indicating a new value.\n"
-"        T  timeout in seconds for activity on the tether\n"
-"        U  timeout in seconds for activity on the umbilical\n"
+"        T  timeout in seconds for activity on the tether, zero to disable\n"
+"        U  timeout in seconds for activity on the umbilical, zero to disable\n"
 "        V  delay in seconds between signals to terminate the child\n"
-"        W  timeout in to drain data from the tether to stdout\n"
+"        W  timeout in to drain data from the tether, zero to disable\n"
 "      [Default: T,U,V,W = "
     STRINGIFY(DEFAULT_TETHER_TIMEOUT_S)
     STRINGIFY(DEFAULT_UMBILICAL_TIMEOUT_S)
@@ -192,8 +192,8 @@ processTimeoutOption(const char *aArg)
         goto Finally;
     }
 
-    if (parseInt(argList->mArgv[0],
-                 &gOptions.mTetherTimeout_s) || 0 > gOptions.mTetherTimeout_s)
+    if (parseUInt(argList->mArgv[0],
+                  &gOptions.mTetherTimeout_s) || 0 > gOptions.mTetherTimeout_s)
     {
         errno = EINVAL;
         goto Finally;

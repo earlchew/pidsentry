@@ -43,7 +43,7 @@ struct Options
     pid_t       mPid;
     const char *mPidFile;
     unsigned    mSignalPeriod_s;
-    int         mTetherTimeout_s;
+    unsigned    mTetherTimeout_s;
     int         mTetherFd;
     const int  *mTether;
     unsigned    mDebug;

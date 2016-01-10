@@ -1463,19 +1463,6 @@ monitorChild(struct ChildProcess *self)
     pollfdtimertermination.mTimer->mAction = pollFdTimerTermination;
     pollfdtimertermination.mTimer->mSelf   = &pollfdtimertermination;
 
-    int timeout_ms = gOptions.mTetherTimeout_s * 1000;
-
-    if (timeout_ms / 1000 != gOptions.mTetherTimeout_s || 0 > timeout_ms)
-        terminate(
-            0,
-            "Invalid timeout value %d", gOptions.mTetherTimeout_s);
-
-    if ( ! gOptions.mTether)
-        timeout_ms = 0;
-
-    if ( ! timeout_ms)
-        timeout_ms = -1;
-
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
      * defer the timeout. */
@@ -1495,6 +1482,11 @@ monitorChild(struct ChildProcess *self)
         .mCycleCount   = 0,
         .mCycleLimit   = timeoutCycles,
     };
+
+    /* Note that a zero value for gOptions.mTetherTimeout_s will
+     * disable the tether timeout in which case the watchdog will
+     * supervise the child, but not impose any timing requirements
+     * on activity on the tether. */
 
     pollfdtether.mTetherTimer->mAction = pollFdTimerTether;
     pollfdtether.mTetherTimer->mSelf   = &pollfdtether;
