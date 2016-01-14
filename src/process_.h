@@ -70,13 +70,13 @@ struct PushedProcessSigMask
 
 enum ProcessState
 {
-    ProcessStateRunning,
-    ProcessStateSleeping,
-    ProcessStateWaiting,
-    ProcessStateZombie,
-    ProcessStateStopped,
-    ProcessStateTraced,
-    ProcessStateDead
+    ProcessStateRunning  = 'R',
+    ProcessStateSleeping = 'S',
+    ProcessStateWaiting  = 'W',
+    ProcessStateZombie   = 'Z',
+    ProcessStateStopped  = 'T',
+    ProcessStateTraced   = 'D',
+    ProcessStateDead     = 'X'
 };
 
 /* -------------------------------------------------------------------------- */
