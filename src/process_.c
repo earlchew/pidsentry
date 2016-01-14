@@ -63,6 +63,7 @@ struct ProcessLock
 
 static pthread_mutex_t     sProcessMutex    = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t     sProcessSigMutex = PTHREAD_MUTEX_INITIALIZER;
+static __thread sigset_t   sProcessSigMask;
 static struct ProcessLock  sProcessLock_[2];
 static struct ProcessLock *sProcessLock[2];
 static unsigned            sActiveProcessLock;
@@ -1067,6 +1068,13 @@ lockProcessLock(void)
         goto Finally;
     }
 
+    sigset_t filledset;
+    if (sigfillset(&filledset))
+        goto Finally;
+
+    if (pthread_sigmask(SIG_BLOCK, &filledset, &sProcessSigMask))
+        goto Finally;
+
     if (errno = pthread_mutex_lock(&sProcessMutex))
         goto Finally;
     locked = true;
@@ -1113,6 +1121,9 @@ unlockProcessLock(void)
         goto Finally;
 
     if (errno = pthread_mutex_unlock(&sProcessMutex))
+        goto Finally;
+
+    if (pthread_sigmask(SIG_SETMASK, &sProcessSigMask, 0))
         goto Finally;
 
     rc = 0;
