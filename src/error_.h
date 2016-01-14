@@ -40,8 +40,10 @@ extern "C" {
     debug_(__FILE__, __LINE__, ".")
 
 #define debug(aLevel, ...)                              \
-    if ((aLevel) < gOptions.mDebug)                     \
-        debug_(__FILE__, __LINE__, ## __VA_ARGS__)
+    do                                                  \
+        if ((aLevel) < gOptions.mDebug)                 \
+            debug_(__FILE__, __LINE__, ## __VA_ARGS__); \
+    while (0)
 
 void
 debug_(
