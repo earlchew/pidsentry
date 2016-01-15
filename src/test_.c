@@ -53,9 +53,11 @@ testAction(void)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+bool
 testSleep(void)
 {
+    bool slept = false;
+
     /* Unless running valgrind, if test mode has been enabled, choose to
      * sleep a short time a small percentage of the time. Runs under
      * valgrind are already slow enough to provide opportunities to
@@ -64,8 +66,13 @@ testSleep(void)
     if ( ! RUNNING_ON_VALGRIND)
     {
         if (testAction())
+        {
+            slept = true;
             usleep(random() % (500 * 1000));
+        }
     }
+
+    return slept;
 }
 
 /* -------------------------------------------------------------------------- */
