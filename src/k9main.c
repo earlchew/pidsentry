@@ -81,6 +81,12 @@ static const char sDevNullPath[] = DEVNULLPATH;
 static const char *sK9soPath;
 
 /* -------------------------------------------------------------------------- */
+struct Type
+{
+    const char *mName;
+};
+
+/* -------------------------------------------------------------------------- */
 enum PollFdKind
 {
     POLL_FD_TETHER,
@@ -1083,8 +1089,12 @@ closeTetherThread(struct TetherThread *self)
  * termination.
  */
 
+static const struct Type sChildMonitorType = { "ChildMonitor" };
+
 struct ChildMonitor
 {
+    const struct Type *mType;
+
     pid_t mChildPid;
 
     struct Pipe         mNullPipe;
@@ -1624,6 +1634,8 @@ monitorChild(struct ChildProcess *self)
 
     struct ChildMonitor childmonitor =
     {
+        .mType = &sChildMonitorType,
+
         .mChildPid = self->mPid,
 
         .mPollFdTimerActions =
