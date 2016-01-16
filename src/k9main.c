@@ -72,6 +72,7 @@
  * Check for useless #include in *.c
  * Fix logging in parasite printing null for program name
  * Fix vgcore being dropped everywhere
+ * Don't use disconnction timer to indicate child has exited
  */
 
 #define DEVNULLPATH "/dev/null"
@@ -1091,6 +1092,12 @@ closeTetherThread(struct TetherThread *self)
 
 static const struct Type sChildMonitorType = { "ChildMonitor" };
 
+struct ChildSignalPlan
+{
+    pid_t mPid;
+    int   mSig;
+};
+
 struct ChildMonitor
 {
     const struct Type *mType;
@@ -1099,6 +1106,12 @@ struct ChildMonitor
 
     struct Pipe         mNullPipe;
     struct TetherThread mTetherThread;
+
+    struct
+    {
+        const struct ChildSignalPlan *mSignalPlan;
+        struct Duration               mSignalPeriod;
+    } mTermination;
 
     struct pollfd            mPollFds[POLL_FD_KINDS];
     struct PollFdAction      mPollFdActions[POLL_FD_KINDS];
@@ -1373,38 +1386,27 @@ pollFdTimerUmbilical(void                        *self_,
  * that the child terminate by sending it SIGTERM, and if the child
  * does not terminate, resort to sending SIGKILL. */
 
-struct ChildSignalPlan
-{
-    pid_t mPid;
-    int   mSig;
-};
-
-struct PollFdTimerTermination
-{
-    enum PollFdTimerKind mKind;
-
-    struct PollFdTimerAction       *mTerminationTimer;
-    const struct PollFdTimerAction *mDisconnectionTimer;
-
-    struct Duration               mPeriod;
-    const struct ChildSignalPlan *mPlan;
-};
-
 static void
-activateFdTimerTermination(struct PollFdTimerTermination *self,
-                           const struct EventClockTime   *aPollTime)
+activateFdTimerTermination(struct ChildMonitor         *self,
+                           const struct EventClockTime *aPollTime)
 {
-    if (self->mDisconnectionTimer->mPeriod.duration.ns)
+    struct PollFdTimerAction *terminationTimer =
+        &self->mPollFdTimerActions[POLL_FD_TIMER_TERMINATION];
+
+    struct PollFdTimerAction *disconnectionTimer =
+        &self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION];
+
+    if (disconnectionTimer->mPeriod.duration.ns)
         debug(1, "child already exited");
-    else if ( ! self->mTerminationTimer->mSince.eventclock.ns)
+    else if ( ! terminationTimer->mSince.eventclock.ns)
     {
         debug(1, "activating termination timer");
 
-        self->mTerminationTimer->mPeriod = self->mPeriod;
+        terminationTimer->mPeriod =
+            self->mTermination.mSignalPeriod;
 
-        lapTimeSkip(&self->mTerminationTimer->mSince,
-                    self->mTerminationTimer->mPeriod,
-                    aPollTime);
+        lapTimeSkip(
+            &terminationTimer->mSince, terminationTimer->mPeriod, aPollTime);
     }
 }
 
@@ -1413,19 +1415,17 @@ pollFdTimerTermination(void                        *self_,
                        struct PollFdTimerAction    *aPollFdTimerAction_unused,
                        const struct EventClockTime *aPollTime)
 {
-    struct PollFdTimerTermination *self = self_;
+    struct ChildMonitor *self = self_;
 
-    pid_t pidNum = self->mPlan->mPid;
-    int   sigNum = self->mPlan->mSig;
+    ensure(&sChildMonitorType == self->mType);
 
-    if (self->mPlan[1].mPid)
-        ++self->mPlan;
+    pid_t pidNum = self->mTermination.mSignalPlan->mPid;
+    int   sigNum = self->mTermination.mSignalPlan->mSig;
 
-    warn(
-        0,
-        "Killing child pid %jd with signal %d",
-        (intmax_t) pidNum,
-        sigNum);
+    if (self->mTermination.mSignalPlan[1].mPid)
+        ++self->mTermination.mSignalPlan;
+
+    warn(0, "Killing child pid %jd with signal %d", (intmax_t) pidNum, sigNum);
 
     if (kill(pidNum, sigNum) && ESRCH != errno)
         terminate(
@@ -1448,10 +1448,11 @@ struct PollFdTether
 {
     enum PollFdKind mKind;
 
+    struct ChildMonitor *mMonitor;
+
     struct PollFdTimerAction       *mTetherTimer;
     struct pollfd                  *mPollFds;
     struct TetherThread            *mThread;
-    struct PollFdTimerTermination  *mTermination;
     struct Pipe                    *mNullPipe;
 
     pid_t    mChildPid;
@@ -1558,7 +1559,7 @@ pollFdTimerTether(void                        *self_,
 
         self->mTetherTimer->mPeriod = Duration(NanoSeconds(0));
 
-        activateFdTimerTermination(self->mTermination, aPollTime);
+        activateFdTimerTermination(self->mMonitor, aPollTime);
 
     } while (0);
 }
@@ -1569,7 +1570,6 @@ struct PollFdTimerOrphan
     enum PollFdTimerKind mKind;
 
     struct ChildMonitor           *mMonitor;
-    struct PollFdTimerTermination *mTermination;
 };
 
 void
@@ -1597,7 +1597,7 @@ pollFdTimerOrphan(void                        *self_,
         self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_ORPHAN].mPeriod =
             Duration(NanoSeconds(0));
 
-        activateFdTimerTermination(self->mTermination, aPollTime);
+        activateFdTimerTermination(self->mMonitor, aPollTime);
     }
 }
 
@@ -1622,18 +1622,46 @@ monitorChild(struct ChildProcess *self)
 {
     debug(0, "start monitoring child");
 
+    struct ChildSignalPlan sharedPgrpPlan[] =
+    {
+        { self->mPid, SIGTERM },
+        { self->mPid, SIGKILL },
+        { 0 }
+    };
+
+    struct ChildSignalPlan ownPgrpPlan[] =
+    {
+        {  self->mPid, SIGTERM },
+        { -self->mPid, SIGTERM },
+        { -self->mPid, SIGKILL },
+        { 0 }
+    };
+
     struct ChildMonitor childmonitor =
     {
         .mType = &sChildMonitorType,
 
         .mChildPid = self->mPid,
 
+        .mTermination =
+        {
+            .mSignalPlan = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
+            .mSignalPeriod = Duration(
+                NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
+        },
+
         .mPollFdTimerActions =
         {
             [POLL_FD_TIMER_TETHER]        = { 0 },
             [POLL_FD_TIMER_UMBILICAL]     = { 0 },
             [POLL_FD_TIMER_ORPHAN]        = { 0 },
-            [POLL_FD_TIMER_TERMINATION]   = { 0 },
+            [POLL_FD_TIMER_TERMINATION]   =
+            {
+                .mAction = pollFdTimerTermination,
+                .mSelf   = &childmonitor,
+                .mSince  = EVENTCLOCKTIME_INIT,
+                .mPeriod = Duration(NanoSeconds(0)),
+            },
             [POLL_FD_TIMER_DISCONNECTION] =
             {
                 .mAction = pollFdTimerChild,
@@ -1679,35 +1707,6 @@ monitorChild(struct ChildProcess *self)
     pollfdumbilical.mUmbilicalTimer->mSince  = EVENTCLOCKTIME_INIT;
     pollfdumbilical.mUmbilicalTimer->mPeriod = Duration(NanoSeconds(0));
 
-    struct ChildSignalPlan sharedPgrpPlan[] =
-    {
-        { self->mPid, SIGTERM },
-        { self->mPid, SIGKILL },
-        { 0 }
-    };
-
-    struct ChildSignalPlan ownPgrpPlan[] =
-    {
-        {  self->mPid, SIGTERM },
-        { -self->mPid, SIGTERM },
-        { -self->mPid, SIGKILL },
-        { 0 }
-    };
-
-    struct PollFdTimerTermination pollfdtimertermination =
-    {
-        .mKind = POLL_FD_TIMER_TERMINATION,
-
-        .mTerminationTimer   = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
-        .mDisconnectionTimer = &pollfdtimeractions[POLL_FD_TIMER_DISCONNECTION],
-
-        .mPeriod = Duration(NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
-        .mPlan   = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
-    };
-
-    pollfdtimertermination.mTerminationTimer->mAction = pollFdTimerTermination;
-    pollfdtimertermination.mTerminationTimer->mSelf   = &pollfdtimertermination;
-
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
      * defer the timeout. */
@@ -1718,10 +1717,11 @@ monitorChild(struct ChildProcess *self)
     {
         .mKind = POLL_FD_TETHER,
 
+        .mMonitor = &childmonitor,
+
         .mTetherTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
 
         .mThread      = &childmonitor.mTetherThread,
-        .mTermination = &pollfdtimertermination,
         .mNullPipe    = &childmonitor.mNullPipe,
 
         .mChildPid     = self->mPid,
@@ -1753,7 +1753,6 @@ monitorChild(struct ChildProcess *self)
         .mKind = POLL_FD_TIMER_ORPHAN,
 
         .mMonitor     = &childmonitor,
-        .mTermination = &pollfdtimertermination,
     };
 
     if (gOptions.mOrphaned)
