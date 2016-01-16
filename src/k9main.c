@@ -1113,6 +1113,13 @@ struct ChildMonitor
         struct Duration               mSignalPeriod;
     } mTermination;
 
+    struct
+    {
+        struct UnixSocket *mSocket;
+        struct UnixSocket  mPeer_;
+        struct UnixSocket *mPeer;
+    } mUmbilical;
+
     struct pollfd            mPollFds[POLL_FD_KINDS];
     struct PollFdAction      mPollFdActions[POLL_FD_KINDS];
     struct PollFdTimerAction mPollFdTimerActions[POLL_FD_TIMER_KINDS];
@@ -1206,18 +1213,6 @@ pollFdTimerChild(void                        *self_,
  * giving the watchdog a chance to clean up, or if the watchdog
  * fails catatrophically. */
 
-struct PollFdUmbilical
-{
-    enum PollFdKind                 mKind;
-    pid_t                           mChildPid;
-    struct pollfd                  *mPollFds;
-    struct PollFdTimerAction       *mUmbilicalTimer;
-    const struct PollFdTimerAction *mDisconnectionTimer;
-    struct UnixSocket              *mUmbilicalSocket;
-    struct UnixSocket               mUmbilicalPeer_;
-    struct UnixSocket              *mUmbilicalPeer;
-};
-
 static int
 pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
                        const struct UnixSocket *aServer,
@@ -1276,9 +1271,9 @@ pollFdUmbilical(void                        *self_,
                 struct pollfd               *aPollFds_unused,
                 const struct EventClockTime *aPollTime)
 {
-    struct PollFdUmbilical *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_UMBILICAL == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     /* Process an inbound connection from the child process on its
      * umbilical socket. The parasite watchdog library attached to the
@@ -1294,45 +1289,64 @@ pollFdUmbilical(void                        *self_,
 
     if (self->mPollFds[POLL_FD_UMBILICAL].revents & POLLIN)
     {
-        if (closeUnixSocket(self->mUmbilicalPeer))
+        if (closeUnixSocket(self->mUmbilical.mPeer))
             terminate(
                 errno,
                 "Unable to close umbilical peer");
-        self->mUmbilicalPeer = 0;
+        self->mUmbilical.mPeer = 0;
 
-        self->mUmbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+        self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mPeriod =
+            Duration(NanoSeconds(0));
 
-        if (pollFdUmbilicalAccept_(&self->mUmbilicalPeer_,
-                                   self->mUmbilicalSocket,
+        if (pollFdUmbilicalAccept_(&self->mUmbilical.mPeer_,
+                                   self->mUmbilical.mSocket,
                                    self->mChildPid))
             terminate(
                 errno,
                 "Unable to accept connection from umbilical peer");
 
-        self->mUmbilicalPeer = &self->mUmbilicalPeer_;
+        self->mUmbilical.mPeer = &self->mUmbilical.mPeer_;
 
-        if (self->mDisconnectionTimer->mPeriod.duration.ns)
+        struct PollFdTimerAction *disconnectionTimer =
+            &self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION];
+
+        if (disconnectionTimer->mPeriod.duration.ns)
             debug(1, "child already exited");
         else
         {
+            struct PollFdTimerAction *umbilicalTimer =
+                &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+
             debug(1, "activating umbilical timer");
 
-            self->mUmbilicalTimer->mPeriod =
+            umbilicalTimer->mPeriod =
                 Duration(NanoSeconds(NSECS(
                     Seconds(gOptions.mTimeout.mUmbilical_s)).ns / 2));
 
             lapTimeSkip(
-                &self->mUmbilicalTimer->mSince,
-                self->mUmbilicalTimer->mPeriod,
+                &umbilicalTimer->mSince,
+                umbilicalTimer->mPeriod,
                 aPollTime);
         }
     }
 }
 
 static int
-closeFdUmbilical(struct PollFdUmbilical *self)
+closeFdUmbilical(struct ChildMonitor *self)
 {
-    return closeUnixSocket(self->mUmbilicalPeer);
+    int rc = -1;
+
+    if (closeUnixSocket(self->mUmbilical.mPeer))
+        goto Finally;
+    self->mUmbilical.mPeer = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static void
@@ -1340,15 +1354,16 @@ pollFdTimerUmbilical(void                        *self_,
                      struct PollFdTimerAction    *aPollFdTimerAction_unused,
                      const struct EventClockTime *aPollTime)
 {
-    struct PollFdUmbilical *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_UMBILICAL == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     char buf = 0;
 
     while (1)
     {
-        ssize_t wrlen = sendUnixSocket(self->mUmbilicalPeer, &buf, sizeof(buf));
+        ssize_t wrlen = sendUnixSocket(
+            self->mUmbilical.mPeer, &buf, sizeof(buf));
 
         if (-1 != wrlen)
             debug(1, "wrote to umbilical result %zd", wrlen);
@@ -1367,7 +1382,9 @@ pollFdTimerUmbilical(void                        *self_,
                       "umbilical connection closed by pid %zd",
                       self->mChildPid);
 
-                self->mUmbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+                struct PollFdTimerAction *umbilicalTimer =
+                    &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+                umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
                 break;
 
             case EWOULDBLOCK:
@@ -1643,10 +1660,22 @@ monitorChild(struct ChildProcess *self)
                 NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
         },
 
+        .mUmbilical =
+        {
+            .mSocket = &self->mUmbilicalSocket,
+            .mPeer   = 0,
+        },
+
         .mPollFdTimerActions =
         {
             [POLL_FD_TIMER_TETHER]        = { 0 },
-            [POLL_FD_TIMER_UMBILICAL]     = { 0 },
+            [POLL_FD_TIMER_UMBILICAL]     =
+            {
+                .mAction = pollFdTimerUmbilical,
+                .mSelf   = &childmonitor,
+                .mSince  = EVENTCLOCKTIME_INIT,
+                .mPeriod = Duration(NanoSeconds(0)),
+            },
 
             [POLL_FD_TIMER_ORPHAN]        =
             {
@@ -1696,21 +1725,6 @@ monitorChild(struct ChildProcess *self)
      * file descriptors. */
 
     createTetherThread(&childmonitor.mTetherThread, &childmonitor.mNullPipe);
-
-    struct PollFdUmbilical pollfdumbilical =
-    {
-        .mKind               = POLL_FD_UMBILICAL,
-        .mChildPid           = self->mPid,
-        .mDisconnectionTimer = &pollfdtimeractions[POLL_FD_TIMER_DISCONNECTION],
-        .mUmbilicalTimer     = &pollfdtimeractions[POLL_FD_TIMER_UMBILICAL],
-        .mUmbilicalSocket    = &self->mUmbilicalSocket,
-        .mUmbilicalPeer      = 0,
-    };
-
-    pollfdumbilical.mUmbilicalTimer->mAction = pollFdTimerUmbilical;
-    pollfdumbilical.mUmbilicalTimer->mSelf   = &pollfdumbilical;
-    pollfdumbilical.mUmbilicalTimer->mSince  = EVENTCLOCKTIME_INIT;
-    pollfdumbilical.mUmbilicalTimer->mPeriod = Duration(NanoSeconds(0));
 
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
@@ -1771,7 +1785,6 @@ monitorChild(struct ChildProcess *self)
             .fd     = pollfdtether.mThread->mControlPipe.mWrFile->mFd,
             .events = POLL_DISCONNECTEVENT, };
 
-    pollfdumbilical.mPollFds = pollfds;
     pollfdtether.mPollFds    = pollfds;
 
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
@@ -1799,7 +1812,7 @@ monitorChild(struct ChildProcess *self)
         pollFdChild,     &childmonitor };
 
     pollfdactions[POLL_FD_UMBILICAL] = (struct PollFdAction) {
-        pollFdUmbilical, &pollfdumbilical };
+        pollFdUmbilical, &childmonitor };
 
     pollfdactions[POLL_FD_TETHER] = (struct PollFdAction) {
         pollFdTether,    &pollfdtether };
@@ -1824,7 +1837,7 @@ monitorChild(struct ChildProcess *self)
             errno,
             "Unable to close polling loop");
 
-    if (closeFdUmbilical(&pollfdumbilical))
+    if (closeFdUmbilical(&childmonitor))
         terminate(
             errno,
             "Unable to close umbilical peer");
