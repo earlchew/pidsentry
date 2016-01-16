@@ -54,13 +54,14 @@ createUnixSocket(struct UnixSocket *self,
                  unsigned           aQueueLen);
 
 int
-acceptUnixSocket(struct UnixSocket *self,
-                 const struct UnixSocket *aServer);
+acceptUnixSocket(struct UnixSocket       *self,
+                 const struct UnixSocket *aServer,
+                 unsigned                 aFlags);
 
 int
 connectUnixSocket(struct UnixSocket *self,
-                 const char *aName,
-                 size_t aNameLen);
+                 const char         *aName,
+                 size_t              aNameLen);
 
 int
 closeUnixSocket(struct UnixSocket *self);

@@ -33,6 +33,7 @@
 #include "fd_.h"
 #include "timekeeping_.h"
 #include "test_.h"
+#include "process_.h"
 
 #include <stdlib.h>
 #include <errno.h>
@@ -43,6 +44,8 @@
 #include <sys/poll.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+
+#include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
 static struct File sFileList =
@@ -301,9 +304,63 @@ connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
 
 /* -------------------------------------------------------------------------- */
 int
-acceptFileSocket(struct File *self)
+acceptFileSocket(struct File *self, unsigned aFlags)
 {
-    return accept(self->mFd, 0, 0);
+    int rc      = -1;
+    int flags   = 0;
+    bool locked = false;
+
+    switch (aFlags)
+    {
+    default:
+        errno = EINVAL;
+        goto Finally;
+
+    case 0:                                                            break;
+    case O_NONBLOCK | O_CLOEXEC: flags = SOCK_NONBLOCK | SOCK_CLOEXEC; break;
+    case O_NONBLOCK:             flags = SOCK_NONBLOCK;                break;
+    case O_CLOEXEC:              flags = SOCK_CLOEXEC;                 break;
+    }
+
+    if ( ! RUNNING_ON_VALGRIND)
+        rc = accept4(self->mFd, 0, 0, flags);
+    else
+    {
+        if (lockProcessLock())
+            goto Finally;
+        locked = false;
+
+        rc = accept(self->mFd, 0, 0);
+        if (-1 == rc)
+            goto Finally;
+
+        if (aFlags & O_NONBLOCK)
+        {
+            if (nonblockingFd(rc))
+                goto Finally;
+        }
+
+        if (aFlags & O_CLOEXEC)
+        {
+            if (closeFdOnExec(rc, O_CLOEXEC))
+                goto Finally;
+        }
+    }
+
+Finally:
+
+    FINALLY
+    ({
+        if (locked)
+        {
+            if (unlockProcessLock())
+                terminate(
+                    errno,
+                    "Unable to release process lock");
+        }
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

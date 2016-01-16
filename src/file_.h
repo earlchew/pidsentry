@@ -110,7 +110,7 @@ int
 connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
 
 int
-acceptFileSocket(struct File *self);
+acceptFileSocket(struct File *self, unsigned aFlags);
 
 int
 listenFileSocket(struct File *self, unsigned aQueueLen);
