@@ -70,6 +70,7 @@ struct PushedProcessSigMask
 
 enum ProcessState
 {
+    ProcessStateError    = -1,
     ProcessStateRunning  = 'R',
     ProcessStateSleeping = 'S',
     ProcessStateWaiting  = 'W',
@@ -79,15 +80,16 @@ enum ProcessState
     ProcessStateDead     = 'X'
 };
 
-/* -------------------------------------------------------------------------- */
-struct ProcessStatusCodeText
+enum ProcessStatus
 {
-    char mText[sizeof(((siginfo_t *) 0)->si_code) * CHAR_BIT + sizeof("-")];
+    ProcessStatusError     = -1,
+    ProcessStatusRunning   = 'r',
+    ProcessStatusExited    = 'x',
+    ProcessStatusKilled    = 'k',
+    ProcessStatusDumped    = 'd',
+    ProcessStatusStopped   = 's',
+    ProcessStatusTrapped   = 't',
 };
-
-const char *
-createProcessStatusCodeText(
-    struct ProcessStatusCodeText *aStatusCodeText, const siginfo_t *aSigInfo);
 
 /* -------------------------------------------------------------------------- */
 #define PROCESS_DIRNAME_FMT_  "/proc/%jd"
@@ -152,6 +154,9 @@ forkProcess(enum ForkProcessOption aOption);
 int
 reapProcess(pid_t aPid, int *aStatus);
 
+enum ProcessStatus
+monitorProcess(pid_t aPid);
+
 /* -------------------------------------------------------------------------- */
 int
 lockProcessLock(void);
@@ -177,7 +182,7 @@ findProcessStartTime(pid_t aPid);
 struct ExitCode
 extractProcessExitStatus(int aStatus);
 
-int
+enum ProcessState
 findProcessState(pid_t aPid);
 
 /* -------------------------------------------------------------------------- */

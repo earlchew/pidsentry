@@ -76,26 +76,6 @@ static const char                  *sProgramName;
 static struct MonotonicTime         sTimeBase;
 
 /* -------------------------------------------------------------------------- */
-const char *
-createProcessStatusCodeText(
-    struct ProcessStatusCodeText *aStatusCodeText, const siginfo_t *aSigInfo)
-{
-    switch (aSigInfo->si_code)
-    {
-    default:
-        sprintf(aStatusCodeText->mText, "%d", (int) aSigInfo->si_code);
-        return aStatusCodeText->mText;
-
-    case CLD_STOPPED:   return "stopped";
-    case CLD_EXITED:    return "exited";
-    case CLD_KILLED:    return "killed";
-    case CLD_DUMPED:    return "dumped";
-    case CLD_TRAPPED:   return "trapped";
-    case CLD_CONTINUED: return "continued";
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 static sigset_t
 filledSigSet(void)
 {
@@ -770,10 +750,11 @@ findProcessStartTime(pid_t aPid)
 }
 
 /* -------------------------------------------------------------------------- */
-int
+enum ProcessState
 findProcessState(pid_t aPid)
 {
-    int     rc      = -1;
+    enum ProcessState rc = ProcessStateError;
+
     int     statfd  = -1;
     char   *statbuf = 0;
     size_t  statlen = 0;
@@ -1165,6 +1146,45 @@ reapProcess(pid_t aPid, int *aStatus)
     } while (pid != aPid);
 
     rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+enum ProcessStatus
+monitorProcess(pid_t aPid)
+{
+    enum ProcessStatus rc = ProcessStatusError;
+
+    siginfo_t siginfo;
+
+    siginfo.si_pid = 0;
+    if (waitid(P_PID, aPid, &siginfo,
+               WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT))
+        goto Finally;
+
+    if (siginfo.si_pid != aPid)
+        rc = ProcessStatusRunning;
+    else
+    {
+        switch (siginfo.si_code)
+        {
+        default:
+            errno = EINVAL;
+            goto Finally;
+
+        case CLD_EXITED:    rc = ProcessStatusExited;  break;
+        case CLD_KILLED:    rc = ProcessStatusKilled;  break;
+        case CLD_DUMPED:    rc = ProcessStatusDumped;  break;
+        case CLD_STOPPED:   rc = ProcessStatusStopped; break;
+        case CLD_TRAPPED:   rc = ProcessStatusTrapped; break;
+        case CLD_CONTINUED: rc = ProcessStatusRunning; break;
+        }
+    }
 
 Finally:
 

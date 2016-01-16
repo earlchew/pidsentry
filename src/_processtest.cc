@@ -35,9 +35,26 @@
 
 TEST(ProcessTest, ProcessState)
 {
-    EXPECT_EQ(-1, findProcessState(-1));
+    EXPECT_EQ(ProcessStateError, findProcessState(-1));
 
     EXPECT_EQ(ProcessStateRunning, findProcessState(getpid()));
+}
+
+TEST(ProcessTest, ProcessStatus)
+{
+    EXPECT_EQ(ProcessStatusError, monitorProcess(getpid()));
+
+    pid_t childpid = fork();
+
+    EXPECT_NE(-1, childpid);
+
+    if ( ! childpid)
+        _exit(0);
+
+    while (ProcessStatusRunning == monitorProcess(childpid))
+        continue;
+
+    EXPECT_EQ(ProcessStatusExited, monitorProcess(childpid));
 }
 
 #include "../googletest/src/gtest_main.cc"
