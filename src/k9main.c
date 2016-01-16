@@ -1120,6 +1120,12 @@ struct ChildMonitor
         struct UnixSocket *mPeer;
     } mUmbilical;
 
+    struct
+    {
+        unsigned mCycleCount;       /* Current number of cycles */
+        unsigned mCycleLimit;       /* Cycles before triggering */
+    } mTether;
+
     struct pollfd            mPollFds[POLL_FD_KINDS];
     struct PollFdAction      mPollFdActions[POLL_FD_KINDS];
     struct PollFdTimerAction mPollFdTimerActions[POLL_FD_TIMER_KINDS];
@@ -1461,30 +1467,13 @@ pollFdTimerTermination(void                        *self_,
  * occurs in a separate thread since it might block. The main thread
  * is non-blocking and waits for the tether to be closed. */
 
-struct PollFdTether
-{
-    enum PollFdKind mKind;
-
-    struct ChildMonitor *mMonitor;
-
-    struct PollFdTimerAction       *mTetherTimer;
-    struct pollfd                  *mPollFds;
-    struct TetherThread            *mThread;
-    struct Pipe                    *mNullPipe;
-
-    pid_t    mChildPid;
-    unsigned mCycleCount;       /* Current number of cycles */
-    unsigned mCycleLimit;       /* Cycles before triggering */
-};
-
 static void
-disconnectPollFdTether(struct PollFdTether *self,
-                       struct pollfd       *aPollFds)
+disconnectPollFdTether(struct ChildMonitor *self)
 {
     debug(0, "disconnect tether control");
 
-    aPollFds[POLL_FD_TETHER].fd     = self->mNullPipe->mRdFile->mFd;
-    aPollFds[POLL_FD_TETHER].events = 0;
+    self->mPollFds[POLL_FD_TETHER].fd     = self->mNullPipe.mRdFile->mFd;
+    self->mPollFds[POLL_FD_TETHER].events = 0;
 }
 
 static void
@@ -1492,14 +1481,14 @@ pollFdTether(void                        *self_,
              struct pollfd               *aPollFds_unused,
              const struct EventClockTime *aPollTime)
 {
-    struct PollFdTether *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_TETHER == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     /* The tether thread control pipe will be closed when the tether
      * is shut down between the child process and watchdog, */
 
-    disconnectPollFdTether(self, self->mPollFds);
+    disconnectPollFdTether(self);
 }
 
 static void
@@ -1507,9 +1496,9 @@ pollFdTimerTether(void                        *self_,
                   struct PollFdTimerAction    *aPollFdTimerAction_unused,
                   const struct EventClockTime *aPollTime)
 {
-    struct PollFdTether *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_TETHER == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     /* The tether timer is only active if there is a tether and it was
      * configured with a timeout. The timeout expires if there was
@@ -1518,6 +1507,9 @@ pollFdTimerTether(void                        *self_,
 
     do
     {
+        struct PollFdTimerAction *tetherTimer =
+            &self->mPollFdTimerActions[POLL_FD_TIMER_TETHER];
+
         enum ProcessStatus childstatus = monitorProcess(self->mChildPid);
 
         if (ProcessStatusError == childstatus)
@@ -1537,7 +1529,7 @@ pollFdTimerTether(void                        *self_,
         {
             debug(0, "deferred timeout due to child status %c", childstatus);
 
-            self->mCycleCount = 0;
+            self->mTether.mCycleCount = 0;
             break;
         }
         else
@@ -1550,23 +1542,23 @@ pollFdTimerTether(void                        *self_,
 
             struct EventClockTime since;
             {
-                lockMutex(&self->mThread->mActivity.mMutex);
-                since = self->mThread->mActivity.mSince;
-                unlockMutex(&self->mThread->mActivity.mMutex);
+                lockMutex(&self->mTetherThread.mActivity.mMutex);
+                since = self->mTetherThread.mActivity.mSince;
+                unlockMutex(&self->mTetherThread.mActivity.mMutex);
             }
 
             if (aPollTime->eventclock.ns <
-                since.eventclock.ns + self->mTetherTimer->mPeriod.duration.ns)
+                since.eventclock.ns + tetherTimer->mPeriod.duration.ns)
             {
-                lapTimeRestart(&self->mTetherTimer->mSince, &since);
-                self->mCycleCount = 0;
+                lapTimeRestart(&tetherTimer->mSince, &since);
+                self->mTether.mCycleCount = 0;
                 break;
             }
 
-            if (++self->mCycleCount < self->mCycleLimit)
+            if (++self->mTether.mCycleCount < self->mTether.mCycleLimit)
                 break;
 
-            self->mCycleCount = self->mCycleLimit;
+            self->mTether.mCycleCount = self->mTether.mCycleLimit;
         }
 
         /* Once the timeout has expired, the timer can be cancelled because
@@ -1574,9 +1566,9 @@ pollFdTimerTether(void                        *self_,
 
         debug(0, "timeout after %ds", gOptions.mTimeout.mTether_s);
 
-        self->mTetherTimer->mPeriod = Duration(NanoSeconds(0));
+        tetherTimer->mPeriod = Duration(NanoSeconds(0));
 
-        activateFdTimerTermination(self->mMonitor, aPollTime);
+        activateFdTimerTermination(self, aPollTime);
 
     } while (0);
 }
@@ -1617,9 +1609,9 @@ pollfdcompletion(void                     *self_,
                  struct pollfd            *aPollFds_unused,
                  struct PollFdTimerAction *aPollFdTimer_unused)
 {
-    struct PollFdTether *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_TETHER == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     return
         ! (self->mPollFds[POLL_FD_CHILD].events |
@@ -1647,6 +1639,12 @@ monitorChild(struct ChildProcess *self)
         { 0 }
     };
 
+    /* Divide the timeout into two cycles so that if the child process is
+     * stopped, the first cycle will have a chance to detect it and
+     * defer the timeout. */
+
+    const unsigned timeoutCycles = 2;
+
     struct ChildMonitor childmonitor =
     {
         .mType = &sChildMonitorType,
@@ -1666,10 +1664,31 @@ monitorChild(struct ChildProcess *self)
             .mPeer   = 0,
         },
 
+        .mTether =
+        {
+            .mCycleCount = 0,
+            .mCycleLimit = timeoutCycles,
+        },
+
         .mPollFdTimerActions =
         {
-            [POLL_FD_TIMER_TETHER]        = { 0 },
-            [POLL_FD_TIMER_UMBILICAL]     =
+            [POLL_FD_TIMER_TETHER]        =
+            {
+                /* Note that a zero value for gOptions.mTimeout.mTether_s will
+                 * disable the tether timeout in which case the watchdog will
+                 * supervise the child, but not impose any timing requirements
+                 * on activity on the tether. */
+
+                .mAction = pollFdTimerTether,
+                .mSelf   = &childmonitor,
+                .mSince  = EVENTCLOCKTIME_INIT,
+                .mPeriod = Duration(NanoSeconds(
+                    NSECS(Seconds(gOptions.mTether
+                                  ? gOptions.mTimeout.mTether_s
+                                  : 0)).ns / timeoutCycles)),
+            },
+
+            [POLL_FD_TIMER_UMBILICAL] =
             {
                 .mAction = pollFdTimerUmbilical,
                 .mSelf   = &childmonitor,
@@ -1677,7 +1696,7 @@ monitorChild(struct ChildProcess *self)
                 .mPeriod = Duration(NanoSeconds(0)),
             },
 
-            [POLL_FD_TIMER_ORPHAN]        =
+            [POLL_FD_TIMER_ORPHAN] =
             {
                 /* If requested to be aware when the watchdog becomes an orphan,
                  * check if init(8) is the parent of this process. If this is
@@ -1689,13 +1708,15 @@ monitorChild(struct ChildProcess *self)
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NSECS(Seconds(gOptions.mOrphaned ? 3 : 0))),
             },
-            [POLL_FD_TIMER_TERMINATION]   =
+
+            [POLL_FD_TIMER_TERMINATION] =
             {
                 .mAction = pollFdTimerTermination,
                 .mSelf   = &childmonitor,
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(0)),
             },
+
             [POLL_FD_TIMER_DISCONNECTION] =
             {
                 .mAction = pollFdTimerChild,
@@ -1726,43 +1747,6 @@ monitorChild(struct ChildProcess *self)
 
     createTetherThread(&childmonitor.mTetherThread, &childmonitor.mNullPipe);
 
-    /* Divide the timeout into two cycles so that if the child process is
-     * stopped, the first cycle will have a chance to detect it and
-     * defer the timeout. */
-
-    const unsigned timeoutCycles = 2;
-
-    struct PollFdTether pollfdtether =
-    {
-        .mKind = POLL_FD_TETHER,
-
-        .mMonitor = &childmonitor,
-
-        .mTetherTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
-
-        .mThread      = &childmonitor.mTetherThread,
-        .mNullPipe    = &childmonitor.mNullPipe,
-
-        .mChildPid     = self->mPid,
-        .mCycleCount   = 0,
-        .mCycleLimit   = timeoutCycles,
-    };
-
-    /* Note that a zero value for gOptions.mTimeout.mTether_s will
-     * disable the tether timeout in which case the watchdog will
-     * supervise the child, but not impose any timing requirements
-     * on activity on the tether. */
-
-    pollfdtether.mTetherTimer->mAction = pollFdTimerTether;
-    pollfdtether.mTetherTimer->mSelf   = &pollfdtether;
-    pollfdtether.mTetherTimer->mSince  = EVENTCLOCKTIME_INIT;
-    pollfdtether.mTetherTimer->mPeriod =
-        Duration(NanoSeconds(
-            NSECS(Seconds(
-                gOptions.mTether
-                ? gOptions.mTimeout.mTether_s : 0)).ns / timeoutCycles));
-
-
     /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
      * that it is best not to put too much trust in POLLHUP vs POLLIN,
      * and to treat the presence of either as a trigger to attempt to
@@ -1782,10 +1766,8 @@ monitorChild(struct ChildProcess *self)
             .fd     = self->mUmbilicalSocket.mFile->mFd,
             .events = POLL_INPUTEVENTS };
     pollfds[POLL_FD_TETHER] = (struct pollfd) {
-            .fd     = pollfdtether.mThread->mControlPipe.mWrFile->mFd,
+            .fd     = childmonitor.mTetherThread.mControlPipe.mWrFile->mFd,
             .events = POLL_DISCONNECTEVENT, };
-
-    pollfdtether.mPollFds    = pollfds;
 
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
      * open file, rather than of each file descriptor. Since stdin and
@@ -1794,7 +1776,7 @@ monitorChild(struct ChildProcess *self)
      so this approach cannot be employed directly. */
 
     if ( ! gOptions.mTether)
-        disconnectPollFdTether(&pollfdtether, pollfds);
+        disconnectPollFdTether(&childmonitor);
 
     for (size_t ix = 0; NUMBEROF(pollfds) > ix; ++ix)
     {
@@ -1815,14 +1797,14 @@ monitorChild(struct ChildProcess *self)
         pollFdUmbilical, &childmonitor };
 
     pollfdactions[POLL_FD_TETHER] = (struct PollFdAction) {
-        pollFdTether,    &pollfdtether };
+        pollFdTether,    &childmonitor };
 
     struct PollFd pollfd;
     if (createPollFd(
             &pollfd,
             pollfds, pollfdactions, sPollFdNames, POLL_FD_KINDS,
             pollfdtimeractions, sPollFdTimerNames, POLL_FD_TIMER_KINDS,
-            pollfdcompletion, &pollfdtether))
+            pollfdcompletion, &childmonitor))
         terminate(
             errno,
             "Unable to initialise polling loop");
