@@ -45,6 +45,8 @@ struct timespec;
 
 struct Pipe;
 
+struct ProcessAppLock;
+
 struct ExitCode
 {
     int mStatus;
@@ -159,11 +161,18 @@ monitorProcess(pid_t aPid);
 
 /* -------------------------------------------------------------------------- */
 int
-lockProcessLock(void);
+acquireProcessAppLock(void);
 
 int
-unlockProcessLock(void);
+releaseProcessAppLock(void);
 
+struct ProcessAppLock *
+createProcessAppLock(void);
+
+void
+destroyProcessAppLock(struct ProcessAppLock *self);
+
+/* -------------------------------------------------------------------------- */
 const char *
 ownProcessLockPath(void);
 

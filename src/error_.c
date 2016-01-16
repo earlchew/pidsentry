@@ -172,22 +172,15 @@ print_(
         intmax_t pid = getpid();
         intmax_t tid = gettid();
 
-        int locked = !! sPrintBuf.mFile;
+        bool lockable = !! sPrintBuf.mFile;
+        bool locked   = lockable;
+
+        if ( ! lockable)
+            errno = 0;
+        else if (acquireProcessAppLock())
+            locked = false;
 
         if ( ! locked)
-            errno = EWOULDBLOCK;
-        else
-        {
-            if (lockProcessLock())
-            {
-                if (EWOULDBLOCK == errno)
-                    locked = -1;
-                else
-                    locked = 0;
-            }
-        }
-
-        if (0 >= locked)
         {
             /* Note that there is an old defect which causes dprintf()
              * to race with fork():
@@ -261,18 +254,15 @@ print_(
 
         if (locked)
         {
-            if (unlockProcessLock())
+            if (releaseProcessAppLock())
             {
-                if (0 > locked && EWOULDBLOCK != errno || 0 < locked)
-                {
-                    dprintf_(
-                        errno,
-                        pid, tid,
-                        &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                        __FILE__, __LINE__,
-                        "Unable to release process lock");
-                    abort();
-                }
+                dprintf_(
+                    errno,
+                    pid, tid,
+                    &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
+                    __FILE__, __LINE__,
+                    "Unable to release process lock");
+                abort();
             }
         }
     });

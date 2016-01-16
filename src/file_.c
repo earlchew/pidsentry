@@ -306,9 +306,10 @@ connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
 int
 acceptFileSocket(struct File *self, unsigned aFlags)
 {
-    int rc      = -1;
-    int flags   = 0;
-    bool locked = false;
+    int rc    = -1;
+    int flags = 0;
+
+    struct ProcessAppLock *applock = 0;
 
     switch (aFlags)
     {
@@ -326,9 +327,7 @@ acceptFileSocket(struct File *self, unsigned aFlags)
         rc = accept4(self->mFd, 0, 0, flags);
     else
     {
-        if (lockProcessLock())
-            goto Finally;
-        locked = false;
+        applock = createProcessAppLock();
 
         rc = accept(self->mFd, 0, 0);
         if (-1 == rc)
@@ -351,13 +350,7 @@ Finally:
 
     FINALLY
     ({
-        if (locked)
-        {
-            if (unlockProcessLock())
-                terminate(
-                    errno,
-                    "Unable to release process lock");
-        }
+        destroyProcessAppLock(applock);
     });
 
     return rc;

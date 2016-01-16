@@ -61,15 +61,19 @@ struct ProcessLock
     int              mLock;
 };
 
-static pthread_mutex_t     sProcessMutex    = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t     sProcessSigMutex = PTHREAD_MUTEX_INITIALIZER;
-static __thread sigset_t   sProcessSigMask;
-static struct ProcessLock  sProcessLock_[2];
-static struct ProcessLock *sProcessLock[2];
-static unsigned            sActiveProcessLock;
+struct ProcessAppLock
+{
+    void *mNull;
+};
+
+static struct ProcessAppLock  sProcessAppLock;
+static pthread_mutex_t        sProcessMutex = PTHREAD_MUTEX_INITIALIZER;
+static __thread sigset_t      sProcessSigMask;
+static struct ProcessLock     sProcessLock_[2];
+static struct ProcessLock    *sProcessLock[2];
+static unsigned               sActiveProcessLock;
 
 static unsigned                     sInit;
-static __thread unsigned            sSigContext;
 static struct PushedProcessSigMask  sSigMask;
 static const char                  *sArg0;
 static const char                  *sProgramName;
@@ -254,34 +258,30 @@ static void  *sDeadChildObserver_;
 static void
 deadChild_(int aSigNum)
 {
-    ++sSigContext;
+    if (sDeadChildAction_)
     {
-        if (sDeadChildAction_)
+        debug(1, "observed dead child");
+        sDeadChildAction_(sDeadChildObserver_);
+    }
+
+    int deadChildRdFd = sDeadChildRdFd_;
+    int deadChildWrFd = sDeadChildWrFd_;
+
+    if (-1 != deadChildWrFd)
+    {
+        debug(1,
+              "queued dead child to fd %d from fd %d",
+              deadChildRdFd, deadChildWrFd);
+
+        if (writeSignal_(deadChildWrFd, aSigNum))
         {
-            debug(1, "observed dead child");
-            sDeadChildAction_(sDeadChildObserver_);
-        }
-
-        int deadChildRdFd = sDeadChildRdFd_;
-        int deadChildWrFd = sDeadChildWrFd_;
-
-        if (-1 != deadChildWrFd)
-        {
-            debug(1,
-                  "queued dead child to fd %d from fd %d",
-                  deadChildRdFd, deadChildWrFd);
-
-            if (writeSignal_(deadChildWrFd, aSigNum))
-            {
-                if (EBADF != errno && EWOULDBLOCK != errno)
-                    terminate(
-                        errno,
-                        "Unable to indicate dead child to fd %d",
-                        deadChildWrFd);
-            }
+            if (EBADF != errno && EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to indicate dead child to fd %d",
+                    deadChildWrFd);
         }
     }
-    --sSigContext;
 }
 
 static int
@@ -370,30 +370,26 @@ static struct sigaction sClockTickSigAction =
 static void
 clockTick_(int aSigNum)
 {
-    ++sSigContext;
+    int clockTickRdFd = sClockTickRdFd_;
+    int clockTickWrFd = sClockTickWrFd_;
+
+    if (-1 == clockTickWrFd)
+        debug(1, "received clock tick");
+    else
     {
-        int clockTickRdFd = sClockTickRdFd_;
-        int clockTickWrFd = sClockTickWrFd_;
+        debug(1,
+              "queued clock tick to fd %d from fd %d",
+              clockTickRdFd, clockTickWrFd);
 
-        if (-1 == clockTickWrFd)
-            debug(1, "received clock tick");
-        else
+        if (writeSignal_(clockTickWrFd, aSigNum))
         {
-            debug(1,
-                  "queued clock tick to fd %d from fd %d",
-                  clockTickRdFd, clockTickWrFd);
-
-            if (writeSignal_(clockTickWrFd, aSigNum))
-            {
-                if (EBADF != errno && EWOULDBLOCK != errno)
-                    terminate(
-                        errno,
-                        "Unable to indicate clock tick to fd %d",
-                        clockTickWrFd);
-            }
+            if (EBADF != errno && EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to indicate clock tick to fd %d",
+                    clockTickWrFd);
         }
     }
-    --sSigContext;
 }
 
 static int
@@ -546,36 +542,32 @@ static struct SignalWatch {
 static void
 caughtSignal_(int aSigNum)
 {
-    ++sSigContext;
+    if (sSignalAction_)
     {
-        if (sSignalAction_)
+        debug(1, "observed signal %d", aSigNum);
+        sSignalAction_(sSignalObserver_, aSigNum);
+    }
+
+    int signalRdFd = sSignalRdFd_;
+    int signalWrFd = sSignalWrFd_;
+
+    if (-1 != signalWrFd)
+    {
+        debug(1,
+              "queued signal %d on fd %d to fd %d",
+              aSigNum,
+              signalWrFd,
+              signalRdFd);
+
+        if (writeSignal_(signalWrFd, aSigNum))
         {
-            debug(1, "observed signal %d", aSigNum);
-            sSignalAction_(sSignalObserver_, aSigNum);
-        }
-
-        int signalRdFd = sSignalRdFd_;
-        int signalWrFd = sSignalWrFd_;
-
-        if (-1 != signalWrFd)
-        {
-            debug(1,
-                  "queued signal %d on fd %d to fd %d",
-                  aSigNum,
-                  signalWrFd,
-                  signalRdFd);
-
-            if (writeSignal_(signalWrFd, aSigNum))
-            {
-                if (EWOULDBLOCK != errno)
-                    terminate(
-                        errno,
-                        "Unable to queue signal %d on fd %d to fd %d",
-                        aSigNum, signalWrFd, signalRdFd);
-            }
+            if (EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to queue signal %d on fd %d to fd %d",
+                    aSigNum, signalWrFd, signalRdFd);
         }
     }
-    --sSigContext;
 }
 
 int
@@ -1035,19 +1027,15 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-lockProcessLock(void)
+acquireProcessAppLock(void)
 {
     int  rc     = -1;
     bool locked = false;
 
-    if (sSigContext)
-    {
-        if (errno = pthread_mutex_lock(&sProcessSigMutex))
-            goto Finally;
-
-        errno = EWOULDBLOCK;
-        goto Finally;
-    }
+    /* Blocking all signals means that signals are delivered in this
+     * thread synchronously with respect to this function, so the
+     * mutex can be used to obtain serialisation both inside and
+     * outside signal handlers. */
 
     sigset_t filledset;
     if (sigfillset(&filledset))
@@ -1083,18 +1071,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-unlockProcessLock(void)
+releaseProcessAppLock(void)
 {
     int rc = -1;
-
-    if (sSigContext)
-    {
-        if (errno = pthread_mutex_unlock(&sProcessSigMutex))
-            goto Finally;
-
-        errno = EWOULDBLOCK;
-        goto Finally;
-    }
 
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
@@ -1114,6 +1093,31 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct ProcessAppLock *
+createProcessAppLock(void)
+{
+    struct ProcessAppLock *self = &sProcessAppLock;
+
+    if (acquireProcessAppLock())
+        terminate(errno, "Unable to acquire application lock");
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+destroyProcessAppLock(struct ProcessAppLock *self)
+{
+    if (self)
+    {
+        ensure(&sProcessAppLock == self);
+
+        if (releaseProcessAppLock())
+            terminate(errno, "Unable to release application lock");
+    }
 }
 
 /* -------------------------------------------------------------------------- */
