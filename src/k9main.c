@@ -1077,6 +1077,25 @@ closeTetherThread(struct TetherThread *self)
 }
 
 /* -------------------------------------------------------------------------- */
+/* Child Process Monitoring
+ *
+ * The child process must be monitored for activity, and also for
+ * termination.
+ */
+
+struct ChildMonitor
+{
+    pid_t mChildPid;
+
+    struct Pipe         mNullPipe;
+    struct TetherThread mTetherThread;
+
+    struct pollfd            mPollFds[POLL_FD_KINDS];
+    struct PollFdAction      mPollFdActions[POLL_FD_KINDS];
+    struct PollFdTimerAction mPollFdTimerActions[POLL_FD_TIMER_KINDS];
+};
+
+/* -------------------------------------------------------------------------- */
 /* Child Termination
  *
  * The watchdog will receive SIGCHLD when the child process terminates,
@@ -1089,13 +1108,8 @@ struct PollFdChild
 {
     enum PollFdKind mKind;
 
-    pid_t                     mChildPid;
-    struct pollfd            *mPollFds;
-    struct TetherThread      *mTetherThread;
-    struct PollFdTimerAction *mTerminationTimer;
-    struct PollFdTimerAction *mUmbilicalTimer;
-    struct PollFdTimerAction *mDisconnectionTimer;
-    struct Pipe              *mNullPipe;
+    struct ChildMonitor *mMonitor;
+    struct pollfd       *mPollFds;
 };
 
 static void
@@ -1132,7 +1146,7 @@ pollFdChild(void                        *self_,
         /* The child process has terminated, so there is no longer
          * any need to monitor for SIGCHLD. */
 
-        self->mPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
+        self->mPollFds[POLL_FD_CHILD].fd     = self->mMonitor->mNullPipe.mRdFile->mFd;
         self->mPollFds[POLL_FD_CHILD].events = 0;
 
         /* Record when the child has terminated, but do not exit
@@ -1140,11 +1154,20 @@ pollFdChild(void                        *self_,
          * child terminated, no further input can be produced so indicate
          * to the tether thread that it should start flushing data now. */
 
-        flushTetherThread(self->mTetherThread);
+        flushTetherThread(&self->mMonitor->mTetherThread);
 
-        self->mTerminationTimer->mPeriod   = Duration(NanoSeconds(0));
-        self->mUmbilicalTimer->mPeriod     = Duration(NanoSeconds(0));
-        self->mDisconnectionTimer->mPeriod = Duration(NSECS(Seconds(1)));
+        struct PollFdTimerAction *terminationTimer =
+            &self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_TERMINATION];
+
+        struct PollFdTimerAction *umbilicalTimer =
+            &self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+
+        struct PollFdTimerAction *disconnectionTimer =
+            &self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION];
+
+        terminationTimer->mPeriod   = Duration(NanoSeconds(0));
+        umbilicalTimer->mPeriod     = Duration(NanoSeconds(0));
+        disconnectionTimer->mPeriod = Duration(NSECS(Seconds(1)));
     }
 }
 
@@ -1159,7 +1182,7 @@ pollFdTimerChild(void                        *self_,
 
     debug(0, "disconnecting tether thread");
 
-    pingTetherThread(self->mTetherThread);
+    pingTetherThread(&self->mMonitor->mTetherThread);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1599,17 +1622,30 @@ monitorChild(struct ChildProcess *self)
 {
     debug(0, "start monitoring child");
 
-    struct PollFdTimerAction pollfdtimeractions[POLL_FD_TIMER_KINDS] =
+    struct ChildMonitor childmonitor =
     {
-        [POLL_FD_TIMER_TETHER]        = { 0 },
-        [POLL_FD_TIMER_UMBILICAL]     = { 0 },
-        [POLL_FD_TIMER_ORPHAN]        = { 0 },
-        [POLL_FD_TIMER_TERMINATION]   = { 0 },
-        [POLL_FD_TIMER_DISCONNECTION] = { 0 },
+        .mChildPid = self->mPid,
+
+        .mPollFdTimerActions =
+        {
+            [POLL_FD_TIMER_TETHER]        = { 0 },
+            [POLL_FD_TIMER_UMBILICAL]     = { 0 },
+            [POLL_FD_TIMER_ORPHAN]        = { 0 },
+            [POLL_FD_TIMER_TERMINATION]   = { 0 },
+            [POLL_FD_TIMER_DISCONNECTION] =
+            {
+                .mAction = pollFdTimerChild,
+                .mSelf   = &childmonitor,
+                .mSince  = EVENTCLOCKTIME_INIT,
+                .mPeriod = Duration(NanoSeconds(0)),
+            },
+        },
     };
 
-    struct Pipe nullPipe;
-    if (createPipe(&nullPipe, O_CLOEXEC | O_NONBLOCK))
+    struct PollFdTimerAction *pollfdtimeractions =
+        childmonitor.mPollFdTimerActions;
+
+    if (createPipe(&childmonitor.mNullPipe, O_CLOEXEC | O_NONBLOCK))
         terminate(
             errno,
             "Unable to create null pipe");
@@ -1624,25 +1660,15 @@ monitorChild(struct ChildProcess *self)
      * the main monitoring thread deals exclusively with non-blocking
      * file descriptors. */
 
-    struct TetherThread tetherThread;
-
-    createTetherThread(&tetherThread, &nullPipe);
+    createTetherThread(&childmonitor.mTetherThread, &childmonitor.mNullPipe);
 
     struct PollFdChild pollfdchild =
     {
-        .mKind               = POLL_FD_CHILD,
-        .mChildPid           = self->mPid,
-        .mDisconnectionTimer = &pollfdtimeractions[POLL_FD_TIMER_DISCONNECTION],
-        .mUmbilicalTimer     = &pollfdtimeractions[POLL_FD_TIMER_UMBILICAL],
-        .mTerminationTimer   = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
-        .mTetherThread       = &tetherThread,
-        .mNullPipe           = &nullPipe,
+        .mKind    = POLL_FD_CHILD,
+        .mMonitor = &childmonitor,
     };
 
-    pollfdchild.mDisconnectionTimer->mAction = pollFdTimerChild;
-    pollfdchild.mDisconnectionTimer->mSelf   = &pollfdchild;
-    pollfdchild.mDisconnectionTimer->mSince  = EVENTCLOCKTIME_INIT;
-    pollfdchild.mDisconnectionTimer->mPeriod = Duration(NanoSeconds(0));
+    childmonitor.mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION].mSelf = &pollfdchild;
 
     struct PollFdUmbilical pollfdumbilical =
     {
@@ -1700,9 +1726,9 @@ monitorChild(struct ChildProcess *self)
 
         .mTetherTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
 
-        .mThread      = &tetherThread,
+        .mThread      = &childmonitor.mTetherThread,
         .mTermination = &pollfdtimertermination,
-        .mNullPipe    = &nullPipe,
+        .mNullPipe    = &childmonitor.mNullPipe,
 
         .mChildPid     = self->mPid,
         .mCycleCount   = 0,
@@ -1753,18 +1779,17 @@ monitorChild(struct ChildProcess *self)
      * the documentation suggests that POLLHUP might also be reasonable
      * in this context. */
 
-    struct pollfd pollfds[POLL_FD_KINDS] =
-    {
-        [POLL_FD_CHILD] = {
+    struct pollfd *pollfds = childmonitor.mPollFds;
+
+    pollfds[POLL_FD_CHILD] = (struct pollfd) {
             .fd     = self->mTermPipe.mRdFile->mFd,
-            .events = POLL_DISCONNECTEVENT },
-        [POLL_FD_UMBILICAL] = {
+            .events = POLL_DISCONNECTEVENT };
+    pollfds[POLL_FD_UMBILICAL] = (struct pollfd) {
             .fd     = self->mUmbilicalSocket.mFile->mFd,
-            .events = POLL_INPUTEVENTS },
-        [POLL_FD_TETHER] = {
+            .events = POLL_INPUTEVENTS };
+    pollfds[POLL_FD_TETHER] = (struct pollfd) {
             .fd     = pollfdtether.mThread->mControlPipe.mWrFile->mFd,
-            .events = POLL_DISCONNECTEVENT, },
-    };
+            .events = POLL_DISCONNECTEVENT, };
 
     pollfdchild.mPollFds     = pollfds;
     pollfdumbilical.mPollFds = pollfds;
@@ -1789,12 +1814,16 @@ monitorChild(struct ChildProcess *self)
                 pollfds[ix].fd);
     }
 
-    struct PollFdAction pollfdactions[POLL_FD_KINDS] =
-    {
-        [POLL_FD_CHILD]     = { pollFdChild,     &pollfdchild },
-        [POLL_FD_UMBILICAL] = { pollFdUmbilical, &pollfdumbilical },
-        [POLL_FD_TETHER]    = { pollFdTether,    &pollfdtether },
-    };
+    struct PollFdAction *pollfdactions = childmonitor.mPollFdActions;
+
+    pollfdactions[POLL_FD_CHILD] = (struct PollFdAction) {
+        pollFdChild,     &pollfdchild };
+
+    pollfdactions[POLL_FD_UMBILICAL] = (struct PollFdAction) {
+        pollFdUmbilical, &pollfdumbilical };
+
+    pollfdactions[POLL_FD_TETHER] = (struct PollFdAction) {
+        pollFdTether,    &pollfdtether };
 
     struct PollFd pollfd;
     if (createPollFd(
@@ -1821,9 +1850,9 @@ monitorChild(struct ChildProcess *self)
             errno,
             "Unable to close umbilical peer");
 
-    closeTetherThread(&tetherThread);
+    closeTetherThread(&childmonitor.mTetherThread);
 
-    if (closePipe(&nullPipe))
+    if (closePipe(&childmonitor.mNullPipe))
         terminate(
             errno,
             "Unable to close null pipe");
