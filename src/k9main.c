@@ -694,7 +694,7 @@ struct TetherPoll
 
 static void
 polltethercontrol(void                        *self_,
-                  struct pollfd               *aPollFds,
+                  struct pollfd               *aPollFds_unused,
                   const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
@@ -717,12 +717,12 @@ polltethercontrol(void                        *self_,
 
 static void
 polltetherdrain(void                        *self_,
-                struct pollfd               *aPollFds,
+                struct pollfd               *aPollFds_unused,
                 const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
 
-    if (aPollFds[TETHER_FD_CONTROL].events)
+    if (self->mPollfds[TETHER_FD_CONTROL].events)
     {
         {
             lockMutex(&self->mThread->mActivity.mMutex);
@@ -799,7 +799,7 @@ polltetherdrain(void                        *self_,
         } while (0);
 
         if (drained)
-            aPollFds[TETHER_FD_CONTROL].events = 0;
+            self->mPollfds[TETHER_FD_CONTROL].events = 0;
     }
 }
 
@@ -821,7 +821,7 @@ polltetherdisconnected(void                        *self_,
 
 static bool
 polltethercompletion(void                     *self_,
-                     struct pollfd            *aPollFds,
+                     struct pollfd            *aPollFds_unused,
                      struct PollFdTimerAction *aPollFdTimer)
 {
     struct TetherPoll *self = self_;
@@ -1090,6 +1090,7 @@ struct PollFdChild
     enum PollFdKind mKind;
 
     pid_t                     mChildPid;
+    struct pollfd            *mPollFds;
     struct TetherThread      *mTetherThread;
     struct PollFdTimerAction *mTerminationTimer;
     struct PollFdTimerAction *mUmbilicalTimer;
@@ -1099,7 +1100,7 @@ struct PollFdChild
 
 static void
 pollFdChild(void                        *self_,
-            struct pollfd               *aPollFds,
+            struct pollfd               *aPollFds_ununsed,
             const struct EventClockTime *aPollTime)
 {
     struct PollFdChild *self = self_;
@@ -1124,15 +1125,15 @@ pollFdChild(void                        *self_,
             "detected child %s",
             createPollEventText(
                 &pollEventText,
-                aPollFds[POLL_FD_CHILD].revents));
+                self->mPollFds[POLL_FD_CHILD].revents));
 
-        ensure(aPollFds[POLL_FD_CHILD].events);
+        ensure(self->mPollFds[POLL_FD_CHILD].events);
 
         /* The child process has terminated, so there is no longer
          * any need to monitor for SIGCHLD. */
 
-        aPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
-        aPollFds[POLL_FD_CHILD].events = 0;
+        self->mPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
+        self->mPollFds[POLL_FD_CHILD].events = 0;
 
         /* Record when the child has terminated, but do not exit
          * the event loop until all the IO has been flushed. With the
@@ -1175,6 +1176,7 @@ struct PollFdUmbilical
 {
     enum PollFdKind                 mKind;
     pid_t                           mChildPid;
+    struct pollfd                  *mPollFds;
     struct PollFdTimerAction       *mUmbilicalTimer;
     const struct PollFdTimerAction *mDisconnectionTimer;
     struct UnixSocket              *mUmbilicalSocket;
@@ -1237,7 +1239,7 @@ Finally:
 
 static void
 pollFdUmbilical(void                        *self_,
-                struct pollfd               *aPollFds,
+                struct pollfd               *aPollFds_unused,
                 const struct EventClockTime *aPollTime)
 {
     struct PollFdUmbilical *self = self_;
@@ -1254,9 +1256,9 @@ pollFdUmbilical(void                        *self_,
         "detected umbilical %s",
         createPollEventText(
             &pollEventText,
-            aPollFds[POLL_FD_UMBILICAL].revents));
+            self->mPollFds[POLL_FD_UMBILICAL].revents));
 
-    if (aPollFds[POLL_FD_UMBILICAL].revents & POLLIN)
+    if (self->mPollFds[POLL_FD_UMBILICAL].revents & POLLIN)
     {
         if (closeUnixSocket(self->mUmbilicalPeer))
             terminate(
@@ -1426,6 +1428,7 @@ struct PollFdTether
     enum PollFdKind mKind;
 
     struct PollFdTimerAction       *mTetherTimer;
+    struct pollfd                  *mPollFds;
     struct TetherThread            *mThread;
     struct PollFdTimerTermination  *mTermination;
     struct Pipe                    *mNullPipe;
@@ -1447,7 +1450,7 @@ disconnectPollFdTether(struct PollFdTether *self,
 
 static void
 pollFdTether(void                        *self_,
-             struct pollfd               *aPollFds,
+             struct pollfd               *aPollFds_unused,
              const struct EventClockTime *aPollTime)
 {
     struct PollFdTether *self = self_;
@@ -1457,7 +1460,7 @@ pollFdTether(void                        *self_,
     /* The tether thread control pipe will be closed when the tether
      * is shut down between the child process and watchdog, */
 
-    disconnectPollFdTether(self, aPollFds);
+    disconnectPollFdTether(self, self->mPollFds);
 }
 
 static void
@@ -1578,11 +1581,16 @@ pollFdTimerOrphan(void                        *self_,
 /* -------------------------------------------------------------------------- */
 static bool
 pollfdcompletion(void                     *self_,
-                 struct pollfd            *aPollFds,
+                 struct pollfd            *aPollFds_unused,
                  struct PollFdTimerAction *aPollFdTimer)
 {
+    struct PollFdTether *self = self_;
+
+    ensure(POLL_FD_TETHER == self->mKind);
+
     return
-        ! (aPollFds[POLL_FD_CHILD].events | aPollFds[POLL_FD_TETHER].events);
+        ! (self->mPollFds[POLL_FD_CHILD].events |
+           self->mPollFds[POLL_FD_TETHER].events);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1758,6 +1766,10 @@ monitorChild(struct ChildProcess *self)
             .events = POLL_DISCONNECTEVENT, },
     };
 
+    pollfdchild.mPollFds     = pollfds;
+    pollfdumbilical.mPollFds = pollfds;
+    pollfdtether.mPollFds    = pollfds;
+
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
      * open file, rather than of each file descriptor. Since stdin and
      * stdout are typically inherited from the parent, setting O_NONBLOCK
@@ -1789,7 +1801,7 @@ monitorChild(struct ChildProcess *self)
             &pollfd,
             pollfds, pollfdactions, sPollFdNames, POLL_FD_KINDS,
             pollfdtimeractions, sPollFdTimerNames, POLL_FD_TIMER_KINDS,
-            pollfdcompletion, 0))
+            pollfdcompletion, &pollfdtether))
         terminate(
             errno,
             "Unable to initialise polling loop");
