@@ -687,9 +687,9 @@ struct TetherPoll
     int                      mSrcFd;
     int                      mDstFd;
 
-    struct pollfd            mPollfds[TETHER_FD_KINDS];
-    struct PollFdAction      mPollfdactions[TETHER_FD_KINDS];
-    struct PollFdTimerAction mPollfdtimeractions[TETHER_FD_TIMER_KINDS];
+    struct pollfd            mPollFds[TETHER_FD_KINDS];
+    struct PollFdAction      mPollFdActions[TETHER_FD_KINDS];
+    struct PollFdTimerAction mPollFdTimerActions[TETHER_FD_TIMER_KINDS];
 };
 
 static void
@@ -701,7 +701,7 @@ polltethercontrol(void                        *self_,
 
     char buf[1];
 
-    if (0 > readFd(self->mPollfds[TETHER_FD_CONTROL].fd, buf, sizeof(buf)))
+    if (0 > readFd(self->mPollFds[TETHER_FD_CONTROL].fd, buf, sizeof(buf)))
         terminate(
             errno,
             "Unable to read tether control");
@@ -711,7 +711,7 @@ polltethercontrol(void                        *self_,
     /* Note that gOptions.mTimeout.mDrain_s might be zero to indicate
      * that the no drain timeout is to be enforced. */
 
-    self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
+    self->mPollFdTimerActions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
         Duration(NSECS(Seconds(gOptions.mTimeout.mDrain_s)));
 }
 
@@ -722,7 +722,7 @@ polltetherdrain(void                        *self_,
 {
     struct TetherPoll *self = self_;
 
-    if (self->mPollfds[TETHER_FD_CONTROL].events)
+    if (self->mPollFds[TETHER_FD_CONTROL].events)
     {
         {
             lockMutex(&self->mThread->mActivity.mMutex);
@@ -799,7 +799,7 @@ polltetherdrain(void                        *self_,
         } while (0);
 
         if (drained)
-            self->mPollfds[TETHER_FD_CONTROL].events = 0;
+            self->mPollFds[TETHER_FD_CONTROL].events = 0;
     }
 }
 
@@ -813,10 +813,10 @@ polltetherdisconnected(void                        *self_,
     /* Once the tether drain timeout expires, disable the timer, and
      * force completion of the tether thread. */
 
-    self->mPollfdtimeractions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
+    self->mPollFdTimerActions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
         Duration(NanoSeconds(0));
 
-    self->mPollfds[TETHER_FD_CONTROL].events = 0;
+    self->mPollFds[TETHER_FD_CONTROL].events = 0;
 }
 
 static bool
@@ -826,7 +826,7 @@ polltethercompletion(void                     *self_,
 {
     struct TetherPoll *self = self_;
 
-    return ! self->mPollfds[TETHER_FD_CONTROL].events;
+    return ! self->mPollFds[TETHER_FD_CONTROL].events;
 }
 
 static void *
@@ -874,21 +874,21 @@ tetherThreadMain_(void *self_)
         .mSrcFd  = srcFd,
         .mDstFd  = dstFd,
 
-        .mPollfds =
+        .mPollFds =
         {
             [TETHER_FD_CONTROL]= {.fd= controlFd,.events= POLL_INPUTEVENTS },
             [TETHER_FD_INPUT]  = {.fd= srcFd,    .events= POLL_INPUTEVENTS },
             [TETHER_FD_OUTPUT] = {.fd= dstFd,    .events= POLL_DISCONNECTEVENT},
         },
 
-        .mPollfdactions =
+        .mPollFdActions =
         {
             [TETHER_FD_CONTROL] = { polltethercontrol, &tetherpoll },
             [TETHER_FD_INPUT]   = { polltetherdrain,   &tetherpoll },
             [TETHER_FD_OUTPUT]  = { polltetherdrain,   &tetherpoll },
         },
 
-        .mPollfdtimeractions =
+        .mPollFdTimerActions =
         {
             [TETHER_FD_TIMER_DISCONNECT] =
             {
@@ -900,10 +900,10 @@ tetherThreadMain_(void *self_)
     struct PollFd pollfd;
     if (createPollFd(
             &pollfd,
-            tetherpoll.mPollfds,
-            tetherpoll.mPollfdactions,
+            tetherpoll.mPollFds,
+            tetherpoll.mPollFdActions,
             sTetherFdNames, TETHER_FD_KINDS,
-            tetherpoll.mPollfdtimeractions,
+            tetherpoll.mPollFdTimerActions,
             sTetherFdTimerNames, TETHER_FD_TIMER_KINDS,
             polltethercompletion, &tetherpoll))
         terminate(
