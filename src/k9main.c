@@ -1565,21 +1565,14 @@ pollFdTimerTether(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
-struct PollFdTimerOrphan
-{
-    enum PollFdTimerKind mKind;
-
-    struct ChildMonitor           *mMonitor;
-};
-
 void
 pollFdTimerOrphan(void                        *self_,
                   struct PollFdTimerAction    *aPollFdTimerAction_unused,
                   const struct EventClockTime *aPollTime)
 {
-    struct PollFdTimerOrphan *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_TIMER_ORPHAN == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     /* Using PR_SET_PDEATHSIG is very attractive however the detailed
      * discussion at the end of this thread is important:
@@ -1594,10 +1587,10 @@ pollFdTimerOrphan(void                        *self_,
     {
         debug(0, "orphaned");
 
-        self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_ORPHAN].mPeriod =
+        self->mPollFdTimerActions[POLL_FD_TIMER_ORPHAN].mPeriod =
             Duration(NanoSeconds(0));
 
-        activateFdTimerTermination(self->mMonitor, aPollTime);
+        activateFdTimerTermination(self, aPollTime);
     }
 }
 
@@ -1654,7 +1647,19 @@ monitorChild(struct ChildProcess *self)
         {
             [POLL_FD_TIMER_TETHER]        = { 0 },
             [POLL_FD_TIMER_UMBILICAL]     = { 0 },
-            [POLL_FD_TIMER_ORPHAN]        = { 0 },
+
+            [POLL_FD_TIMER_ORPHAN]        =
+            {
+                /* If requested to be aware when the watchdog becomes an orphan,
+                 * check if init(8) is the parent of this process. If this is
+                 * detected, start sending signals to the child to encourage it
+                 * to exit. */
+
+                .mAction = pollFdTimerOrphan,
+                .mSelf   = &childmonitor,
+                .mSince  = EVENTCLOCKTIME_INIT,
+                .mPeriod = Duration(NSECS(Seconds(gOptions.mOrphaned ? 3 : 0))),
+            },
             [POLL_FD_TIMER_TERMINATION]   =
             {
                 .mAction = pollFdTimerTermination,
@@ -1743,25 +1748,6 @@ monitorChild(struct ChildProcess *self)
                 gOptions.mTether
                 ? gOptions.mTimeout.mTether_s : 0)).ns / timeoutCycles));
 
-    /* If requested to be aware when the watchdog becomes an orphan,
-     * check if init(8) is the parent of this process. If this is
-     * detected, start sending signals to the child to encourage it
-     * to exit. */
-
-    struct PollFdTimerOrphan pollfdtimerorphan =
-    {
-        .mKind = POLL_FD_TIMER_ORPHAN,
-
-        .mMonitor     = &childmonitor,
-    };
-
-    if (gOptions.mOrphaned)
-    {
-        pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mAction = pollFdTimerOrphan;
-        pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mSelf   = &pollfdtimerorphan;
-        pollfdtimeractions[POLL_FD_TIMER_ORPHAN].mPeriod =
-            Duration(NSECS(Seconds(3)));
-    }
 
     /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
      * that it is best not to put too much trust in POLLHUP vs POLLIN,
