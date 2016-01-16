@@ -32,6 +32,7 @@
 #include "parse_.h"
 #include "error_.h"
 #include "fd_.h"
+#include "pollfd_.h"
 #include "env_.h"
 #include "thread_.h"
 #include "process_.h"
@@ -49,6 +50,7 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <signal.h>
+#include <poll.h>
 
 #include <asm/ldt.h>
 
@@ -57,6 +59,30 @@
 #include <sys/un.h>
 
 #include <linux/futex.h>
+
+/* -------------------------------------------------------------------------- */
+enum FdKind
+{
+    FD_UMBILICAL,
+    FD_KINDS
+};
+
+static const char *sPollFdNames[FD_KINDS] =
+{
+    [FD_UMBILICAL] = "umbilical",
+};
+
+/* -------------------------------------------------------------------------- */
+enum FdTimerKind
+{
+    FD_TIMER_UMBILICAL,
+    FD_TIMER_KINDS
+};
+
+static const char *sPollFdTimerNames[FD_TIMER_KINDS] =
+{
+    [FD_TIMER_UMBILICAL] = "umbilical",
+};
 
 /* -------------------------------------------------------------------------- */
 enum EnvKind
@@ -326,21 +352,109 @@ struct UmbilicalThread
     int                       *mErrno;
 };
 
+struct UmbilicalPoll
+{
+    enum FdKind mKind;
+
+    struct UmbilicalThread *mThread;
+
+    struct File              *mFile;
+    struct pollfd            *mPollFd;
+    struct PollFdTimerAction *mTimer;
+    unsigned                  mCycleCount;
+    unsigned                  mCycleLimit;
+};
+
+/* -------------------------------------------------------------------------- */
+static void
+pollumbilical(void                        *self_,
+              struct pollfd               *aPollFds,
+              const struct EventClockTime *aPollTime)
+{
+    struct UmbilicalPoll *self = self_;
+
+    ensure(FD_UMBILICAL == self->mKind);
+
+    char buf[1];
+
+    ssize_t rdlen = read(self->mFile->mFd, buf, sizeof(buf));
+
+    if (-1 == rdlen)
+    {
+        if (EINTR != errno)
+            terminate(
+                errno,
+                "Unable to read umbilical connection");
+    }
+    else if ( ! rdlen)
+    {
+        warn(0, "Broken umbilical connection");
+        self->mPollFd->events = 0;
+    }
+    else
+    {
+        lapTimeRestart(&self->mTimer->mSince, aPollTime);
+        self->mCycleCount = 0;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+polltimerumbilical(void                        *self_,
+                   struct PollFdTimerAction    *aPollFdTimer,
+                   const struct EventClockTime *aPollTime)
+{
+    struct UmbilicalPoll *self = self_;
+
+    ensure(FD_UMBILICAL == self->mKind);
+
+    /* If nothing is available from the umbilical socket after
+     * the timeout period expires, then assume that the watchdog
+     * itself is stuck. */
+
+    if (ProcessStateStopped == findProcessState(self->mThread->mWatchdogPid))
+    {
+        debug(0, "umbilical timeout deferred");
+
+        self->mCycleCount = 0;
+    }
+    else if (++self->mCycleCount >= self->mCycleLimit)
+    {
+        warn(0, "Umbilical connection timed out");
+
+        self->mPollFd->events             = 0;
+        self->mTimer->mPeriod.duration.ns = 0;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static bool
+pollumbilicalcompletion(void                     *self_,
+                        struct pollfd            *aPollFds,
+                        struct PollFdTimerAction *aPollFdTimer)
+{
+    struct UmbilicalPoll *self = self_;
+
+    ensure(FD_UMBILICAL == self->mKind);
+
+    return ! self->mPollFd->events;
+}
+
 /* -------------------------------------------------------------------------- */
 static int
-watchUmbilical_(void *aUmbilicalThread)
+watchUmbilical_(void *self_)
 {
     /* The umbilicalThread structure is owned by the parent thread, so
      * ensure that the child makes no attempt to modify the structure
      * here. */
 
-    struct UmbilicalThread *umbilicalThread = aUmbilicalThread;
+    struct UmbilicalThread *self = self_;
 
-    if (umbilicalThread->mErrno != &errno)
+    if (self->mErrno != &errno)
         terminate(
             0,
             "Umbilical thread context mismatched %p vs %p",
-            (void *) umbilicalThread->mErrno,
+            (void *) self->mErrno,
             (void *) &errno);
 
     /* Capture the umbilical file descriptor here because although this
@@ -348,26 +462,26 @@ watchUmbilical_(void *aUmbilicalThread)
      * it has a separate file descriptor space. */
 
     struct File umbilicalFile;
-    if (dupFile(&umbilicalFile, umbilicalThread->mSock.mFile))
+    if (dupFile(&umbilicalFile, self->mSock.mFile))
         terminate(
             errno,
             "Unable to dup umbilical thread file descriptor %d",
-            umbilicalThread->mSock.mFile->mFd);
+            self->mSock.mFile->mFd);
 
-    lockMutex(&umbilicalThread->mMutex);
+    lockMutex(&self->mMutex);
     {
-        while (UMBILICAL_STARTING != umbilicalThread->mState)
-            waitCond(&umbilicalThread->mCond, &umbilicalThread->mMutex);
+        while (UMBILICAL_STARTING != self->mState)
+            waitCond(&self->mCond, &self->mMutex);
 
-        if ( ! ownFdValid(umbilicalThread->mSock.mFile->mFd))
+        if ( ! ownFdValid(self->mSock.mFile->mFd))
             terminate(
                 errno,
                 "Umbilical file descriptor is not valid %d",
-                umbilicalThread->mSock.mFile->mFd);
+                self->mSock.mFile->mFd);
 
-        umbilicalThread->mState = UMBILICAL_STARTED;
+        self->mState = UMBILICAL_STARTED;
     }
-    unlockMutexSignal(&umbilicalThread->mMutex, &umbilicalThread->mCond);
+    unlockMutexSignal(&self->mMutex, &self->mCond);
 
     /* Since the child has its own file descriptor space, close
      * all unnecessary file descriptors so that the child will not
@@ -379,7 +493,7 @@ watchUmbilical_(void *aUmbilicalThread)
      * can control and redirect these standard file descriptors as
      * it sees fit.
      *
-     * Note that this will close the file descriptors in umbilicalThread->mSync
+     * Note that this will close the file descriptors in self->mSync
      * so no attempt should be made to them after this point. */
 
     struct rlimit noFile;
@@ -394,64 +508,62 @@ watchUmbilical_(void *aUmbilicalThread)
             (void) close(fd);
     }
 
-    while (1)
+    struct UmbilicalPoll umbilicalpoll =
     {
-        debug(0, "waiting on umbilical socket");
+        .mKind       = FD_UMBILICAL,
+        .mFile       = &umbilicalFile,
+        .mCycleLimit = 2
+    };
 
-        struct Duration updatePeriod = Duration(
-            NanoSeconds(umbilicalThread->mTimeout.duration.ns / 2));
-
-        struct EventClockTime timeoutSince = eventclockTime();
-
-        switch (waitFileReadReady(
-                    &umbilicalFile,
-                    updatePeriod.duration.ns ? &updatePeriod : 0))
-        {
-        default:
-            break;
-
-        case -1:
-            terminate(
-                errno,
-                "Unable to wait for umbilical socket");
-            break;
-
-        case 0:
-
-            /* If nothing is available from the umbilical socket after
-             * the timeout period expires, then assume that the watchdog
-             * itself is stuck. */
-
-            if (ProcessStateRunning !=
-                findProcessState(umbilicalThread->mWatchdogPid))
-            {
-                debug(0, "umbilical timeout deferred");
-
-                timeoutSince = eventclockTime();
-            }
-
-            if (umbilicalThread->mTimeout.duration.ns >
-                lapTimeSince(&timeoutSince,
-                             Duration(NanoSeconds(0)), 0).duration.ns)
-                continue;
-
-            terminate(
-                0,
-                "Umbilical connection timed out");
-
-            continue;
-        }
-
-        debug(0, "broken umbilical connection");
-
-        break;
-    }
-
-    lockMutex(&umbilicalThread->mMutex);
+    struct pollfd pollfds[FD_KINDS] =
     {
-        umbilicalThread->mState = UMBILICAL_STOPPING;
+        [FD_UMBILICAL] = { .fd     = umbilicalpoll.mFile->mFd,
+                           .events = POLL_INPUTEVENTS },
+    };
+
+    struct PollFdAction pollfdactions[FD_KINDS] =
+    {
+        [FD_UMBILICAL] = { pollumbilical, &umbilicalpoll },
+    };
+
+    struct PollFdTimerAction pollfdtimeractions[FD_TIMER_KINDS] =
+    {
+        [FD_TIMER_UMBILICAL] =
+        { polltimerumbilical, &umbilicalpoll,
+          Duration(
+              NanoSeconds(
+                  self->mTimeout.duration.ns / umbilicalpoll.mCycleLimit)) },
+    };
+
+    umbilicalpoll.mThread = self;
+    umbilicalpoll.mTimer  = &pollfdtimeractions[FD_TIMER_UMBILICAL];
+    umbilicalpoll.mPollFd = &pollfds[FD_UMBILICAL];
+
+    struct PollFd pollfd;
+    if (createPollFd(
+            &pollfd,
+            pollfds, pollfdactions, sPollFdNames, FD_KINDS,
+            pollfdtimeractions, sPollFdTimerNames, FD_TIMER_KINDS,
+            pollumbilicalcompletion, &umbilicalpoll))
+        terminate(
+            errno,
+            "Unable to initialise polling loop");
+
+    if (runPollFdLoop(&pollfd))
+        terminate(
+            errno,
+            "Unable to run polling loop");
+
+    if (closePollFd(&pollfd))
+        terminate(
+            errno,
+            "Unable to close polling loop");
+
+    lockMutex(&self->mMutex);
+    {
+        self->mState = UMBILICAL_STOPPING;
     }
-    unlockMutex(&umbilicalThread->mMutex);
+    unlockMutex(&self->mMutex);
 
     if (closeFile(&umbilicalFile))
         terminate(

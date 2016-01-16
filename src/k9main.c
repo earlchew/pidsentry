@@ -100,6 +100,7 @@ static const char *sPollFdNames[POLL_FD_KINDS] =
 enum PollFdTimerKind
 {
     POLL_FD_TIMER_TETHER,
+    POLL_FD_TIMER_UMBILICAL,
     POLL_FD_TIMER_ORPHAN,
     POLL_FD_TIMER_TERMINATION,
     POLL_FD_TIMER_DISCONNECTION,
@@ -109,6 +110,7 @@ enum PollFdTimerKind
 static const char *sPollFdTimerNames[POLL_FD_TIMER_KINDS] =
 {
     [POLL_FD_TIMER_TETHER]        = "tether",
+    [POLL_FD_TIMER_UMBILICAL]     = "umbilical",
     [POLL_FD_TIMER_ORPHAN]        = "orphan",
     [POLL_FD_TIMER_TERMINATION]   = "termination",
     [POLL_FD_TIMER_DISCONNECTION] = "disconnection",
@@ -169,10 +171,38 @@ reapChild(void *self_)
 {
     struct ChildProcess *self = self_;
 
-    if (closePipeWriter(&self->mTermPipe))
+    /* Check that the child process being monitored is the one
+     * is the subject of the signal. Here is a way for a parent
+     * to be surprised by the presence of an adopted child:
+     *
+     *  sleep 5 & exec sh -c 'sleep 1 & wait'
+     *
+     * The new shell inherits the earlier sleep as a child even
+     * though it did not create it. */
+
+    enum ProcessStatus childstatus = monitorProcess(self->mPid);
+
+    if (ProcessStatusError == childstatus)
         terminate(
             errno,
-            "Unable to close termination pipe writer");
+            "Unable to determine status of pid %jd",
+            (intmax_t) self->mPid);
+
+    if (ProcessStatusExited != childstatus &&
+        ProcessStatusKilled != childstatus &&
+        ProcessStatusDumped != childstatus)
+    {
+        debug(1,
+              "child not yet terminated pid %jd status %c",
+              (intmax_t) self->mPid, childstatus);
+    }
+    else
+    {
+        if (closePipeWriter(&self->mTermPipe))
+            terminate(
+                errno,
+                "Unable to close termination pipe writer");
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1059,7 +1089,10 @@ struct PollFdChild
 {
     enum PollFdKind mKind;
 
+    pid_t                     mChildPid;
     struct TetherThread      *mTetherThread;
+    struct PollFdTimerAction *mTerminationTimer;
+    struct PollFdTimerAction *mUmbilicalTimer;
     struct PollFdTimerAction *mDisconnectionTimer;
     struct Pipe              *mNullPipe;
 };
@@ -1073,27 +1106,45 @@ pollFdChild(void                        *self_,
 
     ensure(POLL_FD_CHILD == self->mKind);
 
-    struct PollEventText pollEventText;
-    debug(
-        1,
-        "detected child %s",
-        createPollEventText(
-            &pollEventText,
-            aPollFds[POLL_FD_CHILD].revents));
+    /* There is a race here between receiving the indication that the
+     * child process has terminated, the other watchdog actions
+     * that might be taking place to actively monitor or terminate
+     * the child process. In other words, those actions might be
+     * attempting to manage a child process that is already dead,
+     * or declare the child process errant when it has already exited.
+     *
+     * Actively test the race by occasionally delaying this activity
+     * when in test mode. */
 
-    ensure(aPollFds[POLL_FD_CHILD].events);
+    if ( ! testSleep())
+    {
+        struct PollEventText pollEventText;
+        debug(
+            1,
+            "detected child %s",
+            createPollEventText(
+                &pollEventText,
+                aPollFds[POLL_FD_CHILD].revents));
 
-    aPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
-    aPollFds[POLL_FD_CHILD].events = 0;
+        ensure(aPollFds[POLL_FD_CHILD].events);
 
-    /* Record when the child has terminated, but do not exit
-     * the event loop until all the IO has been flushed. With the
-     * child terminated, no further input can be produced so indicate
-     * to the tether thread that it should start flushing data now. */
+        /* The child process has terminated, so there is no longer
+         * any need to monitor for SIGCHLD. */
 
-    flushTetherThread(self->mTetherThread);
+        aPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
+        aPollFds[POLL_FD_CHILD].events = 0;
 
-    self->mDisconnectionTimer->mPeriod = Duration(NSECS(Seconds(1)));
+        /* Record when the child has terminated, but do not exit
+         * the event loop until all the IO has been flushed. With the
+         * child terminated, no further input can be produced so indicate
+         * to the tether thread that it should start flushing data now. */
+
+        flushTetherThread(self->mTetherThread);
+
+        self->mTerminationTimer->mPeriod   = Duration(NanoSeconds(0));
+        self->mUmbilicalTimer->mPeriod     = Duration(NanoSeconds(0));
+        self->mDisconnectionTimer->mPeriod = Duration(NSECS(Seconds(1)));
+    }
 }
 
 static void
@@ -1122,11 +1173,13 @@ pollFdTimerChild(void                        *self_,
 
 struct PollFdUmbilical
 {
-    enum PollFdKind    mKind;
-    pid_t              mChildPid;
-    struct UnixSocket *mUmbilicalSocket;
-    struct UnixSocket  mUmbilicalPeer_;
-    struct UnixSocket *mUmbilicalPeer;
+    enum PollFdKind                 mKind;
+    pid_t                           mChildPid;
+    struct PollFdTimerAction       *mUmbilicalTimer;
+    const struct PollFdTimerAction *mDisconnectionTimer;
+    struct UnixSocket              *mUmbilicalSocket;
+    struct UnixSocket               mUmbilicalPeer_;
+    struct UnixSocket              *mUmbilicalPeer;
 };
 
 static int
@@ -1138,7 +1191,7 @@ pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
 
     struct UnixSocket *peersocket = 0;
 
-    if (acceptUnixSocket(aPeer, aServer))
+    if (acceptUnixSocket(aPeer, aServer, O_NONBLOCK | O_CLOEXEC))
         goto Finally;
 
     peersocket = aPeer;
@@ -1153,7 +1206,7 @@ pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
     if (ownUnixSocketPeerCred(aPeer, &cred))
         goto Finally;
 
-    debug(1, "umbilical connection from pid %jd", (intmax_t) cred.pid);
+    debug(0, "umbilical connection from pid %jd", (intmax_t) cred.pid);
 
     if (cred.pid != aChildPid)
     {
@@ -1211,10 +1264,32 @@ pollFdUmbilical(void                        *self_,
                 "Unable to close umbilical peer");
         self->mUmbilicalPeer = 0;
 
-        if ( ! pollFdUmbilicalAccept_(&self->mUmbilicalPeer_,
-                                      self->mUmbilicalSocket,
-                                      self->mChildPid))
-            self->mUmbilicalPeer = &self->mUmbilicalPeer_;
+        self->mUmbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+
+        if (pollFdUmbilicalAccept_(&self->mUmbilicalPeer_,
+                                   self->mUmbilicalSocket,
+                                   self->mChildPid))
+            terminate(
+                errno,
+                "Unable to accept connection from umbilical peer");
+
+        self->mUmbilicalPeer = &self->mUmbilicalPeer_;
+
+        if (self->mDisconnectionTimer->mPeriod.duration.ns)
+            debug(1, "child already exited");
+        else
+        {
+            debug(1, "activating umbilical timer");
+
+            self->mUmbilicalTimer->mPeriod =
+                Duration(NanoSeconds(NSECS(
+                    Seconds(gOptions.mTimeout.mUmbilical_s)).ns / 2));
+
+            lapTimeSkip(
+                &self->mUmbilicalTimer->mSince,
+                self->mUmbilicalTimer->mPeriod,
+                aPollTime);
+        }
     }
 }
 
@@ -1222,6 +1297,50 @@ static int
 closeFdUmbilical(struct PollFdUmbilical *self)
 {
     return closeUnixSocket(self->mUmbilicalPeer);
+}
+
+static void
+pollFdTimerUmbilical(void                        *self_,
+                     struct PollFdTimerAction    *aPollFdTimerAction,
+                     const struct EventClockTime *aPollTime)
+{
+    struct PollFdUmbilical *self = self_;
+
+    ensure(POLL_FD_UMBILICAL == self->mKind);
+
+    char buf = 0;
+
+    while (1)
+    {
+        ssize_t wrlen = sendUnixSocket(self->mUmbilicalPeer, &buf, sizeof(buf));
+
+        if (-1 != wrlen)
+            debug(1, "wrote to umbilical result %zd", wrlen);
+        else
+        {
+            switch (errno)
+            {
+            default:
+                terminate(errno, "Unable to write to umbilical");
+
+            case EINTR:
+                continue;
+
+            case EPIPE:
+                debug(0,
+                      "umbilical connection closed by pid %zd",
+                      self->mChildPid);
+
+                self->mUmbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+                break;
+
+            case EWOULDBLOCK:
+                break;
+            }
+        }
+
+        break;
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1239,14 +1358,34 @@ struct ChildSignalPlan
 
 struct PollFdTimerTermination
 {
-    enum PollFdTimerKind      mKind;
-    struct PollFdTimerAction *mTimer;
+    enum PollFdTimerKind mKind;
+
+    struct PollFdTimerAction       *mTerminationTimer;
+    const struct PollFdTimerAction *mDisconnectionTimer;
 
     struct Duration               mPeriod;
     const struct ChildSignalPlan *mPlan;
 };
 
-void
+static void
+activateFdTimerTermination(struct PollFdTimerTermination *self,
+                           const struct EventClockTime   *aPollTime)
+{
+    if (self->mDisconnectionTimer->mPeriod.duration.ns)
+        debug(1, "child already exited");
+    else if ( ! self->mTerminationTimer->mSince.eventclock.ns)
+    {
+        debug(1, "activating termination timer");
+
+        self->mTerminationTimer->mPeriod = self->mPeriod;
+
+        lapTimeSkip(&self->mTerminationTimer->mSince,
+                    self->mTerminationTimer->mPeriod,
+                    aPollTime);
+    }
+}
+
+static void
 pollFdTimerTermination(void                        *self_,
                        struct PollFdTimerAction    *aPollFdTimerAction,
                        const struct EventClockTime *aPollTime)
@@ -1286,10 +1425,10 @@ struct PollFdTether
 {
     enum PollFdKind mKind;
 
-    struct PollFdTimerAction      *mTetherTimer;
-    struct TetherThread           *mThread;
-    struct PollFdTimerTermination *mTermination;
-    struct Pipe                   *mNullPipe;
+    struct PollFdTimerAction       *mTetherTimer;
+    struct TetherThread            *mThread;
+    struct PollFdTimerTermination  *mTermination;
+    struct Pipe                    *mNullPipe;
 
     pid_t    mChildPid;
     unsigned mCycleCount;       /* Current number of cycles */
@@ -1337,29 +1476,30 @@ pollFdTimerTether(void                        *self_,
 
     do
     {
-        siginfo_t siginfo;
+        enum ProcessStatus childstatus = monitorProcess(self->mChildPid);
 
-        siginfo.si_pid = 0;
-        if ( ! waitid(P_PID,
-                      self->mChildPid,
-                      &siginfo,
-                      WSTOPPED | WNOHANG | WNOWAIT))
+        if (ProcessStatusError == childstatus)
         {
-            if (siginfo.si_pid == self->mChildPid &&
-                (siginfo.si_code == CLD_TRAPPED ||
-                 siginfo.si_code == CLD_STOPPED))
-            {
-                struct ProcessStatusCodeText statusCodeText;
+            if (ECHILD != errno)
+                terminate(
+                    errno,
+                    "Unable to check for status of child pid %jd",
+                    (intmax_t) self->mChildPid);
 
-                debug(
-                    0,
-                    "deferred timeout due to child status %s",
-                    createProcessStatusCodeText(&statusCodeText, &siginfo));
+            /* The child process is no longer active, so it makes
+             * sense to proceed as if the child process should
+             * be terminated. */
+        }
+        else if (ProcessStatusTrapped == childstatus ||
+                 ProcessStatusStopped == childstatus)
+        {
+            debug(0, "deferred timeout due to child status %c", childstatus);
 
-                self->mCycleCount = 0;
-                break;
-            }
-
+            self->mCycleCount = 0;
+            break;
+        }
+        else
+        {
             /* Find when the tether was last active and use it to
              * determine if a timeout has actually occurred. If
              * there was recent activity, use the time of that
@@ -1386,18 +1526,6 @@ pollFdTimerTether(void                        *self_,
 
             self->mCycleCount = self->mCycleLimit;
         }
-        else
-        {
-            if (ECHILD != errno)
-                terminate(
-                    errno,
-                    "Unable to check for status of child pid %jd",
-                    (intmax_t) self->mChildPid);
-
-            /* The child process is no longer active, so it makes
-             * sense to proceed as if the child process should
-             * be terminated. */
-        }
 
         /* Once the timeout has expired, the timer can be cancelled because
          * there is no further need to run this state machine. */
@@ -1406,15 +1534,7 @@ pollFdTimerTether(void                        *self_,
 
         aPollFdTimerAction->mPeriod = Duration(NanoSeconds(0));
 
-        if ( ! self->mTermination->mTimer->mSince.eventclock.ns)
-        {
-            self->mTermination->mTimer->mPeriod = self->mTermination->mPeriod;
-
-            lapTimeSkip(
-                &self->mTermination->mTimer->mSince,
-                self->mTermination->mTimer->mPeriod,
-                aPollTime);
-        }
+        activateFdTimerTermination(self->mTermination, aPollTime);
 
     } while (0);
 }
@@ -1451,15 +1571,7 @@ pollFdTimerOrphan(void                        *self_,
 
         aPollFdTimerAction->mPeriod = Duration(NanoSeconds(0));
 
-        if ( ! self->mTermination->mTimer->mSince.eventclock.ns)
-        {
-            self->mTermination->mTimer->mPeriod = self->mTermination->mPeriod;
-
-            lapTimeSkip(
-                &self->mTermination->mTimer->mSince,
-                self->mTermination->mTimer->mPeriod,
-                aPollTime);
-        }
+        activateFdTimerTermination(self->mTermination, aPollTime);
     }
 }
 
@@ -1482,6 +1594,7 @@ monitorChild(struct ChildProcess *self)
     struct PollFdTimerAction pollfdtimeractions[POLL_FD_TIMER_KINDS] =
     {
         [POLL_FD_TIMER_TETHER]        = { 0 },
+        [POLL_FD_TIMER_UMBILICAL]     = { 0 },
         [POLL_FD_TIMER_ORPHAN]        = { 0 },
         [POLL_FD_TIMER_TERMINATION]   = { 0 },
         [POLL_FD_TIMER_DISCONNECTION] = { 0 },
@@ -1510,7 +1623,10 @@ monitorChild(struct ChildProcess *self)
     struct PollFdChild pollfdchild =
     {
         .mKind               = POLL_FD_CHILD,
+        .mChildPid           = self->mPid,
         .mDisconnectionTimer = &pollfdtimeractions[POLL_FD_TIMER_DISCONNECTION],
+        .mUmbilicalTimer     = &pollfdtimeractions[POLL_FD_TIMER_UMBILICAL],
+        .mTerminationTimer   = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
         .mTetherThread       = &tetherThread,
         .mNullPipe           = &nullPipe,
     };
@@ -1522,11 +1638,18 @@ monitorChild(struct ChildProcess *self)
 
     struct PollFdUmbilical pollfdumbilical =
     {
-        .mKind            = POLL_FD_UMBILICAL,
-        .mChildPid        = self->mPid,
-        .mUmbilicalSocket = &self->mUmbilicalSocket,
-        .mUmbilicalPeer   = 0,
+        .mKind               = POLL_FD_UMBILICAL,
+        .mChildPid           = self->mPid,
+        .mDisconnectionTimer = &pollfdtimeractions[POLL_FD_TIMER_DISCONNECTION],
+        .mUmbilicalTimer     = &pollfdtimeractions[POLL_FD_TIMER_UMBILICAL],
+        .mUmbilicalSocket    = &self->mUmbilicalSocket,
+        .mUmbilicalPeer      = 0,
     };
+
+    pollfdumbilical.mUmbilicalTimer->mAction = pollFdTimerUmbilical;
+    pollfdumbilical.mUmbilicalTimer->mSelf   = &pollfdumbilical;
+    pollfdumbilical.mUmbilicalTimer->mSince  = EVENTCLOCKTIME_INIT;
+    pollfdumbilical.mUmbilicalTimer->mPeriod = Duration(NanoSeconds(0));
 
     struct ChildSignalPlan sharedPgrpPlan[] =
     {
@@ -1545,14 +1668,17 @@ monitorChild(struct ChildProcess *self)
 
     struct PollFdTimerTermination pollfdtimertermination =
     {
-        .mKind   = POLL_FD_TIMER_TERMINATION,
-        .mTimer  = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
+        .mKind = POLL_FD_TIMER_TERMINATION,
+
+        .mTerminationTimer   = &pollfdtimeractions[POLL_FD_TIMER_TERMINATION],
+        .mDisconnectionTimer = &pollfdtimeractions[POLL_FD_TIMER_DISCONNECTION],
+
         .mPeriod = Duration(NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
         .mPlan   = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
     };
 
-    pollfdtimertermination.mTimer->mAction = pollFdTimerTermination;
-    pollfdtimertermination.mTimer->mSelf   = &pollfdtimertermination;
+    pollfdtimertermination.mTerminationTimer->mAction = pollFdTimerTermination;
+    pollfdtimertermination.mTerminationTimer->mSelf   = &pollfdtimertermination;
 
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
@@ -1565,6 +1691,7 @@ monitorChild(struct ChildProcess *self)
         .mKind = POLL_FD_TETHER,
 
         .mTetherTimer = &pollfdtimeractions[POLL_FD_TIMER_TETHER],
+
         .mThread      = &tetherThread,
         .mTermination = &pollfdtimertermination,
         .mNullPipe    = &nullPipe,
