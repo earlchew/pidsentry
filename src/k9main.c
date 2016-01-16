@@ -1114,22 +1114,14 @@ struct ChildMonitor
  * event loop on a pipe, at which point the child process is known
  * to be dead. */
 
-struct PollFdChild
-{
-    enum PollFdKind mKind;
-
-    struct ChildMonitor *mMonitor;
-    struct pollfd       *mPollFds;
-};
-
 static void
 pollFdChild(void                        *self_,
             struct pollfd               *aPollFds_ununsed,
             const struct EventClockTime *aPollTime)
 {
-    struct PollFdChild *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_CHILD == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     /* There is a race here between receiving the indication that the
      * child process has terminated, the other watchdog actions
@@ -1156,7 +1148,7 @@ pollFdChild(void                        *self_,
         /* The child process has terminated, so there is no longer
          * any need to monitor for SIGCHLD. */
 
-        self->mPollFds[POLL_FD_CHILD].fd     = self->mMonitor->mNullPipe.mRdFile->mFd;
+        self->mPollFds[POLL_FD_CHILD].fd     = self->mNullPipe.mRdFile->mFd;
         self->mPollFds[POLL_FD_CHILD].events = 0;
 
         /* Record when the child has terminated, but do not exit
@@ -1164,35 +1156,31 @@ pollFdChild(void                        *self_,
          * child terminated, no further input can be produced so indicate
          * to the tether thread that it should start flushing data now. */
 
-        flushTetherThread(&self->mMonitor->mTetherThread);
+        flushTetherThread(&self->mTetherThread);
 
-        struct PollFdTimerAction *terminationTimer =
-            &self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_TERMINATION];
+        self->mPollFdTimerActions[POLL_FD_TIMER_TERMINATION].mPeriod =
+            Duration(NanoSeconds(0));
 
-        struct PollFdTimerAction *umbilicalTimer =
-            &self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+        self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mPeriod =
+            Duration(NanoSeconds(0));
 
-        struct PollFdTimerAction *disconnectionTimer =
-            &self->mMonitor->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION];
-
-        terminationTimer->mPeriod   = Duration(NanoSeconds(0));
-        umbilicalTimer->mPeriod     = Duration(NanoSeconds(0));
-        disconnectionTimer->mPeriod = Duration(NSECS(Seconds(1)));
+        self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION].mPeriod =
+            Duration(NSECS(Seconds(1)));
     }
 }
 
 static void
 pollFdTimerChild(void                        *self_,
-                 struct PollFdTimerAction    *aPollFdTimerAction,
+                 struct PollFdTimerAction    *aPollFdTimerAction_unused,
                  const struct EventClockTime *aPollTime)
 {
-    struct PollFdChild *self = self_;
+    struct ChildMonitor *self = self_;
 
-    ensure(POLL_FD_CHILD == self->mKind);
+    ensure(&sChildMonitorType == self->mType);
 
     debug(0, "disconnecting tether thread");
 
-    pingTetherThread(&self->mMonitor->mTetherThread);
+    pingTetherThread(&self->mTetherThread);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1674,14 +1662,6 @@ monitorChild(struct ChildProcess *self)
 
     createTetherThread(&childmonitor.mTetherThread, &childmonitor.mNullPipe);
 
-    struct PollFdChild pollfdchild =
-    {
-        .mKind    = POLL_FD_CHILD,
-        .mMonitor = &childmonitor,
-    };
-
-    childmonitor.mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION].mSelf = &pollfdchild;
-
     struct PollFdUmbilical pollfdumbilical =
     {
         .mKind               = POLL_FD_UMBILICAL,
@@ -1803,7 +1783,6 @@ monitorChild(struct ChildProcess *self)
             .fd     = pollfdtether.mThread->mControlPipe.mWrFile->mFd,
             .events = POLL_DISCONNECTEVENT, };
 
-    pollfdchild.mPollFds     = pollfds;
     pollfdumbilical.mPollFds = pollfds;
     pollfdtether.mPollFds    = pollfds;
 
@@ -1829,7 +1808,7 @@ monitorChild(struct ChildProcess *self)
     struct PollFdAction *pollfdactions = childmonitor.mPollFdActions;
 
     pollfdactions[POLL_FD_CHILD] = (struct PollFdAction) {
-        pollFdChild,     &pollfdchild };
+        pollFdChild,     &childmonitor };
 
     pollfdactions[POLL_FD_UMBILICAL] = (struct PollFdAction) {
         pollFdUmbilical, &pollfdumbilical };
