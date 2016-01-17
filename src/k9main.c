@@ -315,7 +315,7 @@ forkChild(
                     break;
 
                 case 0:
-                    _exit(1);
+                    _exit(EXIT_FAILURE);
                     break;
                 }
 
@@ -1115,7 +1115,8 @@ struct ChildMonitor
     struct
     {
         struct UnixSocket *mSocket;
-        struct UnixSocket  mPeer_;
+        unsigned           mActivePeer;
+        struct UnixSocket  mPeer_[2];
         struct UnixSocket *mPeer;
     } mUmbilical;
 
@@ -1244,24 +1245,29 @@ pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
 
     if (cred.pid != aChildPid)
     {
-        errno = EPERM;
-        goto Finally;
+        /* Do not accept connections from unrecognised processes. Only
+         * monitor the child process created from this process. */
+
+        if (closeUnixSocket(peersocket))
+            goto Finally;
     }
+    else
+    {
+        /* There is nothing read from the umbilical connection, so shut down
+         * the reading side here. Do not shut down the writing side leaving
+         * the umbilical half-open to allow it to be used to signal to
+         * the child process if the watchdog terminates. */
 
-    /* There is nothing read from the umbilical connection, so shut down
-     * the reading side here. Do not shut down the writing side leaving
-     * the umbilical half-open to allow it to be used to signal to
-     * the child process if the watchdog terminates. */
-
-    if (shutdownUnixSocketReader(peersocket))
-        goto Finally;
+        if (shutdownUnixSocketReader(peersocket))
+            goto Finally;
+    }
 
     rc = 0;
 
 Finally:
 
-    FINALLY(
-    {
+    FINALLY
+    ({
         if (rc)
             closeUnixSocket(peersocket);
     });
@@ -1280,7 +1286,14 @@ pollFdUmbilical(void                        *self_,
 
     /* Process an inbound connection from the child process on its
      * umbilical socket. The parasite watchdog library attached to the
-     * child will use this to detect if the watchdog has terminated. */
+     * child will use this to detect if the watchdog has terminated.
+     *
+     * Remember that this function will race with child termination.
+     * By the time the function runs, the child might already have
+     * terminated. No special handling of this case is performed
+     * because the code to handle the umbilical connection is expected
+     * to respond correctly even if the child process is non-responsive
+     * or has terminated. */
 
     struct PollEventText pollEventText;
     debug(
@@ -1292,39 +1305,44 @@ pollFdUmbilical(void                        *self_,
 
     if (self->mPollFds[POLL_FD_UMBILICAL].revents & POLLIN)
     {
-        if (closeUnixSocket(self->mUmbilical.mPeer))
-            terminate(
-                errno,
-                "Unable to close umbilical peer");
-        self->mUmbilical.mPeer = 0;
-
         self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mPeriod =
             Duration(NanoSeconds(0));
 
-        if (pollFdUmbilicalAccept_(&self->mUmbilical.mPeer_,
+        unsigned inactivePeer = 1 - self->mUmbilical.mActivePeer;
+
+        ensure(NUMBEROF(self->mUmbilical.mPeer_) > inactivePeer);
+
+        struct UnixSocket *peerSocket = &self->mUmbilical.mPeer_[inactivePeer];
+
+        if (pollFdUmbilicalAccept_(peerSocket,
                                    self->mUmbilical.mSocket,
                                    self->mChildPid))
             terminate(
                 errno,
                 "Unable to accept connection from umbilical peer");
 
-        self->mUmbilical.mPeer = &self->mUmbilical.mPeer_;
+        /* The call to pollFdUmbilicalAccept_() might succeed, but
+         * the peer connection might be closed because the remote
+         * peer might not be acceptable. */
 
-        struct PollFdTimerAction *disconnectionTimer =
-            &self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION];
-
-        if (disconnectionTimer->mPeriod.duration.ns)
-            debug(1, "child already exited");
-        else
+        if (ownUnixSocketValid(peerSocket))
         {
+            if (closeUnixSocket(self->mUmbilical.mPeer))
+                terminate(
+                    errno,
+                    "Unable to close umbilical peer");
+
+            self->mUmbilical.mPeer       = peerSocket;
+            self->mUmbilical.mActivePeer = inactivePeer;
+
             struct PollFdTimerAction *umbilicalTimer =
                 &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
 
             debug(1, "activating umbilical timer");
 
             umbilicalTimer->mPeriod =
-                Duration(NanoSeconds(NSECS(
-                    Seconds(gOptions.mTimeout.mUmbilical_s)).ns / 2));
+                Duration(NanoSeconds(NSECS(Seconds(
+                    gOptions.mTimeout.mUmbilical_s)).ns / 2));
 
             lapTimeSkip(
                 &umbilicalTimer->mSince,
@@ -1419,15 +1437,15 @@ static void
 activateFdTimerTermination(struct ChildMonitor         *self,
                            const struct EventClockTime *aPollTime)
 {
+    /* When it is necessary to terminate the child process, the child
+     * process might already have terminated. No special action is
+     * taken with the expectation that the termination code should
+     * fully expect that child the terminate at any time */
+
     struct PollFdTimerAction *terminationTimer =
         &self->mPollFdTimerActions[POLL_FD_TIMER_TERMINATION];
 
-    struct PollFdTimerAction *disconnectionTimer =
-        &self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION];
-
-    if (disconnectionTimer->mPeriod.duration.ns)
-        debug(1, "child already exited");
-    else if ( ! terminationTimer->mSince.eventclock.ns)
+    if ( ! terminationTimer->mPeriod.duration.ns)
     {
         debug(1, "activating termination timer");
 
@@ -1697,8 +1715,9 @@ monitorChild(struct ChildProcess *self)
 
         .mUmbilical =
         {
-            .mSocket = &self->mUmbilicalSocket,
-            .mPeer   = 0,
+            .mSocket     = &self->mUmbilicalSocket,
+            .mPeer       = 0,
+            .mActivePeer = 0,
         },
 
         .mTether =
@@ -1747,7 +1766,7 @@ monitorChild(struct ChildProcess *self)
 
         .mPollFdTimerActions =
         {
-            [POLL_FD_TIMER_TETHER]        =
+            [POLL_FD_TIMER_TETHER] =
             {
                 /* Note that a zero value for gOptions.mTimeout.mTether_s will
                  * disable the tether timeout in which case the watchdog will
