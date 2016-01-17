@@ -940,7 +940,9 @@ tetherThreadMain_(void *self_)
             srcFd);
 
     /* Shut down the end of the control pipe controlled by this thread,
-     * without closing the control pipe file descriptor itself. */
+     * without closing the control pipe file descriptor itself. The
+     * monitoring loop is waiting for the control pipe to close before
+     * exiting the event loop. */
 
     if (dup2(self->mNullPipe->mRdFile->mFd, controlFd) != controlFd)
         terminate(errno, "Unable to shut down tether thread control");
@@ -1044,10 +1046,10 @@ closeTetherThread(struct TetherThread *self)
 {
     ensure(self->mFlushed);
 
-    /* Note that the tether thread might be blocked on splice(2). The
-     * concurrent process clock ticks are enough to cause splice(2)
-     * to periodically return EINTR, allowing the tether thread to
-     * check its deadline. */
+    /* This method is not called until the tether thread has closed
+     * its end of the control pipe to indicate that it has completed.
+     * At that point the thread is waiting for the thread state
+     * to change so that it can exit. */
 
     debug(0, "synchronising tether thread");
 
@@ -1181,11 +1183,9 @@ pollFdChild(void                        *self_,
 
         flushTetherThread(self->mTetherThread);
 
-        self->mPollFdTimerActions[POLL_FD_TIMER_TERMINATION].mPeriod =
-            Duration(NanoSeconds(0));
-
-        self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mPeriod =
-            Duration(NanoSeconds(0));
+        /* Once the child process has terminated, start the disconnection
+         * timer that sends a periodic signal to the tether thread
+         * to ensure that it will not block. */
 
         self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION].mPeriod =
             Duration(NSECS(Seconds(1)));
@@ -1361,41 +1361,50 @@ pollFdTimerUmbilical(void                        *self_,
 
     ensure(&sChildMonitorType == self->mType);
 
+    /* Remember that the umbilical timer will race with child termination.
+     * By the time this function runs, the child might already have
+     * terminated so the umbilical socket might be closed. */
+
+    struct PollFdTimerAction *umbilicalTimer =
+        &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+
     char buf = 0;
 
-    while (1)
+    ssize_t wrlen = sendUnixSocket(
+        self->mUmbilical.mPeer, &buf, sizeof(buf));
+
+    if (-1 != wrlen)
+        debug(1, "wrote to umbilical result %zd", wrlen);
+    else
     {
-        ssize_t wrlen = sendUnixSocket(
-            self->mUmbilical.mPeer, &buf, sizeof(buf));
-
-        if (-1 != wrlen)
-            debug(1, "wrote to umbilical result %zd", wrlen);
-        else
+        switch (errno)
         {
-            switch (errno)
-            {
-            default:
-                terminate(errno, "Unable to write to umbilical");
+        default:
+            terminate(errno, "Unable to write to umbilical");
 
-            case EINTR:
-                continue;
+        case EWOULDBLOCK:
+            break;
 
-            case EPIPE:
-                debug(0,
-                      "umbilical connection closed by pid %zd",
-                      self->mChildPid);
+        case EINTR:
+            /* Do not loop here on EINTR since it is important
+             * to take care that the monitoring loop is
+             * non-blocking. Instead, mark the timer as expired
+             * for force the monitoring loop to retry immediately. */
 
-                struct PollFdTimerAction *umbilicalTimer =
-                    &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
-                umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
-                break;
+            debug(1, "umbilical write interrupted");
 
-            case EWOULDBLOCK:
-                break;
-            }
+            lapTimeSkip(&umbilicalTimer->mSince,
+                        umbilicalTimer->mPeriod, aPollTime);
+            break;
+
+        case EPIPE:
+            debug(0,
+                  "umbilical connection closed by pid %zd",
+                  self->mChildPid);
+
+            umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+            break;
         }
-
-        break;
     }
 }
 
@@ -1439,6 +1448,12 @@ pollFdTimerTermination(void                        *self_,
 
     ensure(&sChildMonitorType == self->mType);
 
+    /* Remember that this function races termination of the child process.
+     * The child process might have terminated by the time this function
+     * attempts to deliver the next signal. This should be handled
+     * correctly because the child process will remain as a zombie
+     * and signals will be delivered successfully, but without effect. */
+
     pid_t pidNum = self->mTermination.mSignalPlan->mPid;
     int   sigNum = self->mTermination.mSignalPlan->mSig;
 
@@ -1447,7 +1462,7 @@ pollFdTimerTermination(void                        *self_,
 
     warn(0, "Killing child pid %jd with signal %d", (intmax_t) pidNum, sigNum);
 
-    if (kill(pidNum, sigNum) && ESRCH != errno)
+    if (kill(pidNum, sigNum))
         terminate(
             errno,
             "Unable to kill child pid %jd with signal %d",
@@ -1609,6 +1624,9 @@ pollfdcompletion(void                     *self_,
     struct ChildMonitor *self = self_;
 
     ensure(&sChildMonitorType == self->mType);
+
+    /* Wait until the child process has terminated, and the tether thread
+     * has completed. */
 
     return
         ! (self->mPollFds[POLL_FD_CHILD].events |
