@@ -29,9 +29,6 @@
 
 #include "env_.h"
 
-#include <stdlib.h>
-#include <string.h>
-
 #include "gtest/gtest.h"
 
 TEST(EnvTest, Delete)
