@@ -66,6 +66,9 @@ connectUnixSocket(struct UnixSocket *self,
 int
 closeUnixSocket(struct UnixSocket *self);
 
+bool
+ownUnixSocketValid(const struct UnixSocket *self);
+
 int
 shutdownUnixSocketReader(struct UnixSocket *self);
 

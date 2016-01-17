@@ -273,6 +273,13 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+bool
+ownUnixSocketValid(const struct UnixSocket *self)
+{
+    return ownFileValid(self->mFile);
+}
+
+/* -------------------------------------------------------------------------- */
 int
 shutdownUnixSocketReader(struct UnixSocket *self)
 {

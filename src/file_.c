@@ -159,9 +159,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 bool
-ownFileClosed(const struct File *self)
+ownFileValid(const struct File *self)
 {
-    return ! self || -1 == self->mFd;
+    return self && -1 != self->mFd;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -30,6 +30,7 @@
 #define FILE_H
 
 #include <inttypes.h>
+#include <stdbool.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -94,7 +95,7 @@ int
 ftruncateFile(struct File *self, off_t aLength);
 
 bool
-ownFileClosed(const struct File *self);
+ownFileValid(const struct File *self);
 
 /* -------------------------------------------------------------------------- */
 int
