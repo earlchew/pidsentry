@@ -31,7 +31,6 @@
 
 #include "file_.h"
 
-#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {

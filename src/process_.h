@@ -31,9 +31,7 @@
 
 #include "timescale_.h"
 
-#include <inttypes.h>
 #include <limits.h>
-#include <signal.h>
 
 #include <sys/types.h>
 

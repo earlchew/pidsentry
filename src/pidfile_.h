@@ -29,7 +29,6 @@
 #ifndef PIDFILE_H
 #define PIDFILE_H
 
-#include "file_.h"
 #include "pathname_.h"
 
 #ifdef __cplusplus

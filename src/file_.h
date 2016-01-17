@@ -29,10 +29,8 @@
 #ifndef FILE_H
 #define FILE_H
 
-#include <inttypes.h>
 #include <stdbool.h>
 
-#include <sys/types.h>
 #include <sys/socket.h>
 
 #ifdef __cplusplus
