@@ -374,6 +374,7 @@ runTests()
     testOutput OK = '$(
         k9 -T -i -dd -t 3,,4 -- sh -cx "
             trap : 15
+            /bin/echo READY
             while : ; do sleep 1 ; done" |
         {
             set -x
@@ -381,6 +382,7 @@ runTests()
             # t+7s : Watchdog escalates and issues kill -KILL
             read PARENT
             read CHILD
+            read READY # Signal handler established
             while : ; do sleep 1 ; kill $PARENT 2>&- ; done &
             SLAVE=$!
             sleep 4 # Wait for watchdog to send first signal
