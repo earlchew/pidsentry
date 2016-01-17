@@ -103,10 +103,6 @@ deadlineTimeExpired(
     const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
-struct timespec
-earliestTime(const struct timespec *aLhs, const struct timespec *aRhs);
-
-/* -------------------------------------------------------------------------- */
 int
 pushIntervalTimer(struct PushedIntervalTimer *aPause,
                    int                        aType,

@@ -165,6 +165,10 @@ shortenIntervalTime(const struct itimerval *aTimer,
                     struct Duration         aElapsed);
 
 /* -------------------------------------------------------------------------- */
+struct timespec
+earliestTime(const struct timespec *aLhs, const struct timespec *aRhs);
+
+/* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 }
