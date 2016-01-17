@@ -1,6 +1,6 @@
 /* -*- c-basic-offset:4; indent-tabs-mode:nil -*- vi: set sw=4 et: */
 /*
-// Copyright (c) 2013, Earl Chew
+// Copyright (c) 2016, Earl Chew
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
