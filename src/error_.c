@@ -332,7 +332,7 @@ terminate_(
         va_start(args, aFmt);
         print_(aErrCode, 0, 0, aFmt, args);
         va_end(args);
-        _exit(1);
+        _exit(EXIT_FAILURE);
     });
 }
 

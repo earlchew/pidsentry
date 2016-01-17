@@ -144,7 +144,7 @@ showUsage_(void)
     const char *arg0 = ownProcessName();
 
     dprintf(STDERR_FILENO, sUsage, arg0);
-    _exit(1);
+    _exit(EXIT_FAILURE);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -49,7 +49,7 @@ TEST(ProcessTest, ProcessStatus)
     EXPECT_NE(-1, childpid);
 
     if ( ! childpid)
-        _exit(0);
+        _exit(EXIT_SUCCESS);
 
     while (ProcessStatusRunning == monitorProcess(childpid))
         continue;
