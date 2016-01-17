@@ -158,6 +158,13 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+bool
+ownFileClosed(const struct File *self)
+{
+    return ! self || -1 == self->mFd;
+}
+
+/* -------------------------------------------------------------------------- */
 void
 walkFileList(void *aOther,
              int aVisitor(void *aOther, const struct File *aFile))

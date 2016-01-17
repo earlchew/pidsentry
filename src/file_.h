@@ -93,6 +93,9 @@ fcntlFileGetFlags(struct File *self);
 int
 ftruncateFile(struct File *self, off_t aLength);
 
+bool
+ownFileClosed(const struct File *self);
+
 /* -------------------------------------------------------------------------- */
 int
 waitFileWriteReady(const struct File     *self,
