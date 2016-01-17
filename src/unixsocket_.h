@@ -77,7 +77,7 @@ shutdownUnixSocketWriter(struct UnixSocket *self);
 
 int
 waitUnixSocketWriteReady(const struct UnixSocket *self,
-                         const struct Duration  *aTimeout);
+                         const struct Duration   *aTimeout);
 
 int
 waitUnixSocketReadReady(const struct UnixSocket *self,
