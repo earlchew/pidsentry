@@ -96,11 +96,14 @@ createPollFd(struct PollFd            *self,
                  void                     *aObserver,
                  struct pollfd            *aPollFds,
                  struct PollFdTimerAction *aPollFdTimer),
-             void                     *aCompletionObserver)
+             void                     *aObserver)
 {
     int rc = -1;
 
     self->mPoll = aPoll;
+
+    self->mCompletionQuery = aCompletionQuery;
+    self->mObserver        = aObserver;
 
     self->mFdActions.mActions = aFdActions;
     self->mFdActions.mNames   = aFdNames;
@@ -109,9 +112,6 @@ createPollFd(struct PollFd            *self,
     self->mTimerActions.mActions = aTimerActions;
     self->mTimerActions.mNames   = aTimerNames;
     self->mTimerActions.mSize    = aNumTimerActions;
-
-    self->mCompletion.mQuery    = aCompletionQuery;
-    self->mCompletion.mObserver = aCompletionObserver;
 
     rc = 0;
 
@@ -269,7 +269,7 @@ runPollFdLoop(struct PollFd *self)
 
                     if (self->mFdActions.mActions[ix].mAction)
                         self->mFdActions.mActions[ix].mAction(
-                            self->mFdActions.mActions[ix].mSelf,
+                            self->mObserver,
                             self->mPoll,
                             &polltm);
                 }
@@ -310,14 +310,13 @@ runPollFdLoop(struct PollFd *self)
                         FMTs_MilliSeconds(
                             MSECS(timerAction->mPeriod.duration)));
 
-                    timerAction->mAction(
-                        timerAction->mSelf, timerAction, &polltm);
+                    timerAction->mAction(self->mObserver, timerAction, &polltm);
                 }
             }
         }
 
-    } while ( ! self->mCompletion.mQuery(
-                  self->mCompletion.mObserver,
+    } while ( ! self->mCompletionQuery(
+                  self->mObserver,
                   self->mPoll,
                   self->mTimerActions.mActions));
 

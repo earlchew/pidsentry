@@ -43,7 +43,6 @@ struct PollFdAction
     void (*mAction)(void                        *self,
                     struct pollfd               *aPollFds,
                     const struct EventClockTime *aPollTime);
-    void  *mSelf;
 };
 
 struct PollFdTimerAction
@@ -51,7 +50,6 @@ struct PollFdTimerAction
     void                (*mAction)(void                        *self,
                                    struct PollFdTimerAction    *aPollFdTimer,
                                    const struct EventClockTime *aPollTime);
-    void                 *mSelf;
     struct Duration       mPeriod;
     struct EventClockTime mSince;
 };
@@ -59,6 +57,11 @@ struct PollFdTimerAction
 struct PollFd
 {
     struct pollfd *mPoll;
+    void          *mObserver;
+
+    bool  (*mCompletionQuery)(void                     *aObserver,
+                              struct pollfd            *aPollFds,
+                              struct PollFdTimerAction *aPollFdTimer);
 
     struct
     {
@@ -73,14 +76,6 @@ struct PollFd
         const char * const       *mNames;
         size_t                    mSize;
     } mTimerActions;
-
-    struct
-    {
-        bool  (*mQuery)(void                     *aObserver,
-                        struct pollfd            *aPollFds,
-                        struct PollFdTimerAction *aPollFdTimer);
-        void   *mObserver;
-    } mCompletion;
 };
 
 struct PollEventText
@@ -117,7 +112,7 @@ createPollFd(struct PollFd            *self,
                  void                     *aObserver,
                  struct pollfd            *aPollFds,
                  struct PollFdTimerAction *aPollFdTimer),
-             void                     *aCompletionObserver);
+             void                     *aObserver);
 
 int
 runPollFdLoop(struct PollFd *self);

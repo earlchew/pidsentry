@@ -523,13 +523,13 @@ watchUmbilical_(void *self_)
 
     struct PollFdAction pollfdactions[FD_KINDS] =
     {
-        [FD_UMBILICAL] = { pollumbilical, &umbilicalpoll },
+        [FD_UMBILICAL] = { pollumbilical },
     };
 
     struct PollFdTimerAction pollfdtimeractions[FD_TIMER_KINDS] =
     {
         [FD_TIMER_UMBILICAL] =
-        { polltimerumbilical, &umbilicalpoll,
+        { polltimerumbilical,
           Duration(
               NanoSeconds(
                   self->mTimeout.duration.ns / umbilicalpoll.mCycleLimit)) },

@@ -890,17 +890,14 @@ tetherThreadMain_(void *self_)
 
         .mPollFdActions =
         {
-            [TETHER_FD_CONTROL] = { polltethercontrol, &tetherpoll },
-            [TETHER_FD_INPUT]   = { polltetherdrain,   &tetherpoll },
-            [TETHER_FD_OUTPUT]  = { polltetherdrain,   &tetherpoll },
+            [TETHER_FD_CONTROL] = { polltethercontrol },
+            [TETHER_FD_INPUT]   = { polltetherdrain },
+            [TETHER_FD_OUTPUT]  = { polltetherdrain },
         },
 
         .mPollFdTimerActions =
         {
-            [TETHER_FD_TIMER_DISCONNECT] =
-            {
-                polltetherdisconnected, &tetherpoll
-            },
+            [TETHER_FD_TIMER_DISCONNECT] = { polltetherdisconnected },
         },
     };
 
@@ -1104,8 +1101,8 @@ struct ChildMonitor
 
     pid_t mChildPid;
 
-    struct Pipe         mNullPipe;
-    struct TetherThread mTetherThread;
+    struct Pipe         *mNullPipe;
+    struct TetherThread *mTetherThread;
 
     struct
     {
@@ -1174,7 +1171,7 @@ pollFdChild(void                        *self_,
         /* The child process has terminated, so there is no longer
          * any need to monitor for SIGCHLD. */
 
-        self->mPollFds[POLL_FD_CHILD].fd     = self->mNullPipe.mRdFile->mFd;
+        self->mPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
         self->mPollFds[POLL_FD_CHILD].events = 0;
 
         /* Record when the child has terminated, but do not exit
@@ -1182,7 +1179,7 @@ pollFdChild(void                        *self_,
          * child terminated, no further input can be produced so indicate
          * to the tether thread that it should start flushing data now. */
 
-        flushTetherThread(&self->mTetherThread);
+        flushTetherThread(self->mTetherThread);
 
         self->mPollFdTimerActions[POLL_FD_TIMER_TERMINATION].mPeriod =
             Duration(NanoSeconds(0));
@@ -1206,7 +1203,7 @@ pollFdTimerChild(void                        *self_,
 
     debug(0, "disconnecting tether thread");
 
-    pingTetherThread(&self->mTetherThread);
+    pingTetherThread(self->mTetherThread);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1472,7 +1469,7 @@ disconnectPollFdTether(struct ChildMonitor *self)
 {
     debug(0, "disconnect tether control");
 
-    self->mPollFds[POLL_FD_TETHER].fd     = self->mNullPipe.mRdFile->mFd;
+    self->mPollFds[POLL_FD_TETHER].fd     = self->mNullPipe->mRdFile->mFd;
     self->mPollFds[POLL_FD_TETHER].events = 0;
 }
 
@@ -1542,9 +1539,9 @@ pollFdTimerTether(void                        *self_,
 
             struct EventClockTime since;
             {
-                lockMutex(&self->mTetherThread.mActivity.mMutex);
-                since = self->mTetherThread.mActivity.mSince;
-                unlockMutex(&self->mTetherThread.mActivity.mMutex);
+                lockMutex(&self->mTetherThread->mActivity.mMutex);
+                since = self->mTetherThread->mActivity.mSince;
+                unlockMutex(&self->mTetherThread->mActivity.mMutex);
             }
 
             if (aPollTime->eventclock.ns <
@@ -1639,6 +1636,25 @@ monitorChild(struct ChildProcess *self)
         { 0 }
     };
 
+    struct Pipe nullPipe;
+    if (createPipe(&nullPipe, O_CLOEXEC | O_NONBLOCK))
+        terminate(
+            errno,
+            "Unable to create null pipe");
+
+    /* Create a thread to use a blocking copy to transfer data from a
+     * local pipe to stdout. This is primarily because SPLICE_F_NONBLOCK
+     * cannot guarantee that the operation is non-blocking unless both
+     * source and destination file descriptors are also themselves non-blocking.
+     *
+     * The child thread is used to perform a potentially blocking
+     * transfer between an intermediate pipe and stdout, while
+     * the main monitoring thread deals exclusively with non-blocking
+     * file descriptors. */
+
+    struct TetherThread tetherThread;
+    createTetherThread(&tetherThread, &nullPipe);
+
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
      * defer the timeout. */
@@ -1650,6 +1666,9 @@ monitorChild(struct ChildProcess *self)
         .mType = &sChildMonitorType,
 
         .mChildPid = self->mPid,
+
+        .mNullPipe     = &nullPipe,
+        .mTetherThread = &tetherThread,
 
         .mTermination =
         {
@@ -1670,6 +1689,44 @@ monitorChild(struct ChildProcess *self)
             .mCycleLimit = timeoutCycles,
         },
 
+        /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
+         * that it is best not to put too much trust in POLLHUP vs POLLIN,
+         * and to treat the presence of either as a trigger to attempt to
+         * read from the file descriptor.
+         *
+         * For the writing end of the pipe, Linux returns POLLERR if the
+         * far end reader is no longer available (to match EPIPE), but
+         * the documentation suggests that POLLHUP might also be reasonable
+         * in this context. */
+
+        .mPollFds =
+        {
+            [POLL_FD_CHILD] =
+            {
+                .fd     = self->mTermPipe.mRdFile->mFd,
+                .events = POLL_DISCONNECTEVENT,
+            },
+
+            [POLL_FD_UMBILICAL] =
+            {
+                .fd     = self->mUmbilicalSocket.mFile->mFd,
+                .events = POLL_INPUTEVENTS,
+            },
+
+            [POLL_FD_TETHER] =
+            {
+                .fd     = tetherThread.mControlPipe.mWrFile->mFd,
+                .events = POLL_DISCONNECTEVENT,
+            },
+        },
+
+        .mPollFdActions =
+        {
+            [POLL_FD_CHILD]     = { pollFdChild },
+            [POLL_FD_UMBILICAL] = { pollFdUmbilical },
+            [POLL_FD_TETHER]    = { pollFdTether },
+        },
+
         .mPollFdTimerActions =
         {
             [POLL_FD_TIMER_TETHER]        =
@@ -1680,7 +1737,6 @@ monitorChild(struct ChildProcess *self)
                  * on activity on the tether. */
 
                 .mAction = pollFdTimerTether,
-                .mSelf   = &childmonitor,
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(
                     NSECS(Seconds(gOptions.mTether
@@ -1691,7 +1747,6 @@ monitorChild(struct ChildProcess *self)
             [POLL_FD_TIMER_UMBILICAL] =
             {
                 .mAction = pollFdTimerUmbilical,
-                .mSelf   = &childmonitor,
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(0)),
             },
@@ -1704,7 +1759,6 @@ monitorChild(struct ChildProcess *self)
                  * to exit. */
 
                 .mAction = pollFdTimerOrphan,
-                .mSelf   = &childmonitor,
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NSECS(Seconds(gOptions.mOrphaned ? 3 : 0))),
             },
@@ -1712,7 +1766,6 @@ monitorChild(struct ChildProcess *self)
             [POLL_FD_TIMER_TERMINATION] =
             {
                 .mAction = pollFdTimerTermination,
-                .mSelf   = &childmonitor,
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(0)),
             },
@@ -1720,54 +1773,14 @@ monitorChild(struct ChildProcess *self)
             [POLL_FD_TIMER_DISCONNECTION] =
             {
                 .mAction = pollFdTimerChild,
-                .mSelf   = &childmonitor,
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(0)),
             },
         },
     };
 
-    struct PollFdTimerAction *pollfdtimeractions =
-        childmonitor.mPollFdTimerActions;
-
-    if (createPipe(&childmonitor.mNullPipe, O_CLOEXEC | O_NONBLOCK))
-        terminate(
-            errno,
-            "Unable to create null pipe");
-
-    /* Create a thread to use a blocking copy to transfer data from a
-     * local pipe to stdout. This is primarily because SPLICE_F_NONBLOCK
-     * cannot guarantee that the operation is non-blocking unless both
-     * source and destination file descriptors are also themselves non-blocking.
-     *
-     * The child thread is used to perform a potentially blocking
-     * transfer between an intermediate pipe and stdout, while
-     * the main monitoring thread deals exclusively with non-blocking
-     * file descriptors. */
-
-    createTetherThread(&childmonitor.mTetherThread, &childmonitor.mNullPipe);
-
-    /* Experiments at http://www.greenend.org.uk/rjk/tech/poll.html show
-     * that it is best not to put too much trust in POLLHUP vs POLLIN,
-     * and to treat the presence of either as a trigger to attempt to
-     * read from the file descriptor.
-     *
-     * For the writing end of the pipe, Linux returns POLLERR if the
-     * far end reader is no longer available (to match EPIPE), but
-     * the documentation suggests that POLLHUP might also be reasonable
-     * in this context. */
-
-    struct pollfd *pollfds = childmonitor.mPollFds;
-
-    pollfds[POLL_FD_CHILD] = (struct pollfd) {
-            .fd     = self->mTermPipe.mRdFile->mFd,
-            .events = POLL_DISCONNECTEVENT };
-    pollfds[POLL_FD_UMBILICAL] = (struct pollfd) {
-            .fd     = self->mUmbilicalSocket.mFile->mFd,
-            .events = POLL_INPUTEVENTS };
-    pollfds[POLL_FD_TETHER] = (struct pollfd) {
-            .fd     = childmonitor.mTetherThread.mControlPipe.mWrFile->mFd,
-            .events = POLL_DISCONNECTEVENT, };
+    if ( ! gOptions.mTether)
+        disconnectPollFdTether(&childmonitor);
 
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
      * open file, rather than of each file descriptor. Since stdin and
@@ -1775,35 +1788,27 @@ monitorChild(struct ChildProcess *self)
      * would affect all file descriptors referring to the same open file,
      so this approach cannot be employed directly. */
 
-    if ( ! gOptions.mTether)
-        disconnectPollFdTether(&childmonitor);
-
-    for (size_t ix = 0; NUMBEROF(pollfds) > ix; ++ix)
+    for (size_t ix = 0; NUMBEROF(childmonitor.mPollFds) > ix; ++ix)
     {
-        if ( ! ownFdNonBlocking(pollfds[ix].fd))
+        if ( ! ownFdNonBlocking(childmonitor.mPollFds[ix].fd))
             terminate(
                 0,
                 "Expected %s fd %d to be non-blocking",
                 sPollFdNames[ix],
-                pollfds[ix].fd);
+                childmonitor.mPollFds[ix].fd);
     }
-
-    struct PollFdAction *pollfdactions = childmonitor.mPollFdActions;
-
-    pollfdactions[POLL_FD_CHILD] = (struct PollFdAction) {
-        pollFdChild,     &childmonitor };
-
-    pollfdactions[POLL_FD_UMBILICAL] = (struct PollFdAction) {
-        pollFdUmbilical, &childmonitor };
-
-    pollfdactions[POLL_FD_TETHER] = (struct PollFdAction) {
-        pollFdTether,    &childmonitor };
 
     struct PollFd pollfd;
     if (createPollFd(
             &pollfd,
-            pollfds, pollfdactions, sPollFdNames, POLL_FD_KINDS,
-            pollfdtimeractions, sPollFdTimerNames, POLL_FD_TIMER_KINDS,
+
+            childmonitor.mPollFds,
+            childmonitor.mPollFdActions,
+            sPollFdNames, POLL_FD_KINDS,
+
+            childmonitor.mPollFdTimerActions,
+            sPollFdTimerNames, POLL_FD_TIMER_KINDS,
+
             pollfdcompletion, &childmonitor))
         terminate(
             errno,
@@ -1824,9 +1829,9 @@ monitorChild(struct ChildProcess *self)
             errno,
             "Unable to close umbilical peer");
 
-    closeTetherThread(&childmonitor.mTetherThread);
+    closeTetherThread(&tetherThread);
 
-    if (closePipe(&childmonitor.mNullPipe))
+    if (closePipe(&nullPipe))
         terminate(
             errno,
             "Unable to close null pipe");
