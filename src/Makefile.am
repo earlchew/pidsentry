@@ -112,5 +112,8 @@ libk9__la_CFLAGS = $(COMMON_CFLAGS)
 libgoogletest_la_SOURCES  = gtest-all.cc
 libgoogletest_la_CPPFLAGS = -I ../googletest
 
+programs:
+	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS) $(check_SCRIPTS)
+
 clean-local::
 	rm -f *.map
