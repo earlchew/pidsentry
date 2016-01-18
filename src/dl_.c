@@ -33,7 +33,6 @@
 
 #include <string.h>
 #include <errno.h>
-#include <dlfcn.h>
 #include <link.h>
 
 /* -------------------------------------------------------------------------- */

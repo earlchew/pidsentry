@@ -34,8 +34,6 @@
 #include <time.h>
 #include <errno.h>
 
-#include <sys/time.h>
-
 /* -------------------------------------------------------------------------- */
 static unsigned             sInit;
 static struct MonotonicTime sEventClockTimeBase;

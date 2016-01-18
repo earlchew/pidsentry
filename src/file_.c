@@ -33,17 +33,12 @@
 #include "fd_.h"
 #include "timekeeping_.h"
 #include "test_.h"
-#include "process_.h"
 
-#include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <limits.h>
 
 #include <sys/poll.h>
-#include <sys/resource.h>
-#include <sys/socket.h>
 
 #include <valgrind/valgrind.h>
 

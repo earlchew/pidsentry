@@ -29,15 +29,12 @@
 
 #include "k9main.h"
 
-#include "options_.h"
 #include "env_.h"
 #include "macros_.h"
 #include "pipe_.h"
 #include "unixsocket_.h"
-#include "timekeeping_.h"
 #include "stdfdfiller_.h"
 #include "pidfile_.h"
-#include "process_.h"
 #include "thread_.h"
 #include "error_.h"
 #include "pollfd_.h"
@@ -45,19 +42,13 @@
 #include "fd_.h"
 #include "dl_.h"
 
-#include "libk9.h"
-
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
 #include <sys/poll.h>
 #include <sys/ioctl.h>
 #include <sys/un.h>

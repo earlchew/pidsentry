@@ -35,21 +35,11 @@
 #include "pollfd_.h"
 #include "env_.h"
 #include "thread_.h"
-#include "process_.h"
 #include "unixsocket_.h"
-#include "timekeeping_.h"
 
-#include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
-#include <limits.h>
-#include <sched.h>
-#include <inttypes.h>
-#include <pthread.h>
-#include <signal.h>
 #include <poll.h>
 
 #include <asm/ldt.h>

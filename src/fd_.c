@@ -29,19 +29,10 @@
 
 #include "fd_.h"
 #include "macros_.h"
-#include "test_.h"
-#include "error_.h"
-#include "timekeeping_.h"
-#include "process_.h"
 
-#include <stdlib.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <signal.h>
-#include <inttypes.h>
 
-#include <sys/time.h>
 #include <sys/file.h>
 
 #include <valgrind/valgrind.h>

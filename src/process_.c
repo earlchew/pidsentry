@@ -31,7 +31,6 @@
 #include "macros_.h"
 #include "pathname_.h"
 #include "fd_.h"
-#include "file_.h"
 #include "pipe_.h"
 #include "test_.h"
 #include "error_.h"
@@ -39,18 +38,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
-#include <time.h>
 #include <string.h>
 #include <pthread.h>
 
 #include <sys/file.h>
 #include <sys/wait.h>
-
-#include <signal.h>
-#include <sys/time.h>
 
 struct ProcessLock
 {

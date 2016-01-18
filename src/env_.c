@@ -34,7 +34,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
-#include <inttypes.h>
 #include <limits.h>
 
 /* -------------------------------------------------------------------------- */

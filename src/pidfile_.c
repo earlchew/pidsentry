@@ -31,16 +31,11 @@
 #include "macros_.h"
 #include "error_.h"
 #include "test_.h"
-#include "process_.h"
 #include "timekeeping_.h"
-#include "fd_.h"
 #include "parse_.h"
 
 #include <stdio.h>
-#include <fcntl.h>
 #include <errno.h>
-#include <limits.h>
-#include <unistd.h>
 
 #include <sys/file.h>
 
