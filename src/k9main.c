@@ -2145,16 +2145,6 @@ cmdRunCommand(char **aCmd)
      * and the signal delivery to the child activated, identify
      * and release the waiting child process. */
 
-    if (gOptions.mIdentify)
-        RACE
-        ({
-            if (-1 == dprintf(STDOUT_FILENO,
-                              "%jd\n", (intmax_t) childProcess.mPid))
-                terminate(
-                    errno,
-                    "Unable to print child pid");
-        });
-
     RACE
     ({
         if (1 != write(syncPipe.mWrFile->mFd, "", 1))
@@ -2167,6 +2157,16 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to close sync pipe");
+
+    if (gOptions.mIdentify)
+        RACE
+        ({
+            if (-1 == dprintf(STDOUT_FILENO,
+                              "%jd\n", (intmax_t) childProcess.mPid))
+                terminate(
+                    errno,
+                    "Unable to print child pid");
+        });
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
