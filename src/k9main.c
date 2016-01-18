@@ -1604,7 +1604,7 @@ pollFdTimerTether(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
-void
+static void
 pollFdTimerOrphan(void                        *self_,
                   struct PollFdTimerAction    *aPollFdTimerAction_unused,
                   const struct EventClockTime *aPollTime)
