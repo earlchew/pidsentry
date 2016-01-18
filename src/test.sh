@@ -307,11 +307,21 @@ runTests()
     [ x"$REPLY" = x$((128 + 9)) ]
 
     testCase 'Stopped child'
-    testOutput OK = '"$(k9 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
+    testOutput OK = '"$(k9 -T -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
         read PARENT
         read CHILD
         sleep 8
         kill -CONT $CHILD || { echo NOTOK ; exit 1 ; }
+        echo OK
+    })"'
+
+    testCase 'Stopped parent'
+    testOutput OK = '"$(k9 -T -i -d -t 8,2 -- sleep 4 | {
+        read PARENT
+        read CHILD
+        kill -STOP $PARENT
+        sleep 8
+        kill -CONT $PARENT || { echo NOTOK ; exit 1 ; }
         echo OK
     })"'
 
