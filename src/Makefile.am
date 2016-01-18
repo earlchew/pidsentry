@@ -40,8 +40,9 @@ AM_LDFLAGS    =
 COMMON_FLAGS       = -D_GNU_SOURCE -Wall -Werror -O2 -Wno-parentheses
 COMMON_CFLAGS      = $(COMMON_FLAGS) -std=gnu99
 COMMON_CFLAGS     += -fdata-sections -ffunction-sections
-COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x \
-		     -Wno-variadic-macros -Wno-long-long
+COMMON_CFLAGS     += -Wmissing-prototypes -Wmissing-declarations
+COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x
+COMMON_CXXFLAGS   += -Wno-variadic-macros -Wno-long-long
 COMMON_LDFLAGS     = -Wl,--gc-sections
 TEST_LIBS          = libk9_.la libgoogletest.la -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
@@ -112,8 +113,11 @@ libk9__la_CFLAGS = $(COMMON_CFLAGS)
 libgoogletest_la_SOURCES  = gtest-all.cc
 libgoogletest_la_CPPFLAGS = -I ../googletest
 
-programs:
+programs:	all
 	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS) $(check_SCRIPTS)
 
 clean-local::
 	rm -f *.map
+
+delete-orphaned-includes:
+	sh ./delete-orphaned-includes.sh $(MAKE) programs
