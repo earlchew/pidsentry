@@ -56,14 +56,8 @@
 /* TODO
  *
  * cmdRunCommand() is too big, break it up
- * monitorChild() is too big, break it up
- * Periodically poll umbilical
- * Correct monitoring child scheduling of competing deadlines
  * Add test case for SIGKILL of watchdog and child not watching tether
- * Check for useless #include in *.c
- * Fix logging in parasite printing null for program name
  * Fix vgcore being dropped everywhere
- * Don't use disconnction timer to indicate child has exited
  */
 
 #define DEVNULLPATH "/dev/null"
