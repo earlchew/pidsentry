@@ -174,17 +174,18 @@ readPidFile(const struct PidFile *self)
                 }
                 else if (UTIME_NOW == procTime.tv_nsec)
                 {
-                    debug(0, "process no longer exists");
+                    debug(
+                        0, "process pid %jd no longer exists", (intmax_t) pid);
                     return 0;
                 }
 
                 debug(0,
-                    "pidfile mtime %jd.%09ld",
-                    (intmax_t) fdTime.tv_sec, fdTime.tv_nsec);
-
-                debug(0,
                     "process mtime %jd.%09ld",
                     (intmax_t) procTime.tv_sec, procTime.tv_nsec);
+
+                debug(0,
+                    "pidfile mtime %jd.%09ld",
+                    (intmax_t) fdTime.tv_sec, fdTime.tv_nsec);
 
                 if (procTime.tv_sec < fdTime.tv_sec)
                     return pid;
