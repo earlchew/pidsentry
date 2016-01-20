@@ -134,11 +134,18 @@ runTests()
 
     testCase 'Aliased process in pid file'
     rm -f pidfile
-    ( sh -c '/bin/echo $(( $$ + 1))' > pidfile ; sleep 1 ) &
-    sleep 1
-    testExit 0 k9 -T -d -p pidfile -- true
+    sh -c 'stat -c %y /proc/$$/. ; /bin/echo $$ > pidfile' &
+    while [ ! -s pidfile ] ; do
+        sleep 1
+    done
+    read PID < pidfile
+    TIMESTAMP=$(date -d @$(( $(stat -c %Y pidfile) - 3600 )) +%Y%m%d%H%M)
+    touch -t $TIMESTAMP pidfile
+    stat -c %y pidfile
+    k9 -T -d -p pidfile -- true
     wait
     [ ! -f pidfile ]
+    exit 0
 
     testCase 'Read non-existent pid file'
     rm -f pidfile
