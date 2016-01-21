@@ -58,6 +58,7 @@
  * cmdRunCommand() is too big, break it up
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Fix vgcore being dropped everywhere
+ * Implement process lock in child process
  */
 
 #define DEVNULLPATH "/dev/null"
