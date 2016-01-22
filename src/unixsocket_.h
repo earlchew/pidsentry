@@ -55,8 +55,7 @@ createUnixSocket(struct UnixSocket *self,
 
 int
 acceptUnixSocket(struct UnixSocket       *self,
-                 const struct UnixSocket *aServer,
-                 unsigned                 aFlags);
+                 const struct UnixSocket *aServer);
 
 int
 connectUnixSocket(struct UnixSocket *self,

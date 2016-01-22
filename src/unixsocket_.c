@@ -144,7 +144,7 @@ Finally:
 /* -------------------------------------------------------------------------- */
 int
 acceptUnixSocket(
-    struct UnixSocket *self, const struct UnixSocket *aServer, unsigned aFlags)
+    struct UnixSocket *self, const struct UnixSocket *aServer)
 {
     int rc = -1;
 
@@ -152,7 +152,9 @@ acceptUnixSocket(
 
     while (1)
     {
-        if (createFile(&self->mFile_, acceptFileSocket(aServer->mFile, aFlags)))
+        if (createFile(
+                &self->mFile_,
+                acceptFileSocket(aServer->mFile, O_NONBLOCK | O_CLOEXEC)))
         {
             if (EINTR == errno)
                 continue;
@@ -161,12 +163,6 @@ acceptUnixSocket(
         break;
     }
     self->mFile = &self->mFile_;
-
-    if (closeFileOnExec(self->mFile, O_CLOEXEC))
-        goto Finally;
-
-    if (nonblockingFile(self->mFile))
-        goto Finally;
 
     rc = 0;
 

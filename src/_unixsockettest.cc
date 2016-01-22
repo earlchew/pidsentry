@@ -78,7 +78,7 @@ TEST(UnixSocketTest, AbstractServer)
 
     const struct Duration zeroTimeout = Duration(NanoSeconds(0));
 
-    EXPECT_EQ(0, acceptUnixSocket(&peersock, &serversock, 0));
+    EXPECT_EQ(0, acceptUnixSocket(&peersock, &serversock));
     EXPECT_EQ(1, waitUnixSocketWriteReady(&clientsock, &zeroTimeout));
 
     struct ucred cred;

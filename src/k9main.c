@@ -1212,7 +1212,7 @@ pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
 
     struct UnixSocket *peersocket = 0;
 
-    if (acceptUnixSocket(aPeer, aServer, O_NONBLOCK | O_CLOEXEC))
+    if (acceptUnixSocket(aPeer, aServer))
         goto Finally;
 
     peersocket = aPeer;
