@@ -53,6 +53,7 @@ gettid(void)
 /* -------------------------------------------------------------------------- */
 static void
 dprint_(
+    int                    aLockErr,
     int                    aErrCode,
     intmax_t               aPid,
     intmax_t               aTid,
@@ -64,7 +65,6 @@ dprint_(
     const char            *aFile, unsigned aLine,
     const char            *aFmt, va_list aArgs)
 {
-    int lockErr = errno;
 
     if ( ! aFile)
         dprintf(STDERR_FILENO, "%s: ", ownProcessName());
@@ -107,8 +107,8 @@ dprint_(
                     aPid, aTid, aFile, aLine);
         }
 
-        if (EWOULDBLOCK != lockErr)
-            dprintf(STDERR_FILENO, "- lock error %d - ", lockErr);
+        if (EWOULDBLOCK != aLockErr)
+            dprintf(STDERR_FILENO, "- lock error %d - ", aLockErr);
     }
 
     vdprintf(STDERR_FILENO, aFmt, aArgs);
@@ -134,7 +134,8 @@ dprintf_(
     va_list args;
 
     va_start(args, aFmt);
-    dprint_(aErrCode,
+    dprint_(EWOULDBLOCK,
+            aErrCode,
             aPid, aTid,
             aElapsed, aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
             aFile, aLine, aFmt, args);
@@ -171,15 +172,28 @@ print_(
         intmax_t pid = getpid();
         intmax_t tid = gettid();
 
-        bool lockable = !! sPrintBuf.mFile;
-        bool locked   = lockable;
+        /* The availability of buffered IO might be lost while a message
+         * is being processed since this code might run in a thread
+         * that continues to execute while the process is being shut down. */
 
-        if ( ! lockable)
-            errno = 0;
-        else if (acquireProcessAppLock())
-            locked = false;
+        int  lockerr;
+        bool locked;
+        bool buffered;
 
-        if ( ! locked)
+        if (acquireProcessAppLock())
+        {
+            lockerr  = errno;
+            locked   = false;
+            buffered = false;
+        }
+        else
+        {
+            lockerr  = EWOULDBLOCK;
+            locked   = true;
+            buffered = !! sPrintBuf.mFile;
+        }
+
+        if ( ! buffered)
         {
             /* Note that there is an old defect which causes dprintf()
              * to race with fork():
@@ -189,7 +203,8 @@ print_(
              * The symptom is that the child process will terminate with
              * SIGSEGV in fresetlockfiles(). */
 
-            dprint_(aErrCode,
+            dprint_(lockerr,
+                    aErrCode,
                     pid, tid,
                     &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                     aFile, aLine,
@@ -341,19 +356,28 @@ Error_init(void)
 {
     int rc = -1;
 
+    struct ProcessAppLock *applock = 0;
+
     if (1 == ++sInit)
     {
-        sPrintBuf.mFile = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize);
+        FILE *file = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize);
 
-        if ( ! sPrintBuf.mFile)
+        if ( ! file)
             goto Finally;
+
+        applock = createProcessAppLock();
+
+        sPrintBuf.mFile = file;
     }
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        destroyProcessAppLock(applock);
+    });
 
     return rc;
 }
@@ -364,8 +388,12 @@ Error_exit(void)
 {
     int rc = -1;
 
+    struct ProcessAppLock *applock = 0;
+
     if (0 == --sInit)
     {
+        applock = createProcessAppLock();
+
         if (fclose(sPrintBuf.mFile))
             goto Finally;
 
@@ -380,7 +408,10 @@ Error_exit(void)
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        destroyProcessAppLock(applock);
+    });
 
     return rc;
 }
