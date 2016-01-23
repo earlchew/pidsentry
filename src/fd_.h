@@ -42,6 +42,9 @@ extern "C" {
 int
 closeFd(int *aFd);
 
+int
+closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen);
+
 bool
 stdFd(int aFd);
 

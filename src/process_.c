@@ -1392,17 +1392,6 @@ ownProcessBaseTime(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-rankProcessFd_(const void *aLhs, const void *aRhs)
-{
-    int lhs = * (const int *) aLhs;
-    int rhs = * (const int *) aRhs;
-
-    if (lhs < rhs) return -1;
-    if (lhs > rhs) return +1;
-    return 0;
-}
-
 struct ProcessFdWhiteList
 {
     int     *mList;
@@ -1461,7 +1450,7 @@ purgeProcessOrphanedFds(void)
     /* Create the whitelist of file descriptors by copying the fds
      * from each of the explicitly created file descriptors. */
 
-    int whiteList[numFds + 1];
+    int whiteList[numFds];
 
     {
         struct ProcessFdWhiteList fdWhiteList =
@@ -1470,59 +1459,16 @@ purgeProcessOrphanedFds(void)
             .mLen  = 0,
         };
 
-        struct rlimit noFile;
+        for (unsigned jx = 0; NUMBEROF(stdfds) > jx; ++jx)
+            fdWhiteList.mList[fdWhiteList.mLen++] = stdfds[jx];
 
-        if (getrlimit(RLIMIT_NOFILE, &noFile))
-            goto Finally;
+        walkFileList(&fdWhiteList, enumerateProcessFds_);
 
-        ensure(numFds < noFile.rlim_cur);
-
-        fdWhiteList.mList[numFds] = noFile.rlim_cur;
-
-        {
-            for (unsigned jx = 0; NUMBEROF(stdfds) > jx; ++jx)
-                fdWhiteList.mList[fdWhiteList.mLen++] = stdfds[jx];
-
-            walkFileList(&fdWhiteList, enumerateProcessFds_);
-
-            ensure(fdWhiteList.mLen == numFds);
-
-            for (unsigned jx = 0; numFds > jx; ++jx)
-                ensure(fdWhiteList.mList[jx] < fdWhiteList.mList[numFds]);
-        }
+        ensure(fdWhiteList.mLen == numFds);
     }
 
-    /* Walk the file descriptor space and close all the file descriptors,
-     * skipping those mentioned in the whitelist. */
-
-    debug(0, "purging %d fds", whiteList[numFds]);
-
-    qsort(whiteList, NUMBEROF(whiteList), sizeof(whiteList[0]), rankProcessFd_);
-
-    for (int fd = 0, wx = 0; ; ++fd)
-    {
-        while (0 > whiteList[wx])
-            ++wx;
-
-        if (fd != whiteList[wx])
-        {
-            int closedFd = fd;
-
-            if (closeFd(&closedFd) && EBADF != errno)
-                goto Finally;
-        }
-        else
-        {
-            debug(0, "not closing fd %d", fd);
-
-            if (NUMBEROF(whiteList) == ++wx)
-                break;
-
-            while (whiteList[wx] == fd)
-                ++wx;
-
-        }
-    }
+    if (closeFdDescriptors(whiteList, NUMBEROF(whiteList)))
+        goto Finally;
 
     rc = 0;
 

@@ -29,11 +29,14 @@
 
 #include "fd_.h"
 #include "macros_.h"
+#include "error_.h"
 
 #include <errno.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include <sys/file.h>
+#include <sys/resource.h>
 
 #include <valgrind/valgrind.h>
 
@@ -48,6 +51,81 @@ closeFd(int *aFd)
         if (close(*aFd))
             goto Finally;
         *aFd = -1;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+rankFd_(const void *aLhs, const void *aRhs)
+{
+    int lhs = * (const int *) aLhs;
+    int rhs = * (const int *) aRhs;
+
+    if (lhs < rhs) return -1;
+    if (lhs > rhs) return +1;
+    return 0;
+}
+
+int
+closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
+{
+    int rc = -1;
+
+    if (aWhiteListLen)
+    {
+        struct rlimit noFile;
+
+        if (getrlimit(RLIMIT_NOFILE, &noFile))
+            goto Finally;
+
+        int whiteList[aWhiteListLen + 1];
+
+        whiteList[aWhiteListLen] = noFile.rlim_cur;
+
+        for (size_t ix = 0; aWhiteListLen > ix; ++ix)
+        {
+            whiteList[ix] = aWhiteList[ix];
+            ensure(whiteList[aWhiteListLen] > whiteList[ix]);
+        }
+
+        debug(0, "purging %zd fds", aWhiteListLen);
+
+        qsort(
+            whiteList,
+            NUMBEROF(whiteList), sizeof(whiteList[0]), rankFd_);
+
+        for (int fd = 0, wx = 0; NUMBEROF(whiteList) > wx; ++fd)
+        {
+            if (0 > whiteList[wx])
+            {
+                ++wx;
+                continue;
+            }
+
+            if (fd != whiteList[wx])
+            {
+                int closedFd = fd;
+
+                if (closeFd(&closedFd) && EBADF != errno)
+                    goto Finally;
+            }
+            else
+            {
+                debug(0, "not closing fd %d", fd);
+
+                while (NUMBEROF(whiteList) > ++wx)
+                    if (whiteList[wx] != fd)
+                        break;
+            }
+        }
     }
 
     rc = 0;
