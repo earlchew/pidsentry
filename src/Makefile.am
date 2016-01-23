@@ -67,11 +67,11 @@ lib_LTLIBRARIES     = libk9.la
 
 k9_CFLAGS    = $(COMMON_CFLAGS)
 k9_LDFLAGS   = $(COMMON_LDFLAGS) -Wl,-Map,k9.map -Wl,-cref
-k9_LDADD     = libk9_.la libk9.la -lrt -ldl
+k9_LDADD     = libk9_.la libk9.la
 k9_SOURCES   = _k9.c
 
 libk9_la_CFLAGS       = $(COMMON_CFLAGS)
-libk9_la_LIBADD       = -lrt -lpthread
+libk9_la_LIBADD       = -lrt -lpthread -ldl
 libk9_la_SOURCES      = libk9.c k9main.c $(libk9__la_SOURCES)
 libk9_la_DEPENDENCIES = libk9.exp
 libk9_la_VERSION      = 0:0:0
@@ -83,7 +83,8 @@ libk9_la_LDFLAGS     += -Wl,-Map,libk9.map -Wl,-cref
 
 libk9.exp:	libk9.sym
 	$(CPP) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
-	    $(AM_CPPFLAGS) $(CPPFLAGS) -x c-header "$<" | tail -1 > "$@.new"
+	    $(AM_CPPFLAGS) $(CPPFLAGS) -x c-header "$<" | \
+	    sed -n -e '/^# 2 "$^"/,$${;/^#/d;p;}' > "$@.new"
 	mv -- "$@.new" "$@"
 
 _splicetest_SOURCES = _splicetest.c
@@ -118,6 +119,7 @@ programs:	all
 
 clean-local::
 	rm -f *.map
+	rm -f *.exp
 
 delete-orphaned-includes:
 	sh ./delete-orphaned-includes.sh $(MAKE) programs
