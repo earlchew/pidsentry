@@ -69,6 +69,9 @@ writeFd(int aFd, const char *aBuf, size_t aLen);
 ssize_t
 readFd(int aFd, char *aBuf, size_t aLen);
 
+ssize_t
+readFdFully(int aFd, char **aBuf);
+
 int
 lockFd(int aFd, int aType);
 

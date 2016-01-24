@@ -741,10 +741,8 @@ findProcessState(pid_t aPid)
 {
     enum ProcessState rc = ProcessStateError;
 
-    int     statfd  = -1;
-    char   *statbuf = 0;
-    size_t  statlen = 0;
-    char   *statend = statbuf;
+    int   statfd  = -1;
+    char *statbuf = 0;
 
     struct ProcessDirName processDirName;
 
@@ -762,35 +760,17 @@ findProcessState(pid_t aPid)
     if (-1 == statfd)
         goto Finally;
 
-    while (1)
-    {
-        size_t buflen = statlen - (statend - statbuf);
-        if ( ! buflen)
-        {
-            statlen = 2 * statlen + 1;
-            char *buf = realloc(statbuf, statlen);
-            if ( ! buf)
-                goto Finally;
-            statend  = (statend - statbuf) + buf;
-            statbuf = buf;
-            continue;
-        }
+    ssize_t statlen = readFdFully(statfd, &statbuf);
+    if (-1 == statlen)
+        goto Finally;
 
-        ssize_t rdlen = read(statfd, statend, buflen);
-        if (-1 == rdlen)
-            goto Finally;
-        if ( ! rdlen)
-            break;
-        statend += rdlen;
-    }
+    char *statend = statbuf + statlen;
 
     for (char *bufptr = statend; bufptr != statbuf; --bufptr)
     {
         if (')' == bufptr[-1])
         {
-            size_t statlen = statend - bufptr;
-
-            if (1 < statlen && ' ' == *bufptr)
+            if (1 < statend - bufptr && ' ' == *bufptr)
             {
                 switch (bufptr[1])
                 {

@@ -57,6 +57,7 @@ check_PROGRAMS      = _splicetest
 check_PROGRAMS     += _isblockingtest
 check_PROGRAMS     += _timekeepingtest
 check_PROGRAMS     += _envtest
+check_PROGRAMS     += _fdtest
 check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
 check_PROGRAMS     += _processtest
@@ -94,6 +95,9 @@ _timekeepingtest_LDADD   = $(TEST_LIBS)
 
 _envtest_SOURCES = _envtest.cc
 _envtest_LDADD   = $(TEST_LIBS)
+
+_fdtest_SOURCES = _fdtest.cc
+_fdtest_LDADD   = $(TEST_LIBS)
 
 _parsetest_SOURCES = _parsetest.cc
 _parsetest_LDADD   = $(TEST_LIBS)

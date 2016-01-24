@@ -399,6 +399,61 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+ssize_t
+readFdFully(int aFd, char **aBuf)
+{
+    ssize_t rc = -1;
+
+    char   *buf = 0;
+    char   *end = buf;
+    size_t  len = end - buf;
+
+    while (1)
+    {
+        size_t avail = len - (end - buf);
+
+        if ( ! avail)
+        {
+            len = len ? 2 * len : 1;
+
+            char *ptr = realloc(buf, len);
+            if ( ! ptr)
+                goto Finally;
+
+            end = ptr + (end - buf);
+            buf = ptr;
+            continue;
+        }
+
+        ssize_t rdlen = readFd(aFd, end, avail);
+        if (-1 == rdlen)
+            goto Finally;
+        if ( ! rdlen)
+            break;
+        end += rdlen;
+    }
+
+    rc = end - buf;
+
+    if ( ! rc)
+        *aBuf = 0;
+    else
+    {
+        *aBuf = buf;
+        buf   = 0;
+    }
+
+Finally:
+
+    FINALLY
+    ({
+        free(buf);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 lockFd(int aFd, int aType)
 {
