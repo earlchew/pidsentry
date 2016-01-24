@@ -41,6 +41,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
+#include <fcntl.h>
+#include <dlfcn.h>
 
 #include <asm/ldt.h>
 
@@ -54,12 +56,14 @@
 enum FdKind
 {
     FD_UMBILICAL,
+    FD_CONTROL,
     FD_KINDS
 };
 
 static const char *sPollFdNames[FD_KINDS] =
 {
     [FD_UMBILICAL] = "umbilical",
+    [FD_CONTROL]   = "control",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -329,17 +333,21 @@ enum UmbilicalThreadState
 
 struct UmbilicalThread
 {
+    bool                       mActive;
     pthread_t                  mThread;
     pthread_mutex_t            mMutex;
     pthread_cond_t             mCond;
     enum UmbilicalThreadState  mState;
     intmax_t                   mStack_[PTHREAD_STACK_MIN / sizeof(intmax_t)];
     intmax_t                  *mStack;
-    struct UnixSocket          mSock;
+    struct UnixSocket          mWatchdogSock;
+    struct UnixSocket          mThreadSock;
+    struct sockaddr_un         mThreadSockAddr;
     struct Duration            mTimeout;
     pid_t                      mWatchdogPid;
     int                        mStatus;
     int                       *mErrno;
+    int                        mExitCode;
 };
 
 struct UmbilicalPoll
@@ -348,12 +356,18 @@ struct UmbilicalPoll
 
     struct UmbilicalThread *mThread;
 
-    struct File              *mFile;
-    struct pollfd            *mPollFd;
-    struct PollFdTimerAction *mTimer;
+    struct File              *mUmbilicalFile;
+    struct File              *mControlFile;
+    struct File               mControlPeerFile_;
+    struct File              *mControlPeerFile;
+    struct pollfd             mPollFds[FD_KINDS];
+    struct PollFdAction       mPollFdActions[FD_KINDS];
+    struct PollFdTimerAction  mPollFdTimerActions[FD_TIMER_KINDS];
     unsigned                  mCycleCount;
     unsigned                  mCycleLimit;
 };
+
+static struct UmbilicalThread sUmbilicalThread_;
 
 /* -------------------------------------------------------------------------- */
 static void
@@ -367,7 +381,7 @@ pollumbilical(void                        *self_,
 
     char buf[1];
 
-    ssize_t rdlen = read(self->mFile->mFd, buf, sizeof(buf));
+    ssize_t rdlen = read(self->mUmbilicalFile->mFd, buf, sizeof(buf));
 
     if (-1 == rdlen)
     {
@@ -379,12 +393,72 @@ pollumbilical(void                        *self_,
     else if ( ! rdlen)
     {
         warn(0, "Broken umbilical connection");
-        self->mPollFd->events = 0;
+        self->mPollFds[FD_UMBILICAL].events = 0;
     }
     else
     {
-        lapTimeRestart(&self->mTimer->mSince, aPollTime);
+        lapTimeRestart(
+            &self->mPollFdTimerActions[FD_TIMER_UMBILICAL].mSince, aPollTime);
         self->mCycleCount = 0;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+pollumbilicalcontrol(void                        *self_,
+                     struct pollfd               *aPollFds,
+                     const struct EventClockTime *aPollTime)
+{
+    struct UmbilicalPoll *self = self_;
+
+    ensure(FD_UMBILICAL == self->mKind);
+    ensure( ! self->mControlPeerFile);
+
+    while (1)
+    {
+        if (createFile(
+                &self->mControlPeerFile_,
+                acceptFileSocket(self->mControlFile, O_NONBLOCK | O_CLOEXEC)))
+        {
+            if (EINTR == errno)
+                continue;
+
+            terminate(
+                errno,
+                "Unable to accept connection from controller peer");
+        }
+        self->mControlPeerFile = &self->mControlPeerFile_;
+
+        break;
+    }
+
+    struct ucred cred;
+
+    if (ownFileSocketPeerCred(self->mControlPeerFile, &cred))
+        terminate(
+            errno,
+            "Unable to determine controller peer credentials");
+
+    if (cred.pid == getpid())
+    {
+        debug(0, "controller connection triggers close");
+
+        self->mPollFds[FD_CONTROL].events = 0;
+
+        /* Leave the control peer connection open so that it can be
+         * used to synchronise with the shut down of the umbilical
+         * thread. */
+    }
+    else
+    {
+        debug(0, "ignoring controller connection from %jd",
+              (intmax_t) cred.pid);
+
+        if (closeFile(self->mControlPeerFile))
+            terminate(
+                errno,
+                "Unable to close connection to controller peer");
+        self->mControlPeerFile = 0;
     }
 }
 
@@ -412,8 +486,8 @@ polltimerumbilical(void                        *self_,
     {
         warn(0, "Umbilical connection timed out");
 
-        self->mPollFd->events             = 0;
-        self->mTimer->mPeriod.duration.ns = 0;
+        self->mPollFds[FD_UMBILICAL].events                                = 0;
+        self->mPollFdTimerActions[FD_TIMER_UMBILICAL].mPeriod.duration.ns  = 0;
     }
 }
 
@@ -427,7 +501,12 @@ pollumbilicalcompletion(void                     *self_,
 
     ensure(FD_UMBILICAL == self->mKind);
 
-    return ! self->mPollFd->events;
+    /* Stop the polling loop if either the umbilical connection to the
+     * watchdog is broken, or the process is exiting. */
+
+    return
+        ! self->mPollFds[FD_UMBILICAL].events ||
+        ! self->mPollFds[FD_CONTROL].events;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -447,27 +526,34 @@ watchUmbilical_(void *self_)
             (void *) self->mErrno,
             (void *) &errno);
 
-    /* Capture the umbilical file descriptor here because although this
+    /* Capture the local file descriptors here because although this
      * thread shares the same memory space as the enclosing process,
      * it has a separate file descriptor space. */
 
     struct File umbilicalFile;
-    if (dupFile(&umbilicalFile, self->mSock.mFile))
+    if (dupFile(&umbilicalFile, self->mWatchdogSock.mFile))
         terminate(
             errno,
             "Unable to dup umbilical thread file descriptor %d",
-            self->mSock.mFile->mFd);
+            self->mWatchdogSock.mFile->mFd);
+
+    struct File controlFile;
+    if (dupFile(&controlFile, self->mThreadSock.mFile))
+        terminate(
+            errno,
+            "Unable to dup thread control file descriptor %d",
+            self->mThreadSock.mFile->mFd);
 
     lockMutex(&self->mMutex);
     {
         while (UMBILICAL_STARTING != self->mState)
             waitCond(&self->mCond, &self->mMutex);
 
-        if ( ! ownFdValid(self->mSock.mFile->mFd))
+        if ( ! ownFdValid(self->mWatchdogSock.mFile->mFd))
             terminate(
                 errno,
                 "Umbilical file descriptor is not valid %d",
-                self->mSock.mFile->mFd);
+                self->mWatchdogSock.mFile->mFd);
 
         self->mState = UMBILICAL_STARTED;
     }
@@ -492,48 +578,60 @@ watchUmbilical_(void *self_)
             errno,
             "Unable to obtain file descriptor limit");
 
-    for (int fd = 0; fd < noFile.rlim_cur; ++fd)
+    int whiteList[] =
     {
-        if (STDERR_FILENO != fd && fd != umbilicalFile.mFd)
-            (void) close(fd);
-    }
+        STDERR_FILENO, umbilicalFile.mFd, controlFile.mFd
+    };
+
+    if (closeFdDescriptors(whiteList, NUMBEROF(whiteList)))
+        terminate(
+            errno,
+            "Unable to purge file descriptors");
+
+    unsigned cycleLimit = 2;
 
     struct UmbilicalPoll umbilicalpoll =
     {
-        .mKind       = FD_UMBILICAL,
-        .mFile       = &umbilicalFile,
-        .mCycleLimit = 2
-    };
+        .mThread          = self,
+        .mKind            = FD_UMBILICAL,
+        .mUmbilicalFile   = &umbilicalFile,
+        .mControlFile     = &controlFile,
+        .mControlPeerFile = 0,
+        .mCycleLimit      = cycleLimit,
 
-    struct pollfd pollfds[FD_KINDS] =
-    {
-        [FD_UMBILICAL] = { .fd     = umbilicalpoll.mFile->mFd,
-                           .events = POLL_INPUTEVENTS },
-    };
+        .mPollFds =
+        {
+            [FD_UMBILICAL] = { .fd     = umbilicalFile.mFd,
+                               .events = POLL_INPUTEVENTS },
+            [FD_CONTROL]   = { .fd     = controlFile.mFd,
+                               .events = POLL_INPUTEVENTS },
+        },
 
-    struct PollFdAction pollfdactions[FD_KINDS] =
-    {
-        [FD_UMBILICAL] = { pollumbilical },
-    };
+        .mPollFdActions =
+        {
+            [FD_UMBILICAL] = { pollumbilical },
+            [FD_CONTROL]   = { pollumbilicalcontrol },
+        },
 
-    struct PollFdTimerAction pollfdtimeractions[FD_TIMER_KINDS] =
-    {
-        [FD_TIMER_UMBILICAL] =
-        { polltimerumbilical,
-          Duration(
-              NanoSeconds(
-                  self->mTimeout.duration.ns / umbilicalpoll.mCycleLimit)) },
+        .mPollFdTimerActions =
+        {
+            [FD_TIMER_UMBILICAL] =
+            {
+                polltimerumbilical,
+                Duration(
+                    NanoSeconds(
+                        self->mTimeout.duration.ns / cycleLimit)),
+            },
+        },
     };
-
-    umbilicalpoll.mThread = self;
-    umbilicalpoll.mTimer  = &pollfdtimeractions[FD_TIMER_UMBILICAL];
-    umbilicalpoll.mPollFd = &pollfds[FD_UMBILICAL];
 
     struct PollFd pollfd;
     if (createPollFd(
             &pollfd,
-            pollfds, pollfdactions, sPollFdNames, FD_KINDS,
-            pollfdtimeractions, sPollFdTimerNames, FD_TIMER_KINDS,
+            umbilicalpoll.mPollFds,
+            umbilicalpoll.mPollFdActions, sPollFdNames, FD_KINDS,
+            umbilicalpoll.mPollFdTimerActions,
+            sPollFdTimerNames, FD_TIMER_KINDS,
             pollumbilicalcompletion, &umbilicalpoll))
         terminate(
             errno,
@@ -549,11 +647,35 @@ watchUmbilical_(void *self_)
             errno,
             "Unable to close polling loop");
 
+    /* The poll loop has stopped either because process shut down has
+     * triggered the control socket, or that the umbilical connection
+     * with the watchdog has been broken. Give priority to process
+     * shut down. */
+
+    if ( ! umbilicalpoll.mControlPeerFile)
+        umbilicalpoll.mThread->mExitCode = 1;
+    else
+    {
+        if (closeFile(umbilicalpoll.mControlPeerFile))
+            terminate(
+                errno,
+                "Unable to synchronise with controller peer");
+        umbilicalpoll.mControlPeerFile = 0;
+
+        umbilicalpoll.mThread->mExitCode = 0;
+    }
+
     lockMutex(&self->mMutex);
     {
         self->mState = UMBILICAL_STOPPING;
     }
     unlockMutex(&self->mMutex);
+
+    if (closeFile(&controlFile))
+        terminate(
+            errno,
+            "Unable to close thread control file descriptor %d",
+            controlFile.mFd);
 
     if (closeFile(&umbilicalFile))
         terminate(
@@ -566,9 +688,11 @@ watchUmbilical_(void *self_)
 
 /* -------------------------------------------------------------------------- */
 static void *
-umbilicalMain_(void *aUmbilicalThread)
+umbilicalMain_(void *self_)
 {
-    struct UmbilicalThread *umbilicalThread = aUmbilicalThread;
+    struct UmbilicalThread *self = self_;
+
+    debug(0, "umbilical main started");
 
     /* Create the umbilical thread and ensure that it is ready before
      * proceeding. This is important partly because the library
@@ -606,22 +730,23 @@ umbilicalMain_(void *aUmbilicalThread)
     }
 #endif
 
-    /* Use an umbilical slave thread so that it can operate with
-     * an isolated set of file descriptors. It is expected that
-     * watched processes (especially servers) will close all file
-     * descriptors in which they have no active interest, and thus
-     * would close the umbilical file descriptor if the umbilical
-     * thread shared the same file descriptor space. */
+    /* Note that CLONE_FILES has not been specified, so that the
+     * umbilical slave thread can operate with an isolated set of
+     * file descriptors. It is expected that * watched processes
+     * (especially servers) will close all file descriptors in
+     * which they have no active interest, and thus would close
+     * the umbilical file descriptor if the umbilical thread
+     * shared the same file descriptor space. */
 
-    umbilicalThread->mErrno = &errno;
+    self->mErrno = &errno;
 
     pid_t slavetid;
     pid_t slavepid = clone(
         watchUmbilical_,
-        umbilicalThread->mStack,
+        self->mStack,
         CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS |
         CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
-        umbilicalThread, &slavetid, tls, &slavetid);
+        self, &slavetid, tls, &slavetid);
 
     if (-1 == slavepid)
         terminate(
@@ -630,7 +755,7 @@ umbilicalMain_(void *aUmbilicalThread)
 
     while (slavetid)
     {
-        switch (syscall(SYS_futex, &slavetid, FUTEX_WAIT, slavepid, 0, 0, 0))
+        switch (syscall(SYS_futex, &slavetid, FUTEX_WAIT, slavetid, 0, 0, 0))
         {
         case 0:
             continue;
@@ -644,47 +769,56 @@ umbilicalMain_(void *aUmbilicalThread)
         }
     }
 
-    lockMutex(&umbilicalThread->mMutex);
+    /* The slave thread runs using the context of this pthread,
+     * so this pthread must wait until the slave thread completes
+     * before proceeding, otherwise both will attempt to use the
+     * same thread context. */
+
+    lockMutex(&self->mMutex);
     {
-        ensure(UMBILICAL_STOPPING == umbilicalThread->mState);
+        ensure(UMBILICAL_STOPPING == self->mState);
     }
-    unlockMutex(&umbilicalThread->mMutex);
+    unlockMutex(&self->mMutex);
 
-    debug(0, "umbilical thread %jd terminated", (intmax_t) slavepid);
+    debug(0, "umbilical thread %jd terminated with exit code %d",
+          (intmax_t) slavepid,
+          self->mExitCode);
 
-    /* Do not exit until the umbilical slave thread has completed because
-     * it shares the same pthread resources. Once the umbilical slave
-     * thread completes, it is safe to release the pthread resources.
-     *
-     * With the umbilical broken, kill the process group that contains
-     * the process being monitored. Try politely, then more aggressively.
-     */
+    if (self->mExitCode)
+    {
+        /* Do not exit until the umbilical slave thread has completed because
+         * it shares the same pthread resources. Once the umbilical slave
+         * thread completes, it is safe to release the pthread resources.
+         *
+         * With the umbilical broken, kill the process group that contains
+         * the process being monitored. Try politely, then more aggressively.
+         */
 
-    if (kill(0, SIGTERM))
-        terminate(
-            errno,
-            "Unable to send SIGTERM to process group");
+        if (kill(0, SIGTERM))
+            terminate(
+                errno,
+                "Unable to send SIGTERM to process group");
 
-    monotonicSleep(Duration(NSECS(Seconds(30))));
+        monotonicSleep(Duration(NSECS(Seconds(30))));
 
-    if (kill(0, SIGKILL))
-        terminate(
-            errno,
-            "Unable to send SIGKILL to process group");
+        if (kill(0, SIGKILL))
+            terminate(
+                errno,
+                "Unable to send SIGKILL to process group");
 
-    _exit(1);
+        _exit(1);
+    }
 
-    return umbilicalThread;
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
 static void
-watchUmbilical(const char            *aAddr,
-               pid_t                  aWatchdogPid,
-               const struct Duration *aTimeout)
+watchUmbilical(struct UmbilicalThread *self,
+               const char             *aAddr,
+               pid_t                   aWatchdogPid,
+               const struct Duration  *aTimeout)
 {
-    static struct UmbilicalThread umbilicalThread;
-
     while (aAddr)
     {
         debug(0, "umbilical thread initialising");
@@ -708,20 +842,33 @@ watchUmbilical(const char            *aAddr,
         static const pthread_mutex_t mutexInit = PTHREAD_MUTEX_INITIALIZER;
         static const pthread_cond_t  condInit  = PTHREAD_COND_INITIALIZER;
 
-        umbilicalThread.mTimeout     = *aTimeout;
-        umbilicalThread.mWatchdogPid = aWatchdogPid;
-        umbilicalThread.mMutex       = mutexInit;
-        umbilicalThread.mCond        = condInit;
-        umbilicalThread.mState       = UMBILICAL_STOPPED;
-        umbilicalThread.mErrno       = 0;
+        self->mActive      = false;
+        self->mTimeout     = *aTimeout;
+        self->mWatchdogPid = aWatchdogPid;
+        self->mMutex       = mutexInit;
+        self->mCond        = condInit;
+        self->mState       = UMBILICAL_STOPPED;
+        self->mErrno       = 0;
+        self->mExitCode    = -1;
 
         if (connectUnixSocket(
-                &umbilicalThread.mSock, umbilicalAddr.sun_path, addrLen+1))
+                &self->mWatchdogSock, umbilicalAddr.sun_path, addrLen+1))
             terminate(
                 errno,
                 "Failed to connect umbilical socket to '%.*s'",
                 sizeof(umbilicalAddr.sun_path) - 1,
                 &umbilicalAddr.sun_path[1]);
+
+        if (createUnixSocket(&self->mThreadSock, 0, 0, 0))
+            terminate(
+                errno,
+                "Unable to create thread control socket");
+
+        if (ownUnixSocketName(
+                &self->mThreadSock, &self->mThreadSockAddr))
+            terminate(
+                errno,
+                "Unable to find address of thread control socket");
 
         /* The stack is allocated statically to avoid creating another
          * anonymous mmap(2) region unnecessarily. */
@@ -734,10 +881,10 @@ watchUmbilical(const char            *aAddr,
                 0,
                 "Unable to ascertain direction of stack growth");
 
-        umbilicalThread.mStack = umbilicalThread.mStack_;
+        self->mStack = self->mStack_;
 
         if (frameChild < frameParent)
-            umbilicalThread.mStack += NUMBEROF(umbilicalThread.mStack_);
+            self->mStack += NUMBEROF(self->mStack_);
 
         {
             /* When creatng the umbilical thread, ensure that it
@@ -751,17 +898,7 @@ watchUmbilical(const char            *aAddr,
                     errno,
                     "Unable to push process signal mask");
 
-            pthread_attr_t umbilicalThreadAttr;
-
-            createThreadAttr(&umbilicalThreadAttr);
-            setThreadAttrDetachState(
-                &umbilicalThreadAttr, PTHREAD_CREATE_DETACHED);
-
-            createThread(&umbilicalThread.mThread,
-                         &umbilicalThreadAttr,
-                         umbilicalMain_, &umbilicalThread);
-
-            destroyThreadAttr(&umbilicalThreadAttr);
+            createThread(&self->mThread, 0, umbilicalMain_, self);
 
             if (popProcessSigMask(&pushedSigMask))
                 terminate(
@@ -771,27 +908,101 @@ watchUmbilical(const char            *aAddr,
 
         debug(0, "umbilical thread starting");
 
-        lockMutex(&umbilicalThread.mMutex);
+        lockMutex(&self->mMutex);
         {
-            umbilicalThread.mState = UMBILICAL_STARTING;
+            self->mState = UMBILICAL_STARTING;
         }
-        unlockMutexSignal(&umbilicalThread.mMutex, &umbilicalThread.mCond);
+        unlockMutexSignal(&self->mMutex, &self->mCond);
 
-        lockMutex(&umbilicalThread.mMutex);
+        lockMutex(&self->mMutex);
         {
-            while (UMBILICAL_STARTING == umbilicalThread.mState)
-                waitCond(&umbilicalThread.mCond, &umbilicalThread.mMutex);
+            while (UMBILICAL_STARTING == self->mState)
+                waitCond(&self->mCond, &self->mMutex);
         }
-        unlockMutex(&umbilicalThread.mMutex);
+        unlockMutex(&self->mMutex);
 
-        if (closeUnixSocket(&umbilicalThread.mSock))
+        if (closeUnixSocket(&self->mThreadSock))
+            terminate(
+                errno,
+                "Unable to close thread control socket");
+
+        if (closeUnixSocket(&self->mWatchdogSock))
             terminate(
                 errno,
                 "Unable to close umbilical socket");
 
         debug(0, "umbilical thread started");
 
+        /* Only mark the umbilical thread active when it has been
+         * initialised completely because unwatchUmbilical() is called
+         * from exit() and that can happen at any time. The
+         * unwatchUmbilical() function should only attempt to tear
+         * down the umbilical thread after it has been marked active. */
+
+        self->mActive = true;
+
         break;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+unwatchUmbilical(struct UmbilicalThread *self)
+{
+    if (self->mActive)
+    {
+        debug(0, "initiating umbilical thread shutdown");
+
+        /* The umbilical slave thread is running its own poll loop in its
+         * own file descriptor space, and will be listening for a connection
+         * on its thread control socket. */
+
+        struct UnixSocket controlsocket;
+        if (connectUnixSocket(&controlsocket,
+                              self->mThreadSockAddr.sun_path,
+                              sizeof(self->mThreadSockAddr.sun_path)))
+            terminate(
+                errno,
+                "Unable to connect umbilical thread control socket");
+
+        if (-1 == waitUnixSocketWriteReady(&controlsocket, 0))
+            terminate(
+                errno,
+                "Unable to establish umbilical thread control socket");
+
+        if (-1 == waitUnixSocketReadReady(&controlsocket, 0))
+            terminate(
+                errno,
+                "Unable to synchronise umbilical thread control socket");
+
+        char buf[1];
+
+        switch (recvUnixSocket(&controlsocket, buf, sizeof(buf)))
+        {
+        default:
+            terminate(
+                0,
+                "Unable to detect closed umbilical thread control socket");
+        case -1:
+            terminate(
+                errno,
+                "Unable to read umbilical thread control socket");
+        case 0:
+            break;
+        }
+
+        if (closeUnixSocket(&controlsocket))
+            terminate(
+                errno,
+                "Unable to close umbilical thread control socket");
+
+        void *result;
+        if (errno = pthread_join(self->mThread, &result))
+            terminate(
+                errno,
+                "Unable to join with umbilical thread");
+
+        debug(0, "completed umbilical thread shut down");
     }
 }
 
@@ -870,7 +1081,8 @@ libk9_init(void)
                     "Unable to parse watchdog pid '%s'",
                     env[ENV_K9_PPID].mValue);
 
-            watchUmbilical(env[ENV_K9_ADDR].mValue,
+            watchUmbilical(&sUmbilicalThread_,
+                           env[ENV_K9_ADDR].mValue,
                            watchdogPid,
                            &umbilicalTimeout);
         }
@@ -888,17 +1100,56 @@ libk9_init(void)
 
 /* -------------------------------------------------------------------------- */
 static void __attribute__((destructor))
-libk9_exit()
+libk9_exit(void)
 {
-    if (Error_exit())
-        terminate(
-            0,
-            "Unable to finalise error module");
+    static struct
+    {
+        pthread_mutex_t mMutex;
+        bool            mDone;
+    } sExited = {
+        .mMutex = PTHREAD_MUTEX_INITIALIZER,
+        .mDone  = false
+    };
 
-    if (Timekeeping_exit())
-        terminate(
-            0,
-            "Unable to finalise timekeeping module");
+    lockMutex(&sExited.mMutex);
+    {
+        /* The process could call exit(3) from any thread, so take care
+         * to only run the exit hander once, and force all threads to
+         * synchronise here. */
+
+        if ( ! sExited.mDone)
+        {
+            sExited.mDone = true;
+
+            unwatchUmbilical(&sUmbilicalThread_);
+
+            if (Error_exit())
+                terminate(
+                    0,
+                    "Unable to finalise error module");
+
+            if (Timekeeping_exit())
+                terminate(
+                    0,
+                    "Unable to finalise timekeeping module");
+        }
+    }
+    unlockMutex(&sExited.mMutex);
+}
+
+/* -------------------------------------------------------------------------- */
+void
+exit(int aStatus)
+{
+    /* Intercept exit() because some applications will use atexit() to
+     * establish handlers that will close stderr and stdout. Also
+     * subsequent to that, libc will shut down, so it is convenient
+     * to also use this point to shut down the umbilical thread. */
+
+    void (*libcexit)(int) __attribute__((noreturn)) = dlsym(RTLD_NEXT, "exit");
+
+    libk9_exit();
+    libcexit(aStatus);
 }
 
 /* -------------------------------------------------------------------------- */
