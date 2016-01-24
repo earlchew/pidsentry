@@ -28,6 +28,7 @@
 */
 
 #include "timekeeping_.h"
+#include "pipe_.h"
 
 #include "gtest/gtest.h"
 
@@ -511,6 +512,69 @@ TEST(TimeKeepingTest, PushIntervalTimer)
     timerAction.sa_handler = SIG_DFL;
     timerAction.sa_flags   = 0;
     EXPECT_EQ(0, sigaction(SIGALRM, &timerAction, 0));
+}
+
+static struct Duration
+uptime()
+{
+    struct Pipe pipe;
+
+    EXPECT_EQ(0, createPipe(&pipe, 0));
+
+    pid_t pid = fork();
+
+    EXPECT_NE(-1, pid);
+
+    if ( ! pid)
+    {
+        /* This code assumes that there is enough buffer space in the
+         * pipe to hold the complete output of the system() call. */
+
+        int rc = 0;
+
+        rc = rc ||
+            STDOUT_FILENO == dup2(pipe.mWrFile->mFd, STDOUT_FILENO)
+            ? 0
+            : -1;
+        rc = rc || system("read U I < /proc/uptime && echo ${U%%.*}");
+        _exit(rc);
+    }
+
+    int status;
+    EXPECT_EQ(0, reapProcess(pid, &status));
+
+    struct ExitCode exitcode = extractProcessExitStatus(status);
+
+    EXPECT_EQ(0, exitcode.mStatus);
+
+    EXPECT_EQ(0, closePipeWriter(&pipe));
+
+    FILE *fp = fdopen(pipe.mRdFile->mFd, "r");
+
+    EXPECT_TRUE(fp);
+    EXPECT_EQ(0, detachPipeReader(&pipe));
+
+    unsigned seconds;
+    EXPECT_EQ(1, fscanf(fp, "%u", &seconds));
+
+    EXPECT_EQ(0, fclose(fp));
+    EXPECT_EQ(0, closePipe(&pipe));
+
+    return Duration(NSECS(Seconds(seconds)));
+}
+
+TEST(TimeKeepingTest, BootClockTime)
+{
+    struct Duration before = uptime();
+
+    struct BootClockTime bootclocktime = bootclockTime();
+
+    monotonicSleep(Duration(NSECS(Seconds(1))));
+
+    struct Duration after = uptime();
+
+    EXPECT_LE(before.duration.ns, bootclocktime.bootclock.ns);
+    EXPECT_GE(after.duration.ns,  bootclocktime.bootclock.ns);
 }
 
 #include "../googletest/src/gtest_main.cc"

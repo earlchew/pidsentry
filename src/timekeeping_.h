@@ -55,6 +55,11 @@ struct EventClockTime
     struct NanoSeconds eventclock;
 };
 
+struct BootClockTime
+{
+    struct NanoSeconds bootclock;
+};
+
 struct PushedIntervalTimer
 {
     int                         mType;
@@ -78,6 +83,15 @@ monotonicTime(void);
 
 struct WallClockTime
 wallclockTime(void);
+
+struct BootClockTime
+bootclockTime(void);
+
+/* -------------------------------------------------------------------------- */
+#ifdef __linux__
+int
+procUptime(struct Duration *aUptime, const char *aFileName);
+#endif
 
 /* -------------------------------------------------------------------------- */
 struct Duration

@@ -28,11 +28,22 @@
 */
 
 #include "timekeeping_.h"
+#include "fd_.h"
 #include "error_.h"
 #include "macros_.h"
 
 #include <time.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
+
+#ifdef __linux__
+#ifndef CLOCK_BOOTTIME
+#define CLOCK_BOOTTIME 7 /* Since 2.6.39 */
+#endif
+#endif
 
 /* -------------------------------------------------------------------------- */
 static unsigned             sInit;
@@ -50,6 +61,157 @@ monotonicTime(void)
             "Unable to fetch monotonic time");
 
     return (struct MonotonicTime) { .monotonic = timeSpecToNanoSeconds(&ts) };
+}
+
+/* -------------------------------------------------------------------------- */
+#if __linux__
+int
+procUptime(struct Duration *aUptime, const char *aFileName)
+{
+    int   rc  = -1;
+    char *buf = 0;
+    int   fd  = -1;
+
+    fd = open(aFileName, O_RDONLY);
+    if (-1 == fd)
+        goto Finally;
+
+    ssize_t buflen = readFdFully(fd, &buf);
+
+    if (-1 == buflen)
+        goto Finally;
+    if ( ! buflen)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    char *end = strchr(buf, ' ');
+    if ( ! end)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    uint64_t uptime_ns  = 0;
+    unsigned fracdigits = 0;
+
+    for (char *ptr = buf; ptr != end; ++ptr)
+    {
+        unsigned digit;
+
+        switch (*ptr)
+        {
+        default:
+            errno = ERANGE;
+            goto Finally;
+
+        case '.':
+            if (fracdigits)
+            {
+                errno = ERANGE;
+                goto Finally;
+            }
+            fracdigits = 1;
+            continue;
+
+        case '0': digit = 0; break;
+        case '1': digit = 1; break;
+        case '2': digit = 2; break;
+        case '3': digit = 3; break;
+        case '4': digit = 4; break;
+        case '5': digit = 5; break;
+        case '6': digit = 6; break;
+        case '7': digit = 7; break;
+        case '8': digit = 8; break;
+        case '9': digit = 9; break;
+        }
+
+        uint64_t value = uptime_ns * 10;
+        if (value / 10 != uptime_ns || value + digit < uptime_ns)
+        {
+            errno = ERANGE;
+            goto Finally;
+        }
+
+        uptime_ns = value + digit;
+
+        if (fracdigits)
+            fracdigits += 2;
+    }
+
+    switch (fracdigits / 2)
+    {
+    default:
+        errno = ERANGE;
+        goto Finally;
+
+    case 0: uptime_ns *= 1000000000; break;
+    case 1: uptime_ns *=  100000000; break;
+    case 2: uptime_ns *=   10000000; break;
+    case 3: uptime_ns *=    1000000; break;
+    case 4: uptime_ns *=     100000; break;
+    case 5: uptime_ns *=      10000; break;
+    case 6: uptime_ns *=       1000; break;
+    case 7: uptime_ns *=        100; break;
+    case 8: uptime_ns *=         10; break;
+    case 9: uptime_ns *=          1; break;
+    }
+
+    *aUptime = Duration(NanoSeconds(uptime_ns));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (-1 != fd)
+            close(fd);
+
+        free(buf);
+    });
+
+    return rc;
+}
+#endif
+
+/* -------------------------------------------------------------------------- */
+struct BootClockTime
+bootclockTime(void)
+{
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_BOOTTIME, &ts))
+    {
+        do
+        {
+#ifdef __linux__
+            if (EINVAL == errno)
+            {
+                static const char procUptimeFileName[] = "/proc/uptime";
+
+                struct Duration uptime;
+
+                if (procUptime(&uptime, procUptimeFileName))
+                    terminate(
+                        errno,
+                        "Unable to read %s", procUptimeFileName);
+
+                ts.tv_nsec = uptime.duration.ns % TimeScale_ns;
+                ts.tv_sec  = uptime.duration.ns / TimeScale_ns;
+                break;
+            }
+#endif
+
+            terminate(
+                errno,
+                "Unable to fetch boot time");
+
+        } while (0);
+    }
+
+    return (struct BootClockTime) { .bootclock = timeSpecToNanoSeconds(&ts) };
 }
 
 /* -------------------------------------------------------------------------- */
