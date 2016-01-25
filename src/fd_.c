@@ -30,6 +30,7 @@
 #include "fd_.h"
 #include "macros_.h"
 #include "error_.h"
+#include "test_.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -400,7 +401,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 ssize_t
-readFdFully(int aFd, char **aBuf)
+readFdFully(int aFd, char **aBuf, size_t aBufSize)
 {
     ssize_t rc = -1;
 
@@ -414,7 +415,10 @@ readFdFully(int aFd, char **aBuf)
 
         if ( ! avail)
         {
-            len = len ? 2 * len : 1;
+            len =
+                len ? 2 * len :
+                testMode() ? 1 :
+                aBufSize ? aBufSize : getpagesize();
 
             char *ptr = realloc(buf, len);
             if ( ! ptr)

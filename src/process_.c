@@ -762,7 +762,7 @@ fetchProcessState(pid_t aPid)
     if (-1 == statfd)
         goto Finally;
 
-    ssize_t statlen = readFdFully(statfd, &statbuf);
+    ssize_t statlen = readFdFully(statfd, &statbuf, 0);
     if (-1 == statlen)
         goto Finally;
 
@@ -1335,7 +1335,7 @@ fetchProcessStartTime_(pid_t aPid, struct BootClockTime *aBootClockTime)
         goto Finally;
     }
 
-    ssize_t buflen = readFdFully(fd, &buf);
+    ssize_t buflen = readFdFully(fd, &buf, 0);
     if (-1 == buflen)
         goto Finally;
     if ( ! buflen)

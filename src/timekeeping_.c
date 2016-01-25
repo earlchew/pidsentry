@@ -76,7 +76,7 @@ procUptime(struct Duration *aUptime, const char *aFileName)
     if (-1 == fd)
         goto Finally;
 
-    ssize_t buflen = readFdFully(fd, &buf);
+    ssize_t buflen = readFdFully(fd, &buf, 64);
 
     if (-1 == buflen)
         goto Finally;
