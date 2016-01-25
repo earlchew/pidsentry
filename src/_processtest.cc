@@ -60,7 +60,8 @@ TEST(ProcessTest, ProcessStatus)
 
 TEST(ProcessTest, ProcessStartTime)
 {
-    struct BootClockTime starttime = findProcessStartTime_(getpid());
+    struct BootClockTime starttime;
+    EXPECT_EQ(0, fetchProcessStartTime_(getpid(), &starttime));
 
     struct BootClockTime before = bootclockTime();
 
@@ -77,7 +78,8 @@ TEST(ProcessTest, ProcessStartTime)
 
     struct BootClockTime after = bootclockTime();
 
-    struct BootClockTime childstarttime = findProcessStartTime_(pid);
+    struct BootClockTime childstarttime;
+    EXPECT_EQ(0, fetchProcessStartTime_(pid, &childstarttime));
 
     int status;
     EXPECT_EQ(0, reapProcess(pid, &status));
@@ -88,6 +90,10 @@ TEST(ProcessTest, ProcessStartTime)
     EXPECT_GE(before.bootclock.ns, starttime.bootclock.ns);
     EXPECT_LE(before.bootclock.ns, childstarttime.bootclock.ns);
     EXPECT_GE(after.bootclock.ns,  childstarttime.bootclock.ns);
+
+    struct BootClockTime nostarttime;
+    EXPECT_EQ(-1, fetchProcessStartTime_(pid, &nostarttime));
+    EXPECT_EQ(ENOENT, errno);
 }
 
 #include "../googletest/src/gtest_main.cc"

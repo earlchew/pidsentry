@@ -187,8 +187,8 @@ const char*
 ownProcessName(void);
 
 /* -------------------------------------------------------------------------- */
-struct BootClockTime
-findProcessStartTime_(pid_t aPid);
+int
+fetchProcessStartTime_(pid_t aPid, struct BootClockTime *aBootClockTime);
 
 struct timespec
 findProcessStartTime(pid_t aPid);

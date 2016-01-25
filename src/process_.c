@@ -1312,15 +1312,14 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-struct BootClockTime
-findProcessStartTime_(pid_t aPid)
+int
+fetchProcessStartTime_(pid_t aPid, struct BootClockTime *aBootClockTime)
 {
-    int rc = -1;
-    int fd = -1;
+    int rc  = -1;
+    int err = 0;
+    int fd  = -1;
 
     char *buf = 0;
-
-    uint64_t starttime_ns;
 
     static const char pathNameFmt[] = "/proc/%jd/stat";
 
@@ -1331,7 +1330,10 @@ findProcessStartTime_(pid_t aPid)
 
     fd = open(pathName, O_RDONLY);
     if (-1 == fd)
+    {
+        err = errno;
         goto Finally;
+    }
 
     ssize_t buflen = readFdFully(fd, &buf);
     if (-1 == buflen)
@@ -1368,6 +1370,8 @@ findProcessStartTime_(pid_t aPid)
     while (*end && ! isspace((unsigned char) *end))
         ++end;
 
+    uint64_t starttime_ns;
+
     do
     {
         char starttime[end - word + 1];
@@ -1389,11 +1393,7 @@ findProcessStartTime_(pid_t aPid)
 
     } while (0);
 
-    if ( ! starttime_ns)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    aBootClockTime->bootclock = NanoSeconds(starttime_ns);
 
     rc = 0;
 
@@ -1401,16 +1401,24 @@ Finally:
 
     FINALLY
     ({
-        if (rc)
-            starttime_ns = 0;
-
         if (-1 == fd)
             close(fd);
 
         free(buf);
     });
 
-    return (struct BootClockTime) { .bootclock = NanoSeconds(starttime_ns) };
+    if (rc)
+    {
+        /* Ensure that ENOENT can be used to unambiguously indicated
+         * that the process specified could not be found. */
+
+        if (err)
+            errno = err;
+        else if (ENOENT == errno)
+            errno = EDOM;
+    }
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
