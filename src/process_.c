@@ -35,6 +35,7 @@
 #include "test_.h"
 #include "error_.h"
 #include "timekeeping_.h"
+#include "parse_.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #include <sys/file.h>
 #include <sys/wait.h>
@@ -1307,6 +1309,108 @@ Finally:
     });
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct BootClockTime
+findProcessStartTime_(pid_t aPid)
+{
+    int rc = -1;
+    int fd = -1;
+
+    char *buf = 0;
+
+    uint64_t starttime_ns;
+
+    static const char pathNameFmt[] = "/proc/%jd/stat";
+
+    char pathName[sizeof(pathNameFmt) + sizeof(pid_t) * CHAR_BIT];
+
+    if (-1 == sprintf(pathName, pathNameFmt, (intmax_t) aPid))
+        goto Finally;
+
+    fd = open(pathName, O_RDONLY);
+    if (-1 == fd)
+        goto Finally;
+
+    ssize_t buflen = readFdFully(fd, &buf);
+    if (-1 == buflen)
+        goto Finally;
+    if ( ! buflen)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    char *word = strrchr(buf, ')');
+    if ( ! word)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    for (unsigned ix = 2; 22 > ix; ++ix)
+    {
+        while (*word && ! isspace((unsigned char) *word))
+            ++word;
+
+        if ( ! *word)
+        {
+            errno = ERANGE;
+            goto Finally;
+        }
+
+        while (*word && isspace((unsigned char) *word))
+            ++word;
+    }
+
+    char *end = word;
+    while (*end && ! isspace((unsigned char) *end))
+        ++end;
+
+    do
+    {
+        char starttime[end - word + 1];
+        memcpy(starttime, word, sizeof(starttime)-1);
+        starttime[sizeof(starttime)-1] = 0;
+
+        uint64_t starttime_ticks;
+        if (parseUInt64(starttime, &starttime_ticks))
+            goto Finally;
+
+        long clktck = sysconf(_SC_CLK_TCK);
+        if (-1 == clktck)
+            goto Finally;
+
+        starttime_ns =
+            starttime_ticks * (TimeScale_ns / clktck) +
+            starttime_ticks / clktck * (TimeScale_ns % clktck) +
+            starttime_ticks % clktck * (TimeScale_ns % clktck) / clktck;
+
+    } while (0);
+
+    if ( ! starttime_ns)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            starttime_ns = 0;
+
+        if (-1 == fd)
+            close(fd);
+
+        free(buf);
+    });
+
+    return (struct BootClockTime) { .bootclock = NanoSeconds(starttime_ns) };
 }
 
 /* -------------------------------------------------------------------------- */

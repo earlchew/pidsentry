@@ -41,8 +41,8 @@ extern "C" {
 
 struct timespec;
 
+struct BootClockTime;
 struct Pipe;
-
 struct ProcessAppLock;
 
 struct ExitCode
@@ -157,6 +157,9 @@ reapProcess(pid_t aPid, int *aStatus);
 enum ProcessStatus
 monitorProcess(pid_t aPid);
 
+struct ExitCode
+extractProcessExitStatus(int aStatus);
+
 /* -------------------------------------------------------------------------- */
 int
 acquireProcessAppLock(void);
@@ -183,11 +186,12 @@ ownProcessBaseTime(void);
 const char*
 ownProcessName(void);
 
+/* -------------------------------------------------------------------------- */
+struct BootClockTime
+findProcessStartTime_(pid_t aPid);
+
 struct timespec
 findProcessStartTime(pid_t aPid);
-
-struct ExitCode
-extractProcessExitStatus(int aStatus);
 
 enum ProcessState
 findProcessState(pid_t aPid);
