@@ -1401,7 +1401,7 @@ Finally:
 
     FINALLY
     ({
-        if (-1 == fd)
+        if (-1 != fd)
             close(fd);
 
         free(buf);

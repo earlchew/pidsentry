@@ -55,6 +55,7 @@ k9_PROGRAMS         = k9
 check_SCRIPTS       = test.sh
 check_PROGRAMS      = _splicetest
 check_PROGRAMS     += _isblockingtest
+check_PROGRAMS     += _systemtest
 check_PROGRAMS     += _timekeepingtest
 check_PROGRAMS     += _envtest
 check_PROGRAMS     += _fdtest
@@ -104,6 +105,9 @@ _parsetest_LDADD   = $(TEST_LIBS)
 
 _processtest_SOURCES = _processtest.cc
 _processtest_LDADD   = $(TEST_LIBS)
+
+_systemtest_SOURCES = _systemtest.cc
+_systemtest_LDADD   = $(TEST_LIBS)
 
 _unixsockettest_SOURCES = _unixsockettest.cc
 _unixsockettest_LDADD   = $(TEST_LIBS)
