@@ -1321,14 +1321,19 @@ fetchProcessStartTime_(pid_t aPid, struct BootClockTime *aBootClockTime)
 
     char *buf = 0;
 
-    static const char pathNameFmt[] = "/proc/%jd/stat";
+    struct ProcessDirName processDirName;
 
-    char pathName[sizeof(pathNameFmt) + sizeof(pid_t) * CHAR_BIT];
+    initProcessDirName(&processDirName, aPid);
 
-    if (-1 == sprintf(pathName, pathNameFmt, (intmax_t) aPid))
-        goto Finally;
+    static const char sProcessStatFileNameFmt[] = "%s/stat";
 
-    fd = open(pathName, O_RDONLY);
+    char processStatFileName[strlen(processDirName.mDirName) +
+                             sizeof(sProcessStatFileNameFmt)];
+
+    sprintf(processStatFileName,
+            sProcessStatFileNameFmt, processDirName.mDirName);
+
+    fd = open(processStatFileName, O_RDONLY);
     if (-1 == fd)
     {
         err = errno;
