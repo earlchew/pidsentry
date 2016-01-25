@@ -166,7 +166,7 @@ readPidFile(const struct PidFile *self)
 
                 struct timespec fdTime   = earliestTime(&fdStatus.st_mtim,
                                                         &fdStatus.st_ctim);
-                struct timespec procTime = findProcessStartTime(pid);
+                struct timespec procTime = fetchProcessStartTime(pid);
 
                 if (UTIME_OMIT == procTime.tv_nsec)
                 {

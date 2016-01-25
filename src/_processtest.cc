@@ -36,9 +36,9 @@
 
 TEST(ProcessTest, ProcessState)
 {
-    EXPECT_EQ(ProcessStateError, findProcessState(-1));
+    EXPECT_EQ(ProcessStateError, fetchProcessState(-1));
 
-    EXPECT_EQ(ProcessStateRunning, findProcessState(getpid()));
+    EXPECT_EQ(ProcessStateRunning, fetchProcessState(getpid()));
 }
 
 TEST(ProcessTest, ProcessStatus)

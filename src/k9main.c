@@ -1908,7 +1908,7 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
     /* Ensure that the mtime of the pidfile is later than the
      * start time of the child process, if that process exists. */
 
-    struct timespec childStartTime = findProcessStartTime(aPid);
+    struct timespec childStartTime = fetchProcessStartTime(aPid);
 
     if (UTIME_OMIT == childStartTime.tv_nsec)
     {

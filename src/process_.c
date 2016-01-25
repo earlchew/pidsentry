@@ -719,7 +719,7 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid)
 
 /* -------------------------------------------------------------------------- */
 struct timespec
-findProcessStartTime(pid_t aPid)
+fetchProcessStartTime(pid_t aPid)
 {
     struct ProcessDirName processDirName;
 
@@ -739,7 +739,7 @@ findProcessStartTime(pid_t aPid)
 
 /* -------------------------------------------------------------------------- */
 enum ProcessState
-findProcessState(pid_t aPid)
+fetchProcessState(pid_t aPid)
 {
     enum ProcessState rc = ProcessStateError;
 

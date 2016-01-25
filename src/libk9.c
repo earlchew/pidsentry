@@ -476,7 +476,7 @@ polltimerumbilical(void                        *self_,
      * the timeout period expires, then assume that the watchdog
      * itself is stuck. */
 
-    if (ProcessStateStopped == findProcessState(self->mThread->mWatchdogPid))
+    if (ProcessStateStopped == fetchProcessState(self->mThread->mWatchdogPid))
     {
         debug(0, "umbilical timeout deferred");
 
