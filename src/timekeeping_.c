@@ -166,9 +166,7 @@ Finally:
 
     FINALLY
     ({
-        if (-1 != fd)
-            close(fd);
-
+        closeFd(&fd);
         free(buf);
     });
 
