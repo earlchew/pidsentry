@@ -28,14 +28,18 @@
 */
 
 #include "pidfile_.h"
+#include "fd_.h"
 #include "macros_.h"
 #include "error_.h"
 #include "test_.h"
 #include "timekeeping_.h"
-#include "parse_.h"
+#include "system_.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <sys/file.h>
 
@@ -112,96 +116,99 @@ Finally:
 pid_t
 readPidFile(const struct PidFile *self)
 {
-    pid_t pid;
-    char  buf[sizeof(pid) * CHAR_BIT + sizeof("\n")];
-    char *bufptr = buf;
-    char *bufend = bufptr + sizeof(buf);
+    int   rc     = -1;
+    pid_t pid    = 0;
+    FILE *pidfp  = 0;
+    int   pidfd  = -1;
+    char *bootid = 0;
 
     ensure(LOCK_UN != self->mLock);
 
-    while (true)
+    pidfd = dup(self->mFile->mFd);
+    if (-1 == pidfd)
+        goto Finally;
+
+    pidfp = fdopen(pidfd, "r");
+    if ( ! pidfp)
+        goto Finally;
+    pidfd = -1;
+
+    uintmax_t pidvalue;
+    if (2 != fscanf(pidfp, "%ju\n", &pidvalue))
     {
-        if (bufptr == bufend)
-            return 0;
+        errno = EIO;
+        goto Finally;
+    }
 
-        ssize_t len = readFile(self->mFile, bufptr, bufend - bufptr);
+    pid = pidvalue;
+    if (pid != pidvalue || 0 >= pid)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
 
-        if (-1 == len)
-            return -1;
+    uint64_t pidfiletime_ns;
+    if (2 != fscanf(pidfp, "%" SCNu64 "\n", &pidfiletime_ns))
+    {
+        errno = EIO;
+        goto Finally;
+    }
 
-        if ( ! len)
+    if (1 != fscanf(pidfp, "%m[^\n]", &bootid))
+    {
+        errno = EIO;
+        goto Finally;
+    }
+
+    if (ferror(pidfp))
+    {
+        errno = EIO;
+        goto Finally;
+    }
+
+    do
+    {
+        const char *incarnation = fetchSystemIncarnation();
+
+        debug(0, "pidfile boot id %s vs %s", bootid, incarnation);
+
+        if ( ! strcmp(bootid, incarnation))
         {
-            bufptr[len] = '\n';
-            ++len;
-        }
-
-        for (unsigned ix = 0; ix < len; ++ix)
-        {
-            if ('\n' == bufptr[ix])
+            struct BootClockTime starttime;
+            if (fetchProcessStartTime_(pid, &starttime))
             {
-                /* Parse the value read from the pidfile, but take
-                 * care that it is a valid number that can fit in the
-                 * representation. */
+                if (ENOENT != errno)
+                    goto Finally;
+            }
+            else
+            {
+                debug(0, "pidfile time %" PRIu64 " vs %" PRIu_NanoSeconds,
+                      pidfiletime_ns,
+                      starttime.bootclock.ns);
 
-                bufptr[ix] = 0;
-
-                debug(0, "examining candidate pid '%s'", buf);
-
-                if (parsePid(buf, &pid) || 0 >= pid)
-                {
-                    debug(0, "invalid pid representation");
-                    return 0;
-                }
-
-                /* Find the name of the proc entry that corresponds
-                 * to this pid, and use that to determine when
-                 * the process was started. Compare that with
-                 * the mtime of the pidfile to determine if
-                 * the pid is viable. */
-
-                struct stat fdStatus;
-
-                if (fstatFile(self->mFile, &fdStatus))
-                    return -1;
-
-                struct timespec fdTime   = earliestTime(&fdStatus.st_mtim,
-                                                        &fdStatus.st_ctim);
-                struct timespec procTime = fetchProcessStartTime(pid);
-
-                if (UTIME_OMIT == procTime.tv_nsec)
-                {
-                    return -1;
-                }
-                else if (UTIME_NOW == procTime.tv_nsec)
-                {
-                    debug(
-                        0, "process pid %jd no longer exists", (intmax_t) pid);
-                    return 0;
-                }
-
-                debug(0,
-                    "process mtime %jd.%09ld",
-                    (intmax_t) procTime.tv_sec, procTime.tv_nsec);
-
-                debug(0,
-                    "pidfile mtime %jd.%09ld",
-                    (intmax_t) fdTime.tv_sec, fdTime.tv_nsec);
-
-                if (procTime.tv_sec < fdTime.tv_sec)
-                    return pid;
-
-                if (procTime.tv_sec  == fdTime.tv_sec &&
-                    procTime.tv_nsec <  fdTime.tv_nsec)
-                {
-                    return pid;
-                }
-
-                debug(0, "process was restarted");
-
-                return 0;
+                if (starttime.bootclock.ns == pidfiletime_ns)
+                    break;
             }
         }
-    }
+
+        pid = 0;
+
+    } while (0);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (pidfp)
+            fclose(pidfp);
+
+        closeFd(&pidfd);
+        free(bootid);
+    });
+
+    return rc ? -1 : pid;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -476,9 +483,28 @@ Finally:
 int
 writePidFile(struct PidFile *self, pid_t aPid)
 {
+    int rc = -1;
+
     ensure(0 < aPid);
 
-    return 0 > dprintf(self->mFile->mFd, "%jd\n", (intmax_t) aPid) ? -1 : 0;
+    struct BootClockTime starttime;
+    if (fetchProcessStartTime_(aPid, &starttime))
+        goto Finally;
+
+    if (0 > dprintf(self->mFile->mFd,
+                    "%jd\n%s\n%" PRIu_NanoSeconds "\n",
+                    (intmax_t) aPid,
+                    fetchSystemIncarnation(),
+                    starttime.bootclock.ns))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

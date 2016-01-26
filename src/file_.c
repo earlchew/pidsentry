@@ -132,7 +132,7 @@ closeFile(struct File *self)
             goto Finally;
         }
 
-        if (close(self->mFd))
+        if (closeFd(&self->mFd))
             goto Finally;
 
         self->mPrev->mNext = self->mNext;
