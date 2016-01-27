@@ -62,6 +62,9 @@ TEST(ProcessTest, ProcessSignature)
 {
     char *parentSignature = 0;
 
+    EXPECT_EQ(-1, fetchProcessSignature(0, &parentSignature));
+    EXPECT_EQ(ENOENT, errno);
+
     EXPECT_EQ(0, fetchProcessSignature(getpid(), &parentSignature));
     EXPECT_TRUE(parentSignature);
     EXPECT_TRUE(strlen(parentSignature));
