@@ -1560,7 +1560,8 @@ fetchProcessSignature(pid_t aPid, char **aSignature)
         goto Finally;
     }
 
-    char *word = strrchr(buf, ')');
+    char *bufend = buf + buflen;
+    char *word   = memrchr(buf, ')', buflen);
     if ( ! word)
     {
         errno = ERANGE;
@@ -1569,21 +1570,21 @@ fetchProcessSignature(pid_t aPid, char **aSignature)
 
     for (unsigned ix = 2; 22 > ix; ++ix)
     {
-        while (*word && ! isspace((unsigned char) *word))
+        while (word != bufend && ! isspace((unsigned char) *word))
             ++word;
 
-        if ( ! *word)
+        if (word == bufend)
         {
             errno = ERANGE;
             goto Finally;
         }
 
-        while (*word && isspace((unsigned char) *word))
+        while (word != bufend && isspace((unsigned char) *word))
             ++word;
     }
 
     char *end = word;
-    while (*end && ! isspace((unsigned char) *end))
+    while (end != bufend && ! isspace((unsigned char) *end))
         ++end;
 
     do

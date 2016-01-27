@@ -134,10 +134,17 @@ runTests()
 
     testCase 'Aliased process in pid file'
     rm -f pidfile
-    sh -c 'stat -c %y /proc/$$/. ; /bin/echo $$ > pidfile' &
+    sh -c '
+      stat -c %y /proc/$$/.
+      { /bin/echo $$
+        UUID=$(cat /proc/sys/kernel/random/boot_id)
+        TIME=$(awk "{ print \$22 }" "/proc/$$/stat")
+        /bin/echo "$UUID:$TIME" ; } > pidfile.new
+      mv -f pidfile.new pidfile' &
     while [ ! -s pidfile ] ; do
         sleep 1
     done
+    cat pidfile
     read PID < pidfile
     TIMESTAMP=$(date -d @$(( $(stat -c %Y pidfile) - 3600 )) +%Y%m%d%H%M)
     touch -t $TIMESTAMP pidfile
@@ -145,7 +152,6 @@ runTests()
     k9 -T -d -p pidfile -- true
     wait
     [ ! -f pidfile ]
-    exit 0
 
     testCase 'Read non-existent pid file'
     rm -f pidfile

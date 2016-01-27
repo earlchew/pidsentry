@@ -34,6 +34,7 @@
 #include "test_.h"
 #include "timekeeping_.h"
 #include "system_.h"
+#include "parse_.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,16 @@
 #include <unistd.h>
 
 #include <sys/file.h>
+
+/* -------------------------------------------------------------------------- */
+/* Maximum pid file size
+ *
+ * Bound the size of the pid file so that IO requirements can be kept
+ * reasonable. This provides a way to avoid having large files cause
+ * the watchdog to fail.
+ */
+
+#define PIDFILE_SIZE_ 1024
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -113,6 +124,74 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static pid_t
+readPidFile_(char *aBuf)
+{
+    int    rc           = -1;
+    pid_t  err          = 0;
+    pid_t  pid          = 0;
+    char  *pidsignature = 0;
+    char  *signature    = 0;
+
+    char *endptr = strchr(aBuf, 0);
+    char *nlptr  = strchr(aBuf, '\n');
+
+    if (endptr == aBuf)
+        goto Finally;
+
+    if ( ! nlptr)
+        goto Finally;
+
+    if (nlptr + 1 == endptr)
+        goto Finally;
+
+    if ('\n' != endptr[-1])
+        goto Finally;
+
+    *nlptr     = 0;
+    endptr[-1] = 0;
+
+    if (parsePid(aBuf, &pid) || ! pid)
+        goto Finally;
+
+    do
+    {
+        if (fetchProcessSignature(pid, &signature))
+        {
+            if (ENOENT != errno)
+            {
+                err = -1;
+                goto Finally;
+            }
+        }
+        else
+        {
+            debug(0, "pidfile signature %s vs %s", pidsignature, signature);
+
+            if ( ! strcmp(pidsignature, signature))
+                break;
+        }
+
+        /* The process either does not exist, or if it does exist the two
+         * process signatures do not match. */
+
+        pid = 0;
+
+    } while (0);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        free(pidsignature);
+        free(signature);
+    });
+
+    return rc ? err : pid;
+}
+
 pid_t
 readPidFile(const struct PidFile *self)
 {
@@ -125,64 +204,29 @@ readPidFile(const struct PidFile *self)
 
     ensure(LOCK_UN != self->mLock);
 
-    pidfd = dup(self->mFile->mFd);
-    if (-1 == pidfd)
-        goto Finally;
-
-    pidfp = fdopen(pidfd, "r");
-    if ( ! pidfp)
-        goto Finally;
-    pidfd = -1;
-
-    uintmax_t pidvalue;
-    if (1 != fscanf(pidfp, "%ju", &pidvalue))
-    {
-        errno = EIO;
-        goto Finally;
-    }
-
-    if ('\n' != fgetc(pidfp))
-    {
-        errno = EIO;
-        goto Finally;
-    }
-
-    pid = pidvalue;
-    if (pid != pidvalue || 0 >= pid)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
-
-    if (1 != fscanf(pidfp, "%m[^\n]", &pidsignature))
-    {
-        errno = EIO;
-        goto Finally;
-    }
-
-    if (ferror(pidfp))
-    {
-        errno = EIO;
-        goto Finally;
-    }
-
     do
     {
-        if (fetchProcessSignature(pid, &signature))
+        char buf[PIDFILE_SIZE_+1];
+
+        ssize_t buflen = readFile(self->mFile, buf, sizeof(buf));
+        if (-1 == buflen)
+            goto Finally;
+
+        if (sizeof(buf) > buflen)
         {
-            if (ENOENT != errno)
+            ssize_t lastlen = readFile(self->mFile, buf + buflen, 1);
+            if (-1 == lastlen)
                 goto Finally;
-        }
-        else
-        {
-            debug(0, "pidfile signature %s vs %s", pidsignature, signature);
 
-            if ( ! strcmp(pidsignature, signature))
+            if ( ! lastlen)
+            {
+                buf[buflen] = 0;
+                pid = readPidFile_(buf);
+                if (-1 == pid)
+                    goto Finally;
                 break;
+            }
         }
-
-        /* The process either does not exist, or if it does exist the two
-         * process signatures do not match. */
 
         pid = 0;
 
@@ -485,8 +529,28 @@ writePidFile(struct PidFile *self, pid_t aPid)
     if (fetchProcessSignature(aPid, &signature))
         goto Finally;
 
-    if (0 > dprintf(self->mFile->mFd, "%jd\n%s\n", (intmax_t) aPid, signature))
+    char buf[PIDFILE_SIZE_+1];
+
+    int buflen =
+        snprintf(buf, sizeof(buf), "%jd\n%s\n", (intmax_t) aPid, signature);
+
+    if (0 > buflen)
         goto Finally;
+    if ( ! buflen || sizeof(buf) <= buflen)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    /* Separate the formatting of the signature from the actual IO
+     * so that it is possible to determine if there is a formatting
+     * error, or an IO error. */
+
+    if (writeFile(self->mFile, buf, buflen) != buflen)
+    {
+        errno = EIO;
+        goto Finally;
+    }
 
     rc = 0;
 
