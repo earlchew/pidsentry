@@ -58,6 +58,52 @@ TEST(ProcessTest, ProcessStatus)
     EXPECT_EQ(ProcessStatusExited, monitorProcess(childpid));
 }
 
+TEST(ProcessTest, ProcessSignature)
+{
+    char *parentSignature = 0;
+
+    EXPECT_EQ(0, fetchProcessSignature(getpid(), &parentSignature));
+    EXPECT_TRUE(parentSignature);
+    EXPECT_TRUE(strlen(parentSignature));
+
+    {
+        char *altSignature = 0;
+        EXPECT_EQ(0, fetchProcessSignature(getpid(), &altSignature));
+        EXPECT_EQ(0, strcmp(parentSignature, altSignature));
+
+        free(altSignature);
+    }
+
+    pid_t firstChild = forkProcess(ForkProcessShareProcessGroup);
+    EXPECT_NE(-1, firstChild);
+
+    if ( ! firstChild)
+        _exit(0);
+
+    pid_t secondChild = forkProcess(ForkProcessShareProcessGroup);
+    EXPECT_NE(-1, secondChild);
+
+    if ( ! secondChild)
+        _exit(0);
+
+    char *firstChildSignature = 0;
+    EXPECT_EQ(0, fetchProcessSignature(firstChild, &firstChildSignature));
+
+    char *secondChildSignature = 0;
+    EXPECT_EQ(0, fetchProcessSignature(secondChild, &secondChildSignature));
+
+    EXPECT_NE(std::string(firstChildSignature),
+              std::string(secondChildSignature));
+
+    int status;
+    EXPECT_EQ(0, reapProcess(firstChild, &status));
+    EXPECT_EQ(0, reapProcess(secondChild, &status));
+
+    free(parentSignature);
+    free(firstChildSignature);
+    free(secondChildSignature);
+}
+
 TEST(ProcessTest, ProcessStartTime)
 {
     struct BootClockTime starttime;

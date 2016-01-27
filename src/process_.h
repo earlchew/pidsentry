@@ -193,6 +193,9 @@ fetchProcessStartTime_(pid_t aPid, struct BootClockTime *aBootClockTime);
 struct timespec
 fetchProcessStartTime(pid_t aPid);
 
+int
+fetchProcessSignature(pid_t aPid, char **aSignature);
+
 enum ProcessState
 fetchProcessState(pid_t aPid);
 

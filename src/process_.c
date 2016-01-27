@@ -36,6 +36,7 @@
 #include "error_.h"
 #include "timekeeping_.h"
 #include "parse_.h"
+#include "system_.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1175,19 +1176,10 @@ Finally:
 pid_t
 forkProcess(enum ForkProcessOption aOption)
 {
-    ensure(
-        sProcessLock[sActiveProcessLock] == &sProcessLock_[sActiveProcessLock]);
-
     pid_t rc     = -1;
     bool  locked = false;
 
     struct PushedProcessSigMask *pushedSigMask = 0;
-
-    /* The child process needs separate process lock. It cannot share
-     * the process lock with the parent because flock(2) distinguishes
-     * locks by file descriptor table entry. Create the process lock
-     * in the parent first so that the child process is guaranteed to
-     * be able to synchronise its messages. */
 
     unsigned activeProcessLock   = 0 + sActiveProcessLock;
     unsigned inactiveProcessLock = 1 - activeProcessLock;
@@ -1197,13 +1189,32 @@ forkProcess(enum ForkProcessOption aOption)
 
     ensure( ! sProcessLock[inactiveProcessLock]);
 
+#ifdef __linux__
+    long clocktick = sysconf(_SC_CLK_TCK);
+    if (-1 == clocktick)
+        goto Finally;
+#endif
+
+    /* The child process needs separate process lock. It cannot share
+     * the process lock with the parent because flock(2) distinguishes
+     * locks by file descriptor table entry. Create the process lock
+     * in the parent first so that the child process is guaranteed to
+     * be able to synchronise its messages. */
+
     if (errno = pthread_mutex_lock(&sProcessMutex))
         goto Finally;
     locked = true;
 
-    if (createProcessLock_(&sProcessLock_[inactiveProcessLock]))
-        goto Finally;
-    sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
+    if (sProcessLock[sActiveProcessLock])
+    {
+        ensure(
+            sProcessLock[activeProcessLock] ==
+            &sProcessLock_[activeProcessLock]);
+
+        if (createProcessLock_(&sProcessLock_[inactiveProcessLock]))
+            goto Finally;
+        sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
+    }
 
     /* If required, temporarily block all signals so that the child will not
      * receive signals which it cannot handle. */
@@ -1238,6 +1249,18 @@ forkProcess(enum ForkProcessOption aOption)
             if (setpgid(childPid, childPid))
                 goto Finally;
         }
+
+        /* On Linux, fetchProcessSignature() uses the process start
+         * time from /proc/pid/stat, but that start time is measured
+         * in _SC_CLK_TCK periods which limits the rate at which
+         * processes can be forked without causing ambiguity. Although
+         * this ambiguity is largely theoretical, it is a simple matter
+         * to overcome. */
+
+#ifdef __linux__
+        monotonicSleep(
+            Duration(NanoSeconds(TimeScale_ns / clocktick * 5 / 4)));
+#endif
         break;
 
     case -1:
@@ -1482,6 +1505,122 @@ struct MonotonicTime
 ownProcessBaseTime(void)
 {
     return sTimeBase;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+fetchProcessSignature(pid_t aPid, char **aSignature)
+{
+    int rc  = -1;
+    int err = 0;
+    int fd  = -1;
+
+    char *buf       = 0;
+    char *signature = 0;
+
+    const char *incarnation = fetchSystemIncarnation();
+    if ( ! incarnation)
+        goto Finally;
+
+    /* Note that it is expected that forkProcess() will guarantee that
+     * the pid of the child process combined with its signature results
+     * in a universally unique key. Because the pid is recycled over time
+     * (as well as being reused after each reboot), the signature must
+     * unambiguously qualify the pid. */
+
+    do
+    {
+        struct ProcessDirName processDirName;
+
+        initProcessDirName(&processDirName, aPid);
+
+        static const char sProcessStatFileNameFmt[] = "%s/stat";
+
+        char processStatFileName[strlen(processDirName.mDirName) +
+                                 sizeof(sProcessStatFileNameFmt)];
+
+        sprintf(processStatFileName,
+                sProcessStatFileNameFmt, processDirName.mDirName);
+
+        fd = open(processStatFileName, O_RDONLY);
+        if (-1 == fd)
+        {
+            err = errno;
+            goto Finally;
+        }
+
+    } while (0);
+
+    ssize_t buflen = readFdFully(fd, &buf, 0);
+    if (-1 == buflen)
+        goto Finally;
+    if ( ! buflen)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    char *word = strrchr(buf, ')');
+    if ( ! word)
+    {
+        errno = ERANGE;
+        goto Finally;
+    }
+
+    for (unsigned ix = 2; 22 > ix; ++ix)
+    {
+        while (*word && ! isspace((unsigned char) *word))
+            ++word;
+
+        if ( ! *word)
+        {
+            errno = ERANGE;
+            goto Finally;
+        }
+
+        while (*word && isspace((unsigned char) *word))
+            ++word;
+    }
+
+    char *end = word;
+    while (*end && ! isspace((unsigned char) *end))
+        ++end;
+
+    do
+    {
+        char timestamp[end-word+1];
+        memcpy(timestamp, word, end-word);
+        timestamp[sizeof(timestamp)-1] = 0;
+
+        static const char signatureFmt[] = "%s:%s";
+
+        size_t signatureLen =
+            strlen(incarnation) + sizeof(timestamp) + sizeof(signatureFmt);
+
+        signature = malloc(signatureLen);
+        if ( ! signature)
+            goto Finally;
+
+        if (0 > sprintf(signature, signatureFmt, incarnation, timestamp))
+            goto Finally;
+
+    } while (0);
+
+    *aSignature = signature;
+    signature   = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        closeFd(&fd);
+        free(buf);
+        free(signature);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
