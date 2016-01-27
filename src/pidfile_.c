@@ -116,11 +116,12 @@ Finally:
 pid_t
 readPidFile(const struct PidFile *self)
 {
-    int   rc     = -1;
-    pid_t pid    = 0;
-    FILE *pidfp  = 0;
-    int   pidfd  = -1;
-    char *bootid = 0;
+    int    rc           = -1;
+    pid_t  pid          = 0;
+    FILE  *pidfp        = 0;
+    int    pidfd        = -1;
+    char  *pidsignature = 0;
+    char  *signature    = 0;
 
     ensure(LOCK_UN != self->mLock);
 
@@ -134,7 +135,13 @@ readPidFile(const struct PidFile *self)
     pidfd = -1;
 
     uintmax_t pidvalue;
-    if (2 != fscanf(pidfp, "%ju\n", &pidvalue))
+    if (1 != fscanf(pidfp, "%ju", &pidvalue))
+    {
+        errno = EIO;
+        goto Finally;
+    }
+
+    if ('\n' != fgetc(pidfp))
     {
         errno = EIO;
         goto Finally;
@@ -147,14 +154,7 @@ readPidFile(const struct PidFile *self)
         goto Finally;
     }
 
-    uint64_t pidfiletime_ns;
-    if (2 != fscanf(pidfp, "%" SCNu64 "\n", &pidfiletime_ns))
-    {
-        errno = EIO;
-        goto Finally;
-    }
-
-    if (1 != fscanf(pidfp, "%m[^\n]", &bootid))
+    if (1 != fscanf(pidfp, "%m[^\n]", &pidsignature))
     {
         errno = EIO;
         goto Finally;
@@ -168,28 +168,21 @@ readPidFile(const struct PidFile *self)
 
     do
     {
-        const char *incarnation = fetchSystemIncarnation();
-
-        debug(0, "pidfile boot id %s vs %s", bootid, incarnation);
-
-        if ( ! strcmp(bootid, incarnation))
+        if (fetchProcessSignature(pid, &signature))
         {
-            struct BootClockTime starttime;
-            if (fetchProcessStartTime_(pid, &starttime))
-            {
-                if (ENOENT != errno)
-                    goto Finally;
-            }
-            else
-            {
-                debug(0, "pidfile time %" PRIu64 " vs %" PRIu_NanoSeconds,
-                      pidfiletime_ns,
-                      starttime.bootclock.ns);
-
-                if (starttime.bootclock.ns == pidfiletime_ns)
-                    break;
-            }
+            if (ENOENT != errno)
+                goto Finally;
         }
+        else
+        {
+            debug(0, "pidfile signature %s vs %s", pidsignature, signature);
+
+            if ( ! strcmp(pidsignature, signature))
+                break;
+        }
+
+        /* The process either does not exist, or if it does exist the two
+         * process signatures do not match. */
 
         pid = 0;
 
@@ -205,7 +198,8 @@ Finally:
             fclose(pidfp);
 
         closeFd(&pidfd);
-        free(bootid);
+        free(pidsignature);
+        free(signature);
     });
 
     return rc ? -1 : pid;
@@ -483,26 +477,25 @@ Finally:
 int
 writePidFile(struct PidFile *self, pid_t aPid)
 {
-    int rc = -1;
+    int   rc        = -1;
+    char *signature = 0;
 
     ensure(0 < aPid);
 
-    struct BootClockTime starttime;
-    if (fetchProcessStartTime_(aPid, &starttime))
+    if (fetchProcessSignature(aPid, &signature))
         goto Finally;
 
-    if (0 > dprintf(self->mFile->mFd,
-                    "%jd\n%s\n%" PRIu_NanoSeconds "\n",
-                    (intmax_t) aPid,
-                    fetchSystemIncarnation(),
-                    starttime.bootclock.ns))
+    if (0 > dprintf(self->mFile->mFd, "%jd\n%s\n", (intmax_t) aPid, signature))
         goto Finally;
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        free(signature);
+    });
 
     return rc;
 }
