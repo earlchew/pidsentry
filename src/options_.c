@@ -51,6 +51,7 @@ struct Options gOptions;
 /* -------------------------------------------------------------------------- */
 static const char sUsage[] =
 "usage : %s [ options ] cmd ...\n"
+"        %s { --pidfile file | -p file }\n"
 "\n"
 "options:\n"
 "  --debug | -d\n"
@@ -141,7 +142,7 @@ showUsage_(void)
 {
     const char *arg0 = ownProcessName();
 
-    dprintf(STDERR_FILENO, sUsage, arg0);
+    dprintf(STDERR_FILENO, sUsage, arg0, arg0);
     _exit(EXIT_FAILURE);
 }
 
