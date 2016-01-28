@@ -28,18 +28,20 @@
 */
 
 #include "unixsocket_.h"
+#include "timekeeping_.h"
 #include "macros_.h"
 
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <sys/file.h>
 #include <sys/un.h>
 
 /* -------------------------------------------------------------------------- */
 static void
-createRandomName(struct sockaddr_un *aSockAddr)
+createRandomName(struct sockaddr_un *aSockAddr, uint32_t *aRandom)
 {
     static const char hexDigits[16] = "0123456789abcdef";
 
@@ -52,7 +54,12 @@ createRandomName(struct sockaddr_un *aSockAddr)
 
     for (unsigned ix = 0; 10 > ix; ++ix)
     {
-        uint32_t rnd = random();
+        /* LCG(2^32, 69069, 0, 1)
+         * http://mathforum.org/kb/message.jspa?messageID=1608043 */
+
+        *aRandom = *aRandom * 69069 + 1;
+
+        uint32_t rnd = *aRandom;
 
         bp[0] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
         bp[1] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
@@ -82,13 +89,18 @@ createUnixSocket(
         goto Finally;
     self->mFile = &self->mFile_;
 
+    /* Do not use random() from stdlib to avoid perturbing the behaviour of
+     * programs that themselves use the PRNG from the library. */
+
+    uint32_t rnd = getpid() ^ MSECS(monotonicTime().monotonic).ms;
+
     while (1)
     {
         struct sockaddr_un sockAddr;
 
         if ( ! aName || 1 == aNameLen && ! *aName)
         {
-            createRandomName(&sockAddr);
+            createRandomName(&sockAddr, &rnd);
             sockAddr.sun_family = AF_UNIX;
             sockAddr.sun_path[0] = 0;
         }
