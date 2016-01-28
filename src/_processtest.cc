@@ -107,42 +107,4 @@ TEST(ProcessTest, ProcessSignature)
     free(secondChildSignature);
 }
 
-TEST(ProcessTest, ProcessStartTime)
-{
-    struct BootClockTime starttime;
-    EXPECT_EQ(0, fetchProcessStartTime_(getpid(), &starttime));
-
-    struct BootClockTime before = bootclockTime();
-
-    monotonicSleep(Duration(NSECS(Seconds(1))));
-
-    pid_t pid = fork();
-
-    EXPECT_NE(-1, pid);
-
-    if ( ! pid)
-        _exit(0);
-
-    monotonicSleep(Duration(NSECS(Seconds(1))));
-
-    struct BootClockTime after = bootclockTime();
-
-    struct BootClockTime childstarttime;
-    EXPECT_EQ(0, fetchProcessStartTime_(pid, &childstarttime));
-
-    int status;
-    EXPECT_EQ(0, reapProcess(pid, &status));
-
-    struct ExitCode exitcode = extractProcessExitStatus(status);
-    EXPECT_EQ(0, exitcode.mStatus);
-
-    EXPECT_GE(before.bootclock.ns, starttime.bootclock.ns);
-    EXPECT_LE(before.bootclock.ns, childstarttime.bootclock.ns);
-    EXPECT_GE(after.bootclock.ns,  childstarttime.bootclock.ns);
-
-    struct BootClockTime nostarttime;
-    EXPECT_EQ(-1, fetchProcessStartTime_(pid, &nostarttime));
-    EXPECT_EQ(ENOENT, errno);
-}
-
 #include "../googletest/src/gtest_main.cc"
