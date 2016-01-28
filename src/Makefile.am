@@ -128,7 +128,7 @@ programs:	all
 clean-local::
 	rm -f *.map
 	rm -f *.exp
-        rm -rf scratch
+	rm -rf scratch
 
 delete-orphaned-includes:
 	sh ./delete-orphaned-includes.sh $(MAKE) programs
