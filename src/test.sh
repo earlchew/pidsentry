@@ -96,12 +96,12 @@ runTests()
     testExit 1 k9 -p
 
     testCase 'Valid -p option value'
-    testExit 0 k9 -d -p pidfile -- true
-    [ ! -f pidfile ]
+    testExit 0 k9 -d -p $PIDFILE -- true
+    [ ! -f $PIDFILE ]
 
     testCase 'Long --pidfile option'
-    testExit 0 k9 --pidfile pidfile -- true
-    [ ! -f pidfile ]
+    testExit 0 k9 --pidfile $PIDFILE -- true
+    [ ! -f $PIDFILE ]
 
     testCase 'Missing command'
     testExit 1 k9
@@ -115,54 +115,54 @@ runTests()
     [ x"$REPLY" = x"test" ]
 
     testCase 'Empty pid file'
-    rm -f pidfile
-    : > pidfile
-    testExit 0 k9 -T -p pidfile -- true
-    [ ! -f pidfile ]
+    rm -f $PIDFILE
+    : > $PIDFILE
+    testExit 0 k9 -T -p $PIDFILE -- true
+    [ ! -f $PIDFILE ]
 
     testCase 'Invalid content in pid file'
-    rm -f pidfile
-    dd if=/dev/zero bs=1K count=1 > pidfile
-    testExit 0 k9 -T -p pidfile -- true
-    [ ! -f pidfile ]
+    rm -f $PIDFILE
+    dd if=/dev/zero bs=1K count=1 > $PIDFILE
+    testExit 0 k9 -T -p $PIDFILE -- true
+    [ ! -f $PIDFILE ]
 
     testCase 'Dead process in pid file'
-    rm -f pidfile
-    sh -c '/bin/echo $$' > pidfile
-    testExit 0 k9 -T -d -p pidfile -- true
-    [ ! -f pidfile ]
+    rm -f $PIDFILE
+    sh -c '/bin/echo $$' > $PIDFILE
+    testExit 0 k9 -T -d -p $PIDFILE -- true
+    [ ! -f $PIDFILE ]
 
     testCase 'Aliased process in pid file'
-    rm -f pidfile
+    rm -f $PIDFILE
     sh -c '
       stat -c %y /proc/$$/.
       { /bin/echo $$
         UUID=$(cat /proc/sys/kernel/random/boot_id)
         TIME=$(awk "{ print \$22 }" "/proc/$$/stat")
-        /bin/echo "$UUID:$TIME" ; } > pidfile.new
-      mv -f pidfile.new pidfile' &
-    while [ ! -s pidfile ] ; do
+        /bin/echo "$UUID:$TIME" ; } > '$PIDFILE.new'
+      mv -f '$PIDFILE.new' '$PIDFILE'' &
+    while [ ! -s $PIDFILE ] ; do
         sleep 1
     done
-    cat pidfile
-    read PID < pidfile
-    TIMESTAMP=$(date -d @$(( $(stat -c %Y pidfile) - 3600 )) +%Y%m%d%H%M)
-    touch -t $TIMESTAMP pidfile
-    stat -c %y pidfile
-    k9 -T -d -p pidfile -- true
+    cat $PIDFILE
+    read PID < $PIDFILE
+    TIMESTAMP=$(date -d @$(( $(stat -c %Y $PIDFILE) - 3600 )) +%Y%m%d%H%M)
+    touch -t $TIMESTAMP $PIDFILE
+    stat -c %y $PIDFILE
+    k9 -T -d -p $PIDFILE -- true
     wait
-    [ ! -f pidfile ]
+    [ ! -f $PIDFILE ]
 
     testCase 'Read non-existent pid file'
-    rm -f pidfile
-    testExit 1 k9 -T -p pidfile
-    [ ! -f pidfile ]
+    rm -f $PIDFILE
+    testExit 1 k9 -T -p $PIDFILE
+    [ ! -f $PIDFILE ]
 
     testCase 'Read malformed pid file'
-    rm -f pidfile
-    date > pidfile
-    testExit 1 k9 -T -p pidfile
-    [ -f pidfile ]
+    rm -f $PIDFILE
+    date > $PIDFILE
+    testExit 1 k9 -T -p $PIDFILE
+    [ -f $PIDFILE ]
 
     testCase 'Identify processes'
     for REPLY in $(
@@ -482,6 +482,11 @@ runTests()
     REPLY=${REPLY##* }
     [ "$REPLY" -ge 6 ]
 }
+
+trap 'rm -rf scratch/*' 0
+mkdir -p scratch
+
+PIDFILE=scratch/pidfile
 
 for TEST in runTest runTests ; do
     VALGRIND=
