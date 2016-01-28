@@ -719,26 +719,6 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid)
 }
 
 /* -------------------------------------------------------------------------- */
-struct timespec
-fetchProcessStartTime(pid_t aPid)
-{
-    struct ProcessDirName processDirName;
-
-    initProcessDirName(&processDirName, aPid);
-
-    struct timespec startTime = { 0 };
-
-    struct stat procStatus;
-
-    if (stat(processDirName.mDirName, &procStatus))
-        startTime.tv_nsec = ENOENT == errno ?  UTIME_NOW : UTIME_OMIT;
-    else
-        startTime = earliestTime(&procStatus.st_mtim, &procStatus.st_ctim);
-
-    return startTime;
-}
-
-/* -------------------------------------------------------------------------- */
 enum ProcessState
 fetchProcessState(pid_t aPid)
 {

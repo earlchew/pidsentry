@@ -187,9 +187,6 @@ const char*
 ownProcessName(void);
 
 /* -------------------------------------------------------------------------- */
-struct timespec
-fetchProcessStartTime(pid_t aPid);
-
 int
 fetchProcessSignature(pid_t aPid, char **aSignature);
 
