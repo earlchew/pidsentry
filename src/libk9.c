@@ -35,6 +35,7 @@
 #include "pollfd_.h"
 #include "env_.h"
 #include "thread_.h"
+#include "test_.h"
 #include "unixsocket_.h"
 
 #include <stdlib.h>
@@ -137,7 +138,7 @@ runClone(void *self, int (*aMain)(void *), void *aStack)
     }
 #endif
 
-    if (RUNNING_ON_VALGRIND)
+    if (RUNNING_ON_VALGRIND || testAction())
     {
         pid_t slavepid  = forkProcess(ForkProcessShareProcessGroup);
 
@@ -468,6 +469,7 @@ struct UmbilicalPoll
     struct PollFdTimerAction  mPollFdTimerActions[FD_TIMER_KINDS];
     unsigned                  mCycleCount;
     unsigned                  mCycleLimit;
+    pid_t                     mParentPid;
 };
 
 static struct UmbilicalThread *sUmbilicalThread_;
@@ -556,7 +558,7 @@ pollumbilicalcontrol(void                        *self_,
             errno,
             "Unable to determine controller peer credentials");
 
-    pid_t peerpid = self->mThread->mProcessPid;
+    pid_t peerpid = self->mParentPid;
 
     if (cred.pid == (peerpid ? peerpid : getpid()))
     {
@@ -625,7 +627,7 @@ pollumbilicalcompletion(void                     *self_,
      * is dead in the case that the poll loop is run in a separate
      * process. */
 
-    pid_t parentpid = self->mThread->mProcessPid;
+    pid_t parentpid = self->mParentPid;
 
     return
         parentpid && parentpid != getppid() ||
@@ -649,14 +651,6 @@ watchUmbilical_(void *self_)
             "Umbilical thread context mismatched %p vs %p",
             (void *) self->mErrno,
             (void *) &errno);
-
-    /* The poll loop is normally run in a child thread, but if
-     * valgrind is running, will be run in a separate process and in
-     * this case, the poll must also watch for the death of the parent
-     * process. */
-
-    if (self->mProcessPid == getpid())
-        self->mProcessPid = 0;
 
     /* Capture the local file descriptors here because although this
      * thread shares the same memory space as the enclosing process,
@@ -730,6 +724,13 @@ watchUmbilical_(void *self_)
         .mControlFile     = &controlFile,
         .mControlPeerFile = 0,
         .mCycleLimit      = cycleLimit,
+
+        /* The poll loop is normally run in a child thread, but if
+         * valgrind is running, will be run in a separate process and in
+         * this case, the poll must also watch for the death of the parent
+         * process. */
+
+        .mParentPid = self->mProcessPid == getpid() ? 0 : self->mProcessPid,
 
         .mPollFds =
         {
@@ -871,20 +872,21 @@ umbilicalMain_(void *self_)
          * thread completes, it is safe to release the pthread resources.
          *
          * With the umbilical broken, kill the process group that contains
-         * the process being monitored. Try politely, then more aggressively.
-         */
+         * the process being monitored. Try politely, then more aggressively. */
 
-        if (kill(0, SIGTERM))
+        if (kill(self->mProcessPid, SIGTERM))
             terminate(
                 errno,
-                "Unable to send SIGTERM to process group");
+                "Unable to send SIGTERM to process pid %jd",
+                (intmax_t) self->mProcessPid);
 
         monotonicSleep(Duration(NSECS(Seconds(30))));
 
         if (kill(0, SIGKILL))
             terminate(
                 errno,
-                "Unable to send SIGKILL to process group");
+                "Unable to send SIGKILL to process group pgid %jd",
+                (intmax_t) getpgrp());
 
         _exit(1);
     }
