@@ -59,8 +59,8 @@ testExit()
 
 testOutput()
 {
-    eval set -- '"$@"' "$1"
-    eval set -- '"$@"' "$3"
+    eval set -- '"$@"' \""$1"\"
+    eval set -- '"$@"' \""$3"\"
     if ! [ x"$4" "$2" x"$5" ] ; then
        testTrace [ x"$4" "$2" x"$5" ]
        set -- "$1" "$2" "$3"
@@ -337,6 +337,20 @@ runTests()
         kill -CONT $PARENT || { echo NOTOK ; exit 1 ; }
         echo OK
     })"'
+
+    testCase 'Broken umbilical'
+    testOutput "OK" = '$(
+        exec 3>&1
+        k9 -dd -i -- sleep 9 | {
+            read PARENT
+            read CHILD
+            sleep 3
+            kill -0 $CHILD && echo OK
+            kill -9 $PARENT
+            sleep 3
+            ! kill -0 $CHILD 2>/dev/null || echo NOTOK
+        }
+    )'
 
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
