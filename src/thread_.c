@@ -92,6 +92,44 @@ destroyThreadAttr(pthread_attr_t *self)
 
 /* -------------------------------------------------------------------------- */
 void
+createSharedMutex(pthread_mutex_t *self)
+{
+    pthread_mutexattr_t mutexattr;
+
+    if (errno = pthread_mutexattr_init(&mutexattr))
+        terminate(
+            errno,
+            "Unable to allocate mutex attribute");
+
+    if (errno = pthread_mutexattr_setpshared(&mutexattr,
+                                             PTHREAD_PROCESS_SHARED))
+        terminate(
+            errno,
+            "Unable to set mutex attribute PTHREAD_PROCESS_SHARED");
+
+    if (errno = pthread_mutex_init(self, &mutexattr))
+        terminate(
+            errno,
+            "Unable to create shared mutex");
+
+    if (errno = pthread_mutexattr_destroy(&mutexattr))
+        terminate(
+            errno,
+            "Unable to destroy mutex attribute");
+}
+
+/* -------------------------------------------------------------------------- */
+void
+destroyMutex(pthread_mutex_t *self)
+{
+    if (errno = pthread_mutex_destroy(self))
+        terminate(
+            errno,
+            "Unable to destroy mutex");
+}
+
+/* -------------------------------------------------------------------------- */
+void
 lockMutex(pthread_mutex_t *self)
 {
     if (errno = pthread_mutex_trylock(self))
@@ -160,6 +198,44 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
         terminate(
             errno,
             "Unable to lock mutex");
+}
+
+/* -------------------------------------------------------------------------- */
+void
+createSharedCond(pthread_cond_t *self)
+{
+    pthread_condattr_t condattr;
+
+    if (errno = pthread_condattr_init(&condattr))
+        terminate(
+            errno,
+            "Unable to allocate condition variable attribute");
+
+    if (errno = pthread_condattr_setpshared(&condattr,
+                                            PTHREAD_PROCESS_SHARED))
+        terminate(
+            errno,
+            "Unable to set cond attribute PTHREAD_PROCESS_SHARED");
+
+    if (errno = pthread_cond_init(self, &condattr))
+        terminate(
+            errno,
+            "Unable to create shared condition variable");
+
+    if (errno = pthread_condattr_destroy(&condattr))
+        terminate(
+            errno,
+            "Unable to destroy condition variable attribute");
+}
+
+/* -------------------------------------------------------------------------- */
+void
+destroyCond(pthread_cond_t *self)
+{
+    if (errno = pthread_cond_destroy(self))
+        terminate(
+            errno,
+            "Unable to destroy condition variable");
 }
 
 /* -------------------------------------------------------------------------- */

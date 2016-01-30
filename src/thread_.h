@@ -57,6 +57,12 @@ setThreadAttrDetachState(pthread_attr_t *self, int aState);
 
 /* -------------------------------------------------------------------------- */
 void
+createSharedMutex(pthread_mutex_t *self);
+
+void
+destroyMutex(pthread_mutex_t *self);
+
+void
 lockMutex(pthread_mutex_t *self);
 
 void
@@ -69,6 +75,12 @@ void
 unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond);
 
 /* -------------------------------------------------------------------------- */
+void
+createSharedCond(pthread_cond_t *self);
+
+void
+destroyCond(pthread_cond_t *self);
+
 void
 waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);
 

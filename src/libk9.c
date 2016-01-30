@@ -48,9 +48,12 @@
 
 #include <sys/resource.h>
 #include <sys/syscall.h>
+#include <sys/mman.h>
 #include <sys/un.h>
 
 #include <linux/futex.h>
+
+#include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
 enum FdKind
@@ -96,6 +99,105 @@ struct Env
     const char *mName;
     const char *mValue;
 };
+
+/* -------------------------------------------------------------------------- */
+static int
+runClone(void *self, int (*aMain)(void *), void *aStack)
+{
+    int rc = -1;
+
+    /* CLONE_THREAD semantics are required in order to ensure that
+     * the umbilical thread is reaped when the process executes
+     * execve() et al. By implication, CLONE_THREAD requires
+     * CLONE_SIGHAND, and CLONE_SIGHAND in turn requires
+     * CLONE_VM.
+     *
+     * CLONE_FILE is not used so that the umbilical file descriptor
+     * can be used exclusively by the umbilical thread. Apart from
+     * the umbilical thread, the rest of the child process cannot
+     * manipulate or close the umbilical file descriptor, allowing
+     * it to close all file descriptors without disrupting the
+     * operation of the umbilical thread. */
+
+#ifdef __i386__
+    struct user_desc  tls_;
+    struct user_desc *tls = &tls_;
+
+    {
+        unsigned gs;
+        __asm ("movw %%gs, %w0" : "=q" (gs));
+
+        gs &= 0xffff;
+        tls->entry_number = gs >> 3;
+
+        if (syscall(SYS_get_thread_area, tls))
+            terminate(
+                errno,
+                "Unable to find thread area 0x%x", gs);
+    }
+#endif
+
+    if (RUNNING_ON_VALGRIND)
+    {
+        pid_t slavepid  = forkProcess(ForkProcessShareProcessGroup);
+
+        if (-1 == slavepid)
+            goto Finally;
+
+        if ( ! slavepid)
+            _exit(aMain(self));
+
+        int status;
+        if (reapProcess(slavepid, &status))
+            goto Finally;
+
+        rc = extractProcessExitStatus(status).mStatus;
+    }
+    else
+    {
+        /* Note that CLONE_FILES has not been specified, so that the
+         * umbilical slave thread can operate with an isolated set of
+         * file descriptors. It is expected that * watched processes
+         * (especially servers) will close all file descriptors in
+         * which they have no active interest, and thus would close
+         * the umbilical file descriptor if the umbilical thread
+         * shared the same file descriptor space. */
+
+        pid_t slavetid;
+        pid_t slavepid = clone(
+            aMain,
+            aStack,
+            CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS |
+            CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
+            self, &slavetid, tls, &slavetid);
+
+        if (-1 == slavepid)
+            goto Finally;
+
+        while (slavetid)
+        {
+            switch (
+                syscall(SYS_futex, &slavetid, FUTEX_WAIT, slavetid, 0, 0, 0))
+            {
+            case 0:
+                continue;
+
+            default:
+                if (EINTR == errno || EWOULDBLOCK == errno)
+                    continue;
+                goto Finally;
+            }
+        }
+
+        rc = 256;
+    }
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -345,6 +447,7 @@ struct UmbilicalThread
     struct sockaddr_un         mThreadSockAddr;
     struct Duration            mTimeout;
     pid_t                      mWatchdogPid;
+    pid_t                      mProcessPid;
     int                        mStatus;
     int                       *mErrno;
     int                        mExitCode;
@@ -367,7 +470,21 @@ struct UmbilicalPoll
     unsigned                  mCycleLimit;
 };
 
-static struct UmbilicalThread sUmbilicalThread_;
+static struct UmbilicalThread *sUmbilicalThread_;
+
+/* -------------------------------------------------------------------------- */
+static struct UmbilicalThread *
+createUmbilicalThread(void)
+{
+    struct UmbilicalThread *self =
+        mmap(0, (sizeof(*self) + 4095) / 4096 * 4096,
+             PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+
+    if (MAP_FAILED == self)
+        self = 0;
+
+    return self;
+}
 
 /* -------------------------------------------------------------------------- */
 static void
@@ -439,7 +556,9 @@ pollumbilicalcontrol(void                        *self_,
             errno,
             "Unable to determine controller peer credentials");
 
-    if (cred.pid == getpid())
+    pid_t peerpid = self->mThread->mProcessPid;
+
+    if (cred.pid == (peerpid ? peerpid : getpid()))
     {
         debug(0, "controller connection triggers close");
 
@@ -502,9 +621,14 @@ pollumbilicalcompletion(void                     *self_,
     ensure(FD_UMBILICAL == self->mKind);
 
     /* Stop the polling loop if either the umbilical connection to the
-     * watchdog is broken, or the process is exiting. */
+     * watchdog is broken, or the process is exiting, or the parent process
+     * is dead in the case that the poll loop is run in a separate
+     * process. */
+
+    pid_t parentpid = self->mThread->mProcessPid;
 
     return
+        parentpid && parentpid != getppid() ||
         ! self->mPollFds[FD_UMBILICAL].events ||
         ! self->mPollFds[FD_CONTROL].events;
 }
@@ -525,6 +649,14 @@ watchUmbilical_(void *self_)
             "Umbilical thread context mismatched %p vs %p",
             (void *) self->mErrno,
             (void *) &errno);
+
+    /* The poll loop is normally run in a child thread, but if
+     * valgrind is running, will be run in a separate process and in
+     * this case, the poll must also watch for the death of the parent
+     * process. */
+
+    if (self->mProcessPid == getpid())
+        self->mProcessPid = 0;
 
     /* Capture the local file descriptors here because although this
      * thread shares the same memory space as the enclosing process,
@@ -697,92 +829,40 @@ umbilicalMain_(void *self_)
     /* Create the umbilical thread and ensure that it is ready before
      * proceeding. This is important partly because the library
      * code is largely single threaded, and also to ensure that
-     * the umbilical thread is functional.
-     *
-     * CLONE_THREAD semantics are required in order to ensure that
-     * the umbilical thread is reaped when the process executes
-     * execve() et al. By implication, CLONE_THREAD requires
-     * CLONE_SIGHAND, and CLONE_SIGHAND in turn requires
-     * CLONE_VM.
-     *
-     * CLONE_FILE is not used so that the umbilical file descriptor
-     * can be used exclusively by the umbilical thread. Apart from
-     * the umbilical thread, the rest of the child process cannot
-     * manipulate or close the umbilical file descriptor, allowing
-     * it to close all file descriptors without disrupting the
-     * operation of the umbilical thread. */
-
-#ifdef __i386__
-    struct user_desc  tls_;
-    struct user_desc *tls = &tls_;
-
-    {
-        unsigned gs;
-        __asm ("movw %%gs, %w0" : "=q" (gs));
-
-        gs &= 0xffff;
-        tls->entry_number = gs >> 3;
-
-        if (syscall(SYS_get_thread_area, tls))
-            terminate(
-                errno,
-                "Unable to find thread area 0x%x", gs);
-    }
-#endif
-
-    /* Note that CLONE_FILES has not been specified, so that the
-     * umbilical slave thread can operate with an isolated set of
-     * file descriptors. It is expected that * watched processes
-     * (especially servers) will close all file descriptors in
-     * which they have no active interest, and thus would close
-     * the umbilical file descriptor if the umbilical thread
-     * shared the same file descriptor space. */
+     * the umbilical thread is functional. */
 
     self->mErrno = &errno;
 
-    pid_t slavetid;
-    pid_t slavepid = clone(
-        watchUmbilical_,
-        self->mStack,
-        CLONE_VM | CLONE_SIGHAND | CLONE_THREAD | CLONE_FS |
-        CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
-        self, &slavetid, tls, &slavetid);
-
-    if (-1 == slavepid)
-        terminate(
-            errno,
-            "Unable to create umbilical slave thread");
-
-    while (slavetid)
+    do
     {
-        switch (syscall(SYS_futex, &slavetid, FUTEX_WAIT, slavetid, 0, 0, 0))
-        {
-        case 0:
-            continue;
+        int exitcode = runClone(self, watchUmbilical_, self->mStack);
 
-        default:
-            if (EINTR == errno || EWOULDBLOCK == errno)
-                continue;
+        if (-1 == exitcode)
             terminate(
                 errno,
-                "Unable to wait for umbilical slave thread");
+                "Unable to run slave thread");
+
+        if (0xff >= exitcode)
+        {
+            self->mExitCode = exitcode;
         }
-    }
+        else
+        {
+            /* The slave thread runs using the context of this pthread,
+             * so this pthread must wait until the slave thread completes
+             * before proceeding, otherwise both will attempt to use the
+             * same thread context. */
 
-    /* The slave thread runs using the context of this pthread,
-     * so this pthread must wait until the slave thread completes
-     * before proceeding, otherwise both will attempt to use the
-     * same thread context. */
+            lockMutex(&self->mMutex);
+            {
+                ensure(UMBILICAL_STOPPING == self->mState);
+            }
+            unlockMutex(&self->mMutex);
+        }
 
-    lockMutex(&self->mMutex);
-    {
-        ensure(UMBILICAL_STOPPING == self->mState);
-    }
-    unlockMutex(&self->mMutex);
+    } while (0);
 
-    debug(0, "umbilical thread %jd terminated with exit code %d",
-          (intmax_t) slavepid,
-          self->mExitCode);
+    debug(0, "umbilical thread terminated with exit code %d", self->mExitCode);
 
     if (self->mExitCode)
     {
@@ -839,17 +919,16 @@ watchUmbilical(struct UmbilicalThread *self,
          * watchdog. Using a thread allows the main thread of control
          * to continue performing the main activities of the process. */
 
-        static const pthread_mutex_t mutexInit = PTHREAD_MUTEX_INITIALIZER;
-        static const pthread_cond_t  condInit  = PTHREAD_COND_INITIALIZER;
-
         self->mActive      = false;
         self->mTimeout     = *aTimeout;
         self->mWatchdogPid = aWatchdogPid;
-        self->mMutex       = mutexInit;
-        self->mCond        = condInit;
+        self->mProcessPid  = getpid();
         self->mState       = UMBILICAL_STOPPED;
         self->mErrno       = 0;
         self->mExitCode    = -1;
+
+        createSharedMutex(&self->mMutex);
+        createSharedCond(&self->mCond);
 
         if (connectUnixSocket(
                 &self->mWatchdogSock, umbilicalAddr.sun_path, addrLen+1))
@@ -1002,6 +1081,9 @@ unwatchUmbilical(struct UmbilicalThread *self)
                 errno,
                 "Unable to join with umbilical thread");
 
+        destroyCond(&self->mCond);
+        destroyMutex(&self->mMutex);
+
         debug(0, "completed umbilical thread shut down");
     }
 }
@@ -1081,7 +1163,13 @@ libk9_init(void)
                     "Unable to parse watchdog pid '%s'",
                     env[ENV_K9_PPID].mValue);
 
-            watchUmbilical(&sUmbilicalThread_,
+            sUmbilicalThread_ = createUmbilicalThread();
+            if ( ! sUmbilicalThread_)
+                terminate(
+                    errno,
+                    "Unable to allocated umbilical thread");
+
+            watchUmbilical(sUmbilicalThread_,
                            env[ENV_K9_ADDR].mValue,
                            watchdogPid,
                            &umbilicalTimeout);
@@ -1121,7 +1209,8 @@ libk9_exit(void)
         {
             sExited.mDone = true;
 
-            unwatchUmbilical(&sUmbilicalThread_);
+            if (sUmbilicalThread_)
+                unwatchUmbilical(sUmbilicalThread_);
 
             if (Error_exit())
                 terminate(
