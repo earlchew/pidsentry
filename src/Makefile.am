@@ -50,7 +50,7 @@ TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
 TEST_CXXFLAGS      = $(TEST_FLAGS) $(COMMON_CXXFLAGS)
 TESTS              = $(check_PROGRAMS) $(check_SCRIPTS)
 
-k9dir       = $(datadir)/k9
+k9dir               = $(datadir)/k9
 k9_PROGRAMS         = k9
 check_SCRIPTS       = test.sh
 check_PROGRAMS      = _splicetest
@@ -62,14 +62,14 @@ check_PROGRAMS     += _fdtest
 check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
 check_PROGRAMS     += _processtest
-noinst_PROGRAMS     = #bioscall-asm
+noinst_PROGRAMS     =
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
 lib_LTLIBRARIES     = libk9.la
 
 k9_CFLAGS    = $(COMMON_CFLAGS)
 k9_LDFLAGS   = $(COMMON_LDFLAGS) -Wl,-Map,k9.map -Wl,-cref
-k9_LDADD     = libk9_.la libk9.la
+k9_LDADD     = libk9_.la -lrt -lpthread
 k9_SOURCES   = _k9.c
 
 libk9_la_CFLAGS       = $(COMMON_CFLAGS)
