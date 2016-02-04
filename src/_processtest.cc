@@ -77,13 +77,13 @@ TEST(ProcessTest, ProcessSignature)
         free(altSignature);
     }
 
-    pid_t firstChild = forkProcess(ForkProcessShareProcessGroup);
+    pid_t firstChild = forkProcess(ForkProcessShareProcessGroup, 0);
     EXPECT_NE(-1, firstChild);
 
     if ( ! firstChild)
         _exit(0);
 
-    pid_t secondChild = forkProcess(ForkProcessShareProcessGroup);
+    pid_t secondChild = forkProcess(ForkProcessShareProcessGroup, 0);
     EXPECT_NE(-1, secondChild);
 
     if ( ! secondChild)

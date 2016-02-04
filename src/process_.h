@@ -149,7 +149,7 @@ unwatchProcessClock(void);
 
 /* -------------------------------------------------------------------------- */
 pid_t
-forkProcess(enum ForkProcessOption aOption);
+forkProcess(enum ForkProcessOption aOption, pid_t aPgid);
 
 int
 reapProcess(pid_t aPid, int *aStatus);

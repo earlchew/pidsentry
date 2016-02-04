@@ -236,8 +236,7 @@ forkChild(
 
     pid_t childPid = forkProcess(
         gOptions.mSetPgid
-        ? ForkProcessSetProcessGroup
-        : ForkProcessShareProcessGroup);
+        ? ForkProcessSetProcessGroup : ForkProcessShareProcessGroup, 0);
 
     if (-1 == childPid)
         goto Finally;
@@ -1884,8 +1883,16 @@ cmdRunCommand(char **aCmd)
      * purged so that the monitor does not inadvertently hold file
      * descriptors that should only be held by the child. */
 
-    pid_t pid          = getpid();
-    pid_t umbilicalPid = forkProcess(ForkProcessShareProcessGroup);
+    pid_t pid       = getpid();
+    pid_t childpgid = getpgid(childProcess.mPid);
+
+    if (-1 == childpgid)
+        terminate(
+            errno,
+            "Unable to determine process group of child pid %jd",
+            (intmax_t) childProcess.mPid);
+
+    pid_t umbilicalPid = forkProcess(ForkProcessSetProcessGroup, childpgid);
 
     if (-1 == umbilicalPid)
         terminate(

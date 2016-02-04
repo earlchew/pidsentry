@@ -245,8 +245,7 @@ forkChild(
 
     pid_t childPid = forkProcess(
         gOptions.mSetPgid
-        ? ForkProcessSetProcessGroup
-        : ForkProcessShareProcessGroup);
+        ? ForkProcessSetProcessGroup : ForkProcessShareProcessGroup, 0);
 
     if (-1 == childPid)
         goto Finally;

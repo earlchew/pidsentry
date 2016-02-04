@@ -1153,7 +1153,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 pid_t
-forkProcess(enum ForkProcessOption aOption)
+forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 {
     pid_t rc     = -1;
     bool  locked = false;
@@ -1225,7 +1225,7 @@ forkProcess(enum ForkProcessOption aOption)
 
         if (ForkProcessSetProcessGroup == aOption)
         {
-            if (setpgid(childPid, childPid))
+            if (setpgid(childPid, aPgid ? aPgid : childPid))
                 goto Finally;
         }
 
@@ -1255,7 +1255,7 @@ forkProcess(enum ForkProcessOption aOption)
 
         if (ForkProcessSetProcessGroup == aOption)
         {
-            if (setpgid(0, 0))
+            if (setpgid(0, aPgid ? aPgid : 0))
                 terminate(
                     errno,
                     "Unable to set process group");

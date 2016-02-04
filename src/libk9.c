@@ -140,7 +140,7 @@ runClone(void *self, int (*aMain)(void *), void *aStack)
 
     if (RUNNING_ON_VALGRIND || testAction())
     {
-        pid_t slavepid  = forkProcess(ForkProcessShareProcessGroup);
+        pid_t slavepid  = forkProcess(ForkProcessShareProcessGroup, 0);
 
         if (-1 == slavepid)
             goto Finally;
