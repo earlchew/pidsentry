@@ -148,6 +148,8 @@ runClone(void *self, int (*aMain)(void *), void *aStack)
         if ( ! slavepid)
             _exit(aMain(self));
 
+        debug(0, "forked umbilical slave pid %jd", (intmax_t) slavepid);
+
         int status;
         if (reapProcess(slavepid, &status))
             goto Finally;
