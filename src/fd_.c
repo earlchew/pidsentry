@@ -42,6 +42,11 @@
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
+#define DEVNULLPATH "/dev/null"
+
+static const char sDevNullPath[] = DEVNULLPATH;
+
+/* -------------------------------------------------------------------------- */
 int
 closeFd(int *aFd)
 {
@@ -177,6 +182,36 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
 Finally:
 
     FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+nullifyFd(int aFd)
+{
+    int rc = -1;
+    int fd = open(sDevNullPath, O_WRONLY);
+
+    if (-1 == fd)
+        goto Finally;
+
+    if (fd == aFd)
+        fd = -1;
+    else
+    {
+        if (aFd != dup2(fd, aFd))
+            goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        closeFd(&fd);
+    });
 
     return rc;
 }

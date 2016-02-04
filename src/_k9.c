@@ -59,11 +59,9 @@
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Fix vgcore being dropped everywhere
  * Implement process lock in child process
+ * Remove *_unused arguments
+ * When announcing child, ensure pid is active first
  */
-
-#define DEVNULLPATH "/dev/null"
-
-static const char sDevNullPath[] = DEVNULLPATH;
 
 /* -------------------------------------------------------------------------- */
 struct Type
@@ -112,10 +110,10 @@ struct ChildProcess
 {
     pid_t mPid;
 
-    struct UnixSocket  mUmbilicalSocket;
-    struct Pipe        mTermPipe;
-    struct Pipe        mTetherPipe_;
-    struct Pipe       *mTetherPipe;
+    struct Pipe  mTermPipe_;
+    struct Pipe* mTermPipe;
+    struct Pipe  mTetherPipe_;
+    struct Pipe* mTetherPipe;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -145,15 +143,11 @@ createChild(struct ChildProcess *self)
             errno,
             "Unable to mark tether non-blocking");
 
-    if (createUnixSocket(&self->mUmbilicalSocket, 0, 0, 0))
-        terminate(
-            errno,
-            "Unable to create umbilical socket");
-
-    if (createPipe(&self->mTermPipe, O_CLOEXEC | O_NONBLOCK))
+    if (createPipe(&self->mTermPipe_, O_CLOEXEC | O_NONBLOCK))
         terminate(
             errno,
             "Unable to create termination pipe");
+    self->mTermPipe = &self->mTermPipe_;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -189,7 +183,7 @@ reapChild(void *self_)
     }
     else
     {
-        if (closePipeWriter(&self->mTermPipe))
+        if (closePipeWriter(self->mTermPipe))
             terminate(
                 errno,
                 "Unable to close termination pipe writer");
@@ -228,6 +222,7 @@ forkChild(
     char                        **aCmd,
     struct StdFdFiller           *aStdFdFiller,
     struct Pipe                  *aSyncPipe,
+    struct Pipe                  *aUmbilicalPipe,
     struct PushedProcessSigMask  *aSigMask)
 {
     int rc = -1;
@@ -266,10 +261,11 @@ forkChild(
                 errno,
                 "Unable to close stdin, stdout and stderr fillers");
 
-        if (closePipe(&self->mTermPipe))
+        if (closePipe(self->mTermPipe))
             terminate(
                 errno,
                 "Unable to close termination pipe");
+        self->mTermPipe = 0;
 
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
@@ -288,6 +284,7 @@ forkChild(
                 {
                 default:
                         break;
+
                 case -1:
                     if (EINTR == errno)
                         continue;
@@ -321,10 +318,11 @@ forkChild(
                     errno,
                     "Unable to close tether pipe reader");
 
-            if (closeUnixSocket(&self->mUmbilicalSocket))
+            if (closePipe(aUmbilicalPipe))
                 terminate(
                     errno,
-                    "Unable to close umbilical socket");
+                    "Unable to close umbilical pipe");
+            aUmbilicalPipe = 0;
 
             if (gOptions.mTether)
             {
@@ -458,26 +456,29 @@ closeChildTether(struct ChildProcess *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-closeChild(struct ChildProcess *self)
+static void
+closeChildFiles(struct ChildProcess *self)
 {
-    int status;
-
-    if (closeUnixSocket(&self->mUmbilicalSocket))
+    if (closePipe(self->mTermPipe))
         terminate(
             errno,
-            "Unable to close umbilical socket");
+            "Unable to close termination pipe");
+    self->mTermPipe = 0;
 
     if (closePipe(self->mTetherPipe))
         terminate(
             errno,
             "Unable to close tether pipe");
     self->mTetherPipe = 0;
+}
 
-    if (closePipe(&self->mTermPipe))
-        terminate(
-            errno,
-            "Unable to close termination pipe");
+/* -------------------------------------------------------------------------- */
+static int
+closeChild(struct ChildProcess *self)
+{
+    closeChildFiles(self);
+
+    int status;
 
     if (reapProcess(self->mPid, &status))
         terminate(
@@ -486,6 +487,24 @@ closeChild(struct ChildProcess *self)
             (intmax_t) self->mPid);
 
     return status;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
+{
+    /* This function is called in the context of the umbilical process
+     * to monitor the umbilical, and if the umbilical fails, to kill
+     * the child.
+     *
+     * The caller has already configured stdin to be used to read data
+     * from the umbilical pipe.
+     */
+
+    closeChildFiles(self);
+
+    while (true)
+        sleep(1);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -975,10 +994,7 @@ struct ChildMonitor
 
     struct
     {
-        struct UnixSocket *mSocket;
-        unsigned           mActivePeer;
-        struct UnixSocket  mPeer_[2];
-        struct UnixSocket *mPeer;
+        struct Pipe *mPipe;
     } mUmbilical;
 
     struct
@@ -1078,157 +1094,11 @@ pollFdTimerChild(void                        *self_,
  * giving the watchdog a chance to clean up, or if the watchdog
  * fails catatrophically. */
 
-static int
-pollFdUmbilicalAccept_(struct UnixSocket       *aPeer,
-                       const struct UnixSocket *aServer,
-                       pid_t                    aChildPid)
-{
-    int rc = -1;
-
-    struct UnixSocket *peersocket = 0;
-
-    if (acceptUnixSocket(aPeer, aServer))
-        goto Finally;
-
-    peersocket = aPeer;
-
-    /* Require that the remote peer be the process being monitored.
-     * The connection will be dropped if the process uses execv() to
-     * run another program, and requiring that it then be re-established
-     * when the new program creates its own umbilical connection. */
-
-    struct ucred cred;
-
-    if (ownUnixSocketPeerCred(aPeer, &cred))
-        goto Finally;
-
-    debug(0, "umbilical connection from pid %jd", (intmax_t) cred.pid);
-
-    if (cred.pid != aChildPid)
-    {
-        /* Do not accept connections from unrecognised processes. Only
-         * monitor the child process created from this process. */
-
-        if (closeUnixSocket(peersocket))
-            goto Finally;
-    }
-    else
-    {
-        /* There is nothing read from the umbilical connection, so shut down
-         * the reading side here. Do not shut down the writing side leaving
-         * the umbilical half-open to allow it to be used to signal to
-         * the child process if the watchdog terminates. */
-
-        if (shutdownUnixSocketReader(peersocket))
-            goto Finally;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-            closeUnixSocket(peersocket);
-    });
-
-    return rc;
-}
-
 static void
 pollFdUmbilical(void                        *self_,
                 struct pollfd               *aPollFds_unused,
                 const struct EventClockTime *aPollTime)
 {
-    struct ChildMonitor *self = self_;
-
-    ensure(&sChildMonitorType == self->mType);
-
-    /* Process an inbound connection from the child process on its
-     * umbilical socket. The parasite watchdog library attached to the
-     * child will use this to detect if the watchdog has terminated.
-     *
-     * Remember that this function will race with child termination.
-     * By the time the function runs, the child might already have
-     * terminated. No special handling of this case is performed
-     * because the code to handle the umbilical connection is expected
-     * to respond correctly even if the child process is non-responsive
-     * or has terminated. */
-
-    struct PollEventText pollEventText;
-    debug(
-        1,
-        "detected umbilical %s",
-        createPollEventText(
-            &pollEventText,
-            self->mPollFds[POLL_FD_UMBILICAL].revents));
-
-    if (self->mPollFds[POLL_FD_UMBILICAL].revents & POLLIN)
-    {
-        self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mPeriod =
-            Duration(NanoSeconds(0));
-
-        unsigned inactivePeer = 1 - self->mUmbilical.mActivePeer;
-
-        ensure(NUMBEROF(self->mUmbilical.mPeer_) > inactivePeer);
-
-        struct UnixSocket *peerSocket = &self->mUmbilical.mPeer_[inactivePeer];
-
-        if (pollFdUmbilicalAccept_(peerSocket,
-                                   self->mUmbilical.mSocket,
-                                   self->mChildPid))
-            terminate(
-                errno,
-                "Unable to accept connection from umbilical peer");
-
-        /* The call to pollFdUmbilicalAccept_() might succeed, but
-         * the peer connection might be closed because the remote
-         * peer might not be acceptable. */
-
-        if (ownUnixSocketValid(peerSocket))
-        {
-            if (closeUnixSocket(self->mUmbilical.mPeer))
-                terminate(
-                    errno,
-                    "Unable to close umbilical peer");
-
-            self->mUmbilical.mPeer       = peerSocket;
-            self->mUmbilical.mActivePeer = inactivePeer;
-
-            struct PollFdTimerAction *umbilicalTimer =
-                &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
-
-            debug(1, "activating umbilical timer");
-
-            umbilicalTimer->mPeriod =
-                Duration(NanoSeconds(NSECS(Seconds(
-                    gOptions.mTimeout.mUmbilical_s)).ns / 2));
-
-            lapTimeSkip(
-                &umbilicalTimer->mSince,
-                umbilicalTimer->mPeriod,
-                aPollTime);
-        }
-    }
-}
-
-static int
-closeFdUmbilical(struct ChildMonitor *self)
-{
-    int rc = -1;
-
-    if (closeUnixSocket(self->mUmbilical.mPeer))
-        goto Finally;
-    self->mUmbilical.mPeer = 0;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 static void
@@ -1249,8 +1119,8 @@ pollFdTimerUmbilical(void                        *self_,
 
     char buf = 0;
 
-    ssize_t wrlen = sendUnixSocket(
-        self->mUmbilical.mPeer, &buf, sizeof(buf));
+    ssize_t wrlen = write(
+        self->mUmbilical.mPipe->mWrFile->mFd, &buf, sizeof(buf));
 
     if (-1 != wrlen)
         debug(1, "wrote to umbilical result %zd", wrlen);
@@ -1514,7 +1384,7 @@ pollfdcompletion(void                     *self_,
 
 /* -------------------------------------------------------------------------- */
 static void
-monitorChild(struct ChildProcess *self)
+monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 {
     debug(0, "start monitoring child");
 
@@ -1576,9 +1446,7 @@ monitorChild(struct ChildProcess *self)
 
         .mUmbilical =
         {
-            .mSocket     = &self->mUmbilicalSocket,
-            .mPeer       = 0,
-            .mActivePeer = 0,
+            .mPipe = aUmbilicalPipe,
         },
 
         .mTether =
@@ -1601,14 +1469,14 @@ monitorChild(struct ChildProcess *self)
         {
             [POLL_FD_CHILD] =
             {
-                .fd     = self->mTermPipe.mRdFile->mFd,
+                .fd     = self->mTermPipe->mRdFile->mFd,
                 .events = POLL_DISCONNECTEVENT,
             },
 
             [POLL_FD_UMBILICAL] =
             {
-                .fd     = self->mUmbilicalSocket.mFile->mFd,
-                .events = POLL_INPUTEVENTS,
+                .fd     = aUmbilicalPipe->mWrFile->mFd,
+                .events = POLL_DISCONNECTEVENT,
             },
 
             [POLL_FD_TETHER] =
@@ -1721,11 +1589,6 @@ monitorChild(struct ChildProcess *self)
         terminate(
             errno,
             "Unable to close polling loop");
-
-    if (closeFdUmbilical(&childmonitor))
-        terminate(
-            errno,
-            "Unable to close umbilical peer");
 
     closeTetherThread(&tetherThread);
 
@@ -1872,6 +1735,12 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create stdin, stdout, stderr filler");
 
+    struct Pipe umbilicalPipe;
+    if (createPipe(&umbilicalPipe, O_CLOEXEC | O_NONBLOCK))
+        terminate(
+            errno,
+            "Unable to create umbilical pipe");
+
     struct ChildProcess childProcess;
     createChild(&childProcess);
 
@@ -1905,7 +1774,9 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create sync pipe");
 
-    if (forkChild(&childProcess, aCmd, &stdFdFiller, &syncPipe, &pushedSigMask))
+    if (forkChild(
+            &childProcess, aCmd,
+            &stdFdFiller, &syncPipe, &umbilicalPipe, &pushedSigMask))
         terminate(
             errno,
             "Unable to fork child");
@@ -1938,34 +1809,6 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to restore process signal mask");
-
-    /* The creation time of the child process is earlier than
-     * the creation time of the pidfile. With the pidfile created,
-     * and the signal delivery to the child activated, identify
-     * and release the waiting child process. */
-
-    RACE
-    ({
-        if (1 != write(syncPipe.mWrFile->mFd, "", 1))
-            terminate(
-                errno,
-                "Unable to synchronise child process");
-    });
-
-    if (closePipe(&syncPipe))
-        terminate(
-            errno,
-            "Unable to close sync pipe");
-
-    if (gOptions.mIdentify)
-        RACE
-        ({
-            if (-1 == dprintf(STDOUT_FILENO,
-                              "%jd\n", (intmax_t) childProcess.mPid))
-                terminate(
-                    errno,
-                    "Unable to print child pid");
-        });
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
@@ -2017,24 +1860,10 @@ cmdRunCommand(char **aCmd)
 
     if (discardStdout)
     {
-        int nullfd = open(sDevNullPath, O_WRONLY);
-
-        if (-1 == nullfd)
+        if (nullifyFd(STDOUT_FILENO))
             terminate(
                 errno,
-                "Unable to open %s", sDevNullPath);
-
-        if (STDOUT_FILENO != nullfd)
-        {
-            if (STDOUT_FILENO != dup2(nullfd, STDOUT_FILENO))
-                terminate(
-                    errno,
-                    "Unable to dup %s to stdout", sDevNullPath);
-            if (closeFd(&nullfd))
-                terminate(
-                    errno,
-                    "Unable to close %s", sDevNullPath);
-        }
+                "Unable to nullify stdout");
     }
 
     /* Now that the tether has been duplicated onto stdin and stdout
@@ -2049,11 +1878,95 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to purge orphaned files");
 
+    /* Monitor the umbilical using another process so that a failure
+     * of this process can be detected independently. Only create the
+     * monitoring process after all the file descriptors have been
+     * purged so that the monitor does not inadvertently hold file
+     * descriptors that should only be held by the child. */
+
+    pid_t pid          = getpid();
+    pid_t umbilicalPid = forkProcess(ForkProcessShareProcessGroup);
+
+    if (-1 == umbilicalPid)
+        terminate(
+            errno,
+            "Unable to fork umbilical monitor");
+
+    if ( ! umbilicalPid)
+    {
+        debug(0, "start monitoring umbilical");
+
+        if (STDIN_FILENO != dup2(umbilicalPipe.mRdFile->mFd, STDIN_FILENO))
+            terminate(
+                errno,
+                "Unable to dup %d to stdin", umbilicalPipe.mRdFile->mFd);
+
+        if (nullifyFd(STDOUT_FILENO))
+            terminate(
+                errno,
+                "Unable to nullify stdout");
+
+        if (closePipe(&umbilicalPipe))
+            terminate(
+                errno,
+                "Unable to close umbilical pipe");
+
+        monitorChildUmbilical(&childProcess, pid);
+        _exit(EXIT_FAILURE);
+    }
+
+    if (closePipeReader(&umbilicalPipe))
+        terminate(
+            errno,
+            "Unable to close umbilical pipe reader");
+
+    /* With the child process announced, and the umbilical monitor
+     * prepared, allow the child process to run the target program. */
+
+    RACE
+    ({
+        static char buf[1];
+
+        if (1 != writeFile(syncPipe.mWrFile, buf, 1))
+            terminate(
+                errno,
+                "Unable to synchronise child process");
+    });
+
+    if (closePipe(&syncPipe))
+        terminate(
+            errno,
+            "Unable to close sync pipe");
+
+    if (gOptions.mIdentify)
+    {
+        if (-1 != umbilicalPid)
+        {
+            RACE
+            ({
+                if (-1 == dprintf(STDOUT_FILENO,
+                                  "%jd\n", (intmax_t) umbilicalPid))
+                    terminate(
+                        errno,
+                        "Unable to print umbilical pid");
+            });
+        }
+
+        RACE
+        ({
+            if (-1 == dprintf(STDOUT_FILENO,
+                              "%jd\n", (intmax_t) childProcess.mPid))
+                terminate(
+                    errno,
+                    "Unable to print child pid");
+        });
+    }
+
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(&childProcess);
+    monitorChild(&childProcess, &umbilicalPipe);
 
     if (unwatchProcessSignals())
         terminate(
@@ -2064,6 +1977,32 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to remove watch on child process termination");
+
+    /* Since the child process has completed, there is no further
+     * need for the umbilical monitor. Kill the umbilical monitor
+     * as the surest means to have it terminate. */
+
+    if (-1 != umbilicalPid)
+    {
+        debug(0, "killing umbilical pid %jd", (intmax_t) umbilicalPid);
+
+        if (kill(umbilicalPid, SIGKILL))
+            terminate(
+                errno,
+                "Unable to kill umbilical pid %jd", (intmax_t) umbilicalPid);
+
+        int status;
+        if (reapProcess(umbilicalPid, &status))
+            terminate(
+                errno,
+                "Unable to reap umbilical pid %jd", (intmax_t) umbilicalPid);
+
+        debug(0,
+              "reaped umbilical pid %jd status %d",
+              (intmax_t) umbilicalPid, status);
+
+        umbilicalPid = -1;
+    }
 
     if (pidFile)
     {
@@ -2091,6 +2030,11 @@ cmdRunCommand(char **aCmd)
     int status = closeChild(&childProcess);
 
     debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
+
+    if (closePipe(&umbilicalPipe))
+        terminate(
+            errno,
+            "Unable to close umbilical pipe");
 
     if (resetProcessSigPipe())
         terminate(

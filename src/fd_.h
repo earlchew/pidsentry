@@ -49,6 +49,9 @@ bool
 stdFd(int aFd);
 
 int
+nullifyFd(int aFd);
+
+int
 nonblockingFd(int aFd);
 
 int
