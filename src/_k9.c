@@ -61,6 +61,8 @@
  * Implement process lock in child process
  * Remove *_unused arguments
  * When announcing child, ensure pid is active first
+ * Use SIGHUP to kill umbilical monitor
+ * Use struct Type for other poll loops
  */
 
 /* -------------------------------------------------------------------------- */
@@ -106,9 +108,34 @@ static const char *sPollFdTimerNames[POLL_FD_TIMER_KINDS] =
 };
 
 /* -------------------------------------------------------------------------- */
+enum PollFdMonitorKind
+{
+    POLL_FD_MONITOR_UMBILICAL,
+    POLL_FD_MONITOR_KINDS
+};
+
+static const char *sPollFdMonitorNames[POLL_FD_MONITOR_KINDS] =
+{
+    [POLL_FD_MONITOR_UMBILICAL] = "umbilical",
+};
+
+/* -------------------------------------------------------------------------- */
+enum PollFdMonitorTimerKind
+{
+    POLL_FD_MONITOR_TIMER_UMBILICAL,
+    POLL_FD_MONITOR_TIMER_KINDS
+};
+
+static const char *sPollFdMonitorTimerNames[POLL_FD_MONITOR_TIMER_KINDS] =
+{
+    [POLL_FD_MONITOR_TIMER_UMBILICAL] = "umbilical",
+};
+
+/* -------------------------------------------------------------------------- */
 struct ChildProcess
 {
     pid_t mPid;
+    pid_t mPgid;
 
     struct Pipe  mTermPipe_;
     struct Pipe* mTermPipe;
@@ -117,10 +144,106 @@ struct ChildProcess
 };
 
 /* -------------------------------------------------------------------------- */
+static const struct Type sUmbilicalMonitorType = { "UmbilicalMonitor" };
+
+struct UmbilicalMonitorPoll
+{
+    const struct Type *mType;
+
+    struct File              *mUmbilicalFile;
+    struct pollfd             mPollFds[POLL_FD_MONITOR_KINDS];
+    struct PollFdAction       mPollFdActions[POLL_FD_MONITOR_KINDS];
+    struct PollFdTimerAction  mPollFdTimerActions[POLL_FD_MONITOR_TIMER_KINDS];
+    unsigned                  mCycleCount;
+    unsigned                  mCycleLimit;
+    pid_t                     mParentPid;
+};
+
+/* -------------------------------------------------------------------------- */
+static void
+pollFdMonitorUmbilical(void                        *self_,
+                       struct pollfd               *aPollFds_unused,
+                       const struct EventClockTime *aPollTime)
+{
+    struct UmbilicalMonitorPoll *self = self_;
+
+    ensure(&sUmbilicalMonitorType == self->mType);
+
+    char buf[1];
+
+    ssize_t rdlen = read(
+        self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf));
+
+    if (-1 == rdlen)
+    {
+        if (EINTR != errno)
+            terminate(
+                errno,
+                "Unable to read umbilical connection");
+    }
+    else if ( ! rdlen)
+    {
+        warn(0, "Broken umbilical connection");
+        self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+    }
+    else
+    {
+        lapTimeRestart(
+            &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_UMBILICAL].mSince,
+            aPollTime);
+        self->mCycleCount = 0;
+    }
+}
+
+static void
+pollFdMonitorTimerUmbilical(
+    void                        *self_,
+    struct PollFdTimerAction    *aPollFdTimerAction_unused,
+    const struct EventClockTime *aPollTime)
+{
+    struct UmbilicalMonitorPoll *self = self_;
+
+    ensure(&sUmbilicalMonitorType == self->mType);
+
+    /* If nothing is available from the umbilical connection after the
+     * timeout period expires, then assume that the watchdog itself
+     * is stuck. */
+
+    enum ProcessStatus parentstatus = fetchProcessState(self->mParentPid);
+
+    if (ProcessStateStopped == parentstatus)
+    {
+        debug(
+            0,
+            "umbilical timeout deferred due to parent status %c",
+            parentstatus);
+        self->mCycleCount = 0;
+    }
+    else if (++self->mCycleCount >= self->mCycleLimit)
+    {
+        warn(0, "Umbilical connection timed out");
+        self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+    }
+}
+
+static bool
+pollFdMonitorCompletion(void                     *self_,
+                        struct pollfd            *aPollFds_unused,
+                        struct PollFdTimerAction *aPollFdTimer_unused)
+{
+    struct UmbilicalMonitorPoll *self = self_;
+
+    ensure(&sUmbilicalMonitorType == self->mType);
+
+    return ! self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events;
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 createChild(struct ChildProcess *self)
 {
     self->mPid = 0;
+    self->mPgid = 0;
 
     /* Only the reading end of the tether is marked non-blocking. The
      * writing end must be used by the child process (and perhaps inherited
@@ -187,6 +310,31 @@ reapChild(void *self_)
             terminate(
                 errno,
                 "Unable to close termination pipe writer");
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+killChildGroup(void *self_, int aSigNum)
+{
+    struct ChildProcess *self = self_;
+
+    if (self->mPgid)
+    {
+        debug(0,
+              "sending signal %d to child pgid %jd",
+              aSigNum,
+              (intmax_t) self->mPgid);
+
+        if (killpg(self->mPgid, aSigNum))
+        {
+            if (ESRCH != errno)
+                terminate(
+                    errno,
+                    "Unable to deliver signal %d to child pgid %jd",
+                    aSigNum,
+                    (intmax_t) self->mPgid);
+        }
     }
 }
 
@@ -430,7 +578,8 @@ forkChild(
 
     debug(0, "running child process %jd", (intmax_t) childPid);
 
-    self->mPid = childPid;
+    self->mPid  = childPid;
+    self->mPgid = getpgid(childPid);
 
     rc = 0;
 
@@ -502,8 +651,81 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
     closeChildFiles(self);
 
-    while (true)
-        sleep(1);
+    unsigned cycleLimit = 2;
+
+    struct NanoSeconds umbilicalTimeout =
+        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s));
+
+    struct UmbilicalMonitorPoll monitorpoll =
+    {
+        .mType       = &sUmbilicalMonitorType,
+        .mCycleLimit = cycleLimit,
+        .mParentPid  = aParentPid,
+
+        .mPollFds =
+        {
+            [POLL_FD_MONITOR_UMBILICAL] = { .fd     = STDIN_FILENO,
+                                            .events = POLL_INPUTEVENTS },
+        },
+
+        .mPollFdActions =
+        {
+            [POLL_FD_MONITOR_UMBILICAL] = { pollFdMonitorUmbilical },
+        },
+
+        .mPollFdTimerActions =
+        {
+            [POLL_FD_MONITOR_TIMER_UMBILICAL] =
+            {
+                pollFdMonitorTimerUmbilical,
+                Duration(
+                    NanoSeconds(umbilicalTimeout.ns / cycleLimit)),
+            },
+        },
+    };
+
+    struct PollFd pollfd;
+    if (createPollFd(
+            &pollfd,
+            monitorpoll.mPollFds,
+            monitorpoll.mPollFdActions,
+            sPollFdMonitorNames, POLL_FD_MONITOR_KINDS,
+            monitorpoll.mPollFdTimerActions,
+            sPollFdMonitorTimerNames, POLL_FD_MONITOR_TIMER_KINDS,
+            pollFdMonitorCompletion, &monitorpoll))
+        terminate(
+            errno,
+            "Unable to initialise polling loop");
+
+    if (runPollFdLoop(&pollfd))
+        terminate(
+            errno,
+            "Unable to run polling loop");
+
+    if (closePollFd(&pollfd))
+        terminate(
+            errno,
+            "Unable to close polling loop");
+
+    warn(0, "Terminating child pid %jd", (intmax_t) self->mPid);
+    killChild(self, SIGTERM);
+
+    for (unsigned ix = 0; gOptions.mTimeout.mUmbilical_s > ix; ++ix)
+    {
+        monotonicSleep(Duration(NSECS(Seconds(1))));
+
+        if (kill(self->mPid, 0))
+        {
+            if (ESRCH == errno)
+                break;
+            terminate(
+                errno,
+                "Unable to kill child pid %jd", (intmax_t) self->mPid);
+        }
+    }
+
+    warn(0, "Killing child pgid %jd", (intmax_t) self->mPgid);
+    killChildGroup(self, SIGKILL);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1084,79 +1306,6 @@ pollFdTimerChild(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
-/* Maintain Umbilical Connection to Child Process
- *
- * The umbilical connection to the child process allows the child to
- * monitor the watchdog so that the child can terminate if it detects
- * that the watchdog is no longer present. This is important in
- * scenarios where the supervisor init(8) kills the watchdog without
- * giving the watchdog a chance to clean up, or if the watchdog
- * fails catatrophically. */
-
-static void
-pollFdUmbilical(void                        *self_,
-                struct pollfd               *aPollFds_unused,
-                const struct EventClockTime *aPollTime)
-{
-}
-
-static void
-pollFdTimerUmbilical(void                        *self_,
-                     struct PollFdTimerAction    *aPollFdTimerAction_unused,
-                     const struct EventClockTime *aPollTime)
-{
-    struct ChildMonitor *self = self_;
-
-    ensure(&sChildMonitorType == self->mType);
-
-    /* Remember that the umbilical timer will race with child termination.
-     * By the time this function runs, the child might already have
-     * terminated so the umbilical socket might be closed. */
-
-    struct PollFdTimerAction *umbilicalTimer =
-        &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
-
-    char buf = 0;
-
-    ssize_t wrlen = write(
-        self->mUmbilical.mPipe->mWrFile->mFd, &buf, sizeof(buf));
-
-    if (-1 != wrlen)
-        debug(1, "wrote to umbilical result %zd", wrlen);
-    else
-    {
-        switch (errno)
-        {
-        default:
-            terminate(errno, "Unable to write to umbilical");
-
-        case EWOULDBLOCK:
-            break;
-
-        case EINTR:
-            /* Do not loop here on EINTR since it is important
-             * to take care that the monitoring loop is
-             * non-blocking. Instead, mark the timer as expired
-             * for force the monitoring loop to retry immediately. */
-
-            debug(1, "umbilical write interrupted");
-
-            lapTimeSkip(&umbilicalTimer->mSince,
-                        umbilicalTimer->mPeriod, aPollTime);
-            break;
-
-        case EPIPE:
-            debug(0,
-                  "umbilical connection closed by pid %zd",
-                  self->mChildPid);
-
-            umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
-            break;
-        }
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 /* Child Termination State Machine
  *
  * When it is necessary to terminate the child process, first request
@@ -1216,6 +1365,89 @@ pollFdTimerTermination(void                        *self_,
             "Unable to kill child pid %jd with signal %d",
             (intmax_t) pidNum,
             sigNum);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Maintain Umbilical Connection
+ *
+ * This connection allows the umbilical monitor to terminate the child
+ * process if it detects that the watchdog is no longer functioning
+ * properly. This is important in scenarios where the supervisor
+ * init(8) kills the watchdog without giving the watchdog a chance
+ * to clean up, or if the watchdog fails catatrophically. */
+
+static void
+pollFdUmbilical(void                        *self_,
+                struct pollfd               *aPollFds_unused,
+                const struct EventClockTime *aPollTime)
+{
+    struct ChildMonitor *self = self_;
+
+    debug(0, "umbilical connection closed");
+
+    self->mPollFds[POLL_FD_UMBILICAL].fd     = self->mNullPipe->mRdFile->mFd;
+    self->mPollFds[POLL_FD_UMBILICAL].events = 0;
+
+    struct PollFdTimerAction *umbilicalTimer =
+        &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+
+    umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+
+    struct PollFdTimerAction *tetherTimer =
+        &self->mPollFdTimerActions[POLL_FD_TIMER_TETHER];
+
+    tetherTimer->mPeriod = Duration(NanoSeconds(0));
+
+    activateFdTimerTermination(self, aPollTime);
+}
+
+static void
+pollFdTimerUmbilical(void                        *self_,
+                     struct PollFdTimerAction    *aPollFdTimerAction_unused,
+                     const struct EventClockTime *aPollTime)
+{
+    struct ChildMonitor *self = self_;
+
+    ensure(&sChildMonitorType == self->mType);
+
+    /* Remember that the umbilical timer will race with child termination.
+     * By the time this function runs, the child might already have
+     * terminated so the umbilical socket might be closed. */
+
+    struct PollFdTimerAction *umbilicalTimer =
+        &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+
+    char buf = 0;
+
+    ssize_t wrlen = write(
+        self->mUmbilical.mPipe->mWrFile->mFd, &buf, sizeof(buf));
+
+    if (-1 != wrlen)
+        debug(1, "wrote to umbilical result %zd", wrlen);
+    else
+    {
+        switch (errno)
+        {
+        default:
+            terminate(errno, "Unable to write to umbilical");
+
+        case EPIPE:
+        case EWOULDBLOCK:
+            break;
+
+        case EINTR:
+            /* Do not loop here on EINTR since it is important
+             * to take care that the monitoring loop is
+             * non-blocking. Instead, mark the timer as expired
+             * for force the monitoring loop to retry immediately. */
+
+            debug(1, "umbilical write interrupted");
+
+            lapTimeSkip(&umbilicalTimer->mSince,
+                        umbilicalTimer->mPeriod, aPollTime);
+            break;
+        }
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1387,18 +1619,10 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 {
     debug(0, "start monitoring child");
 
-    struct ChildSignalPlan sharedPgrpPlan[] =
+    struct ChildSignalPlan signalPlan[] =
     {
-        { self->mPid, SIGTERM },
-        { self->mPid, SIGKILL },
-        { 0 }
-    };
-
-    struct ChildSignalPlan ownPgrpPlan[] =
-    {
-        {  self->mPid, SIGTERM },
-        { -self->mPid, SIGTERM },
-        { -self->mPid, SIGKILL },
+        { self->mPid,   SIGTERM },
+        { -self->mPgid, SIGKILL },
         { 0 }
     };
 
@@ -1438,7 +1662,7 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 
         .mTermination =
         {
-            .mSignalPlan = gOptions.mSetPgid ? ownPgrpPlan : sharedPgrpPlan,
+            .mSignalPlan   = signalPlan,
             .mSignalPeriod = Duration(
                 NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
         },
@@ -1513,7 +1737,9 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
             {
                 .mAction = pollFdTimerUmbilical,
                 .mSince  = EVENTCLOCKTIME_INIT,
-                .mPeriod = Duration(NanoSeconds(0)),
+                .mPeriod = Duration(
+                    NanoSeconds(
+                        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns / 2)),
             },
 
             [POLL_FD_TIMER_ORPHAN] =
