@@ -1297,9 +1297,9 @@ pollFdTimerChild(void                        *self_,
 /* -------------------------------------------------------------------------- */
 /* Child Termination State Machine
  *
- * When it is necessary to terminate the child process, first request
- * that the child terminate by sending it SIGTERM, and if the child
- * does not terminate, resort to sending SIGKILL. */
+ * When it is necessary to terminate the child process, run a state
+ * machine to sequence through a signal plan that walks through
+ * an escalating series of signals. */
 
 static void
 activateFdTimerTermination(struct ChildMonitor         *self,
@@ -1609,7 +1609,11 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
     debug(0, "start monitoring child");
 
     /* Remember that the child process might be in its own process group,
-     * or might be in the same process group as the watchdog. */
+     * or might be in the same process group as the watchdog.
+     *
+     * When terminating the child process, first request that the child
+     * terminate by sending it SIGTERM, and if the child does not terminate,
+     * resort to sending SIGKILL. */
 
     struct ChildSignalPlan signalPlan[] =
     {
