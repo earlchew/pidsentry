@@ -655,9 +655,6 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
     unsigned cycleLimit = 2;
 
-    struct NanoSeconds umbilicalTimeout =
-        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s));
-
     struct UmbilicalMonitorPoll monitorpoll =
     {
         .mType       = &sUmbilicalMonitorType,
@@ -681,7 +678,9 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
             {
                 pollFdMonitorTimerUmbilical,
                 Duration(
-                    NanoSeconds(umbilicalTimeout.ns / cycleLimit)),
+                    NanoSeconds(
+                        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns
+                        / cycleLimit)),
             },
         },
     };
@@ -1964,20 +1963,6 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to add watch on child process termination");
 
-    /* Only identify the watchdog process after all the signal
-     * handlers have been installed. The functional tests can
-     * use this as an indicator that the watchdog is ready to
-     * run the child process. */
-
-    if (gOptions.mIdentify)
-        RACE
-        ({
-            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid()))
-                terminate(
-                    errno,
-                    "Unable to print parent pid");
-        });
-
     struct Pipe syncPipe;
     if (createPipe(&syncPipe, 0))
         terminate(
@@ -1999,6 +1984,20 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to add watch on signals");
+
+    /* Only identify the watchdog process after all the signal
+     * handlers have been installed. The functional tests can
+     * use this as an indicator that the watchdog is ready to
+     * run the child process. */
+
+    if (gOptions.mIdentify)
+        RACE
+        ({
+            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid()))
+                terminate(
+                    errno,
+                    "Unable to print parent pid");
+        });
 
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
@@ -2162,6 +2161,16 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close umbilical pipe reader");
 
+    if (gOptions.mIdentify)
+        RACE
+        ({
+            if (-1 == dprintf(STDOUT_FILENO,
+                              "%jd\n", (intmax_t) umbilicalPid))
+                terminate(
+                    errno,
+                    "Unable to print umbilical pid");
+        });
+
     /* With the child process announced, and the umbilical monitor
      * prepared, allow the child process to run the target program. */
 
@@ -2182,18 +2191,6 @@ cmdRunCommand(char **aCmd)
 
     if (gOptions.mIdentify)
     {
-        if (-1 != umbilicalPid)
-        {
-            RACE
-            ({
-                if (-1 == dprintf(STDOUT_FILENO,
-                                  "%jd\n", (intmax_t) umbilicalPid))
-                    terminate(
-                        errno,
-                        "Unable to print umbilical pid");
-            });
-        }
-
         RACE
         ({
             if (-1 == dprintf(STDOUT_FILENO,
