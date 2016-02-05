@@ -1194,8 +1194,8 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
         sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
     }
 
-    /* If required, temporarily block all signals so that the child will not
-     * receive signals which it cannot handle. */
+    /* Temporarily block all signals so that the child will not receive
+     * signals which it cannot handle reliably. */
 
     struct PushedProcessSigMask pushedSigMask_;
 
