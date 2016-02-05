@@ -260,6 +260,8 @@ releaseLockPidFile(struct PidFile *self)
 
     self->mLock = LOCK_UN;
 
+    debug(0, "unlock '%s'", self->mPathName.mFileName);
+
     rc = 0;
 
 Finally:
@@ -472,7 +474,7 @@ closePidFile(struct PidFile *self)
         if (-1 == flags)
             goto Finally;
 
-        if (O_RDONLY != (flags & O_ACCMODE))
+        if (O_RDONLY != (flags & O_ACCMODE) && LOCK_EX == self->mLock)
         {
             /* The pidfile is still locked at this point. If writable,
              * remove the content from the pidfile first so that any
