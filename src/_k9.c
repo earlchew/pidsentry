@@ -315,31 +315,6 @@ reapChild(void *self_)
 
 /* -------------------------------------------------------------------------- */
 static void
-killChildGroup(void *self_, int aSigNum)
-{
-    struct ChildProcess *self = self_;
-
-    if (self->mPgid)
-    {
-        debug(0,
-              "sending signal %d to child pgid %jd",
-              aSigNum,
-              (intmax_t) self->mPgid);
-
-        if (killpg(self->mPgid, aSigNum))
-        {
-            if (ESRCH != errno)
-                terminate(
-                    errno,
-                    "Unable to deliver signal %d to child pgid %jd",
-                    aSigNum,
-                    (intmax_t) self->mPgid);
-        }
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-static void
 killChild(void *self_, int aSigNum)
 {
     struct ChildProcess *self = self_;
@@ -651,6 +626,15 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
     closeChildFiles(self);
 
+    /* The umbilical process is not the parent of the child process being
+     * watched, so that there is no reliable way to send a signal to that
+     * process alone because the pid might be recycled by the time the signal
+     * is sent. Instead rely on the umbilical monitor being in the same
+     * process group as the child process and use the process group as
+     * a means of controlling the cild process. */
+
+    ensure(self->mPgid == getpgid(0));
+
     unsigned cycleLimit = 2;
 
     struct NanoSeconds umbilicalTimeout =
@@ -707,25 +691,12 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
             errno,
             "Unable to close polling loop");
 
-    warn(0, "Terminating child pid %jd", (intmax_t) self->mPid);
-    killChild(self, SIGTERM);
-
-    for (unsigned ix = 0; gOptions.mTimeout.mUmbilical_s > ix; ++ix)
-    {
-        monotonicSleep(Duration(NSECS(Seconds(1))));
-
-        if (kill(self->mPid, 0))
-        {
-            if (ESRCH == errno)
-                break;
-            terminate(
-                errno,
-                "Unable to kill child pid %jd", (intmax_t) self->mPid);
-        }
-    }
-
     warn(0, "Killing child pgid %jd", (intmax_t) self->mPgid);
-    killChildGroup(self, SIGKILL);
+
+    if (kill(0, SIGKILL))
+        terminate(
+            errno,
+            "Unable to kill child pgid %jd", (intmax_t) self->mPgid);
 }
 
 /* -------------------------------------------------------------------------- */
