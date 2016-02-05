@@ -50,11 +50,10 @@
 
 struct ProcessLock
 {
-    struct PathName  mPathName_;
-    struct PathName *mPathName;
-    struct File      mFile_;
-    struct File     *mFile;
-    int              mLock;
+    char        *mFileName;
+    struct File  mFile_;
+    struct File *mFile;
+    int          mLock;
 };
 
 struct ProcessAppLock
@@ -792,22 +791,22 @@ createProcessLock_(struct ProcessLock *self)
 
     self->mFile     = 0;
     self->mLock     = LOCK_UN;
-    self->mPathName = 0;
+    self->mFileName = 0;
 
-    static const char pathNameFmt[] = "/proc/%jd/.";
+    static const char pathFmt[] = "/proc/%jd/.";
 
-    char pathName[sizeof(pathNameFmt) + sizeof(pid_t) * CHAR_BIT];
+    char path[sizeof(pathFmt) + sizeof(pid_t) * CHAR_BIT];
 
-    if (-1 == sprintf(pathName, pathNameFmt, (intmax_t) getpid()))
+    if (-1 == sprintf(path, pathFmt, (intmax_t) getpid()))
         goto Finally;
 
-    if (createPathName(&self->mPathName_, pathName))
+    self->mFileName = strdup(path);
+    if ( ! self->mFileName)
         goto Finally;
-    self->mPathName = &self->mPathName_;
 
     if (createFile(
             &self->mFile_,
-            openPathName(self->mPathName, O_RDONLY | O_CLOEXEC, 0)))
+            open(self->mFileName, O_RDONLY | O_CLOEXEC)))
         goto Finally;
     self->mFile = &self->mFile_;
 
@@ -820,7 +819,7 @@ Finally:
         if (rc)
         {
             closeFile(self->mFile);
-            closePathName(self->mPathName);
+            free(self->mFileName);
         }
     });
 
@@ -835,10 +834,9 @@ closeProcessLock_(struct ProcessLock *self)
 
     if (self)
     {
-        if (closeFile(self->mFile))
-            goto Finally;
+        free(self->mFileName);
 
-        if (closePathName(self->mPathName))
+        if (closeFile(self->mFile))
             goto Finally;
     }
 
@@ -1080,7 +1078,7 @@ ownProcessLockPath(void)
 {
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
-    return processLock ? processLock->mPathName->mFileName : 0;
+    return processLock ? processLock->mFileName : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1155,8 +1153,9 @@ Finally:
 pid_t
 forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 {
-    pid_t rc     = -1;
-    bool  locked = false;
+    pid_t       rc     = -1;
+    const char *err    = 0;
+    bool        locked = false;
 
     struct PushedProcessSigMask *pushedSigMask = 0;
 
@@ -1256,9 +1255,10 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
         if (ForkProcessSetProcessGroup == aOption)
         {
             if (setpgid(0, aPgid ? aPgid : 0))
-                terminate(
-                    errno,
-                    "Unable to set process group");
+            {
+                err = "Unable to set process group";
+                goto Finally;
+            }
         }
 
         /* Reset all the signals so that the child will not attempt
@@ -1266,20 +1266,23 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
          * that the child will receive signals. */
 
         if (resetSignals_())
-            terminate(
-                errno,
-                "Unable to reset signal handlers");
+        {
+            err = "Unable to reset signal handlers";
+            goto Finally;
+        }
 
         pushedSigMask = 0;
         if (popProcessSigMask(&pushedSigMask_))
-            terminate(
-                errno,
-                "Unable to pop process signal mask");
+        {
+            err = "Unable to pop process signal mask";
+            goto Finally;
+        }
 
         if (popProcessSigMask(&sSigMask))
-            terminate(
-                errno,
-                "Unable to restore process signal mask");
+        {
+            err = "Unable to restore process signal mask";
+            goto Finally;
+        }
 
         break;
     }
@@ -1290,6 +1293,8 @@ Finally:
 
     FINALLY
     ({
+        int errcode = errno;
+
         if (pushedSigMask)
         {
             if (popProcessSigMask(pushedSigMask))
@@ -1306,6 +1311,9 @@ Finally:
 
         if (locked)
             pthread_mutex_unlock(&sProcessMutex);
+
+        if (err)
+            terminate(errcode, "%s", err);
     });
 
     return rc;

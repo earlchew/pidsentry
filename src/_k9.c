@@ -1640,7 +1640,7 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
                 "Unable to obtain status of pid file '%s'", aPidFileName);
     }
 
-    debug(0, "created pid file '%s'", aPidFileName);
+    debug(0, "initialised pid file '%s'", aPidFileName);
 
     if (writePidFile(aPidFile, aPid))
         terminate(
@@ -1912,6 +1912,26 @@ cmdRunCommand(char **aCmd)
             terminate(
                 errno,
                 "Unable to nullify stdout");
+
+        if (pidFile)
+        {
+            if (acquireReadLockPidFile(pidFile))
+                terminate(
+                    errno,
+                    "Unable to acquire read lock on pid file '%s'",
+                    pidFile->mPathName.mFileName);
+
+            if (closePidFile(pidFile))
+                terminate(
+                    errno,
+                    "Cannot close pid file '%s'", pidFile->mPathName.mFileName);
+            pidFile = 0;
+        }
+
+        if (closePipe(&syncPipe))
+            terminate(
+                errno,
+                "Unable to close sync pipe");
 
         if (closePipe(&umbilicalPipe))
             terminate(
