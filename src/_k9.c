@@ -319,22 +319,24 @@ killChild(void *self_, int aSigNum)
 {
     struct ChildProcess *self = self_;
 
-    if (self->mPid)
-    {
-        debug(0,
-              "sending signal %d to child pid %jd",
-              aSigNum,
-              (intmax_t) self->mPid);
+    if ( ! self->mPid)
+        terminate(
+            0,
+            "Signal race when trying to deliver signal %d", aSigNum);
 
-        if (kill(self->mPid, aSigNum))
-        {
-            if (ESRCH != errno)
-                terminate(
-                    errno,
-                    "Unable to deliver signal %d to child pid %jd",
-                    aSigNum,
-                    (intmax_t) self->mPid);
-        }
+    debug(0,
+          "sending signal %d to child pid %jd",
+          aSigNum,
+          (intmax_t) self->mPid);
+
+    if (kill(self->mPid, aSigNum))
+    {
+        if (ESRCH != errno)
+            terminate(
+                errno,
+                "Unable to deliver signal %d to child pid %jd",
+                aSigNum,
+                (intmax_t) self->mPid);
     }
 }
 
@@ -345,8 +347,7 @@ forkChild(
     char                        **aCmd,
     struct StdFdFiller           *aStdFdFiller,
     struct Pipe                  *aSyncPipe,
-    struct Pipe                  *aUmbilicalPipe,
-    struct PushedProcessSigMask  *aSigMask)
+    struct Pipe                  *aUmbilicalPipe)
 {
     int rc = -1;
 
@@ -354,12 +355,21 @@ forkChild(
      * In particular, no custom signal handlers are configured, so
      * signals delivered to either will likely caused them to terminate.
      *
-     * This is safe because that would cause one of end the termPipe
-     * to close, and the other end will eventually notice. */
+     * This is safe because that would cause one of end the synchronisation
+     * pipe to close, and the other end will eventually notice. */
 
     pid_t childPid = forkProcess(
         gOptions.mSetPgid
         ? ForkProcessSetProcessGroup : ForkProcessShareProcessGroup, 0);
+
+    /* Although it would be better to ensure that the child process and watchdog
+     * in the same process group, switching the process group of the watchdog
+     * will likely cause a race in an inattentive parent of the watchdog.
+     * For example upstart(8) has:
+     *
+     *    pgid = getpgid(pid);
+     *    kill(pgid > 0 ? -pgid : pid, signal);
+     */
 
     if (-1 == childPid)
         goto Finally;
@@ -551,10 +561,16 @@ forkChild(
             "Unable to execute '%s'", aCmd[0]);
     }
 
-    debug(0, "running child process %jd", (intmax_t) childPid);
+    /* Even if the child has terminated, it remains a zombie until reaped,
+     * so it is safe to query it to determine its process group. */
 
     self->mPid  = childPid;
     self->mPgid = getpgid(childPid);
+
+    debug(0,
+          "running child pid %jd in pgid %jd",
+          (intmax_t) self->mPid,
+          (intmax_t) self->mPgid);
 
     rc = 0;
 
@@ -633,7 +649,9 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
      * process group as the child process and use the process group as
      * a means of controlling the cild process. */
 
-    ensure(self->mPgid == getpgid(0));
+    pid_t pgid = getpgid(0);
+
+    ensure(self->mPgid == pgid);
 
     unsigned cycleLimit = 2;
 
@@ -691,12 +709,12 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
             errno,
             "Unable to close polling loop");
 
-    warn(0, "Killing child pgid %jd", (intmax_t) self->mPgid);
+    warn(0, "Killing child pgid %jd", (intmax_t) pgid);
 
     if (kill(0, SIGKILL))
         terminate(
             errno,
-            "Unable to kill child pgid %jd", (intmax_t) self->mPgid);
+            "Unable to kill child pgid %jd", (intmax_t) pgid);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1590,9 +1608,12 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 {
     debug(0, "start monitoring child");
 
+    /* Remember that the child process might be in its own process group,
+     * or might be in the same process group as the watchdog. */
+
     struct ChildSignalPlan signalPlan[] =
     {
-        { self->mPid,   SIGTERM },
+        {  self->mPid,  SIGTERM },
         { -self->mPgid, SIGKILL },
         { 0 }
     };
@@ -1909,12 +1930,6 @@ cmdRunCommand(char **aCmd)
 {
     ensure(aCmd);
 
-    struct PushedProcessSigMask pushedSigMask;
-    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
-        terminate(
-            errno,
-            "Unable to push process signal mask");
-
     if (ignoreProcessSigPipe())
         terminate(
             errno,
@@ -1945,11 +1960,6 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to add watch on child process termination");
 
-    if (watchProcessSignals(0, killChild, &childProcess))
-        terminate(
-            errno,
-            "Unable to add watch on signals");
-
     /* Only identify the watchdog process after all the signal
      * handlers have been installed. The functional tests can
      * use this as an indicator that the watchdog is ready to
@@ -1971,11 +1981,20 @@ cmdRunCommand(char **aCmd)
             "Unable to create sync pipe");
 
     if (forkChild(
-            &childProcess, aCmd,
-            &stdFdFiller, &syncPipe, &umbilicalPipe, &pushedSigMask))
+            &childProcess, aCmd, &stdFdFiller, &syncPipe, &umbilicalPipe))
         terminate(
             errno,
             "Unable to fork child");
+
+    /* Be prepared to deliver signals to the child process only after
+     * the child exists. Before this point, these signals will cause
+     * the watchdog to terminate, and the new child process will
+     * notice via its synchronisation pipe. */
+
+    if (watchProcessSignals(0, killChild, &childProcess))
+        terminate(
+            errno,
+            "Unable to add watch on signals");
 
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
@@ -2000,11 +2019,6 @@ cmdRunCommand(char **aCmd)
 
         announceChild(pid, pidFile, pidFileName);
     }
-
-    if (popProcessSigMask(&pushedSigMask))
-        terminate(
-            errno,
-            "Unable to restore process signal mask");
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
