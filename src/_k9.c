@@ -565,7 +565,7 @@ forkChild(
      * so it is safe to query it to determine its process group. */
 
     self->mPid  = childPid;
-    self->mPgid = getpgid(childPid);
+    self->mPgid = gOptions.mSetPgid ? self->mPid : 0;
 
     debug(0,
           "running child pid %jd in pgid %jd",
@@ -649,10 +649,6 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
      * process group as the child process and use the process group as
      * a means of controlling the cild process. */
 
-    pid_t pgid = getpgid(0);
-
-    ensure(self->mPgid == pgid);
-
     unsigned cycleLimit = 2;
 
     struct UmbilicalMonitorPoll monitorpoll =
@@ -707,6 +703,8 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
         terminate(
             errno,
             "Unable to close polling loop");
+
+    pid_t pgid = getpgid(0);
 
     warn(0, "Killing child pgid %jd", (intmax_t) pgid);
 
@@ -1342,7 +1340,7 @@ pollFdTimerTermination(void                        *self_,
     pid_t pidNum = self->mTermination.mSignalPlan->mPid;
     int   sigNum = self->mTermination.mSignalPlan->mSig;
 
-    if (self->mTermination.mSignalPlan[1].mPid)
+    if (self->mTermination.mSignalPlan[1].mSig)
         ++self->mTermination.mSignalPlan;
 
     warn(0, "Killing child pid %jd with signal %d", (intmax_t) pidNum, sigNum);
@@ -1933,6 +1931,11 @@ cmdRunCommand(char **aCmd)
 {
     ensure(aCmd);
 
+    debug(0,
+          "watchdog process pid %jd pgid %jd",
+          (intmax_t) getpid(),
+          (intmax_t) getpgid(0));
+
     if (ignoreProcessSigPipe())
         terminate(
             errno,
@@ -1985,19 +1988,13 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to add watch on signals");
 
-    /* Only identify the watchdog process after all the signal
-     * handlers have been installed. The functional tests can
-     * use this as an indicator that the watchdog is ready to
-     * run the child process. */
-
-    if (gOptions.mIdentify)
-        RACE
-        ({
-            if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) getpid()))
-                terminate(
-                    errno,
-                    "Unable to print parent pid");
-        });
+    /* Only identify the watchdog process after all the signal handlers
+     * have been installed. The functional tests can use this as an
+     * indicator that the watchdog is ready to run the child process.
+     *
+     * Although the watchdog process can be announed at this point,
+     * the announcement is deferred so that it and the umbilical can
+     * be announced in a single line at one point. */
 
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
@@ -2095,18 +2092,17 @@ cmdRunCommand(char **aCmd)
      * of this process can be detected independently. Only create the
      * monitoring process after all the file descriptors have been
      * purged so that the monitor does not inadvertently hold file
-     * descriptors that should only be held by the child. */
+     * descriptors that should only be held by the child.
+     *
+     * Note that forkProcess() will reset all signal handlers in
+     * the child process. */
 
-    pid_t pid       = getpid();
-    pid_t childpgid = getpgid(childProcess.mPid);
-
-    if (-1 == childpgid)
-        terminate(
-            errno,
-            "Unable to determine process group of child pid %jd",
-            (intmax_t) childProcess.mPid);
-
-    pid_t umbilicalPid = forkProcess(ForkProcessSetProcessGroup, childpgid);
+    pid_t watchdogPid  = getpid();
+    pid_t watchdogPgid = getpgid(0);
+    pid_t umbilicalPid = forkProcess(
+        gOptions.mSetPgid
+        ? ForkProcessSetProcessGroup
+        : ForkProcessShareProcessGroup, childProcess.mPgid);
 
     if (-1 == umbilicalPid)
         terminate(
@@ -2115,7 +2111,14 @@ cmdRunCommand(char **aCmd)
 
     if ( ! umbilicalPid)
     {
-        debug(0, "start monitoring umbilical");
+        debug(0, "start monitoring umbilical process pid %jd pgid %jd",
+              (intmax_t) getpid(),
+              (intmax_t) getpgid(0));
+
+        if (childProcess.mPgid)
+            ensure(childProcess.mPgid == getpgid(0));
+        else
+            ensure(watchdogPgid == getpgid(0));
 
         if (STDIN_FILENO != dup2(umbilicalPipe.mRdFile->mFd, STDIN_FILENO))
             terminate(
@@ -2152,7 +2155,7 @@ cmdRunCommand(char **aCmd)
                 errno,
                 "Unable to close umbilical pipe");
 
-        monitorChildUmbilical(&childProcess, pid);
+        monitorChildUmbilical(&childProcess, watchdogPid);
         _exit(EXIT_FAILURE);
     }
 
@@ -2165,10 +2168,11 @@ cmdRunCommand(char **aCmd)
         RACE
         ({
             if (-1 == dprintf(STDOUT_FILENO,
-                              "%jd\n", (intmax_t) umbilicalPid))
+                              "%jd %jd\n",
+                              (intmax_t) getpid(), (intmax_t) umbilicalPid))
                 terminate(
                     errno,
-                    "Unable to print umbilical pid");
+                    "Unable to print parent and umbilical pid");
         });
 
     /* With the child process announced, and the umbilical monitor
