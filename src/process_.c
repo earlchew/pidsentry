@@ -1254,7 +1254,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 
         if (ForkProcessSetProcessGroup == aOption)
         {
-            if (setpgid(0, aPgid ? aPgid : 0))
+            if (setpgid(0, aPgid))
             {
                 err = "Unable to set process group";
                 goto Finally;
