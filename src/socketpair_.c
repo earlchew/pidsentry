@@ -45,7 +45,7 @@ createSocketPair(struct SocketPair *self)
 
     int fd[2];
 
-    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd))
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, fd))
         goto Finally;
 
     if (-1 == fd[0] || -1 == fd[1])
@@ -94,6 +94,25 @@ closeSocketPairParent(struct SocketPair *self)
     if (closeFile(self->mParentFile))
         goto Finally;
     self->mParentFile = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+closeSocketPairChild(struct SocketPair *self)
+{
+    int rc = -1;
+
+    if (closeFile(self->mChildFile))
+        goto Finally;
+    self->mChildFile = 0;
 
     rc = 0;
 

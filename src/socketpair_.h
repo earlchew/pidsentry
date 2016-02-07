@@ -53,6 +53,9 @@ closeSocketPair(struct SocketPair *self);
 int
 closeSocketPairParent(struct SocketPair *self);
 
+int
+closeSocketPairChild(struct SocketPair *self);
+
 /* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
