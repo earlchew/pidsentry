@@ -67,7 +67,6 @@
  * Count SIGCONT
  * Handle SIGCONT for mutex timeouts
  * Handle SIGCHLD continue/stopped
- * Realign umbilical timer
  */
 
 /* -------------------------------------------------------------------------- */
@@ -136,8 +135,8 @@ struct ChildProcess
     pid_t mPid;
     pid_t mPgid;
 
-    struct Pipe  mTermPipe_;
-    struct Pipe* mTermPipe;
+    struct Pipe  mChildPipe_;
+    struct Pipe* mChildPipe;
     struct Pipe  mTetherPipe_;
     struct Pipe* mTetherPipe;
 };
@@ -279,11 +278,11 @@ createChild(struct ChildProcess *self)
             errno,
             "Unable to mark tether non-blocking");
 
-    if (createPipe(&self->mTermPipe_, O_CLOEXEC | O_NONBLOCK))
+    if (createPipe(&self->mChildPipe_, O_CLOEXEC | O_NONBLOCK))
         terminate(
             errno,
-            "Unable to create termination pipe");
-    self->mTermPipe = &self->mTermPipe_;
+            "Unable to create child pipe");
+    self->mChildPipe = &self->mChildPipe_;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -319,10 +318,10 @@ reapChild(void *self_)
     }
     else
     {
-        if (closePipeWriter(self->mTermPipe))
+        if (closePipeWriter(self->mChildPipe))
             terminate(
                 errno,
-                "Unable to close termination pipe writer");
+                "Unable to close child pipe writer");
     }
 }
 
@@ -406,11 +405,11 @@ forkChild(
                 errno,
                 "Unable to close stdin, stdout and stderr fillers");
 
-        if (closePipe(self->mTermPipe))
+        if (closePipe(self->mChildPipe))
             terminate(
                 errno,
-                "Unable to close termination pipe");
-        self->mTermPipe = 0;
+                "Unable to close child pipe");
+        self->mChildPipe = 0;
 
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
@@ -611,11 +610,11 @@ closeChildTether(struct ChildProcess *self)
 static void
 closeChildFiles(struct ChildProcess *self)
 {
-    if (closePipe(self->mTermPipe))
+    if (closePipe(self->mChildPipe))
         terminate(
             errno,
-            "Unable to close termination pipe");
-    self->mTermPipe = 0;
+            "Unable to close child pipe");
+    self->mChildPipe = 0;
 
     if (closePipe(self->mTetherPipe))
         terminate(
@@ -1753,7 +1752,7 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
         {
             [POLL_FD_CHILD] =
             {
-                .fd     = self->mTermPipe->mRdFile->mFd,
+                .fd     = self->mChildPipe->mRdFile->mFd,
                 .events = POLL_DISCONNECTEVENT,
             },
 
