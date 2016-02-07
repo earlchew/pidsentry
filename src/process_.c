@@ -35,6 +35,7 @@
 #include "test_.h"
 #include "error_.h"
 #include "timekeeping_.h"
+#include "thread_.h"
 #include "system_.h"
 
 #include <stdio.h>
@@ -996,8 +997,7 @@ acquireProcessAppLock(void)
     if (pthread_sigmask(SIG_BLOCK, &filledset, &sProcessSigMask))
         goto Finally;
 
-    if (errno = pthread_mutex_lock(&sProcessMutex))
-        goto Finally;
+    lockMutex(&sProcessMutex);
     locked = true;
 
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
@@ -1014,7 +1014,7 @@ Finally:
         if (rc)
         {
             if (locked)
-                pthread_mutex_unlock(&sProcessMutex);
+                unlockMutex(&sProcessMutex);
         }
     });
 
@@ -1032,8 +1032,7 @@ releaseProcessAppLock(void)
     if (processLock && unlockProcessLock_(processLock))
         goto Finally;
 
-    if (errno = pthread_mutex_unlock(&sProcessMutex))
-        goto Finally;
+    unlockMutex(&sProcessMutex);
 
     if (pthread_sigmask(SIG_SETMASK, &sProcessSigMask, 0))
         goto Finally;
@@ -1173,14 +1172,24 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
         goto Finally;
 #endif
 
+    /* Temporarily block all signals so that the child will not receive
+     * signals which it cannot handle reliably, and so that signal
+     * handlers will not run in this process when the process mutex
+     * is held. */
+
+    struct PushedProcessSigMask pushedSigMask_;
+
+    if (pushProcessSigMask(&pushedSigMask_, ProcessSigMaskBlock, 0))
+        goto Finally;
+    pushedSigMask = &pushedSigMask_;
+
     /* The child process needs separate process lock. It cannot share
      * the process lock with the parent because flock(2) distinguishes
      * locks by file descriptor table entry. Create the process lock
      * in the parent first so that the child process is guaranteed to
      * be able to synchronise its messages. */
 
-    if (errno = pthread_mutex_lock(&sProcessMutex))
-        goto Finally;
+    lockMutex(&sProcessMutex);
     locked = true;
 
     if (sProcessLock[sActiveProcessLock])
@@ -1193,15 +1202,6 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
             goto Finally;
         sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
     }
-
-    /* Temporarily block all signals so that the child will not receive
-     * signals which it cannot handle reliably. */
-
-    struct PushedProcessSigMask pushedSigMask_;
-
-    if (pushProcessSigMask(&pushedSigMask_, ProcessSigMaskBlock, 0))
-        goto Finally;
-    pushedSigMask = &pushedSigMask_;
 
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
@@ -1271,6 +1271,14 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
             goto Finally;
         }
 
+        /* This is the only thread running in the new process so
+         * it is safe to release the process mutex here. Once the
+         * process mutex and the signal mask are restored, reinstate
+         * the original process signal mask. */
+
+        locked = 0;
+        unlockMutex(&sProcessMutex);
+
         pushedSigMask = 0;
         if (popProcessSigMask(&pushedSigMask_))
         {
@@ -1295,14 +1303,6 @@ Finally:
     ({
         int errcode = errno;
 
-        if (pushedSigMask)
-        {
-            if (popProcessSigMask(pushedSigMask))
-                terminate(
-                    errno,
-                    "Unable to pop process signal mask");
-        }
-
         if (closeProcessLock_(sProcessLock[inactiveProcessLock]))
             terminate(
                 errno,
@@ -1310,7 +1310,15 @@ Finally:
         sProcessLock[inactiveProcessLock] = 0;
 
         if (locked)
-            pthread_mutex_unlock(&sProcessMutex);
+            unlockMutex(&sProcessMutex);
+
+        if (pushedSigMask)
+        {
+            if (popProcessSigMask(pushedSigMask))
+                terminate(
+                    errno,
+                    "Unable to pop process signal mask");
+        }
 
         if (err)
             terminate(errcode, "%s", err);
