@@ -137,6 +137,12 @@ int
 resetProcessSigPipe(void);
 
 int
+watchProcessSigCont(struct VoidMethod aMethod);
+
+int
+unwatchProcessSigCont(void);
+
+int
 watchProcessClock(struct VoidMethod aMethod, struct Duration aPeriod);
 
 int

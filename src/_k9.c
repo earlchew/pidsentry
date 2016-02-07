@@ -64,6 +64,10 @@
  * When announcing child, ensure pid is active first
  * Use SIGHUP to kill umbilical monitor
  * Use struct Type for other poll loops
+ * Count SIGCONT
+ * Handle SIGCONT for mutex timeouts
+ * Handle SIGCHLD continue/stopped
+ * Realign umbilical timer
  */
 
 /* -------------------------------------------------------------------------- */
@@ -638,38 +642,6 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
     closeChildFiles(self);
 
-    /* Use a blocking read synchronise with the watchdog to avoid timing
-     * races. The watchdog will write to the umbilical when it is ready
-     * to start timing. */
-
-    debug(0, "synchronising umbilical");
-
-    char buf[1];
-
-    if (-1 == waitFdReadReady(STDIN_FILENO, 0))
-        terminate(
-            errno,
-            "Unable to wait for umbilical synchronisation");
-
-    switch (readFd(STDIN_FILENO, buf, sizeof(buf)))
-    {
-    default:
-    case -1:
-        terminate(
-            errno,
-            "Unable to synchronise umbilical");
-        break;
-
-    case 0:
-        _exit(EXIT_FAILURE);
-        break;
-
-    case sizeof(buf):
-        break;
-    }
-
-    debug(0, "synchronised umbilical");
-
     /* The umbilical process is not the parent of the child process being
      * watched, so that there is no reliable way to send a signal to that
      * process alone because the pid might be recycled by the time the signal
@@ -708,6 +680,21 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
             },
         },
     };
+
+    /* Use a blocking read synchronise with the watchdog to avoid timing
+     * races. The watchdog will write to the umbilical when it is ready
+     * to start timing. */
+
+    debug(0, "synchronising umbilical");
+
+    if (-1 == waitFdReadReady(STDIN_FILENO, 0))
+        terminate(
+            errno,
+            "Unable to wait for umbilical synchronisation");
+
+    pollFdMonitorUmbilical(&monitorpoll, 0, 0);
+
+    debug(0, "synchronised umbilical");
 
     struct PollFd pollfd;
     if (createPollFd(
@@ -1415,29 +1402,18 @@ pollFdUmbilical(void                        *self_,
     activateFdTimerTermination(self, aPollTime);
 }
 
-static void
-pollFdTimerUmbilical(void                        *self_,
-                     struct PollFdTimerAction    *aPollFdTimerAction_unused,
-                     const struct EventClockTime *aPollTime)
+static int
+pollFdWriteUmbilical(struct ChildMonitor *self)
 {
-    struct ChildMonitor *self = self_;
+    int rc = -1;
 
-    ensure(sChildMonitorType == self->mType);
-
-    /* Remember that the umbilical timer will race with child termination.
-     * By the time this function runs, the child might already have
-     * terminated so the umbilical socket might be closed. */
-
-    struct PollFdTimerAction *umbilicalTimer =
-        &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
-
-    char buf = 0;
+    char buf[1] = { 0 };
 
     ssize_t wrlen = write(
-        self->mUmbilical.mFile->mFd, &buf, sizeof(buf));
+        self->mUmbilical.mFile->mFd, buf, sizeof(buf));
 
     if (-1 != wrlen)
-        debug(1, "wrote to umbilical result %zd", wrlen);
+        debug(1, "wrote umbilical %zd", wrlen);
     else
     {
         switch (errno)
@@ -1454,16 +1430,63 @@ pollFdTimerUmbilical(void                        *self_,
             break;
 
         case EINTR:
+            debug(1, "umbilical write interrupted");
+            break;
+        }
+
+        goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static void
+pollFdContUmbilical(void *self_)
+{
+    struct ChildMonitor *self = self_;
+
+    ensure(sChildMonitorType == self->mType);
+
+    /* This function is called when the process receives SIGCONT. The
+     * function indicates to the umbilical monitor that the process
+     * has just woken, so that the monitor can restart the timeout. */
+
+    pollFdWriteUmbilical(self);
+}
+
+static void
+pollFdTimerUmbilical(void                        *self_,
+                     struct PollFdTimerAction    *aPollFdTimerAction_unused,
+                     const struct EventClockTime *aPollTime)
+{
+    struct ChildMonitor *self = self_;
+
+    ensure(sChildMonitorType == self->mType);
+
+    /* Remember that the umbilical timer will race with child termination.
+     * By the time this function runs, the child might already have
+     * terminated so the umbilical socket might be closed. */
+
+    if (pollFdWriteUmbilical(self))
+    {
+        if (EINTR == errno)
+        {
+            struct PollFdTimerAction *umbilicalTimer =
+                &self->mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL];
+
             /* Do not loop here on EINTR since it is important
              * to take care that the monitoring loop is
              * non-blocking. Instead, mark the timer as expired
              * for force the monitoring loop to retry immediately. */
 
-            debug(1, "umbilical write interrupted");
-
             lapTimeTrigger(&umbilicalTimer->mSince,
                            umbilicalTimer->mPeriod, aPollTime);
-            break;
         }
     }
 }
@@ -1805,6 +1828,8 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
         &childmonitor.mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mSince,
         childmonitor.mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mPeriod, 0);
 
+    watchProcessSigCont(VoidMethod(pollFdContUmbilical, &childmonitor));
+
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
      * open file, rather than of each file descriptor. Since stdin and
      * stdout are typically inherited from the parent, setting O_NONBLOCK
@@ -1846,6 +1871,8 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
         terminate(
             errno,
             "Unable to close polling loop");
+
+    unwatchProcessSigCont();
 
     closeTetherThread(&tetherThread);
 

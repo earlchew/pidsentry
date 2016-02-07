@@ -216,29 +216,86 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static struct VoidMethod sDeadChildMethod;
+static struct VoidMethod sSigContMethod;
 
 static void
-deadChild_(int aSigNum)
+sigCont_(int aSigNum)
 {
-    if ( ! ownVoidMethodNil(sDeadChildMethod))
+    if ( ! ownVoidMethodNil(sSigContMethod))
     {
-        debug(1, "observed dead child");
-        callVoidMethod(sDeadChildMethod);
+        debug(1, "observed SIGCONT");
+        callVoidMethod(sSigContMethod);
+    }
+}
+
+static int
+resetProcessSigCont_(void)
+{
+    sSigContMethod = VoidMethod(0, 0);
+
+    struct sigaction sigAction =
+    {
+        .sa_handler = SIG_DFL,
+    };
+
+    return sigaction(SIGCONT, &sigAction, 0);
+}
+
+int
+watchProcessSigCont(struct VoidMethod aMethod)
+{
+    int rc = -1;
+
+    struct sigaction sigAction =
+    {
+        .sa_handler = sigCont_,
+        .sa_mask    = filledSigSet(),
+    };
+
+    if (sigaction(SIGCONT, &sigAction, 0))
+        goto Finally;
+
+    sSigContMethod = aMethod;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+unwatchProcessSigCont(void)
+{
+    return resetProcessSigCont_();
+}
+
+/* -------------------------------------------------------------------------- */
+static struct VoidMethod sSigChldMethod;
+
+static void
+sigChld_(int aSigNum)
+{
+    if ( ! ownVoidMethodNil(sSigChldMethod))
+    {
+        debug(1, "observed SIGCHLD");
+        callVoidMethod(sSigChldMethod);
     }
 }
 
 static int
 resetProcessChildrenWatch_(void)
 {
-    sDeadChildMethod = VoidMethod(0, 0);
+    sSigChldMethod = VoidMethod(0, 0);
 
-    struct sigaction childAction =
+    struct sigaction sigAction =
     {
         .sa_handler = SIG_DFL,
     };
 
-    return sigaction(SIGCHLD, &childAction, 0);
+    return sigaction(SIGCHLD, &sigAction, 0);
 }
 
 int
@@ -246,16 +303,16 @@ watchProcessChildren(struct VoidMethod aMethod)
 {
     int rc = -1;
 
-    struct sigaction childAction =
+    struct sigaction sigAction =
     {
-        .sa_handler = deadChild_,
+        .sa_handler = sigChld_,
         .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGCHLD, &childAction, 0))
+    if (sigaction(SIGCHLD, &sigAction, 0))
         goto Finally;
 
-    sDeadChildMethod = aMethod;
+    sSigChldMethod = aMethod;
 
     rc = 0;
 
@@ -524,6 +581,9 @@ static int
 resetSignals_(void)
 {
     int rc = -1;
+
+    if (resetProcessSigCont_())
+        goto Finally;
 
     if (resetProcessClockWatch_())
         goto Finally;
