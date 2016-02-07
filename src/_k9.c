@@ -308,12 +308,28 @@ reapChild(void *self_)
             "Unable to determine status of pid %jd",
             (intmax_t) self->mPid);
 
-    if (ProcessStatusExited != childstatus &&
-        ProcessStatusKilled != childstatus &&
-        ProcessStatusDumped != childstatus)
+    if (ProcessStatusRunning == childstatus)
+    {
+        /* Only write when the child starts running again. This avoids
+         * questionable semantics should the pipe overflow since the
+         * only significance of the pipe is whether or not there is content. */
+
+        char buf[1] = { 0 };
+
+        if (-1 == writeFile(self->mChildPipe->mWrFile, buf, sizeof(buf)))
+        {
+            if (EWOULDBLOCK != errno)
+                terminate(
+                    errno,
+                    "Unable to write status to child pipe");
+        }
+    }
+    else if (ProcessStatusExited != childstatus &&
+             ProcessStatusKilled != childstatus &&
+             ProcessStatusDumped != childstatus)
     {
         debug(1,
-              "child not yet terminated pid %jd status %c",
+              "child pid %jd status %c",
               (intmax_t) self->mPid, childstatus);
     }
     else
@@ -1243,82 +1259,6 @@ struct ChildMonitor
 };
 
 /* -------------------------------------------------------------------------- */
-/* Child Termination
- *
- * The watchdog will receive SIGCHLD when the child process terminates,
- * though no direct indication will be received if the child process
- * performs an execv(2). The SIGCHLD signal will be delivered to the
- * event loop on a pipe, at which point the child process is known
- * to be dead. */
-
-static void
-pollFdChild(void                        *self_,
-            struct pollfd               *aPollFds_ununsed,
-            const struct EventClockTime *aPollTime)
-{
-    struct ChildMonitor *self = self_;
-
-    ensure(sChildMonitorType == self->mType);
-
-    /* There is a race here between receiving the indication that the
-     * child process has terminated, the other watchdog actions
-     * that might be taking place to actively monitor or terminate
-     * the child process. In other words, those actions might be
-     * attempting to manage a child process that is already dead,
-     * or declare the child process errant when it has already exited.
-     *
-     * Actively test the race by occasionally delaying this activity
-     * when in test mode. */
-
-    if ( ! testSleep())
-    {
-        struct PollEventText pollEventText;
-        debug(
-            1,
-            "detected child %s",
-            createPollEventText(
-                &pollEventText,
-                self->mPollFds[POLL_FD_CHILD].revents));
-
-        ensure(self->mPollFds[POLL_FD_CHILD].events);
-
-        /* The child process has terminated, so there is no longer
-         * any need to monitor for SIGCHLD. */
-
-        self->mPollFds[POLL_FD_CHILD].fd     = self->mNullPipe->mRdFile->mFd;
-        self->mPollFds[POLL_FD_CHILD].events = 0;
-
-        /* Record when the child has terminated, but do not exit
-         * the event loop until all the IO has been flushed. With the
-         * child terminated, no further input can be produced so indicate
-         * to the tether thread that it should start flushing data now. */
-
-        flushTetherThread(self->mTetherThread);
-
-        /* Once the child process has terminated, start the disconnection
-         * timer that sends a periodic signal to the tether thread
-         * to ensure that it will not block. */
-
-        self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION].mPeriod =
-            Duration(NSECS(Seconds(1)));
-    }
-}
-
-static void
-pollFdTimerChild(void                        *self_,
-                 struct PollFdTimerAction    *aPollFdTimerAction_unused,
-                 const struct EventClockTime *aPollTime)
-{
-    struct ChildMonitor *self = self_;
-
-    ensure(sChildMonitorType == self->mType);
-
-    debug(0, "disconnecting tether thread");
-
-    pingTetherThread(self->mTetherThread);
-}
-
-/* -------------------------------------------------------------------------- */
 /* Child Termination State Machine
  *
  * When it is necessary to terminate the child process, run a state
@@ -1531,9 +1471,20 @@ pollFdTether(void                        *self_,
     ensure(sChildMonitorType == self->mType);
 
     /* The tether thread control pipe will be closed when the tether
-     * is shut down between the child process and watchdog, */
+     * between the child process and watchdog is shut down. */
 
     disconnectPollFdTether(self);
+}
+
+static void
+restartFdTimerTether(struct ChildMonitor         *self,
+                     const struct EventClockTime *aPollTime)
+{
+    self->mTether.mCycleCount = 0;
+
+    lapTimeRestart(
+        &self->mPollFdTimerActions[POLL_FD_TIMER_TETHER].mSince,
+        aPollTime);
 }
 
 static void
@@ -1572,7 +1523,7 @@ pollFdTimerTether(void                        *self_,
         else if (ProcessStatusTrapped == childstatus ||
                  ProcessStatusStopped == childstatus)
         {
-            debug(0, "deferred timeout due to child status %c", childstatus);
+            debug(0, "deferred timeout child status %c", childstatus);
 
             self->mTether.mCycleCount = 0;
             break;
@@ -1667,6 +1618,113 @@ pollfdcompletion(void                     *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+/* Child Termination
+ *
+ * The watchdog will receive SIGCHLD when the child process terminates,
+ * though no direct indication will be received if the child process
+ * performs an execv(2). The SIGCHLD signal will be delivered to the
+ * event loop on a pipe, at which point the child process is known
+ * to be dead. */
+
+static void
+pollFdChild(void                        *self_,
+            struct pollfd               *aPollFds_ununsed,
+            const struct EventClockTime *aPollTime)
+{
+    struct ChildMonitor *self = self_;
+
+    ensure(sChildMonitorType == self->mType);
+
+    /* There is a race here between receiving the indication that the
+     * child process has terminated, and the other watchdog actions
+     * that might be taking place to actively monitor or terminate
+     * the child process. In other words, those actions might be
+     * attempting to manage a child process that is already dead,
+     * or declare the child process errant when it has already exited.
+     *
+     * Actively test the race by occasionally delaying this activity
+     * when in test mode. */
+
+    if ( ! testSleep())
+    {
+        struct PollEventText pollEventText;
+        debug(
+            1,
+            "detected child %s",
+            createPollEventText(
+                &pollEventText,
+                self->mPollFds[POLL_FD_CHILD].revents));
+
+        ensure(self->mPollFds[POLL_FD_CHILD].events);
+
+        char buf[1];
+
+        switch (read(self->mPollFds[POLL_FD_CHILD].fd, buf, sizeof(buf)))
+        {
+        default:
+            /* The child process is running again after being stopped for
+             * some time. Restart the tether timeout so that the stoppage
+             * is not mistaken for a failure. */
+
+            debug(0,
+                  "child pid %jd is running",
+                  (intmax_t) self->mChildPid);
+
+            restartFdTimerTether(self, aPollTime);
+            break;
+
+        case -1:
+            if (EINTR != errno)
+                terminate(
+                    errno,
+                    "Unable to read child pipe");
+            break;
+
+        case 0:
+            /* The child process has terminated, so there is no longer
+             * any need to monitor for SIGCHLD. */
+
+            debug(0,
+                  "child pid %jd has terminated",
+                  (intmax_t) self->mChildPid);
+
+            self->mPollFds[POLL_FD_CHILD].fd    = self->mNullPipe->mRdFile->mFd;
+            self->mPollFds[POLL_FD_CHILD].events= 0;
+
+            /* Record when the child has terminated, but do not exit
+             * the event loop until all the IO has been flushed. With the
+             * child terminated, no further input can be produced so indicate
+             * to the tether thread that it should start flushing data now. */
+
+            flushTetherThread(self->mTetherThread);
+
+            /* Once the child process has terminated, start the disconnection
+             * timer that sends a periodic signal to the tether thread
+             * to ensure that it will not block. */
+
+            self->mPollFdTimerActions[POLL_FD_TIMER_DISCONNECTION].mPeriod =
+                Duration(NSECS(Seconds(1)));
+
+            break;
+        }
+    }
+}
+
+static void
+pollFdTimerChild(void                        *self_,
+                 struct PollFdTimerAction    *aPollFdTimerAction_unused,
+                 const struct EventClockTime *aPollTime)
+{
+    struct ChildMonitor *self = self_;
+
+    ensure(sChildMonitorType == self->mType);
+
+    debug(0, "disconnecting tether thread");
+
+    pingTetherThread(self->mTetherThread);
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
 {
@@ -1715,8 +1773,7 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
     {
         .mType = sChildMonitorType,
 
-        .mChildPid = self->mPid,
-
+        .mChildPid     = self->mPid,
         .mNullPipe     = &nullPipe,
         .mTetherThread = &tetherThread,
 
@@ -1753,7 +1810,7 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
             [POLL_FD_CHILD] =
             {
                 .fd     = self->mChildPipe->mRdFile->mFd,
-                .events = POLL_DISCONNECTEVENT,
+                .events = POLL_INPUTEVENTS,
             },
 
             [POLL_FD_UMBILICAL] =
