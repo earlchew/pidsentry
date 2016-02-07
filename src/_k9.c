@@ -188,9 +188,22 @@ pollFdMonitorUmbilical(void                        *self_,
     }
     else
     {
-        lapTimeRestart(
-            &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_UMBILICAL].mSince,
-            aPollTime);
+        /* Once activity is detected on the umbilical, reset the
+         * umbilical timer, but configure the timer so that it is
+         * out-of-phase with the expected activity on the umbilical
+         * to avoid having to deal with races when there is a tight
+         * finish. */
+
+        struct PollFdTimerAction *umbilicalTimer =
+            &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_UMBILICAL];
+
+        lapTimeTrigger(&umbilicalTimer->mSince,
+                       umbilicalTimer->mPeriod, aPollTime);
+
+        lapTimeDelay(
+            &umbilicalTimer->mSince,
+            Duration(NanoSeconds(umbilicalTimer->mPeriod.duration.ns / 2)));
+
         self->mCycleCount = 0;
     }
 }
