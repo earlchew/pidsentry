@@ -8,7 +8,7 @@ set -eu
 
 k9()
 {
-    libtool --mode=execute $VALGRIND ./k9 "$@"
+    setsid libtool --mode=execute $VALGRIND ./k9 "$@"
 }
 
 testCase()
@@ -61,8 +61,8 @@ testOutput()
 {
     eval set -- '"$@"' \""$1"\"
     eval set -- '"$@"' \""$3"\"
-    if ! [ x"$4" "$2" x"$5" ] ; then
-       testTrace [ x"$4" "$2" x"$5" ]
+    if ! [ x"'$4'" "$2" x"'$5'" ] ; then
+       testTrace [ x"'$4'" "$2" x"'$5'" ]
        set -- "$1" "$2" "$3"
        testFail "$@"
     fi
@@ -172,7 +172,7 @@ runTests()
         exec libtool --mode=execute "$@"
       {
         read REALPARENT
-        read PARENT ; read CHILD
+        read PARENT UMBILICAL ; read CHILD
         read REALCHILD
         /bin/echo "$REALPARENT/$PARENT $REALCHILD/$CHILD"
       }) ; do
@@ -210,7 +210,7 @@ runTests()
 
     testCase 'Child shares process group'
     k9 -i -dd -- ps -o pid,pgid,cmd | {
-        read PARENT
+        read PARENT UMBILICAL
         read CHILD
         read HEADING
         PARENTPGID=
@@ -230,7 +230,7 @@ runTests()
 
     testCase 'Child sets own process group'
     k9 -i -s -- ps -o pid,pgid,cmd | {
-        read PARENT
+        read PARENT UMBILICAL
         read CHILD
         read HEADING
         PARENTPGID=
@@ -313,15 +313,15 @@ runTests()
         fi
       } | {
         exec >&2
-        read PARENT ; /bin/echo "Parent $PARENT"
-        read CHILD  ; /bin/echo "Child $CHILD"
+        read PARENT UMBILICAL ; /bin/echo "Parent $PARENT $UMBILICAL"
+        read CHILD            ; /bin/echo "Child $CHILD"
         kill -9 -- "$CHILD"
       })
     [ x"$REPLY" = x$((128 + 9)) ]
 
     testCase 'Stopped child'
     testOutput OK = '"$(k9 -T -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
-        read PARENT
+        read PARENT UMBILICAL
         read CHILD
         sleep 8
         kill -CONT $CHILD || { echo NOTOK ; exit 1 ; }
@@ -330,7 +330,7 @@ runTests()
 
     testCase 'Stopped parent'
     testOutput OK = '"$(k9 -T -i -d -t 8,2 -- sleep 4 | {
-        read PARENT
+        read PARENT UMBILCAL
         read CHILD
         kill -STOP $PARENT
         sleep 8
@@ -342,13 +342,15 @@ runTests()
     testOutput "OK" = '$(
         exec 3>&1
         k9 -dd -i -- sleep 9 | {
-            read PARENT
+            read PARENT UMBILICAL
             read CHILD
             sleep 3
-            kill -0 $CHILD && echo OK
+            kill -0 $CHILD
+            RC=$?
             kill -9 $PARENT
             sleep 3
             ! kill -0 $CHILD 2>/dev/null || echo NOTOK
+            [ x"$RC" != x"0" ] || echo OK
         }
     )'
 
@@ -417,7 +419,7 @@ runTests()
             set -x
             # t+3s : Watchdog times out child and issues kill -TERM
             # t+7s : Watchdog escalates and issues kill -KILL
-            read PARENT
+            read PARENT UMBILCAL
             read CHILD
             read READY # Signal handler established
             while : ; do sleep 1 ; kill $PARENT 2>&- ; done &
@@ -471,7 +473,7 @@ runTests()
                dd if=/dev/zero bs=$((64 * 1024)) count=1 &
                while : ; do sleep 1 ; done" || :
         } | {
-            read PARENT
+            read PARENT UMBILCAL
 
             # Wait a little time before making some space in the pipe. The
             # two pipe writers will compete to fill the space.
@@ -502,9 +504,15 @@ mkdir -p scratch
 
 PIDFILE=scratch/pidfile
 
+testCase 'No running watchdogs'
+testOutput "" = '$(ps -C k9 -o user=,ppid=,pid=,pgid=,command=)'
+
 for TEST in runTest runTests ; do
     VALGRIND=
     $TEST
     VALGRIND="valgrind --error-exitcode=128 --leak-check=yes"
     $TEST
 done
+
+testCase 'No lost watchdogs'
+testOutput "" = '$(ps -C k9 -o user=,ppid=,pid=,pgid=,command=)'
