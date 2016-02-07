@@ -318,8 +318,19 @@ void
 lapTimeRestart(struct EventClockTime       *self,
                const struct EventClockTime *aTime)
 {
-    if (self->eventclock.ns)
-        *self = aTime ? *aTime : eventclockTime();
+    ensure(self->eventclock.ns);
+
+    *self = aTime ? *aTime : eventclockTime();
+}
+
+/* -------------------------------------------------------------------------- */
+void
+lapTimeDelay(struct EventClockTime *self,
+             struct Duration        aDelay)
+{
+    ensure(self->eventclock.ns);
+
+    self->eventclock.ns += aDelay.duration.ns;
 }
 
 /* -------------------------------------------------------------------------- */

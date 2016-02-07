@@ -108,6 +108,10 @@ lapTimeTrigger(struct EventClockTime       *self,
                struct Duration              aPeriod,
                const struct EventClockTime *aTime);
 
+void
+lapTimeDelay(struct EventClockTime *self,
+             struct Duration        aDelay);
+
 /* -------------------------------------------------------------------------- */
 bool
 deadlineTimeExpired(
