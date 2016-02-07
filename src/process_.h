@@ -30,6 +30,7 @@
 #define PROCESS_H
 
 #include "timescale_.h"
+#include "method_.h"
 
 #include <limits.h>
 
@@ -118,18 +119,13 @@ popProcessSigMask(struct PushedProcessSigMask *self);
 
 /* -------------------------------------------------------------------------- */
 int
-watchProcessChildren(const struct Pipe *aTermPipe,
-                     void               aSigAction(void *aSigObserver),
-                     void              *aSigObserver);
+watchProcessChildren(struct VoidMethod aMethod);
 
 int
 unwatchProcessChildren(void);
 
 int
-watchProcessSignals(const struct Pipe *aSigPipe,
-                    void               aSigAction(void *aSigObserver,
-                                                  int   aSigNum),
-                    void              *aSigObserver);
+watchProcessSignals(struct VoidIntMethod aMethod);
 
 int
 unwatchProcessSignals(void);
@@ -141,8 +137,7 @@ int
 resetProcessSigPipe(void);
 
 int
-watchProcessClock(const struct Pipe *aClockPipe,
-                  struct Duration    aClockPeriod);
+watchProcessClock(struct VoidMethod aMethod, struct Duration aPeriod);
 
 int
 unwatchProcessClock(void);

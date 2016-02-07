@@ -32,7 +32,7 @@
 #include "env_.h"
 #include "macros_.h"
 #include "pipe_.h"
-#include "unixsocket_.h"
+#include "socketpair_.h"
 #include "stdfdfiller_.h"
 #include "pidfile_.h"
 #include "thread_.h"
@@ -41,6 +41,7 @@
 #include "test_.h"
 #include "fd_.h"
 #include "dl_.h"
+#include "type_.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -64,12 +65,6 @@
  * Use SIGHUP to kill umbilical monitor
  * Use struct Type for other poll loops
  */
-
-/* -------------------------------------------------------------------------- */
-struct Type
-{
-    const char *mName;
-};
 
 /* -------------------------------------------------------------------------- */
 enum PollFdKind
@@ -144,7 +139,8 @@ struct ChildProcess
 };
 
 /* -------------------------------------------------------------------------- */
-static const struct Type sUmbilicalMonitorType = { "UmbilicalMonitor" };
+static const struct Type * const sUmbilicalMonitorType =
+    TYPE("UmbilicalMonitor");
 
 struct UmbilicalMonitorPoll
 {
@@ -167,7 +163,7 @@ pollFdMonitorUmbilical(void                        *self_,
 {
     struct UmbilicalMonitorPoll *self = self_;
 
-    ensure(&sUmbilicalMonitorType == self->mType);
+    ensure(sUmbilicalMonitorType == self->mType);
 
     char buf[1];
 
@@ -203,7 +199,7 @@ pollFdMonitorTimerUmbilical(
 {
     struct UmbilicalMonitorPoll *self = self_;
 
-    ensure(&sUmbilicalMonitorType == self->mType);
+    ensure(sUmbilicalMonitorType == self->mType);
 
     /* If nothing is available from the umbilical connection after the
      * timeout period expires, then assume that the watchdog itself
@@ -233,7 +229,7 @@ pollFdMonitorCompletion(void                     *self_,
 {
     struct UmbilicalMonitorPoll *self = self_;
 
-    ensure(&sUmbilicalMonitorType == self->mType);
+    ensure(sUmbilicalMonitorType == self->mType);
 
     return ! self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events;
 }
@@ -343,11 +339,11 @@ killChild(void *self_, int aSigNum)
 /* -------------------------------------------------------------------------- */
 static int
 forkChild(
-    struct ChildProcess          *self,
-    char                        **aCmd,
-    struct StdFdFiller           *aStdFdFiller,
-    struct Pipe                  *aSyncPipe,
-    struct Pipe                  *aUmbilicalPipe)
+    struct ChildProcess  *self,
+    char                **aCmd,
+    struct StdFdFiller   *aStdFdFiller,
+    struct Pipe          *aSyncPipe,
+    struct SocketPair    *aUmbilicalSocket)
 {
     int rc = -1;
 
@@ -450,11 +446,11 @@ forkChild(
                     errno,
                     "Unable to close tether pipe reader");
 
-            if (closePipe(aUmbilicalPipe))
+            if (closeSocketPair(aUmbilicalSocket))
                 terminate(
                     errno,
-                    "Unable to close umbilical pipe");
-            aUmbilicalPipe = 0;
+                    "Unable to close umbilical socket");
+            aUmbilicalSocket = 0;
 
             if (gOptions.mTether)
             {
@@ -685,7 +681,7 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
     struct UmbilicalMonitorPoll monitorpoll =
     {
-        .mType       = &sUmbilicalMonitorType,
+        .mType       = sUmbilicalMonitorType,
         .mCycleLimit = cycleLimit,
         .mParentPid  = aParentPid,
 
@@ -1138,7 +1134,7 @@ flushTetherThread(struct TetherThread *self)
 {
     debug(0, "flushing tether thread");
 
-    if (watchProcessClock(0, Duration(NanoSeconds(0))))
+    if (watchProcessClock(VoidMethod(0, 0), Duration(NanoSeconds(0))))
         terminate(
             errno,
             "Unable to configure synchronisation clock");
@@ -1208,7 +1204,7 @@ closeTetherThread(struct TetherThread *self)
  * termination.
  */
 
-static const struct Type sChildMonitorType = { "ChildMonitor" };
+static const struct Type * const sChildMonitorType = TYPE("ChildMonitor");
 
 struct ChildSignalPlan
 {
@@ -1233,7 +1229,7 @@ struct ChildMonitor
 
     struct
     {
-        struct Pipe *mPipe;
+        struct File *mFile;
     } mUmbilical;
 
     struct
@@ -1263,7 +1259,7 @@ pollFdChild(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     /* There is a race here between receiving the indication that the
      * child process has terminated, the other watchdog actions
@@ -1316,7 +1312,7 @@ pollFdTimerChild(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     debug(0, "disconnecting tether thread");
 
@@ -1361,7 +1357,7 @@ pollFdTimerTermination(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     /* Remember that this function races termination of the child process.
      * The child process might have terminated by the time this function
@@ -1426,7 +1422,7 @@ pollFdTimerUmbilical(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     /* Remember that the umbilical timer will race with child termination.
      * By the time this function runs, the child might already have
@@ -1438,7 +1434,7 @@ pollFdTimerUmbilical(void                        *self_,
     char buf = 0;
 
     ssize_t wrlen = write(
-        self->mUmbilical.mPipe->mWrFile->mFd, &buf, sizeof(buf));
+        self->mUmbilical.mFile->mFd, &buf, sizeof(buf));
 
     if (-1 != wrlen)
         debug(1, "wrote to umbilical result %zd", wrlen);
@@ -1497,7 +1493,7 @@ pollFdTether(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     /* The tether thread control pipe will be closed when the tether
      * is shut down between the child process and watchdog, */
@@ -1512,7 +1508,7 @@ pollFdTimerTether(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     /* The tether timer is only active if there is a tether and it was
      * configured with a timeout. The timeout expires if there was
@@ -1595,7 +1591,7 @@ pollFdTimerOrphan(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     /* Using PR_SET_PDEATHSIG is very attractive however the detailed
      * discussion at the end of this thread is important:
@@ -1625,7 +1621,7 @@ pollfdcompletion(void                     *self_,
 {
     struct ChildMonitor *self = self_;
 
-    ensure(&sChildMonitorType == self->mType);
+    ensure(sChildMonitorType == self->mType);
 
     /* Wait until the child process has terminated, and the tether thread
      * has completed. */
@@ -1637,7 +1633,7 @@ pollfdcompletion(void                     *self_,
 
 /* -------------------------------------------------------------------------- */
 static void
-monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
+monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
 {
     debug(0, "start monitoring child");
 
@@ -1682,7 +1678,7 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 
     struct ChildMonitor childmonitor =
     {
-        .mType = &sChildMonitorType,
+        .mType = sChildMonitorType,
 
         .mChildPid = self->mPid,
 
@@ -1698,7 +1694,7 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 
         .mUmbilical =
         {
-            .mPipe = aUmbilicalPipe,
+            .mFile = aUmbilicalFile,
         },
 
         .mTether =
@@ -1727,7 +1723,7 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 
             [POLL_FD_UMBILICAL] =
             {
-                .fd     = aUmbilicalPipe->mWrFile->mFd,
+                .fd     = aUmbilicalFile->mFd,
                 .events = POLL_DISCONNECTEVENT,
             },
 
@@ -1995,16 +1991,16 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create stdin, stdout, stderr filler");
 
-    struct Pipe umbilicalPipe;
-    if (createPipe(&umbilicalPipe, O_CLOEXEC | O_NONBLOCK))
+    struct SocketPair umbilicalSocket;
+    if (createSocketPair(&umbilicalSocket))
         terminate(
             errno,
-            "Unable to create umbilical pipe");
+            "Unable to create umbilical socket");
 
     struct ChildProcess childProcess;
     createChild(&childProcess);
 
-    if (watchProcessChildren(0, reapChild, &childProcess))
+    if (watchProcessChildren(VoidMethod(reapChild, &childProcess)))
         terminate(
             errno,
             "Unable to add watch on child process termination");
@@ -2016,7 +2012,7 @@ cmdRunCommand(char **aCmd)
             "Unable to create sync pipe");
 
     if (forkChild(
-            &childProcess, aCmd, &stdFdFiller, &syncPipe, &umbilicalPipe))
+            &childProcess, aCmd, &stdFdFiller, &syncPipe, &umbilicalSocket))
         terminate(
             errno,
             "Unable to fork child");
@@ -2026,7 +2022,7 @@ cmdRunCommand(char **aCmd)
      * the watchdog to terminate, and the new child process will
      * notice via its synchronisation pipe. */
 
-    if (watchProcessSignals(0, killChild, &childProcess))
+    if (watchProcessSignals(VoidIntMethod(killChild, &childProcess)))
         terminate(
             errno,
             "Unable to add watch on signals");
@@ -2163,15 +2159,17 @@ cmdRunCommand(char **aCmd)
         else
             ensure(watchdogPgid == getpgid(0));
 
-        if (STDIN_FILENO != dup2(umbilicalPipe.mRdFile->mFd, STDIN_FILENO))
+        if (STDIN_FILENO !=
+            dup2(umbilicalSocket.mChildFile->mFd, STDIN_FILENO))
             terminate(
                 errno,
-                "Unable to dup %d to stdin", umbilicalPipe.mRdFile->mFd);
+                "Unable to dup %d to stdin", umbilicalSocket.mChildFile->mFd);
 
-        if (nullifyFd(STDOUT_FILENO))
+        if (STDOUT_FILENO != dup2(
+                umbilicalSocket.mChildFile->mFd, STDOUT_FILENO))
             terminate(
                 errno,
-                "Unable to nullify stdout");
+                "Unable to dup %d to stdout", umbilicalSocket.mChildFile->mFd);
 
         if (pidFile)
         {
@@ -2193,19 +2191,19 @@ cmdRunCommand(char **aCmd)
                 errno,
                 "Unable to close sync pipe");
 
-        if (closePipe(&umbilicalPipe))
+        if (closeSocketPair(&umbilicalSocket))
             terminate(
                 errno,
-                "Unable to close umbilical pipe");
+                "Unable to close umbilical socket");
 
         monitorChildUmbilical(&childProcess, watchdogPid);
         _exit(EXIT_FAILURE);
     }
 
-    if (closePipeReader(&umbilicalPipe))
+    if (closeSocketPairChild(&umbilicalSocket))
         terminate(
             errno,
-            "Unable to close umbilical pipe reader");
+            "Unable to close umbilical child socket");
 
     if (gOptions.mIdentify)
         RACE
@@ -2252,7 +2250,7 @@ cmdRunCommand(char **aCmd)
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(&childProcess, &umbilicalPipe);
+    monitorChild(&childProcess, umbilicalSocket.mParentFile);
 
     if (unwatchProcessSignals())
         terminate(
@@ -2317,10 +2315,10 @@ cmdRunCommand(char **aCmd)
 
     debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
 
-    if (closePipe(&umbilicalPipe))
+    if (closeSocketPair(&umbilicalSocket))
         terminate(
             errno,
-            "Unable to close umbilical pipe");
+            "Unable to close umbilical socket");
 
     if (resetProcessSigPipe())
         terminate(

@@ -152,36 +152,6 @@ resetProcessSigPipe(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-writeSignal_(int aFd, char aSigNum)
-{
-    int rc = -1;
-
-    if (-1 == aFd)
-    {
-        errno = EBADF;
-        goto Finally;
-    }
-
-    ssize_t len = write(aFd, &aSigNum, 1);
-
-    if (-1 == len)
-    {
-        if (EWOULDBLOCK == errno)
-            warn(errno, "Dropped signal %d", aSigNum);
-        goto Finally;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 int
 pushProcessSigMask(
     struct PushedProcessSigMask *self,
@@ -246,47 +216,22 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int    sDeadChildRdFd_ = -1;
-static int    sDeadChildWrFd_ = -1;
-static void (*sDeadChildAction_)(void *aDeadChildObserver);
-static void  *sDeadChildObserver_;
+static struct VoidMethod sDeadChildMethod;
 
 static void
 deadChild_(int aSigNum)
 {
-    if (sDeadChildAction_)
+    if ( ! ownVoidMethodNil(sDeadChildMethod))
     {
         debug(1, "observed dead child");
-        sDeadChildAction_(sDeadChildObserver_);
-    }
-
-    int deadChildRdFd = sDeadChildRdFd_;
-    int deadChildWrFd = sDeadChildWrFd_;
-
-    if (-1 != deadChildWrFd)
-    {
-        debug(1,
-              "queued dead child to fd %d from fd %d",
-              deadChildRdFd, deadChildWrFd);
-
-        if (writeSignal_(deadChildWrFd, aSigNum))
-        {
-            if (EBADF != errno && EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to indicate dead child to fd %d",
-                    deadChildWrFd);
-        }
+        callVoidMethod(sDeadChildMethod);
     }
 }
 
 static int
 resetProcessChildrenWatch_(void)
 {
-    sDeadChildWrFd_     = -1;
-    sDeadChildRdFd_     = -1;
-    sDeadChildAction_   = 0;
-    sDeadChildObserver_ = 0;
+    sDeadChildMethod = VoidMethod(0, 0);
 
     struct sigaction childAction =
     {
@@ -297,29 +242,9 @@ resetProcessChildrenWatch_(void)
 }
 
 int
-watchProcessChildren(const struct Pipe *aTermPipe,
-                     void               aChildAction(void *aChildObserver),
-                     void              *aChildObserver)
+watchProcessChildren(struct VoidMethod aMethod)
 {
     int rc = -1;
-
-    /* It is ok to mark the termination pipe non-blocking because this
-     * file descriptor is not shared with any other process. */
-
-    if (aTermPipe)
-    {
-        if (nonblockingFd(sDeadChildRdFd_))
-        {
-            errno = EINVAL;
-            goto Finally;
-        }
-
-        if (nonblockingFd(sDeadChildWrFd_))
-        {
-            errno = EINVAL;
-            goto Finally;
-        }
-    }
 
     struct sigaction childAction =
     {
@@ -330,14 +255,7 @@ watchProcessChildren(const struct Pipe *aTermPipe,
     if (sigaction(SIGCHLD, &childAction, 0))
         goto Finally;
 
-    if (aTermPipe)
-    {
-        sDeadChildRdFd_ = aTermPipe->mRdFile->mFd;
-        sDeadChildWrFd_ = aTermPipe->mWrFile->mFd;
-    }
-
-    sDeadChildAction_   = aChildAction;
-    sDeadChildObserver_ = aChildObserver;
+    sDeadChildMethod = aMethod;
 
     rc = 0;
 
@@ -355,10 +273,9 @@ unwatchProcessChildren(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct Duration  sClockTickPeriod;
-static int              sClockTickRdFd_ = -1;
-static int              sClockTickWrFd_ = -1;
-static struct sigaction sClockTickSigAction =
+static struct Duration   sClockTickPeriod;
+static struct VoidMethod sClockMethod;
+static struct sigaction  sClockTickSigAction =
 {
     .sa_handler = SIG_ERR,
 };
@@ -366,25 +283,12 @@ static struct sigaction sClockTickSigAction =
 static void
 clockTick_(int aSigNum)
 {
-    int clockTickRdFd = sClockTickRdFd_;
-    int clockTickWrFd = sClockTickWrFd_;
-
-    if (-1 == clockTickWrFd)
+    if (ownVoidMethodNil(sClockMethod))
         debug(1, "received clock tick");
     else
     {
-        debug(1,
-              "queued clock tick to fd %d from fd %d",
-              clockTickRdFd, clockTickWrFd);
-
-        if (writeSignal_(clockTickWrFd, aSigNum))
-        {
-            if (EBADF != errno && EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to indicate clock tick to fd %d",
-                    clockTickWrFd);
-        }
+        debug(1, "observed clock tick");
+        callVoidMethod(sClockMethod);
     }
 }
 
@@ -396,8 +300,7 @@ resetProcessClockWatch_(void)
     if (SIG_ERR != sClockTickSigAction.sa_handler ||
         (sClockTickSigAction.sa_flags & SA_SIGINFO))
     {
-        sClockTickWrFd_ = -1;
-        sClockTickRdFd_ = -1;
+        sClockMethod = VoidMethod(0, 0);
 
         struct itimerval disableClock =
         {
@@ -427,8 +330,8 @@ Finally:
 }
 
 int
-watchProcessClock(const struct Pipe *aClockPipe,
-                  struct Duration    aClockPeriod)
+watchProcessClock(struct VoidMethod aMethod,
+                  struct Duration   aClockPeriod)
 {
     int rc = -1;
 
@@ -444,24 +347,6 @@ watchProcessClock(const struct Pipe *aClockPipe,
     if (sigaction(SIGALRM, &clockAction, &prevAction_))
         goto Finally;
     prevAction = &prevAction_;
-
-    /* It is ok to mark the clock pipe non-blocking because this
-     * file descriptor is not shared with any other process. */
-
-    if (aClockPipe)
-    {
-        if (nonblockingFd(sClockTickRdFd_))
-        {
-            errno = EINVAL;
-            goto Finally;
-        }
-
-        if (nonblockingFd(sClockTickWrFd_))
-        {
-            errno = EINVAL;
-            goto Finally;
-        }
-    }
 
     /* Make sure that there are no timers already running. The
      * interface only supports one clock instance. */
@@ -483,11 +368,7 @@ watchProcessClock(const struct Pipe *aClockPipe,
     if (setitimer(ITIMER_REAL, &clockTimer, 0))
         goto Finally;
 
-    if (aClockPipe)
-    {
-        sClockTickRdFd_ = aClockPipe->mRdFile->mFd;
-        sClockTickWrFd_ = aClockPipe->mWrFile->mFd;
-    }
+    sClockMethod = aMethod;
 
     sClockTickSigAction = *prevAction;
     sClockTickPeriod    = aClockPeriod;
@@ -518,16 +399,13 @@ unwatchProcessClock(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int    sSignalRdFd_ = -1;
-static int    sSignalWrFd_ = -1;
-static void (*sSignalAction_)(void *aSigObserver, int aSigNum);
-static void  *sSignalObserver_;
+static struct VoidIntMethod sSignalMethod;
 
 static struct SignalWatch {
     int              mSigNum;
     struct sigaction mSigAction;
     bool             mWatched;
-} sWatchedSignals_[] =
+} sWatchedSignals[] =
 {
     { SIGHUP },
     { SIGINT },
@@ -538,57 +416,24 @@ static struct SignalWatch {
 static void
 caughtSignal_(int aSigNum)
 {
-    if (sSignalAction_)
+    if ( ! ownVoidIntMethodNil(sSignalMethod))
     {
         debug(1, "observed signal %d", aSigNum);
-        sSignalAction_(sSignalObserver_, aSigNum);
-    }
-
-    int signalRdFd = sSignalRdFd_;
-    int signalWrFd = sSignalWrFd_;
-
-    if (-1 != signalWrFd)
-    {
-        debug(1,
-              "queued signal %d on fd %d to fd %d",
-              aSigNum,
-              signalWrFd,
-              signalRdFd);
-
-        if (writeSignal_(signalWrFd, aSigNum))
-        {
-            if (EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to queue signal %d on fd %d to fd %d",
-                    aSigNum, signalWrFd, signalRdFd);
-        }
+        callVoidIntMethod(sSignalMethod, aSigNum);
     }
 }
 
 int
-watchProcessSignals(const struct Pipe *aSigPipe,
-                    void               aSigAction(void *aSigObserver,
-                                                  int   aSigNum),
-                    void              *aSigObserver)
+watchProcessSignals(struct VoidIntMethod aMethod)
 {
     int rc = -1;
 
     /* It is ok to mark the signal pipe non-blocking because this
      * file descriptor is not shared with any other process. */
 
-    if (aSigPipe)
+    for (unsigned ix = 0; NUMBEROF(sWatchedSignals) > ix; ++ix)
     {
-        if (nonblockingFd(aSigPipe->mRdFile->mFd))
-            goto Finally;
-
-        if (nonblockingFd(aSigPipe->mWrFile->mFd))
-            goto Finally;
-    }
-
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
-    {
-        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+        struct SignalWatch *watchedSig = sWatchedSignals + ix;
 
         struct sigaction watchAction =
         {
@@ -604,14 +449,7 @@ watchProcessSignals(const struct Pipe *aSigPipe,
         watchedSig->mWatched = true;
     }
 
-    if (aSigPipe)
-    {
-        sSignalRdFd_ = aSigPipe->mRdFile->mFd;
-        sSignalWrFd_ = aSigPipe->mWrFile->mFd;
-    }
-
-    sSignalObserver_ = aSigObserver;
-    sSignalAction_   = aSigAction;
+    sSignalMethod = aMethod;
 
     rc = 0;
 
@@ -621,9 +459,9 @@ Finally:
     ({
         if (rc)
         {
-            for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+            for (unsigned ix = 0; NUMBEROF(sWatchedSignals) > ix; ++ix)
             {
-                struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+                struct SignalWatch *watchedSig = sWatchedSignals + ix;
 
                 if (watchedSig->mWatched)
                 {
@@ -646,9 +484,9 @@ resetProcessSignalsWatch_(void)
     int rc  = 0;
     int err = 0;
 
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals_) > ix; ++ix)
+    for (unsigned ix = 0; NUMBEROF(sWatchedSignals) > ix; ++ix)
     {
-        struct SignalWatch *watchedSig = sWatchedSignals_ + ix;
+        struct SignalWatch *watchedSig = sWatchedSignals + ix;
 
         if (watchedSig->mWatched)
         {
@@ -667,9 +505,7 @@ resetProcessSignalsWatch_(void)
         }
     }
 
-    sSignalWrFd_     = -1;
-    sSignalRdFd_     = -1;
-    sSignalObserver_ = 0;
+    sSignalMethod = VoidIntMethod(0, 0);
 
     if (rc)
         errno = err;

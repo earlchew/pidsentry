@@ -1004,7 +1004,7 @@ flushTetherThread(struct TetherThread *self)
 {
     debug(0, "flushing tether thread");
 
-    if (watchProcessClock(0, Duration(NanoSeconds(0))))
+    if (watchProcessClock(VoidMethod(0, 0), Duration(NanoSeconds(0))))
         terminate(
             errno,
             "Unable to configure synchronisation clock");
@@ -1999,12 +1999,12 @@ cmdRunCommand(char **aCmd)
     struct ChildProcess childProcess;
     createChild(&childProcess);
 
-    if (watchProcessChildren(0, reapChild, &childProcess))
+    if (watchProcessChildren(VoidMethod(reapChild, &childProcess)))
         terminate(
             errno,
             "Unable to add watch on child process termination");
 
-    if (watchProcessSignals(0, killChild, &childProcess))
+    if (watchProcessSignals(VoidIntMethod(killChild, &childProcess)))
         terminate(
             errno,
             "Unable to add watch on signals");
