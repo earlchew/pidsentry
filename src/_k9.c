@@ -642,6 +642,38 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
     closeChildFiles(self);
 
+    /* Use a blocking read synchronise with the watchdog to avoid timing
+     * races. The watchdog will write to the umbilical when it is ready
+     * to start timing. */
+
+    debug(0, "synchronising umbilical");
+
+    char buf[1];
+
+    if (-1 == waitFdReadReady(STDIN_FILENO, 0))
+        terminate(
+            errno,
+            "Unable to wait for umbilical synchronisation");
+
+    switch (readFd(STDIN_FILENO, buf, sizeof(buf)))
+    {
+    default:
+    case -1:
+        terminate(
+            errno,
+            "Unable to synchronise umbilical");
+        break;
+
+    case 0:
+        _exit(EXIT_FAILURE);
+        break;
+
+    case sizeof(buf):
+        break;
+    }
+
+    debug(0, "synchronised umbilical");
+
     /* The umbilical process is not the parent of the child process being
      * watched, so that there is no reliable way to send a signal to that
      * process alone because the pid might be recycled by the time the signal
@@ -1317,7 +1349,7 @@ activateFdTimerTermination(struct ChildMonitor         *self,
         terminationTimer->mPeriod =
             self->mTermination.mSignalPeriod;
 
-        lapTimeSkip(
+        lapTimeTrigger(
             &terminationTimer->mSince, terminationTimer->mPeriod, aPollTime);
     }
 }
@@ -1418,7 +1450,11 @@ pollFdTimerUmbilical(void                        *self_,
             terminate(errno, "Unable to write to umbilical");
 
         case EPIPE:
+            debug(1, "writing to umbilical closed");
+            break;
+
         case EWOULDBLOCK:
+            debug(1, "writing to umbilical blocked");
             break;
 
         case EINTR:
@@ -1429,8 +1465,8 @@ pollFdTimerUmbilical(void                        *self_,
 
             debug(1, "umbilical write interrupted");
 
-            lapTimeSkip(&umbilicalTimer->mSince,
-                        umbilicalTimer->mPeriod, aPollTime);
+            lapTimeTrigger(&umbilicalTimer->mSince,
+                           umbilicalTimer->mPeriod, aPollTime);
             break;
         }
     }
@@ -1765,6 +1801,13 @@ monitorChild(struct ChildProcess *self, struct Pipe *aUmbilicalPipe)
 
     if ( ! gOptions.mTether)
         disconnectPollFdTether(&childmonitor);
+
+    /* Make the umbilical timer expire immediately so that the umbilical
+     * process is activated to monitor the watchdog. */
+
+    lapTimeTrigger(
+        &childmonitor.mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mSince,
+        childmonitor.mPollFdTimerActions[POLL_FD_TIMER_UMBILICAL].mPeriod, 0);
 
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
      * open file, rather than of each file descriptor. Since stdin and

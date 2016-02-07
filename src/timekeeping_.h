@@ -104,9 +104,9 @@ lapTimeRestart(struct EventClockTime       *self,
                const struct EventClockTime *aTime);
 
 void
-lapTimeSkip(struct EventClockTime       *self,
-            struct Duration              aPeriod,
-            const struct EventClockTime *aTime);
+lapTimeTrigger(struct EventClockTime       *self,
+               struct Duration              aPeriod,
+               const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
 bool

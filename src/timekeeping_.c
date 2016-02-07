@@ -304,9 +304,9 @@ deadlineTimeExpired(
 
 /* -------------------------------------------------------------------------- */
 void
-lapTimeSkip(struct EventClockTime       *self,
-            struct Duration              aPeriod,
-            const struct EventClockTime *aTime)
+lapTimeTrigger(struct EventClockTime       *self,
+               struct Duration              aPeriod,
+               const struct EventClockTime *aTime)
 {
     self->eventclock = NanoSeconds(
         (aTime ? *aTime

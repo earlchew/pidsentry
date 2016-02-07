@@ -1329,7 +1329,7 @@ pollFdUmbilical(void                        *self_,
                 Duration(NanoSeconds(NSECS(Seconds(
                     gOptions.mTimeout.mUmbilical_s)).ns / 2));
 
-            lapTimeSkip(
+            lapTimeTrigger(
                 &umbilicalTimer->mSince,
                 umbilicalTimer->mPeriod,
                 aPollTime);
@@ -1396,8 +1396,8 @@ pollFdTimerUmbilical(void                        *self_,
 
             debug(1, "umbilical write interrupted");
 
-            lapTimeSkip(&umbilicalTimer->mSince,
-                        umbilicalTimer->mPeriod, aPollTime);
+            lapTimeTrigger(&umbilicalTimer->mSince,
+                           umbilicalTimer->mPeriod, aPollTime);
             break;
 
         case EPIPE:
@@ -1437,7 +1437,7 @@ activateFdTimerTermination(struct ChildMonitor         *self,
         terminationTimer->mPeriod =
             self->mTermination.mSignalPeriod;
 
-        lapTimeSkip(
+        lapTimeTrigger(
             &terminationTimer->mSince, terminationTimer->mPeriod, aPollTime);
     }
 }
