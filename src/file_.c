@@ -31,14 +31,12 @@
 #include "macros_.h"
 #include "error_.h"
 #include "fd_.h"
-#include "timekeeping_.h"
+#include "process_.h"
 #include "test_.h"
 
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-
-#include <sys/poll.h>
 
 #include <valgrind/valgrind.h>
 
@@ -366,102 +364,19 @@ listenFileSocket(struct File *self, unsigned aQueueLen)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-waitFileReady_(const struct File     *self,
-               unsigned               aPollMask,
-               const struct Duration *aTimeout)
-{
-    int rc = -1;
-
-    struct pollfd pollfd[1] =
-    {
-        {
-            .fd      = self->mFd,
-            .events  = aPollMask,
-            .revents = 0,
-        },
-    };
-
-    struct EventClockTime since = EVENTCLOCKTIME_INIT;
-    struct Duration       remaining;
-
-    const struct Duration timeout =
-        aTimeout ? *aTimeout : Duration(NanoSeconds(0));
-
-    while (1)
-    {
-        struct EventClockTime tm = eventclockTime();
-
-        RACE
-        ({
-            /* In case the process is stopped after the time is
-             * latched, check once more if the fds are ready
-             * before checking the deadline. */
-
-            int events = poll(pollfd, NUMBEROF(pollfd), 0);
-            if (-1 == events)
-                goto Finally;
-
-            if (events)
-                break;
-        });
-
-        int timeout_ms;
-
-        if ( ! aTimeout)
-            timeout_ms = -1;
-        else
-        {
-            if (deadlineTimeExpired(&since, timeout, &remaining, &tm))
-                break;
-
-            uint64_t remaining_ms = MSECS(remaining.duration).ms;
-
-            timeout_ms = remaining_ms;
-
-            if (0 > timeout_ms || timeout_ms != remaining_ms)
-                timeout_ms = INT_MAX;
-        }
-
-        switch (poll(pollfd, NUMBEROF(pollfd), timeout_ms))
-        {
-        case -1:
-            if (EINTR == errno)
-                continue;
-            goto Finally;
-
-        case 0:
-            pollfd[0].revents = 0;
-            continue;
-
-        default:
-            break;
-        }
-
-        break;
-    }
-
-    rc = !! (pollfd[0].revents & aPollMask);
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
 int
 waitFileWriteReady(const struct File     *self,
                    const struct Duration *aTimeout)
 {
-    return waitFileReady_(self, POLLOUT, aTimeout);
+    return waitFdWriteReady(self->mFd, aTimeout);
 }
 
+/* -------------------------------------------------------------------------- */
 int
 waitFileReadReady(const struct File     *self,
                   const struct Duration *aTimeout)
 {
-    return waitFileReady_(self, POLLPRI | POLLIN, aTimeout);
+    return waitFdReadReady(self->mFd, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */

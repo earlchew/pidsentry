@@ -38,6 +38,8 @@
 extern "C" {
 #endif
 
+struct Duration;
+
 /* -------------------------------------------------------------------------- */
 int
 closeFd(int *aFd);
@@ -80,6 +82,13 @@ lockFd(int aFd, int aType);
 
 int
 unlockFd(int aFd);
+
+/* -------------------------------------------------------------------------- */
+int
+waitFdWriteReady(int aFd, const struct Duration *aTimeout);
+
+int
+waitFdReadReady(int aFd, const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */
 

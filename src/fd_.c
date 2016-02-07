@@ -30,6 +30,7 @@
 #include "fd_.h"
 #include "macros_.h"
 #include "error_.h"
+#include "timekeeping_.h"
 #include "test_.h"
 
 #include <errno.h>
@@ -38,6 +39,7 @@
 
 #include <sys/file.h>
 #include <sys/resource.h>
+#include <sys/poll.h>
 
 #include <valgrind/valgrind.h>
 
@@ -350,6 +352,101 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
 Finally:
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
+{
+    int rc = -1;
+
+    struct pollfd pollfd[1] =
+    {
+        {
+            .fd      = aFd,
+            .events  = aPollMask,
+            .revents = 0,
+        },
+    };
+
+    struct EventClockTime since = EVENTCLOCKTIME_INIT;
+    struct Duration       remaining;
+
+    const struct Duration timeout =
+        aTimeout ? *aTimeout : Duration(NanoSeconds(0));
+
+    while (1)
+    {
+        struct EventClockTime tm = eventclockTime();
+
+        RACE
+        ({
+            /* In case the process is stopped after the time is
+             * latched, check once more if the fds are ready
+             * before checking the deadline. */
+
+            int events = poll(pollfd, NUMBEROF(pollfd), 0);
+            if (-1 == events)
+                goto Finally;
+
+            if (events)
+                break;
+        });
+
+        int timeout_ms;
+
+        if ( ! aTimeout)
+            timeout_ms = -1;
+        else
+        {
+            if (deadlineTimeExpired(&since, timeout, &remaining, &tm))
+                break;
+
+            uint64_t remaining_ms = MSECS(remaining.duration).ms;
+
+            timeout_ms = remaining_ms;
+
+            if (0 > timeout_ms || timeout_ms != remaining_ms)
+                timeout_ms = INT_MAX;
+        }
+
+        switch (poll(pollfd, NUMBEROF(pollfd), timeout_ms))
+        {
+        case -1:
+            if (EINTR == errno)
+                continue;
+            goto Finally;
+
+        case 0:
+            pollfd[0].revents = 0;
+            continue;
+
+        default:
+            break;
+        }
+
+        break;
+    }
+
+    rc = !! (pollfd[0].revents & aPollMask);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+waitFdWriteReady(int aFd, const struct Duration *aTimeout)
+{
+    return waitFdReady_(aFd, POLLOUT, aTimeout);
+}
+
+int
+waitFdReadReady(int aFd, const struct Duration *aTimeout)
+{
+    return waitFdReady_(aFd, POLLPRI | POLLIN, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
