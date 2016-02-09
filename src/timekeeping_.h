@@ -62,12 +62,11 @@ struct BootClockTime
 
 struct PushedIntervalTimer
 {
-    int                         mType;
-    int                         mSignal;
-    struct MonotonicTime        mMark;
-    struct PushedProcessSigMask mSigMask;
-    struct sigaction            mAction;
-    struct itimerval            mTimer;
+    int                  mType;
+    int                  mSignal;
+    struct MonotonicTime mMark;
+    struct sigaction     mAction;
+    struct itimerval     mTimer;
 };
 
 /* -------------------------------------------------------------------------- */

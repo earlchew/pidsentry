@@ -67,6 +67,7 @@
  * Count SIGCONT
  * Handle SIGCONT for mutex timeouts
  * Handle SIGCHLD continue/stopped
+ * Ensure FINALLY({}) terminates on error, checking all return codes
  */
 
 /* -------------------------------------------------------------------------- */
@@ -996,14 +997,12 @@ tetherThreadMain_(void *self_)
      * these signals are not delivered until the thread is
      * flushed after the child process has terminated. */
 
-    struct PushedProcessSigMask pushedSigMask;
+    struct ThreadSigMask threadSigMask;
 
     const int sigList[] = { SIGALRM, 0 };
 
-    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskUnblock, sigList))
-        terminate(
-            errno,
-            "Unable to push process signal mask");
+    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskUnblock, sigList))
+        terminate(errno, "Unable to push thread signal mask");
 
     struct TetherPoll tetherpoll =
     {
@@ -1054,10 +1053,8 @@ tetherThreadMain_(void *self_)
             errno,
             "Unable to close polling loop");
 
-    if (popProcessSigMask(&pushedSigMask))
-        terminate(
-            errno,
-            "Unable to push process signal mask");
+    if (popThreadSigMask(&threadSigMask))
+        terminate(errno, "Unable to push process signal mask");
 
     /* Close the input file descriptor so that there is a chance
      * to propagte SIGPIPE to the child process. */
@@ -1112,15 +1109,15 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
     self->mFlushed         = false;
 
     {
-        struct PushedProcessSigMask pushedSigMask;
+        struct ThreadSigMask threadSigMask;
 
-        if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
-            terminate(errno, "Unable to push process signal mask");
+        if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
+            terminate(errno, "Unable to push thread signal mask");
 
         createThread(&self->mThread, 0, tetherThreadMain_, self);
 
-        if (popProcessSigMask(&pushedSigMask))
-            terminate(errno, "Unable to restore signal mask");
+        if (popThreadSigMask(&threadSigMask))
+            terminate(errno, "Unable to pop thread signal mask");
     }
 
     {

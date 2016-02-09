@@ -226,11 +226,11 @@ killChild(void *self_, int aSigNum)
 /* -------------------------------------------------------------------------- */
 static int
 forkChild(
-    struct ChildProcess          *self,
-    char                        **aCmd,
-    struct StdFdFiller           *aStdFdFiller,
-    struct Pipe                  *aSyncPipe,
-    struct PushedProcessSigMask  *aSigMask)
+    struct ChildProcess  *self,
+    char                **aCmd,
+    struct StdFdFiller   *aStdFdFiller,
+    struct Pipe          *aSyncPipe,
+    struct ThreadSigMask *aSigMask)
 {
     int rc = -1;
 
@@ -851,14 +851,14 @@ tetherThreadMain_(void *self_)
      * these signals are not delivered until the thread is
      * flushed after the child process has terminated. */
 
-    struct PushedProcessSigMask pushedSigMask;
+    struct ThreadSigMask threadSigMask;
 
     const int sigList[] = { SIGALRM, 0 };
 
-    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskUnblock, sigList))
+    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskUnblock, sigList))
         terminate(
             errno,
-            "Unable to push process signal mask");
+            "Unable to push thread signal mask");
 
     struct TetherPoll tetherpoll =
     {
@@ -909,10 +909,10 @@ tetherThreadMain_(void *self_)
             errno,
             "Unable to close polling loop");
 
-    if (popProcessSigMask(&pushedSigMask))
+    if (popThreadSigMask(&threadSigMask))
         terminate(
             errno,
-            "Unable to push process signal mask");
+            "Unable to push thread signal mask");
 
     /* Close the input file descriptor so that there is a chance
      * to propagte SIGPIPE to the child process. */
@@ -967,15 +967,15 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
     self->mFlushed         = false;
 
     {
-        struct PushedProcessSigMask pushedSigMask;
+        struct ThreadSigMask threadSigMask;
 
-        if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
-            terminate(errno, "Unable to push process signal mask");
+        if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
+            terminate(errno, "Unable to push thread signal mask");
 
         createThread(&self->mThread, 0, tetherThreadMain_, self);
 
-        if (popProcessSigMask(&pushedSigMask))
-            terminate(errno, "Unable to restore signal mask");
+        if (popThreadSigMask(&threadSigMask))
+            terminate(errno, "Unable to pop thread signal mask");
     }
 
     {
@@ -1974,11 +1974,11 @@ cmdRunCommand(char **aCmd)
 {
     ensure(aCmd);
 
-    struct PushedProcessSigMask pushedSigMask;
-    if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
+    struct ThreadSigMask threadSigMask;
+    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
         terminate(
             errno,
-            "Unable to push process signal mask");
+            "Unable to push thread signal mask");
 
     if (ignoreProcessSigPipe())
         terminate(
@@ -2029,10 +2029,8 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to create sync pipe");
 
-    if (forkChild(&childProcess, aCmd, &stdFdFiller, &syncPipe, &pushedSigMask))
-        terminate(
-            errno,
-            "Unable to fork child");
+    if (forkChild(&childProcess, aCmd, &stdFdFiller, &syncPipe, &threadSigMask))
+        terminate(errno, "Unable to fork child");
 
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
@@ -2058,10 +2056,8 @@ cmdRunCommand(char **aCmd)
         announceChild(pid, pidFile, pidFileName);
     }
 
-    if (popProcessSigMask(&pushedSigMask))
-        terminate(
-            errno,
-            "Unable to restore process signal mask");
+    if (popThreadSigMask(&threadSigMask))
+        terminate(errno, "Unable to pop thread signal mask");
 
     /* The creation time of the child process is earlier than
      * the creation time of the pidfile. With the pidfile created,

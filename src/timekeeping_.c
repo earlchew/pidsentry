@@ -437,13 +437,6 @@ pushIntervalTimer(struct PushedIntervalTimer *aPushedTimer,
         .sa_handler = pushIntervalTimer_,
     };
 
-    const int sigList[] = { SIGALRM, 0 };
-
-    if (pushProcessSigMask(&aPushedTimer->mSigMask,
-                           ProcessSigMaskUnblock,
-                           sigList))
-        goto Finally;
-
     if (sigaction(aPushedTimer->mSignal, &timerAction, &aPushedTimer->mAction))
         goto Finally;
 
@@ -476,9 +469,6 @@ popIntervalTimer(struct PushedIntervalTimer *aPushedTimer)
         goto Finally;
 
     if (sigaction(aPushedTimer->mSignal, &aPushedTimer->mAction, 0))
-        goto Finally;
-
-    if (popProcessSigMask(&aPushedTimer->mSigMask))
         goto Finally;
 
     struct itimerval shortenedInterval =

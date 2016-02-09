@@ -30,10 +30,23 @@
 #define THREAD_H
 
 #include <pthread.h>
+#include <signal.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct ThreadSigMask
+{
+    sigset_t mSigSet;
+};
+
+enum ThreadSigMaskAction
+{
+    ThreadSigMaskUnblock = -1,
+    ThreadSigMaskSet     =  0,
+    ThreadSigMaskBlock   = +1,
+};
 
 /* -------------------------------------------------------------------------- */
 void
@@ -83,6 +96,16 @@ destroyCond(pthread_cond_t *self);
 
 void
 waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);
+
+/* -------------------------------------------------------------------------- */
+int
+pushThreadSigMask(
+    struct ThreadSigMask    *self,
+    enum ThreadSigMaskAction aAction,
+    const int               *aSigList);
+
+int
+popThreadSigMask(struct ThreadSigMask *self);
 
 /* -------------------------------------------------------------------------- */
 

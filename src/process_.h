@@ -57,18 +57,6 @@ enum ForkProcessOption
     ForkProcessSetProcessGroup,
 };
 
-enum ProcessSigMaskAction
-{
-    ProcessSigMaskUnblock = -1,
-    ProcessSigMaskSet     = 0,
-    ProcessSigMaskBlock   = +1,
-};
-
-struct PushedProcessSigMask
-{
-    sigset_t mSigSet;
-};
-
 enum ProcessState
 {
     ProcessStateError    = -1,
@@ -106,16 +94,6 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid);
 /* -------------------------------------------------------------------------- */
 int
 purgeProcessOrphanedFds(void);
-
-/* -------------------------------------------------------------------------- */
-int
-pushProcessSigMask(
-    struct PushedProcessSigMask *self,
-    enum ProcessSigMaskAction    aAction,
-    const int                   *aSigList);
-
-int
-popProcessSigMask(struct PushedProcessSigMask *self);
 
 /* -------------------------------------------------------------------------- */
 int

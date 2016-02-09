@@ -30,6 +30,7 @@
 #include "thread_.h"
 #include "error_.h"
 #include "timekeeping_.h"
+#include "macros_.h"
 
 #include <errno.h>
 
@@ -135,9 +136,7 @@ lockMutex(pthread_mutex_t *self)
     if (errno = pthread_mutex_trylock(self))
     {
         if (EBUSY != errno)
-            terminate(
-                errno,
-                "Unable to lock mutex");
+            terminate(errno, "Unable to lock mutex");
 
         /* There is no way to configure the mutex to use a monotonic
          * clock to compute the deadline. Since the timeout is only
@@ -154,9 +153,7 @@ lockMutex(pthread_mutex_t *self)
                     tm.wallclock.ns + NSECS(Seconds(timeout_s * 60)).ns));
 
         if (errno = pthread_mutex_timedlock(self, &deadline))
-            terminate(
-                errno,
-                "Unable to lock mutex after %us", timeout_s);
+            terminate(errno, "Unable to lock mutex after %us", timeout_s);
     }
 }
 
@@ -164,10 +161,11 @@ lockMutex(pthread_mutex_t *self)
 void
 unlockMutex(pthread_mutex_t *self)
 {
-    if (errno = pthread_mutex_unlock(self))
-        terminate(
-            errno,
-            "Unable to lock mutex");
+    if (self)
+    {
+        if (errno = pthread_mutex_unlock(self))
+            terminate(errno, "Unable to unlock mutex");
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -246,6 +244,73 @@ waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex)
         terminate(
             errno,
             "Unable to wait for condition variable");
+}
+
+/* -------------------------------------------------------------------------- */
+int
+pushThreadSigMask(
+    struct ThreadSigMask     *self,
+    enum ThreadSigMaskAction  aAction,
+    const int                *aSigList)
+{
+    int rc = -1;
+
+    int maskAction;
+    switch (aAction)
+    {
+    default: errno = EINVAL; goto Finally;
+    case ThreadSigMaskUnblock: maskAction = SIG_UNBLOCK; break;
+    case ThreadSigMaskSet:     maskAction = SIG_SETMASK; break;
+    case ThreadSigMaskBlock:   maskAction = SIG_BLOCK;   break;
+    }
+
+    sigset_t sigset;
+
+    if ( ! aSigList)
+    {
+        if (sigfillset(&sigset))
+            goto Finally;
+    }
+    else
+    {
+        if (sigemptyset(&sigset))
+            goto Finally;
+        for (size_t ix = 0; aSigList[ix]; ++ix)
+        {
+            if (sigaddset(&sigset, aSigList[ix]))
+                goto Finally;
+        }
+    }
+
+    if (pthread_sigmask(maskAction, &sigset, &self->mSigSet))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+popThreadSigMask(struct ThreadSigMask *self)
+{
+    int rc = -1;
+
+    if (self)
+    {
+        if (pthread_sigmask(SIG_SETMASK, &self->mSigSet, 0))
+            goto Finally;
+    }
+
+    rc = 0;
+
+Finally:
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

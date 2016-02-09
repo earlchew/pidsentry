@@ -69,11 +69,11 @@ static struct ProcessLock     sProcessLock_[2];
 static struct ProcessLock    *sProcessLock[2];
 static unsigned               sActiveProcessLock;
 
-static unsigned                     sInit;
-static struct PushedProcessSigMask  sSigMask;
-static const char                  *sArg0;
-static const char                  *sProgramName;
-static struct MonotonicTime         sTimeBase;
+static unsigned              sInit;
+static struct ThreadSigMask  sSigMask;
+static const char           *sArg0;
+static const char           *sProgramName;
+static struct MonotonicTime  sTimeBase;
 
 /* -------------------------------------------------------------------------- */
 static sigset_t
@@ -149,70 +149,6 @@ int
 resetProcessSigPipe(void)
 {
     return resetProcessSigPipe_();
-}
-
-/* -------------------------------------------------------------------------- */
-int
-pushProcessSigMask(
-    struct PushedProcessSigMask *self,
-    enum ProcessSigMaskAction   aAction,
-    const int                  *aSigList)
-{
-    int rc = -1;
-
-    int maskAction;
-    switch (aAction)
-    {
-    default: errno = EINVAL; goto Finally;
-    case ProcessSigMaskUnblock: maskAction = SIG_UNBLOCK; break;
-    case ProcessSigMaskSet:     maskAction = SIG_SETMASK; break;
-    case ProcessSigMaskBlock:   maskAction = SIG_BLOCK;   break;
-    }
-
-    sigset_t sigset;
-
-    if ( ! aSigList)
-    {
-        if (sigfillset(&sigset))
-            goto Finally;
-    }
-    else
-    {
-        if (sigemptyset(&sigset))
-            goto Finally;
-        for (size_t ix = 0; aSigList[ix]; ++ix)
-        {
-            if (sigaddset(&sigset, aSigList[ix]))
-                goto Finally;
-        }
-    }
-
-    if (pthread_sigmask(maskAction, &sigset, &self->mSigSet))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-popProcessSigMask(struct PushedProcessSigMask *self)
-{
-    int rc = -1;
-
-    if (pthread_sigmask(SIG_SETMASK, &self->mSigSet, 0))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -825,7 +761,7 @@ Process_init(const char *aArg0)
 
         const int sigList[] = { SIGALRM, 0 };
 
-        if (pushProcessSigMask(&sSigMask, ProcessSigMaskBlock, sigList))
+        if (pushThreadSigMask(&sSigMask, ThreadSigMaskBlock, sigList))
             goto Finally;
 
         if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
@@ -1048,11 +984,12 @@ Finally:
 pid_t
 forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 {
-    pid_t       rc     = -1;
-    const char *err    = 0;
-    bool        locked = false;
+    pid_t rc = -1;
 
-    struct PushedProcessSigMask *pushedSigMask = 0;
+    const char      *err  = 0;
+    pthread_mutex_t *lock = 0;
+
+    struct ThreadSigMask *threadSigMask = 0;
 
     unsigned activeProcessLock   = 0 + sActiveProcessLock;
     unsigned inactiveProcessLock = 1 - activeProcessLock;
@@ -1073,11 +1010,11 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
      * handlers will not run in this process when the process mutex
      * is held. */
 
-    struct PushedProcessSigMask pushedSigMask_;
+    struct ThreadSigMask threadSigMask_;
 
-    if (pushProcessSigMask(&pushedSigMask_, ProcessSigMaskBlock, 0))
+    if (pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0))
         goto Finally;
-    pushedSigMask = &pushedSigMask_;
+    threadSigMask = &threadSigMask_;
 
     /* The child process needs separate process lock. It cannot share
      * the process lock with the parent because flock(2) distinguishes
@@ -1086,7 +1023,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
      * be able to synchronise its messages. */
 
     lockMutex(&sProcessMutex);
-    locked = true;
+    lock = &sProcessMutex;
 
     if (sProcessLock[sActiveProcessLock])
     {
@@ -1172,19 +1109,19 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
          * process mutex and the signal mask are restored, reinstate
          * the original process signal mask. */
 
-        locked = 0;
+        lock = 0;
         unlockMutex(&sProcessMutex);
 
-        pushedSigMask = 0;
-        if (popProcessSigMask(&pushedSigMask_))
+        threadSigMask = 0;
+        if (popThreadSigMask(&threadSigMask_))
         {
-            err = "Unable to pop process signal mask";
+            err = "Unable to pop thread signal mask";
             goto Finally;
         }
 
-        if (popProcessSigMask(&sSigMask))
+        if (popThreadSigMask(&sSigMask))
         {
-            err = "Unable to restore process signal mask";
+            err = "Unable to pop thread signal mask";
             goto Finally;
         }
 
@@ -1205,16 +1142,10 @@ Finally:
                 "Unable to close process lock");
         sProcessLock[inactiveProcessLock] = 0;
 
-        if (locked)
-            unlockMutex(&sProcessMutex);
+        unlockMutex(lock);
 
-        if (pushedSigMask)
-        {
-            if (popProcessSigMask(pushedSigMask))
-                terminate(
-                    errno,
-                    "Unable to pop process signal mask");
-        }
+        if (popThreadSigMask(threadSigMask))
+            terminate(errno, "Unable to pop thread signal mask");
 
         if (err)
             terminate(errcode, "%s", err);

@@ -974,19 +974,19 @@ watchUmbilical(struct UmbilicalThread *self,
              * is not a target of any signals intended for the process
              * being monitored. */
 
-            struct PushedProcessSigMask pushedSigMask;
+            struct ThreadSigMask threadSigMask;
 
-            if (pushProcessSigMask(&pushedSigMask, ProcessSigMaskBlock, 0))
+            if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
                 terminate(
                     errno,
-                    "Unable to push process signal mask");
+                    "Unable to push thread signal mask");
 
             createThread(&self->mThread, 0, umbilicalMain_, self);
 
-            if (popProcessSigMask(&pushedSigMask))
+            if (popThreadSigMask(&threadSigMask))
                 terminate(
                     errno,
-                    "Unable to pop process signal mask");
+                    "Unable to pop thread signal mask");
         }
 
         debug(0, "umbilical thread starting");
