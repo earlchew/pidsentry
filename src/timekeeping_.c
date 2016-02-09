@@ -165,7 +165,9 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd);
+        if (closeFd(&fd))
+            terminate(errno, "Unable to close file descriptor %d", fd);
+
         free(buf);
     });
 

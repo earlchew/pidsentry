@@ -78,7 +78,11 @@ Finally:
     FINALLY
     ({
         if (rc && -1 != self->mFd)
-            closeFd(&self->mFd);
+        {
+            if (closeFd(&self->mFd))
+                terminate(
+                    errno, "Unable to close file descriptor %d", self->mFd);
+        }
     });
 
     return rc;
@@ -190,7 +194,11 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closeFile(self);
+        {
+            if (closeFile(self))
+                terminate(
+                    errno, "Unable to close file descriptor %d", self->mFd);
+        }
     });
 
     return rc;

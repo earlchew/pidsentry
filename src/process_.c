@@ -376,9 +376,7 @@ Finally:
         {
             if (prevAction)
                 if (sigaction(SIGALRM, prevAction, 0))
-                    terminate(
-                        errno,
-                        "Unable to revert SIGALRM handler");
+                    terminate(errno, "Unable to revert SIGALRM handler");
         }
     });
 
@@ -458,9 +456,12 @@ Finally:
 
                 if (watchedSig->mWatched)
                 {
-                    sigaction(watchedSig->mSigNum,
-                              &watchedSig->mSigAction,
-                              0);
+                    if (sigaction(
+                            watchedSig->mSigNum, &watchedSig->mSigAction, 0))
+                        terminate(
+                            errno,
+                            "Unable to revert action for signal %d",
+                            watchedSig->mSigNum);
 
                     watchedSig->mWatched = false;
                 }
@@ -609,7 +610,10 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&statfd);
+        if (closeFd(&statfd))
+            terminate(
+                errno, "Unable to close file descriptor %d", statfd);
+
         free(statbuf);
     });
 
@@ -651,7 +655,12 @@ Finally:
     ({
         if (rc)
         {
-            closeFile(self->mFile);
+            if (closeFile(self->mFile))
+                terminate(
+                    errno,
+                    "Unable to close file descriptor %d",
+                    self->mFile->mFd);
+
             free(self->mFileName);
         }
     });
@@ -814,8 +823,9 @@ Finally:
 int
 acquireProcessAppLock(void)
 {
-    int  rc     = -1;
-    bool locked = false;
+    int rc = -1;
+
+    pthread_mutex_t *lock = 0;
 
     /* Blocking all signals means that signals are delivered in this
      * thread synchronously with respect to this function, so the
@@ -829,8 +839,7 @@ acquireProcessAppLock(void)
     if (pthread_sigmask(SIG_BLOCK, &filledset, &sProcessSigMask))
         goto Finally;
 
-    lockMutex(&sProcessMutex);
-    locked = true;
+    lock = lockMutex(&sProcessMutex);
 
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
@@ -844,10 +853,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            if (locked)
-                unlockMutex(&sProcessMutex);
-        }
+            unlockMutex(lock);
     });
 
     return rc;
@@ -1022,8 +1028,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
      * in the parent first so that the child process is guaranteed to
      * be able to synchronise its messages. */
 
-    lockMutex(&sProcessMutex);
-    lock = &sProcessMutex;
+    lock = lockMutex(&sProcessMutex);
 
     if (sProcessLock[sActiveProcessLock])
     {
@@ -1325,7 +1330,9 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd);
+        if (closeFd(&fd))
+            terminate(errno, "Unable to close file descriptor %d", fd);
+
         free(buf);
         free(signature);
     });

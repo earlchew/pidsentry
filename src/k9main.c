@@ -1254,7 +1254,10 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closeUnixSocket(peersocket);
+        {
+            if (closeUnixSocket(peersocket))
+                terminate(errno, "Unable to close peer socket");
+        }
     });
 
     return rc;

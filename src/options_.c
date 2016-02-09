@@ -222,7 +222,10 @@ Finally:
     FINALLY
     ({
         if (argList)
-            closeParseArgList(argList);
+        {
+            if (closeParseArgList(argList))
+                terminate(errno, "Unable to close argument list");
+        }
     });
 
     return rc;

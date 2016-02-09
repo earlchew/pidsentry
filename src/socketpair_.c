@@ -72,13 +72,23 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd[0]);
-        closeFd(&fd[1]);
+        if (closeFd(&fd[0]))
+            terminate(errno, "Unable to close file descriptor %d", fd[0]);
+        if (closeFd(&fd[1]))
+            terminate(errno, "Unable to close file descriptor %d", fd[1]);
 
         if (rc)
         {
-            closeFile(self->mParentFile);
-            closeFile(self->mChildFile);
+            if (closeFile(self->mParentFile))
+                terminate(
+                    errno,
+                    "Unable to close file descriptor %d",
+                    self->mParentFile->mFd);
+            if (closeFile(self->mChildFile))
+                terminate(
+                    errno,
+                    "Unable to close file descriptor %d",
+                    self->mChildFile->mFd);
         }
     });
 

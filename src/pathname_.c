@@ -29,6 +29,7 @@
 
 #include "pathname_.h"
 #include "macros_.h"
+#include "error_.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -90,7 +91,11 @@ Finally:
             free(self->mDirName_);
             free(self->mDirName);
 
-            closeFile(self->mDirFile);
+            if (closeFile(self->mDirFile))
+                terminate(
+                    errno,
+                    "Unable to close directory file descriptor %d",
+                    self->mDirFile->mFd);
         }
     });
 

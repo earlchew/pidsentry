@@ -75,7 +75,7 @@ createSharedMutex(pthread_mutex_t *self);
 void
 destroyMutex(pthread_mutex_t *self);
 
-void
+pthread_mutex_t *
 lockMutex(pthread_mutex_t *self);
 
 void

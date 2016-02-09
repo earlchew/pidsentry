@@ -195,7 +195,6 @@ readPidFile(const struct PidFile *self)
 {
     int    rc           = -1;
     pid_t  pid          = 0;
-    FILE  *pidfp        = 0;
     int    pidfd        = -1;
     char  *pidsignature = 0;
     char  *signature    = 0;
@@ -236,10 +235,10 @@ Finally:
 
     FINALLY
     ({
-        if (pidfp)
-            fclose(pidfp);
+        if (closeFd(&pidfd))
+            terminate(
+                errno, "Unable to close file descriptor %d", pidfd);
 
-        closeFd(&pidfd);
         free(pidsignature);
         free(signature);
     });
@@ -376,9 +375,7 @@ Finally:
         if (rc)
         {
             if (closePidFile_(self))
-                warn(
-                    errno,
-                    "Unable to close pidfile '%s'", aFileName);
+                terminate(errno, "Unable to close pidfile '%s'", aFileName);
         }
     });
 
@@ -409,9 +406,7 @@ Finally:
         if (rc)
         {
             if (closePidFile_(self))
-                warn(
-                    errno,
-                    "Unable to close pidfile '%s'", aFileName);
+                terminate(errno, "Unable to close pidfile '%s'", aFileName);
         }
     });
 

@@ -130,7 +130,7 @@ destroyMutex(pthread_mutex_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_mutex_t *
 lockMutex(pthread_mutex_t *self)
 {
     if (errno = pthread_mutex_trylock(self))
@@ -155,6 +155,8 @@ lockMutex(pthread_mutex_t *self)
         if (errno = pthread_mutex_timedlock(self, &deadline))
             terminate(errno, "Unable to lock mutex after %us", timeout_s);
     }
+
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */

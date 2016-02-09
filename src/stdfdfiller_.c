@@ -30,6 +30,7 @@
 #include "stdfdfiller_.h"
 #include "macros_.h"
 #include "fd_.h"
+#include "error_.h"
 
 #include <unistd.h>
 #include <errno.h>
@@ -83,14 +84,20 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd[0]);
-        closeFd(&fd[1]);
+        if (closeFd(&fd[0]))
+            terminate(errno, "Unable to close file descriptor %d", fd[0]);
+        if (closeFd(&fd[1]))
+            terminate(errno, "Unable to close file descriptor %d", fd[1]);
 
         if (rc)
         {
             for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
             {
-                closeFile(self->mFile[ix]);
+                if (closeFile(self->mFile[ix]))
+                    terminate(
+                        errno,
+                        "Unable to close file descriptor %d",
+                        self->mFile[ix]->mFd);
                 self->mFile[ix] = 0;
             }
         }
