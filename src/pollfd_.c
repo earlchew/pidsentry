@@ -91,10 +91,7 @@ createPollFd(struct PollFd            *self,
              struct PollFdTimerAction *aTimerActions,
              const char * const       *aTimerNames,
              size_t                    aNumTimerActions,
-             bool                      aCompletionQuery(
-                 void                     *aObserver,
-                 struct pollfd            *aPollFds,
-                 struct PollFdTimerAction *aPollFdTimer),
+             bool                      aCompletionQuery(void *aObserver),
              void                     *aObserver)
 {
     int rc = -1;
@@ -268,9 +265,7 @@ runPollFdLoop(struct PollFd *self)
 
                     if (self->mFdActions.mActions[ix].mAction)
                         self->mFdActions.mActions[ix].mAction(
-                            self->mObserver,
-                            self->mPoll,
-                            &polltm);
+                            self->mObserver, &polltm);
                 }
             }
 
@@ -309,15 +304,12 @@ runPollFdLoop(struct PollFd *self)
                         FMTs_MilliSeconds(
                             MSECS(timerAction->mPeriod.duration)));
 
-                    timerAction->mAction(self->mObserver, timerAction, &polltm);
+                    timerAction->mAction(self->mObserver, &polltm);
                 }
             }
         }
 
-    } while ( ! self->mCompletionQuery(
-                  self->mObserver,
-                  self->mPoll,
-                  self->mTimerActions.mActions));
+    } while ( ! self->mCompletionQuery(self->mObserver));
 
     rc = 0;
 

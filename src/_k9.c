@@ -66,6 +66,7 @@
  * Use struct Type for other poll loops
  * Handle SIGCHLD continue/stopped
  * Propagate signal termination from child to parent
+ * Use round trip ping for maintaining umbilical
  */
 
 /* -------------------------------------------------------------------------- */
@@ -160,7 +161,6 @@ struct UmbilicalMonitorPoll
 /* -------------------------------------------------------------------------- */
 static void
 pollFdMonitorUmbilical(void                        *self_,
-                       struct pollfd               *aPollFds_unused,
                        const struct EventClockTime *aPollTime)
 {
     struct UmbilicalMonitorPoll *self = self_;
@@ -209,7 +209,6 @@ pollFdMonitorUmbilical(void                        *self_,
 static void
 pollFdMonitorTimerUmbilical(
     void                        *self_,
-    struct PollFdTimerAction    *aPollFdTimerAction_unused,
     const struct EventClockTime *aPollTime)
 {
     struct UmbilicalMonitorPoll *self = self_;
@@ -238,9 +237,7 @@ pollFdMonitorTimerUmbilical(
 }
 
 static bool
-pollFdMonitorCompletion(void                     *self_,
-                        struct pollfd            *aPollFds_unused,
-                        struct PollFdTimerAction *aPollFdTimer_unused)
+pollFdMonitorCompletion(void *self_)
 {
     struct UmbilicalMonitorPoll *self = self_;
 
@@ -719,7 +716,7 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
             errno,
             "Unable to wait for umbilical synchronisation");
 
-    pollFdMonitorUmbilical(&monitorpoll, 0, 0);
+    pollFdMonitorUmbilical(&monitorpoll, 0);
 
     debug(0, "synchronised umbilical");
 
@@ -830,7 +827,6 @@ struct TetherPoll
 
 static void
 polltethercontrol(void                        *self_,
-                  struct pollfd               *aPollFds_unused,
                   const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
@@ -853,7 +849,6 @@ polltethercontrol(void                        *self_,
 
 static void
 polltetherdrain(void                        *self_,
-                struct pollfd               *aPollFds_unused,
                 const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
@@ -941,7 +936,6 @@ polltetherdrain(void                        *self_,
 
 static void
 polltetherdisconnected(void                        *self_,
-                       struct PollFdTimerAction    *aPollFdTimerAction_unused,
                        const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
@@ -956,9 +950,7 @@ polltetherdisconnected(void                        *self_,
 }
 
 static bool
-polltethercompletion(void                     *self_,
-                     struct pollfd            *aPollFds_unused,
-                     struct PollFdTimerAction *aPollFdTimer_unused)
+polltethercompletion(void *self_)
 {
     struct TetherPoll *self = self_;
 
@@ -1286,7 +1278,6 @@ activateFdTimerTermination(struct ChildMonitor         *self,
 
 static void
 pollFdTimerTermination(void                        *self_,
-                       struct PollFdTimerAction    *aPollFdTimerAction_unused,
                        const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
@@ -1326,7 +1317,6 @@ pollFdTimerTermination(void                        *self_,
 
 static void
 pollFdUmbilical(void                        *self_,
-                struct pollfd               *aPollFds_unused,
                 const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
@@ -1409,7 +1399,6 @@ pollFdContUmbilical(void *self_)
 
 static void
 pollFdTimerUmbilical(void                        *self_,
-                     struct PollFdTimerAction    *aPollFdTimerAction_unused,
                      const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
@@ -1458,7 +1447,6 @@ disconnectPollFdTether(struct ChildMonitor *self)
 
 static void
 pollFdTether(void                        *self_,
-             struct pollfd               *aPollFds_unused,
              const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
@@ -1484,7 +1472,6 @@ restartFdTimerTether(struct ChildMonitor         *self,
 
 static void
 pollFdTimerTether(void                        *self_,
-                  struct PollFdTimerAction    *aPollFdTimerAction_unused,
                   const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
@@ -1567,7 +1554,6 @@ pollFdTimerTether(void                        *self_,
 /* -------------------------------------------------------------------------- */
 static void
 pollFdTimerOrphan(void                        *self_,
-                  struct PollFdTimerAction    *aPollFdTimerAction_unused,
                   const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
@@ -1596,9 +1582,7 @@ pollFdTimerOrphan(void                        *self_,
 
 /* -------------------------------------------------------------------------- */
 static bool
-pollfdcompletion(void                     *self_,
-                 struct pollfd            *aPollFds_unused,
-                 struct PollFdTimerAction *aPollFdTimer_unused)
+pollfdcompletion(void *self_)
 {
     struct ChildMonitor *self = self_;
 
@@ -1623,7 +1607,6 @@ pollfdcompletion(void                     *self_,
 
 static void
 pollFdChild(void                        *self_,
-            struct pollfd               *aPollFds_ununsed,
             const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
@@ -1707,7 +1690,6 @@ pollFdChild(void                        *self_,
 
 static void
 pollFdTimerChild(void                        *self_,
-                 struct PollFdTimerAction    *aPollFdTimerAction_unused,
                  const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;

@@ -41,14 +41,12 @@ struct pollfd;
 struct PollFdAction
 {
     void (*mAction)(void                        *self,
-                    struct pollfd               *aPollFds,
                     const struct EventClockTime *aPollTime);
 };
 
 struct PollFdTimerAction
 {
     void                (*mAction)(void                        *self,
-                                   struct PollFdTimerAction    *aPollFdTimer,
                                    const struct EventClockTime *aPollTime);
     struct Duration       mPeriod;
     struct EventClockTime mSince;
@@ -58,10 +56,7 @@ struct PollFd
 {
     struct pollfd *mPoll;
     void          *mObserver;
-
-    bool  (*mCompletionQuery)(void                     *aObserver,
-                              struct pollfd            *aPollFds,
-                              struct PollFdTimerAction *aPollFdTimer);
+    bool         (*mCompletionQuery)(void *aObserver);
 
     struct
     {
@@ -108,10 +103,7 @@ createPollFd(struct PollFd            *self,
              struct PollFdTimerAction *aTimerActions,
              const char * const       *aTimerNames,
              size_t                    aNumTimerActions,
-             bool                      aCompletionQuery(
-                 void                     *aObserver,
-                 struct pollfd            *aPollFds,
-                 struct PollFdTimerAction *aPollFdTimer),
+             bool                      aCompletionQuery(void *aObserver),
              void                     *aObserver);
 
 int
