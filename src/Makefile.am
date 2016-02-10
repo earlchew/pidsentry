@@ -43,7 +43,7 @@ COMMON_CFLAGS     += -fdata-sections -ffunction-sections
 COMMON_CFLAGS     += -Wmissing-prototypes -Wmissing-declarations
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x
 COMMON_CXXFLAGS   += -Wno-variadic-macros -Wno-long-long
-COMMON_LDFLAGS     = -Wl,--gc-sections
+COMMON_LINKFLAGS   = -Wl,--gc-sections
 TEST_LIBS          = libk9_.la libgoogletest.la -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
 TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
@@ -65,29 +65,12 @@ check_PROGRAMS     += _processtest
 noinst_PROGRAMS     =
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
-lib_LTLIBRARIES     = libk9.la
+lib_LTLIBRARIES     =
 
 k9_CFLAGS    = $(COMMON_CFLAGS)
-k9_LDFLAGS   = $(COMMON_LDFLAGS) -Wl,-Map,k9.map -Wl,-cref
+k9_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,k9.map -Wl,-cref
 k9_LDADD     = libk9_.la -lrt -lpthread
 k9_SOURCES   = _k9.c
-
-libk9_la_CFLAGS       = $(COMMON_CFLAGS)
-libk9_la_LIBADD       = -lrt -lpthread -ldl
-libk9_la_SOURCES      = libk9.c k9main.c $(libk9__la_SOURCES)
-libk9_la_DEPENDENCIES = libk9.exp
-libk9_la_VERSION      = 0:0:0
-libk9_la_LDFLAGS      =
-libk9_la_LDFLAGS     += $(COMMON_LDFLAGS)
-libk9_la_LDFLAGS     += -version-info $(libk9_la_VERSION) -release $(VERSION)
-libk9_la_LDFLAGS     += -export-symbols libk9.exp
-libk9_la_LDFLAGS     += -Wl,-Map,libk9.map -Wl,-cref
-
-libk9.exp:	libk9.sym
-	$(CPP) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
-	    $(AM_CPPFLAGS) $(CPPFLAGS) -x c-header "$<" | \
-	    sed -n -e '/^# 2 "$^"/,$${;/^#/d;p;}' > "$@.new"
-	mv -- "$@.new" "$@"
 
 _splicetest_SOURCES = _splicetest.c
 
