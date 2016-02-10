@@ -152,33 +152,34 @@ resetProcessSigPipe(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct VoidMethod sSigContMethod;
+static struct
+{
+    pthread_mutex_t   mMutex;
+    unsigned          mCount;
+    struct VoidMethod mMethod;
+} sSigCont =
+{
+    .mMutex = PTHREAD_MUTEX_INITIALIZER
+};
 
 static void
 sigCont_(int aSigNum)
 {
-    if ( ! ownVoidMethodNil(sSigContMethod))
+    lockMutex(&sSigCont.mMutex);
+
+    ++sSigCont.mCount;
+
+    if ( ! ownVoidMethodNil(sSigCont.mMethod))
     {
         debug(1, "observed SIGCONT");
-        callVoidMethod(sSigContMethod);
+        callVoidMethod(sSigCont.mMethod);
     }
+
+    unlockMutex(&sSigCont.mMutex);
 }
 
 static int
-resetProcessSigCont_(void)
-{
-    sSigContMethod = VoidMethod(0, 0);
-
-    struct sigaction sigAction =
-    {
-        .sa_handler = SIG_DFL,
-    };
-
-    return sigaction(SIGCONT, &sigAction, 0);
-}
-
-int
-watchProcessSigCont(struct VoidMethod aMethod)
+interceptProcessSigCont_(void)
 {
     int rc = -1;
 
@@ -191,7 +192,79 @@ watchProcessSigCont(struct VoidMethod aMethod)
     if (sigaction(SIGCONT, &sigAction, 0))
         goto Finally;
 
-    sSigContMethod = aMethod;
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+updateProcessSigContMethod_(struct VoidMethod aMethod)
+{
+    int rc = -1;
+
+    struct ThreadSigMask *threadSigMask = 0;
+    pthread_mutex_t      *lock          = 0;
+
+    const int sigList[] = { SIGCONT, 0 };
+
+    struct ThreadSigMask threadSigMask_;
+
+    if (pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, sigList))
+        goto Finally;
+    threadSigMask = &threadSigMask_;
+
+    lock = lockMutex(&sSigCont.mMutex);
+
+    sSigCont.mMethod = aMethod;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        unlockMutex(lock);
+
+        if (popThreadSigMask(threadSigMask))
+            terminate(errno, "Unable to pop thread signal mask");
+    });
+
+    return rc;
+}
+
+static int
+resetProcessSigCont_(void)
+{
+    int rc = -1;
+
+    struct sigaction sigAction =
+    {
+        .sa_handler = SIG_DFL,
+    };
+
+    if (sigaction(SIGCONT, &sigAction, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+watchProcessSigCont(struct VoidMethod aMethod)
+{
+    int rc = -1;
+
+    if (updateProcessSigContMethod_(aMethod))
+        goto Finally;
 
     rc = 0;
 
@@ -205,7 +278,18 @@ Finally:
 int
 unwatchProcessSigCont(void)
 {
-    return resetProcessSigCont_();
+    int rc = -1;
+
+    if (updateProcessSigContMethod_(VoidMethod(0, 0)))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -779,6 +863,8 @@ Process_init(const char *aArg0)
 
         if (Error_init())
             goto Finally;
+
+        interceptProcessSigCont_();
     }
 
     rc = 0;
@@ -801,6 +887,8 @@ Process_exit(void)
         struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
         ensure(processLock);
+
+        resetProcessSigCont_();
 
         if (Error_exit())
             goto Finally;

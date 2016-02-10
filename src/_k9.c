@@ -67,7 +67,6 @@
  * Count SIGCONT
  * Handle SIGCONT for mutex timeouts
  * Handle SIGCHLD continue/stopped
- * Ensure FINALLY({}) terminates on error, checking all return codes
  */
 
 /* -------------------------------------------------------------------------- */
