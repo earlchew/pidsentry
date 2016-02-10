@@ -169,7 +169,9 @@ sigCont_(int aSigNum)
 
     ++sSigCont.mCount;
 
-    if ( ! ownVoidMethodNil(sSigCont.mMethod))
+    if (ownVoidMethodNil(sSigCont.mMethod))
+        debug(1, "detected SIGCONT");
+    else
     {
         debug(1, "observed SIGCONT");
         callVoidMethod(sSigCont.mMethod);
@@ -179,7 +181,7 @@ sigCont_(int aSigNum)
 }
 
 static int
-interceptProcessSigCont_(void)
+hookProcessSigCont_(void)
 {
     int rc = -1;
 
@@ -187,6 +189,28 @@ interceptProcessSigCont_(void)
     {
         .sa_handler = sigCont_,
         .sa_mask    = filledSigSet(),
+    };
+
+    if (sigaction(SIGCONT, &sigAction, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+unhookProcessSigCont_(void)
+{
+    int rc = -1;
+
+    struct sigaction sigAction =
+    {
+        .sa_handler = SIG_DFL,
     };
 
     if (sigaction(SIGCONT, &sigAction, 0))
@@ -241,12 +265,7 @@ resetProcessSigCont_(void)
 {
     int rc = -1;
 
-    struct sigaction sigAction =
-    {
-        .sa_handler = SIG_DFL,
-    };
-
-    if (sigaction(SIGCONT, &sigAction, 0))
+    if (updateProcessSigContMethod_(VoidMethod(0, 0)))
         goto Finally;
 
     rc = 0;
@@ -278,18 +297,7 @@ Finally:
 int
 unwatchProcessSigCont(void)
 {
-    int rc = -1;
-
-    if (updateProcessSigContMethod_(VoidMethod(0, 0)))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+    return resetProcessSigCont_();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -864,7 +872,7 @@ Process_init(const char *aArg0)
         if (Error_init())
             goto Finally;
 
-        interceptProcessSigCont_();
+        hookProcessSigCont_();
     }
 
     rc = 0;
@@ -888,7 +896,7 @@ Process_exit(void)
 
         ensure(processLock);
 
-        resetProcessSigCont_();
+        unhookProcessSigCont_();
 
         if (Error_exit())
             goto Finally;
