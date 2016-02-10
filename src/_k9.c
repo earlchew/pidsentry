@@ -64,9 +64,8 @@
  * When announcing child, ensure pid is active first
  * Use SIGHUP to kill umbilical monitor
  * Use struct Type for other poll loops
- * Count SIGCONT
- * Handle SIGCONT for mutex timeouts
  * Handle SIGCHLD continue/stopped
+ * Propagate signal termination from child to parent
  */
 
 /* -------------------------------------------------------------------------- */
