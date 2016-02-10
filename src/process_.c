@@ -277,6 +277,18 @@ Finally:
     return rc;
 }
 
+unsigned
+ownProcessSigContCount(void)
+{
+    unsigned sigContCount;
+
+    lockMutex(&sSigCont.mMutex);
+    sigContCount = sSigCont.mCount;
+    unlockMutex(&sSigCont.mMutex);
+
+    return sigContCount;
+}
+
 int
 watchProcessSigCont(struct VoidMethod aMethod)
 {

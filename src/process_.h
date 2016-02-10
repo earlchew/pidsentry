@@ -127,6 +127,10 @@ int
 unwatchProcessClock(void);
 
 /* -------------------------------------------------------------------------- */
+unsigned
+ownProcessSigContCount(void);
+
+/* -------------------------------------------------------------------------- */
 pid_t
 forkProcess(enum ForkProcessOption aOption, pid_t aPgid);
 
