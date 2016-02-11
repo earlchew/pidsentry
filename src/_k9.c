@@ -307,8 +307,8 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
     /* Use a blocking read to wait for the watchdog to signal that the
      * umbilical monitor should proceed. */
 
-    if ( waitFdReadReady(STDIN_FILENO, 0))
-        goto Finally;
+    FINALLY_IF(
+        -1 == waitFdReadReady(STDIN_FILENO, 0));
 
     pollFdMonitorUmbilical(self, 0);
 
@@ -328,21 +328,21 @@ runUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
     int rc = -1;
 
     struct PollFd pollfd;
-    if (createPollFd(
+    FINALLY_IF(
+        createPollFd(
             &pollfd,
             self->mPollFds,
             self->mPollFdActions,
             sPollFdMonitorNames, POLL_FD_MONITOR_KINDS,
             self->mPollFdTimerActions,
             sPollFdMonitorTimerNames, POLL_FD_MONITOR_TIMER_KINDS,
-            pollFdMonitorCompletion, self))
-        goto Finally;
+            pollFdMonitorCompletion, self));
 
-    if (runPollFdLoop(&pollfd))
-        goto Finally;
+    FINALLY_IF(
+        runPollFdLoop(&pollfd));
 
-    if (closePollFd(&pollfd))
-        goto Finally;
+    FINALLY_IF(
+        closePollFd(&pollfd));
 
     rc = 0;
 
@@ -502,8 +502,8 @@ forkChild(
      *    kill(pgid > 0 ? -pgid : pid, signal);
      */
 
-    if (-1 == childPid)
-        goto Finally;
+    FINALLY_IF(
+        -1 == childPid);
 
     if ( ! childPid)
     {
