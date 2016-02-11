@@ -247,6 +247,113 @@ pollFdMonitorCompletion(void *self_)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+createUmbilicalMonitor(
+    struct UmbilicalMonitorPoll *self,
+    int   aStdinFd,
+    pid_t aParentPid)
+{
+    int rc = -1;
+
+    unsigned cycleLimit = 2;
+
+    *self = (struct UmbilicalMonitorPoll)
+    {
+        .mType       = sUmbilicalMonitorType,
+        .mCycleLimit = cycleLimit,
+        .mParentPid  = aParentPid,
+
+        .mPollFds =
+        {
+            [POLL_FD_MONITOR_UMBILICAL] = { .fd     = aStdinFd,
+                                            .events = POLL_INPUTEVENTS },
+        },
+
+        .mPollFdActions =
+        {
+            [POLL_FD_MONITOR_UMBILICAL] = { pollFdMonitorUmbilical },
+        },
+
+        .mPollFdTimerActions =
+        {
+            [POLL_FD_MONITOR_TIMER_UMBILICAL] =
+            {
+                pollFdMonitorTimerUmbilical,
+                Duration(
+                    NanoSeconds(
+                        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns
+                        / cycleLimit)),
+            },
+        },
+    };
+
+    rc = 0;
+
+    goto Finally;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+synchroniseUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
+{
+    int rc = -1;
+
+    /* Use a blocking read to wait for the watchdog to signal that the
+     * umbilical monitor should proceed. */
+
+    if ( waitFdReadReady(STDIN_FILENO, 0))
+        goto Finally;
+
+    pollFdMonitorUmbilical(self, 0);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+runUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
+{
+    int rc = -1;
+
+    struct PollFd pollfd;
+    if (createPollFd(
+            &pollfd,
+            self->mPollFds,
+            self->mPollFdActions,
+            sPollFdMonitorNames, POLL_FD_MONITOR_KINDS,
+            self->mPollFdTimerActions,
+            sPollFdMonitorTimerNames, POLL_FD_MONITOR_TIMER_KINDS,
+            pollFdMonitorCompletion, self))
+        goto Finally;
+
+    if (runPollFdLoop(&pollfd))
+        goto Finally;
+
+    if (closePollFd(&pollfd))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 createChild(struct ChildProcess *self)
 {
@@ -673,75 +780,25 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
      * process group as the child process and use the process group as
      * a means of controlling the cild process. */
 
-    unsigned cycleLimit = 2;
+    struct UmbilicalMonitorPoll monitorpoll;
+    if (createUmbilicalMonitor(&monitorpoll, STDIN_FILENO, aParentPid))
+        terminate(errno, "Unable to create umbilical monitor");
 
-    struct UmbilicalMonitorPoll monitorpoll =
-    {
-        .mType       = sUmbilicalMonitorType,
-        .mCycleLimit = cycleLimit,
-        .mParentPid  = aParentPid,
-
-        .mPollFds =
-        {
-            [POLL_FD_MONITOR_UMBILICAL] = { .fd     = STDIN_FILENO,
-                                            .events = POLL_INPUTEVENTS },
-        },
-
-        .mPollFdActions =
-        {
-            [POLL_FD_MONITOR_UMBILICAL] = { pollFdMonitorUmbilical },
-        },
-
-        .mPollFdTimerActions =
-        {
-            [POLL_FD_MONITOR_TIMER_UMBILICAL] =
-            {
-                pollFdMonitorTimerUmbilical,
-                Duration(
-                    NanoSeconds(
-                        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns
-                        / cycleLimit)),
-            },
-        },
-    };
-
-    /* Use a blocking read synchronise with the watchdog to avoid timing
-     * races. The watchdog will write to the umbilical when it is ready
-     * to start timing. */
+    /* Synchronise with the watchdog to avoid timing races. The watchdog
+     * writes to the umbilical when it is ready to start timing. */
 
     debug(0, "synchronising umbilical");
 
-    if (-1 == waitFdReadReady(STDIN_FILENO, 0))
-        terminate(
-            errno,
-            "Unable to wait for umbilical synchronisation");
-
-    pollFdMonitorUmbilical(&monitorpoll, 0);
+    if (synchroniseUmbilicalMonitor(&monitorpoll))
+        terminate(errno, "Unable to synchronise umbilical monitor");
 
     debug(0, "synchronised umbilical");
 
-    struct PollFd pollfd;
-    if (createPollFd(
-            &pollfd,
-            monitorpoll.mPollFds,
-            monitorpoll.mPollFdActions,
-            sPollFdMonitorNames, POLL_FD_MONITOR_KINDS,
-            monitorpoll.mPollFdTimerActions,
-            sPollFdMonitorTimerNames, POLL_FD_MONITOR_TIMER_KINDS,
-            pollFdMonitorCompletion, &monitorpoll))
-        terminate(
-            errno,
-            "Unable to initialise polling loop");
+    if (runUmbilicalMonitor(&monitorpoll))
+        terminate(errno, "Unable to run umbilical monitor");
 
-    if (runPollFdLoop(&pollfd))
-        terminate(
-            errno,
-            "Unable to run polling loop");
-
-    if (closePollFd(&pollfd))
-        terminate(
-            errno,
-            "Unable to close polling loop");
+    /* The umbilical monitor returns when the connection to the watchdog
+     * is either lost or no longer active. */
 
     pid_t pgid = getpgid(0);
 
