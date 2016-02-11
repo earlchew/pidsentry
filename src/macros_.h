@@ -29,10 +29,10 @@
 #ifndef MACROS_H
 #define MACROS_H
 
-#define NUMBEROF(x) (sizeof((x))/sizeof((x)[0]))
+#define NUMBEROF(Vector_) (sizeof((Vector_))/sizeof((Vector_)[0]))
 
-#define STRINGIFY_(x) #x
-#define STRINGIFY(x)  STRINGIFY_(x)
+#define STRINGIFY_(Text_) #Text_
+#define STRINGIFY(Text_)  STRINGIFY_(Text_)
 
 #define FINALLY(...)      \
     do                    \
@@ -41,6 +41,17 @@
         __VA_ARGS__;      \
         errno = err_;     \
     } while (0)
+
+#define FINALLY_IF(Predicate_)                  \
+    do                                          \
+    {                                           \
+        if ((Predicate_))                       \
+        {                                       \
+            warn(errno, ".. %s", # Predicate_); \
+            goto Finally;                       \
+        }                                       \
+    }                                           \
+    while (0)
 
 #define RACE(...) \
     do                    \
