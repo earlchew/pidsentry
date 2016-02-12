@@ -60,13 +60,13 @@
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Fix vgcore being dropped everywhere
  * Implement process lock in child process
- * Remove *_unused arguments
  * When announcing child, ensure pid is active first
  * Use SIGHUP to kill umbilical monitor
  * Use struct Type for other poll loops
  * Handle SIGCHLD continue/stopped
  * Propagate signal termination from child to parent
  * Use round trip ping for maintaining umbilical
+ * Improve FINALLY tracking
  */
 
 /* -------------------------------------------------------------------------- */
