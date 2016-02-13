@@ -42,30 +42,30 @@
 #include <sys/ioctl.h>
 
 /* -------------------------------------------------------------------------- */
-enum TetherFdKind
+enum PollFdTetherKind
 {
-    TETHER_FD_CONTROL,
-    TETHER_FD_INPUT,
-    TETHER_FD_OUTPUT,
-    TETHER_FD_KINDS
+    POLL_FD_TETHER_CONTROL,
+    POLL_FD_TETHER_INPUT,
+    POLL_FD_TETHER_OUTPUT,
+    POLL_FD_TETHER_KINDS
 };
 
-enum TetherFdTimerKind
+enum PollFdTetherTimerKind
 {
-    TETHER_FD_TIMER_DISCONNECT,
-    TETHER_FD_TIMER_KINDS
+    POLL_FD_TETHER_TIMER_DISCONNECT,
+    POLL_FD_TETHER_TIMER_KINDS
 };
 
-static const char *sTetherFdNames[] =
+static const char *pollFdNames_[] =
 {
-    [TETHER_FD_CONTROL] = "control",
-    [TETHER_FD_INPUT]   = "input",
-    [TETHER_FD_OUTPUT]  = "output",
+    [POLL_FD_TETHER_CONTROL] = "control",
+    [POLL_FD_TETHER_INPUT]   = "input",
+    [POLL_FD_TETHER_OUTPUT]  = "output",
 };
 
-static const char *sTetherFdTimerNames[] =
+static const char *pollFdTimerNames_[] =
 {
-    [TETHER_FD_TIMER_DISCONNECT] = "disconnection",
+    [POLL_FD_TETHER_TIMER_DISCONNECT] = "disconnection",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -83,20 +83,20 @@ struct TetherPoll
     int                      mSrcFd;
     int                      mDstFd;
 
-    struct pollfd            mPollFds[TETHER_FD_KINDS];
-    struct PollFdAction      mPollFdActions[TETHER_FD_KINDS];
-    struct PollFdTimerAction mPollFdTimerActions[TETHER_FD_TIMER_KINDS];
+    struct pollfd            mPollFds[POLL_FD_TETHER_KINDS];
+    struct PollFdAction      mPollFdActions[POLL_FD_TETHER_KINDS];
+    struct PollFdTimerAction mPollFdTimerActions[POLL_FD_TETHER_TIMER_KINDS];
 };
 
 static void
-polltethercontrol(void                        *self_,
-                  const struct EventClockTime *aPollTime)
+pollFdControl_(void                        *self_,
+               const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
 
     char buf[1];
 
-    if (0 > readFd(self->mPollFds[TETHER_FD_CONTROL].fd, buf, sizeof(buf)))
+    if (0 > readFd(self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf)))
         terminate(
             errno,
             "Unable to read tether control");
@@ -106,17 +106,17 @@ polltethercontrol(void                        *self_,
     /* Note that gOptions.mTimeout.mDrain_s might be zero to indicate
      * that the no drain timeout is to be enforced. */
 
-    self->mPollFdTimerActions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
+    self->mPollFdTimerActions[POLL_FD_TETHER_TIMER_DISCONNECT].mPeriod =
         Duration(NSECS(Seconds(gOptions.mTimeout.mDrain_s)));
 }
 
 static void
-polltetherdrain(void                        *self_,
-                const struct EventClockTime *aPollTime)
+pollFdDrain_(void                        *self_,
+             const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
 
-    if (self->mPollFds[TETHER_FD_CONTROL].events)
+    if (self->mPollFds[POLL_FD_TETHER_CONTROL].events)
     {
         {
             lockMutex(&self->mThread->mActivity.mMutex);
@@ -193,31 +193,31 @@ polltetherdrain(void                        *self_,
         } while (0);
 
         if (drained)
-            self->mPollFds[TETHER_FD_CONTROL].events = 0;
+            self->mPollFds[POLL_FD_TETHER_CONTROL].events = 0;
     }
 }
 
 static void
-polltetherdisconnected(void                        *self_,
-                       const struct EventClockTime *aPollTime)
+pollFdTimerDisconnected_(void                        *self_,
+                         const struct EventClockTime *aPollTime)
 {
     struct TetherPoll *self = self_;
 
     /* Once the tether drain timeout expires, disable the timer, and
      * force completion of the tether thread. */
 
-    self->mPollFdTimerActions[TETHER_FD_TIMER_DISCONNECT].mPeriod =
+    self->mPollFdTimerActions[POLL_FD_TETHER_TIMER_DISCONNECT].mPeriod =
         Duration(NanoSeconds(0));
 
-    self->mPollFds[TETHER_FD_CONTROL].events = 0;
+    self->mPollFds[POLL_FD_TETHER_CONTROL].events = 0;
 }
 
 static bool
-polltethercompletion(void *self_)
+pollFdCompletion_(void *self_)
 {
     struct TetherPoll *self = self_;
 
-    return ! self->mPollFds[TETHER_FD_CONTROL].events;
+    return ! self->mPollFds[POLL_FD_TETHER_CONTROL].events;
 }
 
 static void *
@@ -265,21 +265,21 @@ tetherThreadMain_(void *self_)
 
         .mPollFds =
         {
-            [TETHER_FD_CONTROL]= {.fd= controlFd,.events= POLL_INPUTEVENTS },
-            [TETHER_FD_INPUT]  = {.fd= srcFd,    .events= POLL_INPUTEVENTS },
-            [TETHER_FD_OUTPUT] = {.fd= dstFd,    .events= POLL_DISCONNECTEVENT},
+            [POLL_FD_TETHER_CONTROL]= {.fd= controlFd,.events= POLL_INPUTEVENTS },
+            [POLL_FD_TETHER_INPUT]  = {.fd= srcFd,    .events= POLL_INPUTEVENTS },
+            [POLL_FD_TETHER_OUTPUT] = {.fd= dstFd,    .events= POLL_DISCONNECTEVENT},
         },
 
         .mPollFdActions =
         {
-            [TETHER_FD_CONTROL] = { polltethercontrol },
-            [TETHER_FD_INPUT]   = { polltetherdrain },
-            [TETHER_FD_OUTPUT]  = { polltetherdrain },
+            [POLL_FD_TETHER_CONTROL] = { pollFdControl_ },
+            [POLL_FD_TETHER_INPUT]   = { pollFdDrain_ },
+            [POLL_FD_TETHER_OUTPUT]  = { pollFdDrain_ },
         },
 
         .mPollFdTimerActions =
         {
-            [TETHER_FD_TIMER_DISCONNECT] = { polltetherdisconnected },
+            [POLL_FD_TETHER_TIMER_DISCONNECT] = { pollFdTimerDisconnected_ },
         },
     };
 
@@ -288,10 +288,10 @@ tetherThreadMain_(void *self_)
             &pollfd,
             tetherpoll.mPollFds,
             tetherpoll.mPollFdActions,
-            sTetherFdNames, TETHER_FD_KINDS,
+            pollFdNames_, POLL_FD_TETHER_KINDS,
             tetherpoll.mPollFdTimerActions,
-            sTetherFdTimerNames, TETHER_FD_TIMER_KINDS,
-            polltethercompletion, &tetherpoll))
+            pollFdTimerNames_, POLL_FD_TETHER_TIMER_KINDS,
+            pollFdCompletion_, &tetherpoll))
         terminate(
             errno,
             "Unable to initialise polling loop");
