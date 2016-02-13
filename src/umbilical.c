@@ -46,27 +46,27 @@
  * sent by the watchdog, and echoes the messages back to the watchdog.
  */
 
-static const struct Type * const sUmbilicalMonitorType =
+static const struct Type * const umbilicalMonitorType_ =
     TYPE("UmbilicalMonitor");
 
-static const char *sPollFdMonitorNames[POLL_FD_MONITOR_KINDS] =
+static const char *pollFdNames_[POLL_FD_MONITOR_KINDS] =
 {
     [POLL_FD_MONITOR_UMBILICAL] = "umbilical",
 };
 
-static const char *sPollFdMonitorTimerNames[POLL_FD_MONITOR_TIMER_KINDS] =
+static const char *pollFdTimerNames_[POLL_FD_MONITOR_TIMER_KINDS] =
 {
     [POLL_FD_MONITOR_TIMER_UMBILICAL] = "umbilical",
 };
 
 /* -------------------------------------------------------------------------- */
 static void
-pollFdMonitorUmbilical(void                        *self_,
-                       const struct EventClockTime *aPollTime)
+pollFdUmbilical_(void                        *self_,
+                 const struct EventClockTime *aPollTime)
 {
     struct UmbilicalMonitorPoll *self = self_;
 
-    ensure(sUmbilicalMonitorType == self->mType);
+    ensure(umbilicalMonitorType_ == self->mType);
 
     char buf[1];
 
@@ -108,13 +108,13 @@ pollFdMonitorUmbilical(void                        *self_,
 }
 
 static void
-pollFdMonitorTimerUmbilical(
+pollFdTimerUmbilical_(
     void                        *self_,
     const struct EventClockTime *aPollTime)
 {
     struct UmbilicalMonitorPoll *self = self_;
 
-    ensure(sUmbilicalMonitorType == self->mType);
+    ensure(umbilicalMonitorType_ == self->mType);
 
     /* If nothing is available from the umbilical connection after the
      * timeout period expires, then assume that the watchdog itself
@@ -138,11 +138,11 @@ pollFdMonitorTimerUmbilical(
 }
 
 static bool
-pollFdMonitorCompletion(void *self_)
+pollFdCompletion_(void *self_)
 {
     struct UmbilicalMonitorPoll *self = self_;
 
-    ensure(sUmbilicalMonitorType == self->mType);
+    ensure(umbilicalMonitorType_ == self->mType);
 
     return ! self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events;
 }
@@ -151,8 +151,8 @@ pollFdMonitorCompletion(void *self_)
 int
 createUmbilicalMonitor(
     struct UmbilicalMonitorPoll *self,
-    int   aStdinFd,
-    pid_t aParentPid)
+    int                          aStdinFd,
+    pid_t                        aParentPid)
 {
     int rc = -1;
 
@@ -160,7 +160,7 @@ createUmbilicalMonitor(
 
     *self = (struct UmbilicalMonitorPoll)
     {
-        .mType       = sUmbilicalMonitorType,
+        .mType       = umbilicalMonitorType_,
         .mCycleLimit = cycleLimit,
         .mParentPid  = aParentPid,
 
@@ -172,14 +172,14 @@ createUmbilicalMonitor(
 
         .mPollFdActions =
         {
-            [POLL_FD_MONITOR_UMBILICAL] = { pollFdMonitorUmbilical },
+            [POLL_FD_MONITOR_UMBILICAL] = { pollFdUmbilical_ },
         },
 
         .mPollFdTimerActions =
         {
             [POLL_FD_MONITOR_TIMER_UMBILICAL] =
             {
-                pollFdMonitorTimerUmbilical,
+                pollFdTimerUmbilical_,
                 Duration(
                     NanoSeconds(
                         NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns
@@ -211,7 +211,7 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
     FINALLY_IF(
         -1 == waitFdReadReady(STDIN_FILENO, 0));
 
-    pollFdMonitorUmbilical(self, 0);
+    pollFdUmbilical_(self, 0);
 
     rc = 0;
 
@@ -234,10 +234,10 @@ runUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
             &pollfd,
             self->mPollFds,
             self->mPollFdActions,
-            sPollFdMonitorNames, POLL_FD_MONITOR_KINDS,
+            pollFdNames_, POLL_FD_MONITOR_KINDS,
             self->mPollFdTimerActions,
-            sPollFdMonitorTimerNames, POLL_FD_MONITOR_TIMER_KINDS,
-            pollFdMonitorCompletion, self));
+            pollFdTimerNames_, POLL_FD_MONITOR_TIMER_KINDS,
+            pollFdCompletion_, self));
 
     FINALLY_IF(
         runPollFdLoop(&pollfd));
