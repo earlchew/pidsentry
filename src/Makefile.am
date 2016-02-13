@@ -70,7 +70,7 @@ lib_LTLIBRARIES     =
 k9_CFLAGS    = $(COMMON_CFLAGS)
 k9_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,k9.map -Wl,-cref
 k9_LDADD     = libk9_.la -lrt -lpthread
-k9_SOURCES   = _k9.c umbilical.c
+k9_SOURCES   = _k9.c umbilical.c tether.c
 
 _splicetest_SOURCES = _splicetest.c
 
