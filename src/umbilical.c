@@ -37,6 +37,15 @@
 #include <errno.h>
 
 /* -------------------------------------------------------------------------- */
+/* Umbilical Process
+ *
+ * The purpose of the umbilical process is to sense if the watchdog itself
+ * is performing properly. The umbilical will break if either the watchdog
+ * process terminates, or if the umbilical process terminates. Additionally
+ * the umbilical process monitors the umbilical for periodic messages
+ * sent by the watchdog, and echoes the messages back to the watchdog.
+ */
+
 static const struct Type * const sUmbilicalMonitorType =
     TYPE("UmbilicalMonitor");
 
