@@ -265,9 +265,12 @@ tetherThreadMain_(void *self_)
 
         .mPollFds =
         {
-            [POLL_FD_TETHER_CONTROL]= {.fd= controlFd,.events= POLL_INPUTEVENTS },
-            [POLL_FD_TETHER_INPUT]  = {.fd= srcFd,    .events= POLL_INPUTEVENTS },
-            [POLL_FD_TETHER_OUTPUT] = {.fd= dstFd,    .events= POLL_DISCONNECTEVENT},
+            [POLL_FD_TETHER_CONTROL]= {.fd     = controlFd,
+                                       .events = POLL_INPUTEVENTS },
+            [POLL_FD_TETHER_INPUT]  = {.fd     =  srcFd,
+                                       .events = POLL_INPUTEVENTS },
+            [POLL_FD_TETHER_OUTPUT] = {.fd     = dstFd,
+                                       .events = POLL_DISCONNECTEVENT},
         },
 
         .mPollFdActions =
