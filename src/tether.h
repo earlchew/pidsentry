@@ -63,20 +63,6 @@ struct TetherThread
     } mState;
 };
 
-enum TetherFdKind
-{
-    TETHER_FD_CONTROL,
-    TETHER_FD_INPUT,
-    TETHER_FD_OUTPUT,
-    TETHER_FD_KINDS
-};
-
-enum TetherFdTimerKind
-{
-    TETHER_FD_TIMER_DISCONNECT,
-    TETHER_FD_TIMER_KINDS
-};
-
 /* -------------------------------------------------------------------------- */
 void
 createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe);

@@ -42,6 +42,20 @@
 #include <sys/ioctl.h>
 
 /* -------------------------------------------------------------------------- */
+enum TetherFdKind
+{
+    TETHER_FD_CONTROL,
+    TETHER_FD_INPUT,
+    TETHER_FD_OUTPUT,
+    TETHER_FD_KINDS
+};
+
+enum TetherFdTimerKind
+{
+    TETHER_FD_TIMER_DISCONNECT,
+    TETHER_FD_TIMER_KINDS
+};
+
 static const char *sTetherFdNames[] =
 {
     [TETHER_FD_CONTROL] = "control",
