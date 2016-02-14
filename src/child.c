@@ -572,6 +572,8 @@ struct ChildMonitor
     struct
     {
         struct File *mFile;
+        unsigned     mCycleCount;    /* Current number of cycles */
+        unsigned     mCycleLimit;    /* Cycles before triggering */
     } mUmbilical;
 
     struct
@@ -601,6 +603,20 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
      * taken with the expectation that the termination code should
      * fully expect that child the terminate at any time */
 
+    struct PollFdTimerAction *tetherTimer =
+        &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_TETHER];
+
+    tetherTimer->mPeriod = Duration(NanoSeconds(0));
+
+    struct PollFdTimerAction *umbilicalTimer =
+        &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
+
+    self->mPollFds[POLL_FD_CHILD_UMBILICAL].events = 0;
+    self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     =
+        self->mNullPipe->mRdFile->mFd;
+
+    umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+
     struct PollFdTimerAction *terminationTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_TERMINATION];
 
@@ -608,8 +624,7 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
     {
         debug(1, "activating termination timer");
 
-        terminationTimer->mPeriod =
-            self->mTermination.mSignalPeriod;
+        terminationTimer->mPeriod = self->mTermination.mSignalPeriod;
 
         lapTimeTrigger(
             &terminationTimer->mSince, terminationTimer->mPeriod, aPollTime);
@@ -661,23 +676,42 @@ pollFdUmbilical_(void                        *self_,
 {
     struct ChildMonitor *self = self_;
 
-    debug(0, "umbilical connection closed");
-
-    self->mPollFds[POLL_FD_CHILD_UMBILICAL].events = 0;
-    self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     =
-        self->mNullPipe->mRdFile->mFd;
-
     struct PollFdTimerAction *umbilicalTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
 
-    umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+    ensure(self->mPollFds[POLL_FD_CHILD_UMBILICAL].events);
 
-    struct PollFdTimerAction *tetherTimer =
-        &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_TETHER];
+    char buf[1];
 
-    tetherTimer->mPeriod = Duration(NanoSeconds(0));
+    ssize_t rdlen = read(
+        self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd, buf, sizeof(buf));
 
-    activateFdTimerTermination_(self, aPollTime);
+    if (-1 == rdlen)
+    {
+        if (EINTR != errno)
+            terminate(
+                errno,
+                "Unable to read umbilical connection");
+    }
+    else if ( ! rdlen)
+    {
+        debug(0, "umbilical connection closed");
+
+        activateFdTimerTermination_(self, aPollTime);
+    }
+    else
+    {
+        debug(1, "received umbilical connection echo %zd", rdlen);
+
+        /* When the echo is recevied on the umbilical connection
+         * schedule the next umbilical ping. */
+
+        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+
+        self->mUmbilical.mCycleCount = self->mUmbilical.mCycleLimit;
+
+        lapTimeRestart(&umbilicalTimer->mSince, aPollTime);
+    }
 }
 
 static int
@@ -685,13 +719,15 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
 {
     int rc = -1;
 
+    ensure(self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit);
+
     char buf[1] = { 0 };
 
     ssize_t wrlen = write(
         self->mUmbilical.mFile->mFd, buf, sizeof(buf));
 
     if (-1 != wrlen)
-        debug(1, "wrote umbilical %zd", wrlen);
+        debug(1, "sent umbilical ping %zd", wrlen);
     else
     {
         switch (errno)
@@ -700,7 +736,7 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
             terminate(errno, "Unable to write to umbilical");
 
         case EPIPE:
-            debug(1, "writing to umbilical closed");
+            warn(1, "Umbilical connection closed");
             break;
 
         case EWOULDBLOCK:
@@ -714,6 +750,11 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
 
         goto Finally;
     }
+
+    /* Once a message is written on the umbilical connection, expect
+     * an echo to be returned from the umbilical monitor. */
+
+    self->mUmbilical.mCycleCount = 0;
 
     rc = 0;
 
@@ -746,24 +787,49 @@ pollFdTimerUmbilical_(void                        *self_,
 
     ensure(childMonitorType_ == self->mType);
 
-    /* Remember that the umbilical timer will race with child termination.
-     * By the time this function runs, the child might already have
-     * terminated so the umbilical socket might be closed. */
-
-    if (pollFdWriteUmbilical_(self))
+    if (self->mUmbilical.mCycleCount != self->mUmbilical.mCycleLimit)
     {
-        if (EINTR == errno)
+        /* If waiting on a response from the umbilical monitor, apply
+         * a timeout, and if the timeout is exceeded, */
+
+        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+
+        if (++self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit)
+        {
+            warn(0, "Umbilical connection timed out");
+
+            activateFdTimerTermination_(self, aPollTime);
+        }
+    }
+    else
+    {
+        if (pollFdWriteUmbilical_(self))
         {
             struct PollFdTimerAction *umbilicalTimer =
                 &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
 
-            /* Do not loop here on EINTR since it is important
-             * to take care that the monitoring loop is
-             * non-blocking. Instead, mark the timer as expired
-             * for force the monitoring loop to retry immediately. */
+            switch (errno)
+            {
+            default:
+                break;
 
-            lapTimeTrigger(&umbilicalTimer->mSince,
-                           umbilicalTimer->mPeriod, aPollTime);
+            case EPIPE:
+                /* The umbilical monitor is no longer running and has
+                 * closed the umbilical connection. */
+
+                activateFdTimerTermination_(self, aPollTime);
+                break;
+
+            case EINTR:
+                /* Do not loop here on EINTR since it is important
+                 * to take care that the monitoring loop is
+                 * non-blocking. Instead, mark the timer as expired
+                 * for force the monitoring loop to retry immediately. */
+
+                lapTimeTrigger(&umbilicalTimer->mSince,
+                               umbilicalTimer->mPeriod, aPollTime);
+                break;
+            }
         }
     }
 }
@@ -884,8 +950,6 @@ pollFdTimerTether_(void                        *self_,
          * there is no further need to run this state machine. */
 
         debug(0, "timeout after %ds", gOptions.mTimeout.mTether_s);
-
-        tetherTimer->mPeriod = Duration(NanoSeconds(0));
 
         activateFdTimerTermination_(self, aPollTime);
 
@@ -1106,7 +1170,9 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
 
         .mUmbilical =
         {
-            .mFile = aUmbilicalFile,
+            .mFile       = aUmbilicalFile,
+            .mCycleCount = timeoutCycles,
+            .mCycleLimit = timeoutCycles,
         },
 
         .mTether =
@@ -1136,7 +1202,7 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
             [POLL_FD_CHILD_UMBILICAL] =
             {
                 .fd     = aUmbilicalFile->mFd,
-                .events = POLL_DISCONNECTEVENT,
+                .events = POLL_INPUTEVENTS,
             },
 
             [POLL_FD_CHILD_TETHER] =

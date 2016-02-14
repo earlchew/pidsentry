@@ -87,6 +87,15 @@ pollFdUmbilical_(void                        *self_,
     }
     else
     {
+        debug(1, "received umbilical connection ping %zd", rdlen);
+
+        if (writeFd(
+                self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
+                buf, rdlen) != rdlen)
+            terminate(
+                errno,
+                "Unable to echo activity into umbilical connection");
+
         /* Once activity is detected on the umbilical, reset the
          * umbilical timer, but configure the timer so that it is
          * out-of-phase with the expected activity on the umbilical

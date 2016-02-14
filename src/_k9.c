@@ -376,7 +376,7 @@ cmdRunCommand(char **aCmd)
 
     if ( ! umbilicalPid)
     {
-        debug(0, "start monitoring umbilical process pid %jd pgid %jd",
+        debug(0, "umbilical process pid %jd pgid %jd",
               (intmax_t) getpid(),
               (intmax_t) getpgid(0));
 
