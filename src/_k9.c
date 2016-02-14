@@ -488,32 +488,6 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to remove watch on child process termination");
 
-    /* Since the child process has completed, there is no further
-     * need for the umbilical monitor. Kill the umbilical monitor
-     * as the surest means to have it terminate. */
-
-    if (-1 != umbilicalPid)
-    {
-        debug(0, "killing umbilical pid %jd", (intmax_t) umbilicalPid);
-
-        if (kill(umbilicalPid, SIGKILL))
-            terminate(
-                errno,
-                "Unable to kill umbilical pid %jd", (intmax_t) umbilicalPid);
-
-        int status;
-        if (reapProcess(umbilicalPid, &status))
-            terminate(
-                errno,
-                "Unable to reap umbilical pid %jd", (intmax_t) umbilicalPid);
-
-        debug(0,
-              "reaped umbilical pid %jd status %d",
-              (intmax_t) umbilicalPid, status);
-
-        umbilicalPid = -1;
-    }
-
     if (pidFile)
     {
         if (acquireWriteLockPidFile(pidFile))
@@ -540,6 +514,31 @@ cmdRunCommand(char **aCmd)
     int status = closeChild(&childProcess);
 
     debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
+
+    /* Leave the umbilical process running until the watchdog process itself
+     * has terminated. The umbilical process can sense this when the last
+     * reference to the umbilical socket has been closed. The umbilical
+     * process is then responsible for making sure that the entire
+     * process group is cleaned up. */
+
+    {
+        char buf[1] = { 0 };
+
+        ssize_t wrlen = writeFile(
+            umbilicalSocket.mParentFile, buf, sizeof(buf));
+
+        if (-1 == wrlen)
+            terminate(
+                errno,
+                "Unable to send termination message on umbilical");
+
+        if (STDOUT_FILENO != dup2(umbilicalSocket.mParentFile->mFd,
+                                  STDOUT_FILENO))
+            terminate(
+                errno,
+                "Unable to dup %d to stdout",
+                umbilicalSocket.mParentFile->mFd);
+    }
 
     if (closeSocketPair(&umbilicalSocket))
         terminate(

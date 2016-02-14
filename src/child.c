@@ -527,11 +527,15 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
         terminate(errno, "Unable to run umbilical monitor");
 
     /* The umbilical monitor returns when the connection to the watchdog
-     * is either lost or no longer active. */
+     * is either lost or no longer active. Only issue a diagnostic if
+     * the shutdown was not orderly. */
 
     pid_t pgid = getpgid(0);
 
-    warn(0, "Killing child pgid %jd", (intmax_t) pgid);
+    if (ownUmbilicalMonitorClosedOrderly(&monitorpoll))
+        debug(0, "cleaning child pgid %jd", (intmax_t) pgid);
+    else
+        warn(0, "Killing child pgid %jd", (intmax_t) pgid);
 
     if (kill(0, SIGKILL))
         terminate(
@@ -608,15 +612,6 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
 
     tetherTimer->mPeriod = Duration(NanoSeconds(0));
 
-    struct PollFdTimerAction *umbilicalTimer =
-        &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
-
-    self->mPollFds[POLL_FD_CHILD_UMBILICAL].events = 0;
-    self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     =
-        self->mNullPipe->mRdFile->mFd;
-
-    umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
-
     struct PollFdTimerAction *terminationTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_TERMINATION];
 
@@ -671,6 +666,22 @@ pollFdTimerTermination_(void                        *self_,
  * to clean up, or if the watchdog fails catatrophically. */
 
 static void
+pollFdCloseUmbilical_(struct ChildMonitor         *self,
+                      const struct EventClockTime *aPollTime)
+{
+    struct PollFdTimerAction *umbilicalTimer =
+        &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
+
+    self->mPollFds[POLL_FD_CHILD_UMBILICAL].events = 0;
+    self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     =
+        self->mNullPipe->mRdFile->mFd;
+
+    umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+
+    activateFdTimerTermination_(self, aPollTime);
+}
+
+static void
 pollFdUmbilical_(void                        *self_,
                  const struct EventClockTime *aPollTime)
 {
@@ -697,11 +708,12 @@ pollFdUmbilical_(void                        *self_,
     {
         debug(0, "umbilical connection closed");
 
-        activateFdTimerTermination_(self, aPollTime);
+        pollFdCloseUmbilical_(self, aPollTime);
     }
     else
     {
         debug(1, "received umbilical connection echo %zd", rdlen);
+        ensure(sizeof(buf) == rdlen);
 
         /* When the echo is recevied on the umbilical connection
          * schedule the next umbilical ping. */
@@ -721,13 +733,16 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
 
     ensure(self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit);
 
-    char buf[1] = { 0 };
+    char buf[1] = { '.' };
 
     ssize_t wrlen = write(
         self->mUmbilical.mFile->mFd, buf, sizeof(buf));
 
     if (-1 != wrlen)
+    {
         debug(1, "sent umbilical ping %zd", wrlen);
+        ensure(sizeof(buf) == wrlen);
+    }
     else
     {
         switch (errno)
@@ -817,7 +832,7 @@ pollFdTimerUmbilical_(void                        *self_,
                 /* The umbilical monitor is no longer running and has
                  * closed the umbilical connection. */
 
-                activateFdTimerTermination_(self, aPollTime);
+                pollFdCloseUmbilical_(self, aPollTime);
                 break;
 
             case EINTR:

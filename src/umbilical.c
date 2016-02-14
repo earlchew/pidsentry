@@ -82,19 +82,31 @@ pollFdUmbilical_(void                        *self_,
     }
     else if ( ! rdlen)
     {
-        warn(0, "Broken umbilical connection");
+        if (self->mClosed)
+            debug(0, "umbilical connection closed");
+        else
+            warn(0, "Umbilical connection broken");
+
         self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
     }
     else
     {
         debug(1, "received umbilical connection ping %zd", rdlen);
+        ensure(sizeof(buf) == rdlen);
 
-        if (writeFd(
-                self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
-                buf, rdlen) != rdlen)
-            terminate(
-                errno,
-                "Unable to echo activity into umbilical connection");
+        ensure( ! self->mClosed);
+
+        if ( ! buf[0])
+            self->mClosed = true;
+        else
+        {
+            if (writeFd(
+                    self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
+                    buf, rdlen) != rdlen)
+                terminate(
+                    errno,
+                    "Unable to echo activity into umbilical connection");
+        }
 
         /* Once activity is detected on the umbilical, reset the
          * umbilical timer, but configure the timer so that it is
@@ -172,6 +184,7 @@ createUmbilicalMonitor(
         .mType       = umbilicalMonitorType_,
         .mCycleLimit = cycleLimit,
         .mParentPid  = aParentPid,
+        .mClosed     = false,
 
         .mPollFds =
         {
@@ -263,5 +276,11 @@ Finally:
     return rc;
 }
 
+/* -------------------------------------------------------------------------- */
+bool
+ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitorPoll *self)
+{
+    return self->mClosed;
+}
 
 /* -------------------------------------------------------------------------- */

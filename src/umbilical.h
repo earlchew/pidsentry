@@ -32,6 +32,7 @@
 #include "pollfd_.h"
 
 #include <poll.h>
+#include <stdbool.h>
 
 #include <sys/types.h>
 
@@ -65,6 +66,7 @@ struct UmbilicalMonitorPoll
     unsigned                  mCycleCount;
     unsigned                  mCycleLimit;
     pid_t                     mParentPid;
+    bool                      mClosed;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -79,6 +81,9 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitorPoll *self);
 
 int
 runUmbilicalMonitor(struct UmbilicalMonitorPoll *self);
+
+bool
+ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitorPoll *self);
 
 /* -------------------------------------------------------------------------- */
 
