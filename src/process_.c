@@ -1232,12 +1232,6 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
             goto Finally;
         }
 
-        if (popThreadSigMask(&sSigMask))
-        {
-            err = "Unable to pop thread signal mask";
-            goto Finally;
-        }
-
         break;
     }
 
@@ -1265,6 +1259,20 @@ Finally:
     });
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+execProcess(const char *aCmd, char **aArgv)
+{
+    if (popThreadSigMask(&sSigMask))
+        goto Finally;
+
+    execvp(aCmd, aArgv);
+
+Finally:
+
+    FINALLY({});
 }
 
 /* -------------------------------------------------------------------------- */

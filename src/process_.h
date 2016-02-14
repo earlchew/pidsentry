@@ -143,6 +143,9 @@ monitorProcess(pid_t aPid);
 struct ExitCode
 extractProcessExitStatus(int aStatus);
 
+void
+execProcess(const char *aCmd, char **aArgv);
+
 /* -------------------------------------------------------------------------- */
 int
 acquireProcessAppLock(void);

@@ -238,7 +238,7 @@ forkChild(
     {
         childPid = getpid();
 
-        debug(0, "starting child process");
+        debug(0, "starting child process pid %jd", (intmax_t) childPid);
 
         /* The forked child has all its signal handlers reset, but
          * note that the parent will wait for the child to synchronise
@@ -412,10 +412,10 @@ forkChild(
         debug(0, "child process synchronised");
 
         /* The child process does not close the process lock because it
-         * might need to emit a diagnostic if execvp() fails. Rely on
+         * might need to emit a diagnostic if execProcess() fails. Rely on
          * O_CLOEXEC to close the underlying file descriptors. */
 
-        execvp(aCmd[0], aCmd);
+        execProcess(aCmd[0], aCmd);
         terminate(
             errno,
             "Unable to execute '%s'", aCmd[0]);
