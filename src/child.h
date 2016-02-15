@@ -79,7 +79,9 @@ void
 monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid);
 
 void
-monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile);
+monitorChild(struct ChildProcess *self,
+             pid_t                aUmbilicalPid,
+             struct File         *aUmbilicalFile);
 
 int
 closeChild(struct ChildProcess *self);

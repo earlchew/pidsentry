@@ -593,6 +593,7 @@ struct ChildMonitor
     struct
     {
         struct File *mFile;
+        pid_t        mPid;
         unsigned     mCycleCount;    /* Current number of cycles */
         unsigned     mCycleLimit;    /* Cycles before triggering */
     } mUmbilical;
@@ -821,16 +822,41 @@ pollFdTimerUmbilical_(void                        *self_,
 
     if (self->mUmbilical.mCycleCount != self->mUmbilical.mCycleLimit)
     {
+        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+
         /* If waiting on a response from the umbilical monitor, apply
          * a timeout, and if the timeout is exceeded, */
 
-        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+        enum ProcessStatus umbilicalstatus =
+            monitorProcess(self->mUmbilical.mPid);
 
-        if (++self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit)
+        if (ProcessStatusError == umbilicalstatus)
         {
-            warn(0, "Umbilical connection timed out");
+            if (ECHILD != errno)
+                terminate(
+                    errno,
+                    "Unable to check for status of umbilical pid %jd",
+                    (intmax_t) self->mUmbilical.mPid);
 
-            activateFdTimerTermination_(self, aPollTime);
+            /* The umbilical process is no longer active. Do nothing
+             * here, and rely on subsequent brokn umbilical connection
+             * to trigger action. */
+        }
+        else if (ProcessStatusTrapped == umbilicalstatus ||
+                 ProcessStatusStopped == umbilicalstatus)
+        {
+            debug(0, "deferred timeout umbilical status %c", umbilicalstatus);
+
+            self->mUmbilical.mCycleCount = 0;
+        }
+        else
+        {
+            if (++self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit)
+            {
+                warn(0, "Umbilical connection timed out");
+
+                activateFdTimerTermination_(self, aPollTime);
+            }
         }
     }
     else
@@ -1143,7 +1169,9 @@ pollFdTimerChild_(void                        *self_,
 
 /* -------------------------------------------------------------------------- */
 void
-monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
+monitorChild(struct ChildProcess *self,
+             pid_t                aUmbilicalPid,
+             struct File         *aUmbilicalFile)
 {
     debug(0, "start monitoring child");
 
@@ -1204,6 +1232,7 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
         .mUmbilical =
         {
             .mFile       = aUmbilicalFile,
+            .mPid        = aUmbilicalPid,
             .mCycleCount = timeoutCycles,
             .mCycleLimit = timeoutCycles,
         },

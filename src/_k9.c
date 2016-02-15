@@ -499,7 +499,9 @@ cmdRunCommand(char **aCmd)
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(&childProcess, umbilicalSocket.mParentFile);
+    monitorChild(&childProcess,
+                 umbilicalPid,
+                 umbilicalSocket.mParentFile);
 
     if (unwatchProcessSignals())
         terminate(
