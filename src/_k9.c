@@ -179,10 +179,24 @@ cmdPrintPidFile(const char *aFileName)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
-reapChild_(void *self)
+static const struct Type * const childReaperType_ = TYPE("ChildReaper");
+
+struct ChildReaper
 {
-    return reapChild(self);
+    const struct Type *mType;
+
+    struct ChildProcess *mChildProcess;
+    pid_t                mUmbilicalPid;
+};
+
+static void
+runChildRepear_(void *self_)
+{
+    struct ChildReaper *self = self_;
+
+    ensure(childReaperType_ == self->mType);
+
+    reapChild(self->mChildProcess, self->mUmbilicalPid);
 }
 
 static void
@@ -226,7 +240,14 @@ cmdRunCommand(char **aCmd)
     struct ChildProcess childProcess;
     createChild(&childProcess);
 
-    if (watchProcessChildren(VoidMethod(reapChild_, &childProcess)))
+    struct ChildReaper childReaper =
+    {
+        .mType         = childReaperType_,
+        .mChildProcess = &childProcess,
+        .mUmbilicalPid = 0
+    };
+
+    if (watchProcessChildren(VoidMethod(runChildRepear_, &childReaper)))
         terminate(
             errno,
             "Unable to add watch on child process termination");
@@ -374,7 +395,9 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to fork umbilical monitor");
 
-    if ( ! umbilicalPid)
+    if (umbilicalPid)
+        childReaper.mUmbilicalPid = umbilicalPid;
+    else
     {
         debug(0, "umbilical process pid %jd pgid %jd",
               (intmax_t) getpid(),

@@ -50,6 +50,8 @@ struct ChildProcess
     struct Pipe* mChildPipe;
     struct Pipe  mTetherPipe_;
     struct Pipe* mTetherPipe;
+    struct Pipe  mUmbilicalPipe_;
+    struct Pipe* mUmbilicalPipe;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -57,7 +59,7 @@ void
 createChild(struct ChildProcess *self);
 
 void
-reapChild(struct ChildProcess *self);
+reapChild(struct ChildProcess *self, pid_t aUmbilicalPid);
 
 int
 forkChild(

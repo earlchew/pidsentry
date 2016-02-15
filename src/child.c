@@ -54,16 +54,16 @@
 enum PollFdChildKind
 {
     POLL_FD_CHILD_TETHER,
-    POLL_FD_CHILD_CHILD,
+    POLL_FD_CHILD_REAP_CHILD,
     POLL_FD_CHILD_UMBILICAL,
     POLL_FD_CHILD_KINDS
 };
 
 static const char *sPollFdNames[POLL_FD_CHILD_KINDS] =
 {
-    [POLL_FD_CHILD_TETHER]    = "tether",
-    [POLL_FD_CHILD_CHILD]     = "child",
-    [POLL_FD_CHILD_UMBILICAL] = "umbilical",
+    [POLL_FD_CHILD_TETHER]     = "tether",
+    [POLL_FD_CHILD_REAP_CHILD] = "child",
+    [POLL_FD_CHILD_UMBILICAL]  = "umbilical",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -119,13 +119,19 @@ createChild(struct ChildProcess *self)
             errno,
             "Unable to create child pipe");
     self->mChildPipe = &self->mChildPipe_;
+
+    if (createPipe(&self->mUmbilicalPipe_, O_CLOEXEC | O_NONBLOCK))
+        terminate(
+            errno,
+            "Unable to create umbilical pipe");
+    self->mUmbilicalPipe = &self->mUmbilicalPipe_;
 }
 
 /* -------------------------------------------------------------------------- */
-void
-reapChild(struct ChildProcess *self)
+static void
+reapChild_(const char *aRole, pid_t aPid, struct Pipe *aPipe)
 {
-    /* Check that the child process being monitored is the one
+    /* Check that the process being monitored is the one
      * is the subject of the signal. Here is a way for a parent
      * to be surprised by the presence of an adopted child:
      *
@@ -134,45 +140,50 @@ reapChild(struct ChildProcess *self)
      * The new shell inherits the earlier sleep as a child even
      * though it did not create it. */
 
-    enum ProcessStatus childstatus = monitorProcess(self->mPid);
+    enum ProcessStatus status = monitorProcess(aPid);
 
-    if (ProcessStatusError == childstatus)
+    if (ProcessStatusError == status)
         terminate(
             errno,
-            "Unable to determine status of pid %jd",
-            (intmax_t) self->mPid);
+            "Unable to determine status of %s pid %jd",
+            aRole, (intmax_t) aPid);
 
-    if (ProcessStatusRunning == childstatus)
+    if (ProcessStatusRunning == status)
     {
-        /* Only write when the child starts running again. This avoids
+        /* Only write when the process starts running again. This avoids
          * questionable semantics should the pipe overflow since the
          * only significance of the pipe is whether or not there is content. */
 
         char buf[1] = { 0 };
 
-        if (-1 == writeFile(self->mChildPipe->mWrFile, buf, sizeof(buf)))
+        if (-1 == writeFile(aPipe->mWrFile, buf, sizeof(buf)))
         {
             if (EWOULDBLOCK != errno)
                 terminate(
                     errno,
-                    "Unable to write status to child pipe");
+                    "Unable to write status to %s pipe", aRole);
         }
     }
-    else if (ProcessStatusExited != childstatus &&
-             ProcessStatusKilled != childstatus &&
-             ProcessStatusDumped != childstatus)
+    else if (ProcessStatusExited != status &&
+             ProcessStatusKilled != status &&
+             ProcessStatusDumped != status)
     {
-        debug(1,
-              "child pid %jd status %c",
-              (intmax_t) self->mPid, childstatus);
+        debug(1, "%s pid %jd status %c", aRole, (intmax_t) aPid, status);
     }
     else
     {
-        if (closePipeWriter(self->mChildPipe))
-            terminate(
-                errno,
-                "Unable to close child pipe writer");
+        if (closePipeWriter(aPipe))
+            terminate(errno, "Unable to close %s pipe writer", aRole);
     }
+}
+
+void
+reapChild(struct ChildProcess *self, pid_t aUmbilicalPid)
+{
+    if (aUmbilicalPid)
+        reapChild_("umbilical", aUmbilicalPid, self->mUmbilicalPipe);
+
+    reapChild_("child", self->mPid, self->mChildPipe);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -458,6 +469,12 @@ closeChildTether(struct ChildProcess *self)
 static void
 closeChildFiles_(struct ChildProcess *self)
 {
+    if (closePipe(self->mUmbilicalPipe))
+        terminate(
+            errno,
+            "Unable to close umbilical pipe");
+    self->mUmbilicalPipe = 0;
+
     if (closePipe(self->mChildPipe))
         terminate(
             errno,
@@ -1012,7 +1029,7 @@ pollFdCompletion_(void *self_)
      * has completed. */
 
     return
-        ! (self->mPollFds[POLL_FD_CHILD_CHILD].events |
+        ! (self->mPollFds[POLL_FD_CHILD_REAP_CHILD].events |
            self->mPollFds[POLL_FD_CHILD_TETHER].events);
 }
 
@@ -1026,8 +1043,8 @@ pollFdCompletion_(void *self_)
  * to be dead. */
 
 static void
-pollFdChild_(void                        *self_,
-             const struct EventClockTime *aPollTime)
+pollFdReapChild_(void                        *self_,
+                 const struct EventClockTime *aPollTime)
 {
     struct ChildMonitor *self = self_;
 
@@ -1051,13 +1068,14 @@ pollFdChild_(void                        *self_,
             "detected child %s",
             createPollEventText(
                 &pollEventText,
-                self->mPollFds[POLL_FD_CHILD_CHILD].revents));
+                self->mPollFds[POLL_FD_CHILD_REAP_CHILD].revents));
 
-        ensure(self->mPollFds[POLL_FD_CHILD_CHILD].events);
+        ensure(self->mPollFds[POLL_FD_CHILD_REAP_CHILD].events);
 
         char buf[1];
 
-        switch (read(self->mPollFds[POLL_FD_CHILD_CHILD].fd, buf, sizeof(buf)))
+        switch (
+            read(self->mPollFds[POLL_FD_CHILD_REAP_CHILD].fd, buf, sizeof(buf)))
         {
         default:
             /* The child process is running again after being stopped for
@@ -1086,8 +1104,8 @@ pollFdChild_(void                        *self_,
                   "child pid %jd has terminated",
                   (intmax_t) self->mChildPid);
 
-            self->mPollFds[POLL_FD_CHILD_CHILD].events = 0;
-            self->mPollFds[POLL_FD_CHILD_CHILD].fd     =
+            self->mPollFds[POLL_FD_CHILD_REAP_CHILD].events = 0;
+            self->mPollFds[POLL_FD_CHILD_REAP_CHILD].fd     =
                 self->mNullPipe->mRdFile->mFd;
 
             /* Record when the child has terminated, but do not exit
@@ -1208,7 +1226,7 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
 
         .mPollFds =
         {
-            [POLL_FD_CHILD_CHILD] =
+            [POLL_FD_CHILD_REAP_CHILD] =
             {
                 .fd     = self->mChildPipe->mRdFile->mFd,
                 .events = POLL_INPUTEVENTS,
@@ -1229,9 +1247,9 @@ monitorChild(struct ChildProcess *self, struct File *aUmbilicalFile)
 
         .mPollFdActions =
         {
-            [POLL_FD_CHILD_CHILD]     = { pollFdChild_ },
-            [POLL_FD_CHILD_UMBILICAL] = { pollFdUmbilical_ },
-            [POLL_FD_CHILD_TETHER]    = { pollFdTether_ },
+            [POLL_FD_CHILD_REAP_CHILD] = { pollFdReapChild_ },
+            [POLL_FD_CHILD_UMBILICAL]  = { pollFdUmbilical_ },
+            [POLL_FD_CHILD_TETHER]     = { pollFdTether_ },
         },
 
         .mPollFdTimerActions =
