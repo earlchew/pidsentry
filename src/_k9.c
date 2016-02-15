@@ -408,6 +408,19 @@ cmdRunCommand(char **aCmd)
         else
             ensure(watchdogPgid == getpgid(0));
 
+        /* This is the main thread of the new child process, so manipulating
+         * the signal mask here will affect all subsequent threads in the
+         * new process. Block delivery of SIGHUP so that the umbilical
+         * process continues to run even when the parent has terminated. */
+
+        int sigList[] = { SIGHUP, 0 };
+
+        struct ThreadSigMask threadSigMask;
+        if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, sigList))
+            terminate(
+                errno,
+                "Unable to push thread signal mask");
+
         if (STDIN_FILENO !=
             dup2(umbilicalSocket.mChildFile->mFd, STDIN_FILENO))
             terminate(
@@ -446,6 +459,16 @@ cmdRunCommand(char **aCmd)
                 "Unable to close umbilical socket");
 
         monitorChildUmbilical(&childProcess, watchdogPid);
+
+        if (popThreadSigMask(&threadSigMask))
+            terminate(
+                errno,
+                "Unable to pop thread signal mask");
+
+        pid_t pgid = getpgid(0);
+
+        warn(0, "Umbilical failed to clean process group %jd", (intmax_t) pgid);
+
         _exit(EXIT_FAILURE);
     }
 

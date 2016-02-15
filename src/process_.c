@@ -635,8 +635,15 @@ resetSignals_(void)
     if (resetProcessChildrenWatch_())
         goto Finally;
 
-    if (resetProcessSigPipe_())
-        goto Finally;
+    /* Do not call resetProcessSigPipe_() here since this function is
+     * called from forkProcess() and that would mean that the child
+     * process would not receive EPIPE on writes to broken pipes. Instead
+     * defer the call to execProcess() so that new programs will have
+     * SIGPIPE delivered.
+     *
+     *    if (resetProcessSigPipe_())
+     *       goto Finally;
+     */
 
     rc = 0;
 
@@ -1266,6 +1273,14 @@ void
 execProcess(const char *aCmd, char **aArgv)
 {
     if (popThreadSigMask(&sSigMask))
+        goto Finally;
+
+    /* Call resetProcessSigPipe_() here to ensure that SIGPIPE will be
+     * delivered to the new program. Note that it is possible that there
+     * was no previous call to forkProcess(), though this is normally
+     * the case. */
+
+    if (resetProcessSigPipe_())
         goto Finally;
 
     execvp(aCmd, aArgv);

@@ -97,15 +97,28 @@ pollFdUmbilical_(void                        *self_,
         ensure( ! self->mClosed);
 
         if ( ! buf[0])
+        {
+            debug(1, "umbilical connection close request");
+
             self->mClosed = true;
+        }
         else
         {
+            debug(1, "umbilical connection echo request");
+
             if (writeFd(
                     self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
                     buf, rdlen) != rdlen)
-                terminate(
-                    errno,
-                    "Unable to echo activity into umbilical connection");
+            {
+                /* Receiving EPIPE means that the umbilical connection
+                 * has been closed. Rely on the umbilical connection
+                 * reader to reactivate and detect the closed connection. */
+
+                if (EPIPE != errno)
+                    terminate(
+                        errno,
+                        "Unable to echo activity into umbilical connection");
+            }
         }
 
         /* Once activity is detected on the umbilical, reset the
