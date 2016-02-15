@@ -380,8 +380,21 @@ cmdRunCommand(char **aCmd)
      * purged so that the monitor does not inadvertently hold file
      * descriptors that should only be held by the child.
      *
-     * Note that forkProcess() will reset all signal handlers in
+     * Block SIGHUP so that the umbilical process will not terminate
+     * should it be orphaned when the parent process terminates. Blocking
+     * the signal here is important to avoid leaving open a window for
+     * a termination race.
+     *
+     * Note that forkProcess() will reset all handled signals in
      * the child process. */
+
+    int sigList[] = { SIGHUP, 0 };
+
+    struct ThreadSigMask threadSigMask;
+    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, sigList))
+        terminate(
+            errno,
+            "Unable to push thread signal mask");
 
     pid_t watchdogPid  = getpid();
     pid_t watchdogPgid = getpgid(0);
@@ -396,7 +409,14 @@ cmdRunCommand(char **aCmd)
             "Unable to fork umbilical monitor");
 
     if (umbilicalPid)
+    {
         childReaper.mUmbilicalPid = umbilicalPid;
+
+        if (popThreadSigMask(&threadSigMask))
+            terminate(
+                errno,
+                "Unable to pop thread signal mask");
+    }
     else
     {
         debug(0, "umbilical process pid %jd pgid %jd",
@@ -407,19 +427,6 @@ cmdRunCommand(char **aCmd)
             ensure(childProcess.mPgid == getpgid(0));
         else
             ensure(watchdogPgid == getpgid(0));
-
-        /* This is the main thread of the new child process, so manipulating
-         * the signal mask here will affect all subsequent threads in the
-         * new process. Block delivery of SIGHUP so that the umbilical
-         * process continues to run even when the parent has terminated. */
-
-        int sigList[] = { SIGHUP, 0 };
-
-        struct ThreadSigMask threadSigMask;
-        if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, sigList))
-            terminate(
-                errno,
-                "Unable to push thread signal mask");
 
         if (STDIN_FILENO !=
             dup2(umbilicalSocket.mChildFile->mFd, STDIN_FILENO))
@@ -576,9 +583,11 @@ cmdRunCommand(char **aCmd)
             umbilicalSocket.mParentFile, buf, sizeof(buf));
 
         if (-1 == wrlen)
+        {
             terminate(
                 errno,
                 "Unable to send termination message on umbilical");
+        }
 
         if (STDOUT_FILENO != dup2(umbilicalSocket.mParentFile->mFd,
                                   STDOUT_FILENO))
