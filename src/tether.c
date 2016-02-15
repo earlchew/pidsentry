@@ -310,7 +310,7 @@ tetherThreadMain_(void *self_)
             "Unable to close polling loop");
 
     if (popThreadSigMask(&threadSigMask))
-        terminate(errno, "Unable to push process signal mask");
+        terminate(errno, "Unable to pop process signal mask");
 
     /* Close the input file descriptor so that there is a chance
      * to propagte SIGPIPE to the child process. */
