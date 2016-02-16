@@ -46,6 +46,11 @@ struct BootClockTime;
 struct Pipe;
 struct ProcessAppLock;
 
+struct Pid
+{
+    pid_t mPid;
+};
+
 struct ExitCode
 {
     int mStatus;

@@ -69,6 +69,7 @@
  * Propagate signal termination from child to parent
  * Use round trip ping for maintaining umbilical
  * Improve FINALLY tracking
+ * Use struct Pid for type safety
  */
 
 /* -------------------------------------------------------------------------- */
