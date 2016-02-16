@@ -63,8 +63,7 @@ struct ProcessAppLock
 };
 
 static struct ProcessAppLock  sProcessAppLock;
-static pthread_mutex_t        sProcessMutex = PTHREAD_MUTEX_INITIALIZER;
-static __thread sigset_t      sProcessSigMask;
+static struct ThreadSigMutex  sProcessSigMutex = THREAD_SIG_MUTEX_INITIALIZER;
 static struct ProcessLock     sProcessLock_[2];
 static struct ProcessLock    *sProcessLock[2];
 static unsigned               sActiveProcessLock;
@@ -154,18 +153,18 @@ resetProcessSigPipe(void)
 /* -------------------------------------------------------------------------- */
 static struct
 {
-    pthread_mutex_t   mMutex;
-    unsigned          mCount;
-    struct VoidMethod mMethod;
+    struct ThreadSigMutex mSigMutex;
+    unsigned              mCount;
+    struct VoidMethod     mMethod;
 } sSigCont =
 {
-    .mMutex = PTHREAD_MUTEX_INITIALIZER
+    .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER,
 };
 
 static void
 sigCont_(int aSigNum)
 {
-    lockMutex(&sSigCont.mMutex);
+    lockThreadSigMutex(&sSigCont.mSigMutex);
 
     ++sSigCont.mCount;
 
@@ -177,7 +176,7 @@ sigCont_(int aSigNum)
         callVoidMethod(sSigCont.mMethod);
     }
 
-    unlockMutex(&sSigCont.mMutex);
+    unlockThreadSigMutex(&sSigCont.mSigMutex);
 }
 
 static int
@@ -228,36 +227,11 @@ Finally:
 static int
 updateProcessSigContMethod_(struct VoidMethod aMethod)
 {
-    int rc = -1;
-
-    struct ThreadSigMask *threadSigMask = 0;
-    pthread_mutex_t      *lock          = 0;
-
-    const int sigList[] = { SIGCONT, 0 };
-
-    struct ThreadSigMask threadSigMask_;
-
-    if (pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, sigList))
-        goto Finally;
-    threadSigMask = &threadSigMask_;
-
-    lock = lockMutex(&sSigCont.mMutex);
-
+    lockThreadSigMutex(&sSigCont.mSigMutex);
     sSigCont.mMethod = aMethod;
+    unlockThreadSigMutex(&sSigCont.mSigMutex);
 
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        unlockMutex(lock);
-
-        if (popThreadSigMask(threadSigMask))
-            terminate(errno, "Unable to pop thread signal mask");
-    });
-
-    return rc;
+    return 0;
 }
 
 static int
@@ -282,9 +256,9 @@ ownProcessSigContCount(void)
 {
     unsigned sigContCount;
 
-    lockMutex(&sSigCont.mMutex);
+    lockThreadSigMutex(&sSigCont.mSigMutex);
     sigContCount = sSigCont.mCount;
-    unlockMutex(&sSigCont.mMutex);
+    unlockThreadSigMutex(&sSigCont.mSigMutex);
 
     return sigContCount;
 }
@@ -940,21 +914,14 @@ acquireProcessAppLock(void)
 {
     int rc = -1;
 
-    pthread_mutex_t *lock = 0;
+    struct ThreadSigMutex *lock = 0;
 
     /* Blocking all signals means that signals are delivered in this
      * thread synchronously with respect to this function, so the
      * mutex can be used to obtain serialisation both inside and
      * outside signal handlers. */
 
-    sigset_t filledset;
-    if (sigfillset(&filledset))
-        goto Finally;
-
-    if (pthread_sigmask(SIG_BLOCK, &filledset, &sProcessSigMask))
-        goto Finally;
-
-    lock = lockMutex(&sProcessMutex);
+    lock = lockThreadSigMutex(&sProcessSigMutex);
 
     struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
@@ -968,7 +935,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            unlockMutex(lock);
+            unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -985,10 +952,7 @@ releaseProcessAppLock(void)
     if (processLock && unlockProcessLock_(processLock))
         goto Finally;
 
-    unlockMutex(&sProcessMutex);
-
-    if (pthread_sigmask(SIG_SETMASK, &sProcessSigMask, 0))
-        goto Finally;
+    unlockThreadSigMutex(&sProcessSigMutex);
 
     rc = 0;
 
@@ -1107,8 +1071,8 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 {
     pid_t rc = -1;
 
-    const char      *err  = 0;
-    pthread_mutex_t *lock = 0;
+    const char            *err  = 0;
+    struct ThreadSigMutex *lock = 0;
 
     struct ThreadSigMask *threadSigMask = 0;
 
@@ -1143,7 +1107,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
      * in the parent first so that the child process is guaranteed to
      * be able to synchronise its messages. */
 
-    lock = lockMutex(&sProcessMutex);
+    lock = lockThreadSigMutex(&sProcessSigMutex);
 
     if (sProcessLock[sActiveProcessLock])
     {
@@ -1230,7 +1194,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
          * the original process signal mask. */
 
         lock = 0;
-        unlockMutex(&sProcessMutex);
+        unlockThreadSigMutex(&sProcessSigMutex);
 
         threadSigMask = 0;
         if (popThreadSigMask(&threadSigMask_))
@@ -1256,7 +1220,7 @@ Finally:
                 "Unable to close process lock");
         sProcessLock[inactiveProcessLock] = 0;
 
-        unlockMutex(lock);
+        unlockThreadSigMutex(lock);
 
         if (popThreadSigMask(threadSigMask))
             terminate(errno, "Unable to pop thread signal mask");
