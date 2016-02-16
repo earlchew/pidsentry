@@ -334,3 +334,62 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+void
+createThreadSigMutex(struct ThreadSigMutex *self)
+{
+    *self = (struct ThreadSigMutex) THREAD_SIG_MUTEX_INITIALIZER;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+destroyThreadSigMutex(struct ThreadSigMutex *self)
+{
+    ensure( ! self->mLocked);
+}
+
+/* -------------------------------------------------------------------------- */
+struct ThreadSigMutex *
+lockThreadSigMutex(struct ThreadSigMutex *self)
+{
+    /* When acquiring the lock, first ensure that no signal is delivered
+     * within the context of this thread, and only then lock the mutex
+     * to prevent other threads accessing the resource. */
+
+    struct ThreadSigMask threadSigMask;
+
+    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
+        terminate(
+            errno,
+            "Unable to push thread signal mask");
+
+    lockMutex(&self->mMutex);
+
+    self->mLocked = true;
+    self->mMask   = threadSigMask;
+    self->mOwner  = pthread_self();
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+unlockThreadSigMutex(struct ThreadSigMutex *self)
+{
+    if (self)
+    {
+        ensure(self->mLocked);
+        ensure(pthread_equal(self->mOwner, pthread_self()));
+
+        struct ThreadSigMask threadSigMask = self->mMask;
+
+        self->mLocked = false;
+        unlockMutex(&self->mMutex);
+
+        if (popThreadSigMask(&threadSigMask))
+            terminate(
+                errno,
+                "Unable to pop thread signal mask");
+    }
+}
+
+/* -------------------------------------------------------------------------- */

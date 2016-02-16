@@ -29,6 +29,7 @@
 #ifndef THREAD_H
 #define THREAD_H
 
+#include <stdbool.h>
 #include <pthread.h>
 #include <signal.h>
 
@@ -47,6 +48,16 @@ enum ThreadSigMaskAction
     ThreadSigMaskSet     =  0,
     ThreadSigMaskBlock   = +1,
 };
+
+struct ThreadSigMutex
+{
+    pthread_mutex_t      mMutex;
+    struct ThreadSigMask mMask;
+    bool                 mLocked;
+    pthread_t            mOwner;
+};
+
+#define THREAD_SIG_MUTEX_INITIALIZER { .mMutex = PTHREAD_MUTEX_INITIALIZER }
 
 /* -------------------------------------------------------------------------- */
 void
@@ -67,6 +78,19 @@ destroyThreadAttr(pthread_attr_t *self);
 
 void
 setThreadAttrDetachState(pthread_attr_t *self, int aState);
+
+/* -------------------------------------------------------------------------- */
+void
+createThreadSigMutex(struct ThreadSigMutex *self);
+
+void
+destroyThreadSigMutex(struct ThreadSigMutex *self);
+
+struct ThreadSigMutex *
+lockThreadSigMutex(struct ThreadSigMutex *self);
+
+void
+unlockThreadSigMutex(struct ThreadSigMutex *self);
 
 /* -------------------------------------------------------------------------- */
 void
