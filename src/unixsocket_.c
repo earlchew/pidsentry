@@ -92,13 +92,14 @@ createUnixSocket(
     /* Do not use random() from stdlib to avoid perturbing the behaviour of
      * programs that themselves use the PRNG from the library. */
 
-    uint32_t rnd = getpid() ^ MSECS(monotonicTime().monotonic).ms;
+    uint32_t rnd =
+        aNameLen ? aNameLen : getpid() ^ MSECS(monotonicTime().monotonic).ms;
 
     while (1)
     {
         struct sockaddr_un sockAddr;
 
-        if ( ! aName || 1 == aNameLen && ! *aName)
+        if ( ! aName)
         {
             createRandomName(&sockAddr, &rnd);
             sockAddr.sun_family = AF_UNIX;
@@ -129,7 +130,7 @@ createUnixSocket(
              * primarily to allow the unit test to verify correct
              * operation of the retry and name generation code. */
 
-            if (EADDRINUSE == errno && ! aName)
+            if (EADDRINUSE == errno && ! aName && ! aNameLen)
                 continue;
             goto Finally;
         }

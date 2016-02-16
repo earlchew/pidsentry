@@ -37,23 +37,17 @@
 
 TEST(UnixSocketTest, AbstractServerCollision)
 {
-    const char abstractName[1] = { 0 };
-
     struct UnixSocket serversock1;
 
-    srandom(getpid());
-    EXPECT_EQ(0, createUnixSocket(&serversock1,
-                                  abstractName, sizeof(abstractName), 0));
+    EXPECT_EQ(0, createUnixSocket(&serversock1, 0, 0+getpid(), 0));
 
     struct UnixSocket serversock2;
 
-    srandom(getpid());
-    EXPECT_EQ(-1, createUnixSocket(&serversock2,
-                                  abstractName, sizeof(abstractName), 0));
+    EXPECT_EQ(-1, createUnixSocket(&serversock2, 0, 0+getpid(), 0));
+
     EXPECT_EQ(EADDRINUSE, errno);
 
-    EXPECT_EQ(0, createUnixSocket(&serversock2,
-                                  abstractName, sizeof(abstractName), 0));
+    EXPECT_EQ(0, createUnixSocket(&serversock2, 0, 1+getpid(), 0));
 }
 
 TEST(UnixSocketTest, AbstractServer)
