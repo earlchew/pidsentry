@@ -55,15 +55,17 @@ enum PollFdChildKind
 {
     POLL_FD_CHILD_TETHER,
     POLL_FD_CHILD_REAP_CHILD,
+    POLL_FD_CHILD_REAP_UMBILICAL,
     POLL_FD_CHILD_UMBILICAL,
     POLL_FD_CHILD_KINDS
 };
 
 static const char *sPollFdNames[POLL_FD_CHILD_KINDS] =
 {
-    [POLL_FD_CHILD_TETHER]     = "tether",
-    [POLL_FD_CHILD_REAP_CHILD] = "child",
-    [POLL_FD_CHILD_UMBILICAL]  = "umbilical",
+    [POLL_FD_CHILD_TETHER]         = "tether",
+    [POLL_FD_CHILD_REAP_CHILD]     = "reap child",
+    [POLL_FD_CHILD_REAP_UMBILICAL] = "reap umbilical",
+    [POLL_FD_CHILD_UMBILICAL]      = "umbilical",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -684,6 +686,22 @@ pollFdTimerTermination_(void                        *self_,
  * to clean up, or if the watchdog fails catatrophically. */
 
 static void
+restartFdTimerUmbilical_(struct ChildMonitor         *self,
+                         const struct EventClockTime *aPollTime)
+{
+    if (self->mUmbilical.mCycleCount != self->mUmbilical.mCycleLimit)
+    {
+        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+
+        self->mUmbilical.mCycleCount = 0;
+
+        lapTimeRestart(
+            &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL].mSince,
+            aPollTime);
+    }
+}
+
+static void
 pollFdCloseUmbilical_(struct ChildMonitor         *self,
                       const struct EventClockTime *aPollTime)
 {
@@ -733,7 +751,7 @@ pollFdUmbilical_(void                        *self_,
         debug(1, "received umbilical connection echo %zd", rdlen);
         ensure(sizeof(buf) == rdlen);
 
-        /* When the echo is recevied on the umbilical connection
+        /* When the echo is received on the umbilical connection
          * schedule the next umbilical ping. */
 
         ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
@@ -810,6 +828,64 @@ pollFdContUmbilical_(void *self_)
      * has just woken, so that the monitor can restart the timeout. */
 
     pollFdWriteUmbilical_(self);
+}
+
+static void
+pollFdReapUmbilical_(void                        *self_,
+                     const struct EventClockTime *aPollTime)
+{
+    struct ChildMonitor *self = self_;
+
+    ensure(childMonitorType_ == self->mType);
+
+    struct PollEventText pollEventText;
+    debug(
+        1,
+        "detected umbilical %s",
+        createPollEventText(
+            &pollEventText,
+            self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].revents));
+
+    ensure(self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].events);
+
+    char buf[1];
+
+    switch (
+        read(self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].fd, buf, sizeof(buf)))
+    {
+    default:
+        /* The umbilical process is running again after being stopped for
+         * some time. Restart the tether timeout so that the stoppage
+         * is not mistaken for a failure. */
+
+        debug(0,
+              "umbilical pid %jd is running",
+              (intmax_t) self->mUmbilical.mPid);
+
+        restartFdTimerUmbilical_(self, aPollTime);
+        break;
+
+    case -1:
+        if (EINTR != errno)
+            terminate(
+                errno,
+                "Unable to read umbilical pipe");
+        break;
+
+    case 0:
+        /* The umbilical process has terminated, so there is no longer
+         * any need to monitor for SIGCHLD. */
+
+        debug(0,
+              "umbilical pid %jd has terminated",
+              (intmax_t) self->mUmbilical.mPid);
+
+        self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].events = 0;
+        self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].fd     =
+            self->mNullPipe->mRdFile->mFd;
+
+        break;
+    }
 }
 
 static void
@@ -1261,6 +1337,12 @@ monitorChild(struct ChildProcess *self,
                 .events = POLL_INPUTEVENTS,
             },
 
+            [POLL_FD_CHILD_REAP_UMBILICAL] =
+            {
+                .fd     = self->mUmbilicalPipe->mRdFile->mFd,
+                .events = POLL_INPUTEVENTS,
+            },
+
             [POLL_FD_CHILD_UMBILICAL] =
             {
                 .fd     = aUmbilicalFile->mFd,
@@ -1276,9 +1358,10 @@ monitorChild(struct ChildProcess *self,
 
         .mPollFdActions =
         {
-            [POLL_FD_CHILD_REAP_CHILD] = { pollFdReapChild_ },
-            [POLL_FD_CHILD_UMBILICAL]  = { pollFdUmbilical_ },
-            [POLL_FD_CHILD_TETHER]     = { pollFdTether_ },
+            [POLL_FD_CHILD_REAP_UMBILICAL] = { pollFdReapUmbilical_ },
+            [POLL_FD_CHILD_REAP_CHILD]     = { pollFdReapChild_ },
+            [POLL_FD_CHILD_UMBILICAL]      = { pollFdUmbilical_ },
+            [POLL_FD_CHILD_TETHER]         = { pollFdTether_ },
         },
 
         .mPollFdTimerActions =
