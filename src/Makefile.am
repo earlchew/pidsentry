@@ -62,6 +62,7 @@ check_PROGRAMS     += _fdtest
 check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
 check_PROGRAMS     += _processtest
+check_PROGRAMS     += _threadtest
 noinst_PROGRAMS     =
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
@@ -91,6 +92,9 @@ _processtest_LDADD   = $(TEST_LIBS)
 
 _systemtest_SOURCES = _systemtest.cc
 _systemtest_LDADD   = $(TEST_LIBS)
+
+_threadtest_SOURCES = _threadtest.cc
+_threadtest_LDADD   = $(TEST_LIBS)
 
 _unixsockettest_SOURCES = _unixsockettest.cc
 _unixsockettest_LDADD   = $(TEST_LIBS)
