@@ -935,7 +935,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            unlockThreadSigMutex(lock);
+            lock = unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -1074,8 +1074,6 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
     const char            *err  = 0;
     struct ThreadSigMutex *lock = 0;
 
-    struct ThreadSigMask *threadSigMask = 0;
-
     unsigned activeProcessLock   = 0 + sActiveProcessLock;
     unsigned inactiveProcessLock = 1 - activeProcessLock;
 
@@ -1095,19 +1093,13 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
      * handlers will not run in this process when the process mutex
      * is held. */
 
-    struct ThreadSigMask threadSigMask_;
-
-    if (pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0))
-        goto Finally;
-    threadSigMask = &threadSigMask_;
+    lock = lockThreadSigMutex(&sProcessSigMutex);
 
     /* The child process needs separate process lock. It cannot share
      * the process lock with the parent because flock(2) distinguishes
      * locks by file descriptor table entry. Create the process lock
      * in the parent first so that the child process is guaranteed to
      * be able to synchronise its messages. */
-
-    lock = lockThreadSigMutex(&sProcessSigMutex);
 
     if (sProcessLock[sActiveProcessLock])
     {
@@ -1193,15 +1185,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
          * process mutex and the signal mask are restored, reinstate
          * the original process signal mask. */
 
-        lock = 0;
-        unlockThreadSigMutex(&sProcessSigMutex);
-
-        threadSigMask = 0;
-        if (popThreadSigMask(&threadSigMask_))
-        {
-            err = "Unable to pop thread signal mask";
-            goto Finally;
-        }
+        lock = unlockThreadSigMutex(lock);
 
         break;
     }
@@ -1220,10 +1204,7 @@ Finally:
                 "Unable to close process lock");
         sProcessLock[inactiveProcessLock] = 0;
 
-        unlockThreadSigMutex(lock);
-
-        if (popThreadSigMask(threadSigMask))
-            terminate(errno, "Unable to pop thread signal mask");
+        lock = unlockThreadSigMutex(lock);
 
         if (err)
             terminate(errcode, "%s", err);
