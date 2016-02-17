@@ -178,7 +178,7 @@ lockMutex(pthread_mutex_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_mutex_t *
 unlockMutex(pthread_mutex_t *self)
 {
     if (self)
@@ -186,10 +186,12 @@ unlockMutex(pthread_mutex_t *self)
         if (errno = pthread_mutex_unlock(self))
             terminate(errno, "Unable to unlock mutex");
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_mutex_t *
 unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond)
 {
     if (errno = pthread_cond_signal(aCond))
@@ -201,10 +203,12 @@ unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond)
         terminate(
             errno,
             "Unable to lock mutex");
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_mutex_t *
 unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 {
     if (errno = pthread_cond_broadcast(aCond))
@@ -216,6 +220,8 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
         terminate(
             errno,
             "Unable to lock mutex");
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -372,7 +378,7 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ThreadSigMutex *
 unlockThreadSigMutex(struct ThreadSigMutex *self)
 {
     if (self)
@@ -390,6 +396,8 @@ unlockThreadSigMutex(struct ThreadSigMutex *self)
                 errno,
                 "Unable to pop thread signal mask");
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
