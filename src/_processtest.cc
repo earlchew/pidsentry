@@ -107,4 +107,52 @@ TEST(ProcessTest, ProcessSignature)
     free(secondChildSignature);
 }
 
+static int sigFpeCount_;
+
+static void
+sigFpeAction_(int)
+{
+    ++sigFpeCount_;
+}
+
+TEST(ProcessTest, ProcessAppLock)
+{
+    struct sigaction nextAction;
+    struct sigaction prevAction;
+
+    nextAction.sa_handler = sigFpeAction_;
+    EXPECT_FALSE(sigfillset(&nextAction.sa_mask));
+
+    EXPECT_FALSE(sigaction(SIGFPE, &nextAction, &prevAction));
+
+    EXPECT_FALSE(raise(SIGFPE));
+    EXPECT_EQ(1, sigFpeCount_);
+
+    EXPECT_FALSE(raise(SIGFPE));
+    EXPECT_EQ(2, sigFpeCount_);
+
+    struct ProcessAppLock *lock = createProcessAppLock();
+    {
+        // Verify that the application lock also excludes the delivery
+        // of signals while the lock is taken.
+
+        EXPECT_FALSE(raise(SIGFPE));
+        EXPECT_EQ(2, sigFpeCount_);
+
+        EXPECT_FALSE(raise(SIGFPE));
+        EXPECT_EQ(2, sigFpeCount_);
+    }
+    destroyProcessAppLock(lock);
+
+    EXPECT_EQ(3, sigFpeCount_);
+
+    EXPECT_FALSE(raise(SIGFPE));
+    EXPECT_EQ(4, sigFpeCount_);
+
+    EXPECT_FALSE(raise(SIGFPE));
+    EXPECT_EQ(5, sigFpeCount_);
+
+    EXPECT_FALSE(sigaction(SIGFPE, &prevAction, 0));
+}
+
 #include "../googletest/src/gtest_main.cc"
