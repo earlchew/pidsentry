@@ -180,9 +180,9 @@ cmdPrintPidFile(const char *aFileName)
 }
 
 /* -------------------------------------------------------------------------- */
-static const struct Type * const childReaperType_ = TYPE("ChildReaper");
+static const struct Type * const familyType_ = TYPE("Family");
 
-struct ChildReaper
+struct Family
 {
     const struct Type *mType;
 
@@ -191,19 +191,33 @@ struct ChildReaper
 };
 
 static void
-runChildRepear_(void *self_)
+reapFamily_(void *self_)
 {
-    struct ChildReaper *self = self_;
+    struct Family *self = self_;
 
-    ensure(childReaperType_ == self->mType);
+    ensure(familyType_ == self->mType);
 
     reapChild(self->mChildProcess, self->mUmbilicalPid);
 }
 
 static void
-killChild_(void *self, int aSigNum)
+raiseFamilySignal_(void *self_, int aSigNum)
 {
-    return killChild(self, aSigNum);
+    struct Family *self = self_;
+
+    ensure(familyType_ == self->mType);
+
+    return killChild(self->mChildProcess, aSigNum);
+}
+
+static void
+raiseFamilySigCont_(void *self_)
+{
+    struct Family *self = self_;
+
+    ensure(familyType_ == self->mType);
+
+    raiseChildSigCont(self->mChildProcess);
 }
 
 static struct ExitCode
@@ -241,17 +255,17 @@ cmdRunCommand(char **aCmd)
     struct ChildProcess childProcess;
     createChild(&childProcess);
 
-    struct ChildReaper childReaper =
+    struct Family family =
     {
-        .mType         = childReaperType_,
+        .mType         = familyType_,
         .mChildProcess = &childProcess,
         .mUmbilicalPid = 0
     };
 
-    if (watchProcessChildren(VoidMethod(runChildRepear_, &childReaper)))
+    if (watchProcessChildren(VoidMethod(reapFamily_, &family)))
         terminate(
             errno,
-            "Unable to add watch on child process termination");
+            "Unable to add watch on process termination");
 
     struct Pipe syncPipe;
     if (createPipe(&syncPipe, 0))
@@ -270,10 +284,15 @@ cmdRunCommand(char **aCmd)
      * the watchdog to terminate, and the new child process will
      * notice via its synchronisation pipe. */
 
-    if (watchProcessSignals(VoidIntMethod(killChild_, &childProcess)))
+    if (watchProcessSignals(VoidIntMethod(raiseFamilySignal_, &family)))
         terminate(
             errno,
             "Unable to add watch on signals");
+
+    if (watchProcessSigCont(VoidMethod(raiseFamilySigCont_, &family)))
+        terminate(
+            errno,
+            "Unable to add watch on process continuation");
 
     /* Only identify the watchdog process after all the signal handlers
      * have been installed. The functional tests can use this as an
@@ -399,10 +418,8 @@ cmdRunCommand(char **aCmd)
 
     pid_t watchdogPid  = getpid();
     pid_t watchdogPgid = getpgid(0);
-    pid_t umbilicalPid = forkProcess(
-        gOptions.mSetPgid
-        ? ForkProcessSetProcessGroup
-        : ForkProcessShareProcessGroup, childProcess.mPgid);
+    pid_t umbilicalPid = forkProcess(ForkProcessSetProcessGroup,
+                                     childProcess.mPgid);
 
     if (-1 == umbilicalPid)
         terminate(
@@ -411,7 +428,7 @@ cmdRunCommand(char **aCmd)
 
     if (umbilicalPid)
     {
-        childReaper.mUmbilicalPid = umbilicalPid;
+        family.mUmbilicalPid = umbilicalPid;
 
         if (popThreadSigMask(&threadSigMask))
             terminate(
@@ -533,6 +550,11 @@ cmdRunCommand(char **aCmd)
     monitorChild(&childProcess,
                  umbilicalPid,
                  umbilicalSocket.mParentFile);
+
+    if (unwatchProcessSigCont())
+        terminate(
+            errno,
+            "Unable to remove watch from process continuation");
 
     if (unwatchProcessSignals())
         terminate(

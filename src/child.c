@@ -92,8 +92,11 @@ static const char *sPollFdTimerNames[POLL_FD_CHILD_TIMER_KINDS] =
 void
 createChild(struct ChildProcess *self)
 {
-    self->mPid = 0;
+    self->mPid  = 0;
     self->mPgid = 0;
+
+    self->mChildMonitor.mMonitor = 0;
+    createThreadSigMutex(&self->mChildMonitor.mMutex);
 
     /* Only the reading end of the tether is marked non-blocking. The
      * writing end must be used by the child process (and perhaps inherited
@@ -231,9 +234,7 @@ forkChild(
      * This is safe because that would cause one of end the synchronisation
      * pipe to close, and the other end will eventually notice. */
 
-    pid_t childPid = forkProcess(
-        gOptions.mSetPgid
-        ? ForkProcessSetProcessGroup : ForkProcessShareProcessGroup, 0);
+    pid_t childPid = forkProcess(ForkProcessSetProcessGroup, 0);
 
     /* Although it would be better to ensure that the child process and watchdog
      * in the same process group, switching the process group of the watchdog
@@ -438,12 +439,14 @@ forkChild(
      * so it is safe to query it to determine its process group. */
 
     self->mPid  = childPid;
-    self->mPgid = gOptions.mSetPgid ? self->mPid : 0;
+    self->mPgid = getpgid(self->mPid);
 
     debug(0,
           "running child pid %jd in pgid %jd",
           (intmax_t) self->mPid,
           (intmax_t) self->mPgid);
+
+    ensure(self->mPid == self->mPgid);
 
     rc = 0;
 
@@ -494,6 +497,9 @@ closeChildFiles_(struct ChildProcess *self)
 int
 closeChild(struct ChildProcess *self)
 {
+    ensure( ! self->mChildMonitor.mMonitor);
+    destroyThreadSigMutex(&self->mChildMonitor.mMutex);
+
     closeChildFiles_(self);
 
     int status;
@@ -1244,6 +1250,28 @@ pollFdTimerChild_(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+static void
+updateChildMonitor_(struct ChildProcess *self, struct ChildMonitor *aMonitor)
+{
+    lockThreadSigMutex(&self->mChildMonitor.mMutex);
+
+    self->mChildMonitor.mMonitor = aMonitor;
+
+    unlockThreadSigMutex(&self->mChildMonitor.mMutex);
+}
+
+void
+raiseChildSigCont(struct ChildProcess *self)
+{
+    lockThreadSigMutex(&self->mChildMonitor.mMutex);
+
+    if (self->mChildMonitor.mMonitor)
+        pollFdContUmbilical_(self->mChildMonitor.mMonitor);
+
+    unlockThreadSigMutex(&self->mChildMonitor.mMutex);
+}
+
+/* -------------------------------------------------------------------------- */
 void
 monitorChild(struct ChildProcess *self,
              pid_t                aUmbilicalPid,
@@ -1429,8 +1457,6 @@ monitorChild(struct ChildProcess *self,
 
     lapTimeTrigger(&umbilicalTimer->mSince, umbilicalTimer->mPeriod, 0);
 
-    watchProcessSigCont(VoidMethod(pollFdContUmbilical_, &childmonitor));
-
     /* It is unfortunate that O_NONBLOCK is an attribute of the underlying
      * open file, rather than of each file descriptor. Since stdin and
      * stdout are typically inherited from the parent, setting O_NONBLOCK
@@ -1463,17 +1489,19 @@ monitorChild(struct ChildProcess *self,
             errno,
             "Unable to initialise polling loop");
 
+    updateChildMonitor_(self, &childmonitor);
+
     if (runPollFdLoop(&pollfd))
         terminate(
             errno,
             "Unable to run polling loop");
 
+    updateChildMonitor_(self, 0);
+
     if (closePollFd(&pollfd))
         terminate(
             errno,
             "Unable to close polling loop");
-
-    unwatchProcessSigCont();
 
     closeTetherThread(&tetherThread);
 

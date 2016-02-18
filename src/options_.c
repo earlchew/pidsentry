@@ -91,11 +91,6 @@ static const char sUsage[] =
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
-"  --setpgid | -s\n"
-"      Place the child process into its own process group. This is\n"
-"      useful if the child will create its own family of processes\n"
-"      and the watchdog is not itself being supervised.\n"
-"      [Default: Do not place child in its own process group\n"
 "  --timeout L | -t L\n"
 "      Specify the timeout list L. The list L comprises up to four\n"
 "      comma separated values: T, U, V and W. Each of the values is either\n"
@@ -116,7 +111,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "+cD:df:iL::n:oP:p:qsTt:u";
+    "+cD:df:iL::n:oP:p:qTt:u";
 
 static struct option sLongOptions[] =
 {
@@ -319,11 +314,6 @@ processOptions(int argc, char **argv)
         case 'q':
             pidFileOnly = -1;
             gOptions.mQuiet = true;
-            break;
-
-        case 's':
-            pidFileOnly = -1;
-            gOptions.mSetPgid = true;
             break;
 
         case 'T':

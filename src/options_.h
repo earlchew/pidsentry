@@ -47,7 +47,6 @@ struct Options
     unsigned    mDebug;
     bool        mCordless;
     bool        mIdentify;
-    bool        mSetPgid;
     bool        mQuiet;
     bool        mTest;
     bool        mOrphaned;

@@ -30,6 +30,7 @@
 #define CHILD_H
 
 #include "pipe_.h"
+#include "thread_.h"
 
 #include <sys/types.h>
 
@@ -39,6 +40,7 @@ extern "C" {
 
 struct StdFdFiller;
 struct SocketPair;
+struct ChildMonitor;
 
 /* -------------------------------------------------------------------------- */
 struct ChildProcess
@@ -52,6 +54,12 @@ struct ChildProcess
     struct Pipe* mTetherPipe;
     struct Pipe  mUmbilicalPipe_;
     struct Pipe* mUmbilicalPipe;
+
+    struct
+    {
+        struct ThreadSigMutex mMutex;
+        struct ChildMonitor  *mMonitor;
+    } mChildMonitor;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -82,6 +90,9 @@ void
 monitorChild(struct ChildProcess *self,
              pid_t                aUmbilicalPid,
              struct File         *aUmbilicalFile);
+
+void
+raiseChildSigCont(struct ChildProcess *self);
 
 int
 closeChild(struct ChildProcess *self);
