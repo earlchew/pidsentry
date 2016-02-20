@@ -126,6 +126,12 @@ int
 unwatchProcessSigCont(void);
 
 int
+watchProcessSigStop(struct VoidMethod aMethod);
+
+int
+unwatchProcessSigStop(void);
+
+int
 watchProcessClock(struct VoidMethod aMethod, struct Duration aPeriod);
 
 int

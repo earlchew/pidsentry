@@ -59,7 +59,15 @@ struct ProcessLock
 
 struct ProcessAppLock
 {
-    void *mNull;
+    void *mNull;;
+};
+
+struct ProcessSignalThread
+{
+    pthread_mutex_t mMutex;
+    pthread_cond_t  mCond;
+    pthread_t       mThread;
+    bool            mStopping;
 };
 
 static struct ProcessAppLock  sProcessAppLock;
@@ -68,11 +76,71 @@ static struct ProcessLock     sProcessLock_[2];
 static struct ProcessLock    *sProcessLock[2];
 static unsigned               sActiveProcessLock;
 
+static struct ProcessSignalThread sProcessSignalThread =
+{
+    .mMutex = PTHREAD_MUTEX_INITIALIZER,
+    .mCond  = PTHREAD_COND_INITIALIZER,
+};
+
 static unsigned              sInit;
 static struct ThreadSigMask  sSigMask;
 static const char           *sArg0;
 static const char           *sProgramName;
 static struct MonotonicTime  sTimeBase;
+
+/* -------------------------------------------------------------------------- */
+static struct sigaction sSignalVectors[NSIG];
+
+static void
+dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
+{
+    FINALLY
+    ({
+        sSignalVectors[aSigNum].sa_sigaction(aSigNum, aSigInfo, aSigContext);
+    });
+}
+
+static void
+dispatchSigHandler_(int aSigNum)
+{
+    FINALLY
+    ({
+        sSignalVectors[aSigNum].sa_handler(aSigNum);
+    });
+}
+
+static int
+changeSigAction_(unsigned                aSigNum,
+                 const struct sigaction *aNewAction,
+                 struct sigaction       *aOldAction)
+{
+    int rc = -1;
+
+    ensure(NUMBEROF(sSignalVectors) > aSigNum);
+
+    if (SIG_DFL != aNewAction->sa_handler || SIG_IGN != aNewAction->sa_handler)
+    {
+        struct sigaction sigAction = *aNewAction;
+
+        if (aNewAction->sa_flags & SA_SIGINFO)
+            sigAction.sa_sigaction = dispatchSigAction_;
+        else
+            sigAction.sa_handler = dispatchSigHandler_;
+    }
+
+    if (sigaction(aSigNum, aNewAction, aOldAction))
+        goto Finally;
+
+    sSignalVectors[aSigNum] = *aNewAction;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
 
 /* -------------------------------------------------------------------------- */
 static sigset_t
@@ -106,7 +174,7 @@ ignoreProcessSigPipe(void)
         .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGPIPE, &nextAction, &prevAction))
+    if (changeSigAction_(SIGPIPE, &nextAction, &prevAction))
         goto Finally;
 
     sSigPipeAction = prevAction;
@@ -128,7 +196,7 @@ resetProcessSigPipe_(void)
     if (SIG_ERR != sSigPipeAction.sa_handler ||
         (sSigPipeAction.sa_flags & SA_SIGINFO))
     {
-        if (sigaction(SIGPIPE, &sSigPipeAction, 0))
+        if (changeSigAction_(SIGPIPE, &sSigPipeAction, 0))
             goto Finally;
 
         sSigPipeAction.sa_handler = SIG_ERR;
@@ -164,9 +232,13 @@ static struct
 static void
 sigCont_(int aSigNum)
 {
-    lockThreadSigMutex(&sSigCont.mSigMutex);
+    /* See the commentary in ownProcessSigContCount() to understand
+     * the motivation for using a lock free update here. Other solutions
+     * are possible, but a lock free approach is the most straightforward. */
 
-    ++sSigCont.mCount;
+    __sync_add_and_fetch(&sSigCont.mCount, 1);
+
+    lockThreadSigMutex(&sSigCont.mSigMutex);
 
     if (ownVoidMethodNil(sSigCont.mMethod))
         debug(1, "detected SIGCONT");
@@ -190,7 +262,7 @@ hookProcessSigCont_(void)
         .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGCONT, &sigAction, 0))
+    if (changeSigAction_(SIGCONT, &sigAction, 0))
         goto Finally;
 
     rc = 0;
@@ -212,7 +284,7 @@ unhookProcessSigCont_(void)
         .sa_handler = SIG_DFL,
     };
 
-    if (sigaction(SIGCONT, &sigAction, 0))
+    if (changeSigAction_(SIGCONT, &sigAction, 0))
         goto Finally;
 
     rc = 0;
@@ -254,13 +326,11 @@ Finally:
 unsigned
 ownProcessSigContCount(void)
 {
-    unsigned sigContCount;
+    /* Because this function is called from lockMutex(), amongst other places,
+     * do not use or cause lockMutex() to be used here to avoid introducing
+     * the chance of infinite recursion. */
 
-    lockThreadSigMutex(&sSigCont.mSigMutex);
-    sigContCount = sSigCont.mCount;
-    unlockThreadSigMutex(&sSigCont.mSigMutex);
-
-    return sigContCount;
+    return sSigCont.mCount;
 }
 
 int
@@ -287,6 +357,130 @@ unwatchProcessSigCont(void)
 }
 
 /* -------------------------------------------------------------------------- */
+static struct
+{
+    struct ThreadSigMutex mSigMutex;
+    struct VoidMethod     mMethod;
+} sSigStop =
+{
+    .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER,
+};
+
+static void
+sigStop_(int aSigNum)
+{
+    lockThreadSigMutex(&sSigStop.mSigMutex);
+
+    if (ownVoidMethodNil(sSigStop.mMethod))
+        debug(1, "detected SIGTSTP");
+    else
+    {
+        debug(1, "observed SIGTSTP");
+        callVoidMethod(sSigStop.mMethod);
+    }
+
+    if (raise(SIGSTOP))
+        terminate(errno, "Unable to stop process");
+
+    unlockThreadSigMutex(&sSigStop.mSigMutex);
+}
+
+static int
+hookProcessSigStop_(void)
+{
+    int rc = -1;
+
+    struct sigaction sigAction =
+    {
+        .sa_handler = sigStop_,
+        .sa_mask    = filledSigSet(),
+    };
+
+    if (changeSigAction_(SIGTSTP, &sigAction, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+unhookProcessSigStop_(void)
+{
+    int rc = -1;
+
+    struct sigaction sigAction =
+    {
+        .sa_handler = SIG_DFL,
+    };
+
+    if (changeSigAction_(SIGTSTP, &sigAction, 0))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+updateProcessSigStopMethod_(struct VoidMethod aMethod)
+{
+    lockThreadSigMutex(&sSigStop.mSigMutex);
+    sSigStop.mMethod = aMethod;
+    unlockThreadSigMutex(&sSigStop.mSigMutex);
+
+    return 0;
+}
+
+static int
+resetProcessSigStop_(void)
+{
+    int rc = -1;
+
+    if (updateProcessSigStopMethod_(VoidMethod(0, 0)))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+watchProcessSigStop(struct VoidMethod aMethod)
+{
+    int rc = -1;
+
+    if (updateProcessSigStopMethod_(aMethod))
+        goto Finally;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+unwatchProcessSigStop(void)
+{
+    return resetProcessSigStop_();
+}
+
+/* -------------------------------------------------------------------------- */
 static struct VoidMethod sSigChldMethod;
 
 static void
@@ -302,14 +496,25 @@ sigChld_(int aSigNum)
 static int
 resetProcessChildrenWatch_(void)
 {
-    sSigChldMethod = VoidMethod(0, 0);
+    int rc = -1;
 
     struct sigaction sigAction =
     {
         .sa_handler = SIG_DFL,
     };
 
-    return sigaction(SIGCHLD, &sigAction, 0);
+    if (changeSigAction_(SIGCHLD, &sigAction, 0))
+        goto Finally;
+
+    sSigChldMethod = VoidMethod(0, 0);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 int
@@ -317,22 +522,26 @@ watchProcessChildren(struct VoidMethod aMethod)
 {
     int rc = -1;
 
+    sSigChldMethod = aMethod;
+
     struct sigaction sigAction =
     {
         .sa_handler = sigChld_,
         .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGCHLD, &sigAction, 0))
+    if (changeSigAction_(SIGCHLD, &sigAction, 0))
         goto Finally;
-
-    sSigChldMethod = aMethod;
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        if (rc)
+            sSigChldMethod = VoidMethod(0, 0);
+    });
 
     return rc;
 }
@@ -371,8 +580,6 @@ resetProcessClockWatch_(void)
     if (SIG_ERR != sClockTickSigAction.sa_handler ||
         (sClockTickSigAction.sa_flags & SA_SIGINFO))
     {
-        sClockMethod = VoidMethod(0, 0);
-
         struct itimerval disableClock =
         {
             .it_value    = { .tv_sec = 0 },
@@ -382,8 +589,10 @@ resetProcessClockWatch_(void)
         if (setitimer(ITIMER_REAL, &disableClock, 0))
             goto Finally;
 
-        if (sigaction(SIGALRM, &sClockTickSigAction, 0))
+        if (changeSigAction_(SIGALRM, &sClockTickSigAction, 0))
             goto Finally;
+
+        sClockMethod = VoidMethod(0, 0);
 
         sClockTickSigAction.sa_handler = SIG_ERR;
         sClockTickSigAction.sa_flags = 0;
@@ -406,6 +615,8 @@ watchProcessClock(struct VoidMethod aMethod,
 {
     int rc = -1;
 
+    sClockMethod = aMethod;
+
     struct sigaction prevAction_;
     struct sigaction *prevAction = 0;
 
@@ -415,7 +626,7 @@ watchProcessClock(struct VoidMethod aMethod,
         .sa_mask    = filledSigSet(),
     };
 
-    if (sigaction(SIGALRM, &clockAction, &prevAction_))
+    if (changeSigAction_(SIGALRM, &clockAction, &prevAction_))
         goto Finally;
     prevAction = &prevAction_;
 
@@ -439,8 +650,6 @@ watchProcessClock(struct VoidMethod aMethod,
     if (setitimer(ITIMER_REAL, &clockTimer, 0))
         goto Finally;
 
-    sClockMethod = aMethod;
-
     sClockTickSigAction = *prevAction;
     sClockTickPeriod    = aClockPeriod;
 
@@ -453,8 +662,10 @@ Finally:
         if (rc)
         {
             if (prevAction)
-                if (sigaction(SIGALRM, prevAction, 0))
+                if (changeSigAction_(SIGALRM, prevAction, 0))
                     terminate(errno, "Unable to revert SIGALRM handler");
+
+            sClockMethod = VoidMethod(0, 0);
         }
     });
 
@@ -497,6 +708,8 @@ watchProcessSignals(struct VoidIntMethod aMethod)
 {
     int rc = -1;
 
+    sSignalMethod = aMethod;
+
     /* It is ok to mark the signal pipe non-blocking because this
      * file descriptor is not shared with any other process. */
 
@@ -510,15 +723,13 @@ watchProcessSignals(struct VoidIntMethod aMethod)
             .sa_mask    = filledSigSet(),
         };
 
-        if (sigaction(watchedSig->mSigNum,
-                      &watchAction,
-                      &watchedSig->mSigAction))
+        if (changeSigAction_(watchedSig->mSigNum,
+                             &watchAction,
+                             &watchedSig->mSigAction))
             goto Finally;
 
         watchedSig->mWatched = true;
     }
-
-    sSignalMethod = aMethod;
 
     rc = 0;
 
@@ -534,7 +745,7 @@ Finally:
 
                 if (watchedSig->mWatched)
                 {
-                    if (sigaction(
+                    if (changeSigAction_(
                             watchedSig->mSigNum, &watchedSig->mSigAction, 0))
                         terminate(
                             errno,
@@ -544,6 +755,8 @@ Finally:
                     watchedSig->mWatched = false;
                 }
             }
+
+            sSignalMethod = VoidIntMethod(0, 0);
         }
     });
 
@@ -562,9 +775,8 @@ resetProcessSignalsWatch_(void)
 
         if (watchedSig->mWatched)
         {
-            if (sigaction(watchedSig->mSigNum,
-                          &watchedSig->mSigAction,
-                          0))
+            if (changeSigAction_(
+                    watchedSig->mSigNum, &watchedSig->mSigAction, 0))
             {
                 if ( ! rc)
                 {
@@ -596,6 +808,9 @@ static int
 resetSignals_(void)
 {
     int rc = -1;
+
+    if (resetProcessSigStop_())
+        goto Finally;
 
     if (resetProcessSigCont_())
         goto Finally;
@@ -827,6 +1042,23 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static void *
+signalThread_(void *self_)
+{
+    struct ProcessSignalThread *self = self_;
+
+    /* This is a spare thread which will always be available as a context
+     * in which signals can be delivered in the case that all other
+     * threads are unable accept signals. */
+
+    lockMutex(&self->mMutex);
+    while ( ! self->mStopping)
+        waitCond(&self->mCond, &self->mMutex);
+    unlockMutex(&self->mMutex);
+
+    return 0;
+}
+
 int
 Process_init(const char *aArg0)
 {
@@ -865,7 +1097,12 @@ Process_init(const char *aArg0)
         if (Error_init())
             goto Finally;
 
+        createThread(
+            &sProcessSignalThread.mThread, 0,
+            signalThread_, &sProcessSignalThread);
+
         hookProcessSigCont_();
+        hookProcessSigStop_();
     }
 
     rc = 0;
@@ -889,7 +1126,15 @@ Process_exit(void)
 
         ensure(processLock);
 
+        unhookProcessSigStop_();
         unhookProcessSigCont_();
+
+        lockMutex(&sProcessSignalThread.mMutex);
+        sProcessSignalThread.mStopping = true;
+        unlockMutexSignal(&sProcessSignalThread.mMutex,
+                          &sProcessSignalThread.mCond);
+
+        joinThread(&sProcessSignalThread.mThread);
 
         if (Error_exit())
             goto Finally;
@@ -916,17 +1161,15 @@ acquireProcessAppLock(void)
 
     struct ThreadSigMutex *lock = 0;
 
-    /* Blocking all signals means that signals are delivered in this
-     * thread synchronously with respect to this function, so the
-     * mutex can be used to obtain serialisation both inside and
-     * outside signal handlers. */
-
     lock = lockThreadSigMutex(&sProcessSigMutex);
 
-    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+    if (1 == ownThreadSigMutexLocked(&sProcessSigMutex))
+    {
+        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
-    if (processLock && lockProcessLock_(processLock))
-        goto Finally;
+        if (processLock && lockProcessLock_(processLock))
+            goto Finally;
+    }
 
     rc = 0;
 
@@ -947,18 +1190,24 @@ releaseProcessAppLock(void)
 {
     int rc = -1;
 
-    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+    struct ThreadSigMutex *lock = &sProcessSigMutex;
 
-    if (processLock && unlockProcessLock_(processLock))
-        goto Finally;
+    if (1 == ownThreadSigMutexLocked(lock))
+    {
+        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
-    unlockThreadSigMutex(&sProcessSigMutex);
+        if (processLock && unlockProcessLock_(processLock))
+            goto Finally;
+    }
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        lock = unlockThreadSigMutex(lock);
+    });
 
     return rc;
 }
