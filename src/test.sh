@@ -11,6 +11,16 @@ k9()
     setsid libtool --mode=execute $VALGRIND ./k9 "$@"
 }
 
+random()
+{
+    printf '%s' $(( 0x$(openssl rand -hex 4) ))
+}
+
+randomsleep()
+{
+    sleep $(( $(random) % $1 )).$(( $(random) % 1000 ))
+}
+
 testCase()
 {
     printf '\ntestCase - %s\n' "$1"
@@ -337,6 +347,20 @@ runTests()
         kill -CONT $PARENT || { echo NOTOK ; exit 1 ; }
         echo OK
     })"'
+
+    testCase 'Randomly stopped process family'
+    testOutput 'OK' = '$(
+        { k9 -i -dd sleep 3 && /bin/echo OK ; } | {
+            read PARENT UMBILICAL
+            read CHILD
+            randomsleep 3
+            kill -TSTP $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            randomsleep 10
+            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            read REPLY
+            /bin/echo $REPLY
+        }
+    )'
 
     testCase 'Broken umbilical'
     testOutput "OK" = '$(
