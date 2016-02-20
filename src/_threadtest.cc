@@ -47,10 +47,11 @@ TEST(ThreadTest, ThreadSigMutex)
 
     createThreadSigMutex(&sigMutex);
 
-    struct sigaction nextAction;
     struct sigaction prevAction;
+    struct sigaction nextAction;
 
     nextAction.sa_handler = sigFpeAction_;
+    nextAction.sa_flags   = 0;
     EXPECT_FALSE(sigfillset(&nextAction.sa_mask));
 
     EXPECT_FALSE(sigaction(SIGFPE, &nextAction, &prevAction));

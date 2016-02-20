@@ -1,4 +1,4 @@
-libk9__la_SOURCES_CKSUM_1_ = 2635595130 452
+libk9__la_SOURCES_CKSUM_1_ = 2059951542 472
 libk9__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
 libk9__la_SOURCES = \
   dl_.c \
@@ -12,6 +12,8 @@ libk9__la_SOURCES = \
   file_.c \
   file_.h \
   macros_.h \
+  malloc_.c \
+  malloc_.h \
   method_.c \
   method_.h \
   options_.c \
