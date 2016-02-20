@@ -343,6 +343,13 @@ terminate_(
     ({
         va_list args;
 
+        if (gOptions.mDebug)
+        {
+            va_start(args, aFmt);
+            print_(aErrCode, aFile, aLine, aFmt, args);
+            va_end(args);
+        }
+
         va_start(args, aFmt);
         print_(aErrCode, 0, 0, aFmt, args);
         va_end(args);
