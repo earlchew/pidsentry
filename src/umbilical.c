@@ -73,21 +73,38 @@ pollFdUmbilical_(void                        *self_,
     ssize_t rdlen = read(
         self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf));
 
+    /* If the far end did not the previous echo, and simply closed its
+     * end of the connection (likely because it detected the child
+     * process terminated), then the read will return ECONNRESET. This
+     * is equivalent to encountering the end of file. */
+
+    if ( ! rdlen)
+    {
+        errno = ECONNRESET;
+        rdlen = -1;
+    }
+
     if (-1 == rdlen)
     {
-        if (EINTR != errno)
+        switch (errno)
+        {
+        default:
             terminate(
                 errno,
                 "Unable to read umbilical connection");
-    }
-    else if ( ! rdlen)
-    {
-        if (self->mClosed)
-            debug(0, "umbilical connection closed");
-        else
-            warn(0, "Umbilical connection broken");
 
-        self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+        case EINTR:
+            break;
+
+        case ECONNRESET:
+            if (self->mClosed)
+                debug(0, "umbilical connection closed");
+            else
+                warn(0, "Umbilical connection broken");
+
+            self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+            break;
+        }
     }
     else
     {
