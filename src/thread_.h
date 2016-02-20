@@ -52,12 +52,15 @@ enum ThreadSigMaskAction
 struct ThreadSigMutex
 {
     pthread_mutex_t      mMutex;
+    pthread_cond_t       mCond;
     struct ThreadSigMask mMask;
-    bool                 mLocked;
+    unsigned             mLocked;
     pthread_t            mOwner;
 };
 
-#define THREAD_SIG_MUTEX_INITIALIZER { .mMutex = PTHREAD_MUTEX_INITIALIZER }
+#define THREAD_SIG_MUTEX_INITIALIZER {   \
+    .mMutex = PTHREAD_MUTEX_INITIALIZER, \
+    .mCond  = PTHREAD_COND_INITIALIZER, }
 
 /* -------------------------------------------------------------------------- */
 void
@@ -88,6 +91,9 @@ destroyThreadSigMutex(struct ThreadSigMutex *self);
 
 struct ThreadSigMutex *
 lockThreadSigMutex(struct ThreadSigMutex *self);
+
+unsigned
+ownThreadSigMutexLocked(struct ThreadSigMutex *self);
 
 struct ThreadSigMutex *
 unlockThreadSigMutex(struct ThreadSigMutex *self);

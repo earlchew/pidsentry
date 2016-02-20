@@ -370,9 +370,28 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
 
     lockMutex(&self->mMutex);
 
-    self->mLocked = true;
-    self->mMask   = threadSigMask;
-    self->mOwner  = pthread_self();
+    if (self->mLocked && ! pthread_equal(self->mOwner, pthread_self()))
+    {
+        do
+            waitCond(&self->mCond, &self->mMutex);
+        while (self->mLocked);
+    }
+
+    if (1 == ++self->mLocked)
+    {
+        self->mMask  = threadSigMask;
+        self->mOwner = pthread_self();
+    }
+
+    unlockMutex(&self->mMutex);
+
+    ensure(self->mLocked);
+    ensure(pthread_equal(self->mOwner, pthread_self()));
+
+    if (1 != self->mLocked && popThreadSigMask(&threadSigMask))
+        terminate(
+            errno,
+            "Unable to pop thread signal mask");
 
     return self;
 }
@@ -386,18 +405,43 @@ unlockThreadSigMutex(struct ThreadSigMutex *self)
         ensure(self->mLocked);
         ensure(pthread_equal(self->mOwner, pthread_self()));
 
+        lockMutex(&self->mMutex);
+
+        unsigned             locked        = --self->mLocked;
         struct ThreadSigMask threadSigMask = self->mMask;
 
-        self->mLocked = false;
-        unlockMutex(&self->mMutex);
+        if (locked)
+            unlockMutex(&self->mMutex);
+        else
+        {
+            unlockMutexSignal(&self->mMutex, &self->mCond);
 
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+            if (popThreadSigMask(&threadSigMask))
+                terminate(
+                    errno,
+                    "Unable to pop thread signal mask");
+        }
     }
 
     return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+unsigned
+ownThreadSigMutexLocked(struct ThreadSigMutex *self)
+{
+    unsigned locked;
+
+    lockMutex(&self->mMutex);
+
+    locked = self->mLocked;
+
+    if (locked && ! pthread_equal(self->mOwner, pthread_self()))
+        locked = 0;
+
+    unlockMutex(&self->mMutex);
+
+    return locked;
 }
 
 /* -------------------------------------------------------------------------- */
