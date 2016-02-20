@@ -348,13 +348,13 @@ runTests()
         echo OK
     })"'
 
-    testCase 'Randomly stopped process family'
+    testCase 'Randomly stopped parent'
     testOutput 'OK' = '$(
         { k9 -i -dd sleep 3 && /bin/echo OK ; } | {
             read PARENT UMBILICAL
             read CHILD
             randomsleep 3
-            kill -TSTP $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            kill -STOP $PARENT || { /bin/echo NOTOK ; exit 1 ; }
             randomsleep 10
             kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
             read REPLY
