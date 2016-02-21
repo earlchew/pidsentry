@@ -56,7 +56,7 @@ testExit()
             shift
             "$@" && break
         else
-            if ( shift ; "$@" ) ; then
+            if ( shift ; VALGRIND= ; "$@" ) ; then
                 shift
             else
                 [ $? -ne "$1" ] || break
@@ -218,28 +218,8 @@ runTests()
     testExit $((128 + 9)) k9 -T -- sh -c '
         /bin/echo Killing $$ ; kill -9 $$'
 
-    testCase 'Child shares process group'
-    k9 -i -dd -- ps -o pid,pgid,cmd | {
-        read PARENT UMBILICAL
-        read CHILD
-        read HEADING
-        PARENTPGID=
-        CHILDPGID=
-        while read PID PGID CMD ; do
-            /bin/echo "$PARENT - $CHILD - $PID $PGID $CMD"
-            if [ x"$PARENT" = x"$PID" ] ; then
-                CHILDPGID=$PGID
-            elif [ x"$CHILD" = x"$PID" ] ; then
-                PARENTPGID=$PGID
-            fi
-        done >&2
-        [ -n "$PARENTPGID" ]
-        [ -n "$CHILDPGID" ]
-        [ x"$PARENTPGID" = x"$CHILDPGID" ]
-    }
-
-    testCase 'Child sets own process group'
-    k9 -i -s -- ps -o pid,pgid,cmd | {
+    testCase 'Child process group'
+    k9 -i -- ps -o pid,pgid,cmd | {
         read PARENT UMBILICAL
         read CHILD
         read HEADING
@@ -381,24 +361,20 @@ runTests()
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      sh -c '
-        /bin/echo $$
-        exec >/dev/null
-        exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
-            trap '\''exit 1'\'''"$SIGNALS"'
-            while : ; do sleep 1 ; done"' |
+      k9 -T -i -dd -- sh -c "
+            trap 'exit 1' $SIGNALS
+            while : ; do sleep 1 ; done" |
       {
-         read REPLY
-         while kill -0 "$REPLY" 2>&- ; do
-             kill -"$SIG" "$REPLY"
-             date ; /bin/echo kill -"$SIG" "$REPLY"
-             kill -0 "$REPLY" 2>&- || break
+         read PARENT UMBILICAL
+         while kill -0 "$PARENT" 2>&- ; do
+             kill -"$SIG" "$PARENT"
+             date ; /bin/echo kill -"$SIG" "$PARENT"
+             kill -0 "$PARENT" 2>&- || break
              date
              sleep 1
          done >&2
-         ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
-         kill -9 -"$REPLY" 2>&- || :
-         /bin/echo OK
+         read CHILD
+         kill -0 $CHILD 2>&- || /bin/echo OK
       } | {
           read REPLY
           [ x"$REPLY" = x"OK" ]
@@ -408,25 +384,21 @@ runTests()
     testCase 'Slow signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      sh -c '
-        /bin/echo $$
-        exec >/dev/null
-        exec setsid libtool --mode=execute '"$VALGRIND"' ./k9 -T -dd -- sh -c "
-            trap '\''exit 1'\'''"$SIGNALS"'
-            while : ; do sleep 1 ; done"' |
+      k9 -i -T -dd -- sh -c "
+            trap 'exit 1' $SIGNALS
+            while : ; do sleep 1 ; done" |
       {
-         read REPLY
+         read PARENT UMBILICAL
          sleep 1
-         while kill -0 "$REPLY" 2>&- ; do
-             kill -"$SIG" "$REPLY"
-             date ; /bin/echo kill -"$SIG" "$REPLY"
-             kill -0 "$REPLY" 2>&- || break
+         while kill -0 "$PARENT" 2>&- ; do
+             kill -"$SIG" "$PARENT"
+             date ; /bin/echo kill -"$SIG" "$PARENT"
+             kill -0 "$PARENT" 2>&- || break
              date
              sleep 1
          done >&2
-         ps -s "$REPLY" -o pid,pgid,cmd | tail -n +2 || :
-         kill -9 -"$REPLY" 2>&- || :
-         /bin/echo OK
+         read CHILD
+         kill -0 $CHILD 2>&- || /bin/echo OK
       } | {
           read REPLY
           [ x"$REPLY" = x"OK" ]
@@ -453,7 +425,6 @@ runTests()
             sleep 10 # Watchdog should have terminated child and exited
             read -t 0 && echo OK || echo FAIL
             kill -9 $SLAVE 2>&-
-            kill -9 $CHILD 2>&-
         }
     )'
 
@@ -480,7 +451,7 @@ runTests()
             /bin/echo "X-$?" >&3
         else
             /bin/echo "X-$?" >&3
-        fi | dd of=/dev/null bs=1 count=$((1 + RANDOM % 128))
+        fi | dd of=/dev/null bs=1 count=$((1 + $(random) % 128))
     )'
 
     testCase 'Test output is non-blocking even when pipe buffer is filled'

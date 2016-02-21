@@ -70,6 +70,10 @@
  * Use round trip ping for maintaining umbilical
  * Improve FINALLY tracking
  * Use struct Pid for type safety
+ * Use SIGABRT to terminate children on error rather than SIGTERM
+ * On receiving SIGABRT, trigger gdb
+ * Pretty print signal names
+ * Pretty print error codes
  */
 
 /* -------------------------------------------------------------------------- */
@@ -211,6 +215,23 @@ raiseFamilySignal_(void *self_, int aSigNum)
 }
 
 static void
+raiseFamilySigStop_(void *self_)
+{
+    struct Family *self = self_;
+
+    ensure(familyType_ == self->mType);
+
+    pauseChild(self->mChildProcess);
+
+    if (raise(SIGSTOP))
+        terminate(
+            errno,
+            "Unable to stop process");
+
+    resumeChild(self->mChildProcess);
+}
+
+static void
 raiseFamilySigCont_(void *self_)
 {
     struct Family *self = self_;
@@ -288,6 +309,11 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to add watch on signals");
+
+    if (watchProcessSigStop(VoidMethod(raiseFamilySigStop_, &family)))
+        terminate(
+            errno,
+            "Unable to add watch on process stop");
 
     if (watchProcessSigCont(VoidMethod(raiseFamilySigCont_, &family)))
         terminate(
