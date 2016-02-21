@@ -221,14 +221,14 @@ raiseFamilySigStop_(void *self_)
 
     ensure(familyType_ == self->mType);
 
-    pauseChild(self->mChildProcess);
+    pauseChildProcessGroup(self->mChildProcess);
 
     if (raise(SIGSTOP))
         terminate(
             errno,
             "Unable to stop process");
 
-    resumeChild(self->mChildProcess);
+    resumeChildProcessGroup(self->mChildProcess);
 }
 
 static void

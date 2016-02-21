@@ -218,7 +218,7 @@ killChild(struct ChildProcess *self, int aSigNum)
 
 /* -------------------------------------------------------------------------- */
 void
-pauseChild(struct ChildProcess *self)
+pauseChildProcessGroup(struct ChildProcess *self)
 {
     if (killpg(self->mPgid, SIGSTOP))
         terminate(
@@ -229,7 +229,7 @@ pauseChild(struct ChildProcess *self)
 
 /* -------------------------------------------------------------------------- */
 void
-resumeChild(struct ChildProcess *self)
+resumeChildProcessGroup(struct ChildProcess *self)
 {
     if (killpg(self->mPgid, SIGCONT))
         terminate(

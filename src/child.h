@@ -81,12 +81,6 @@ void
 killChild(struct ChildProcess *self, int aSigNum);
 
 void
-pauseChild(struct ChildProcess *self);
-
-void
-resumeChild(struct ChildProcess *self);
-
-void
 closeChildTether(struct ChildProcess *self);
 
 void
@@ -102,6 +96,13 @@ raiseChildSigCont(struct ChildProcess *self);
 
 int
 closeChild(struct ChildProcess *self);
+
+/* -------------------------------------------------------------------------- */
+void
+pauseChildProcessGroup(struct ChildProcess *self);
+
+void
+resumeChildProcessGroup(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
