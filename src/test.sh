@@ -56,7 +56,9 @@ testExit()
             shift
             "$@" && break
         else
-            if ( shift ; VALGRIND= ; "$@" ) ; then
+            if ( shift ;
+                 VALGRIND=${VALGRIND%--leak-check=yes} ;
+                 "$@" ) ; then
                 shift
             else
                 [ $? -ne "$1" ] || break
@@ -511,3 +513,10 @@ done
 
 testCase 'No lost watchdogs'
 testOutput "" = '$(ps -C k9 -o user=,ppid=,pid=,pgid=,command=)'
+
+testCase 'Valgrind run over unit tests'
+testOutput "" != "/bin/echo $VALGRIND"
+
+TESTS=$(/bin/echo $(ls -1 _* | grep -v -F .) )
+TESTS_ENVIRONMENT="${TESTS_ENVIRONMENT+$TESTS_ENVIRONMENT }$VALGRIND"
+make check TESTS_ENVIRONMENT="$TESTS_ENVIRONMENT" TESTS="$TESTS"
