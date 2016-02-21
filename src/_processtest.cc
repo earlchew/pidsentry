@@ -34,6 +34,21 @@
 
 #include "gtest/gtest.h"
 
+TEST(ProcessTest, ProcessSignalName)
+{
+    struct ProcessSignalName sigName;
+
+    static const char nsigFormat[] = "signal %zu";
+
+    char nsigName[sizeof(nsigFormat) + CHAR_BIT * sizeof(size_t)];
+    sprintf(nsigName, nsigFormat, (size_t) NSIG);
+
+    EXPECT_EQ(std::string("SIGHUP"), formatProcessSignalName(&sigName, SIGHUP));
+    EXPECT_EQ(std::string("signal 0"), formatProcessSignalName(&sigName, 0));
+    EXPECT_EQ(std::string("signal -1"), formatProcessSignalName(&sigName, -1));
+    EXPECT_EQ(std::string(nsigName), formatProcessSignalName(&sigName, NSIG));
+}
+
 TEST(ProcessTest, ProcessState)
 {
     EXPECT_EQ(ProcessStateError, fetchProcessState(-1));

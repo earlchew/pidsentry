@@ -88,6 +88,39 @@ static const char           *sArg0;
 static const char           *sProgramName;
 static struct MonotonicTime  sTimeBase;
 
+static const char *sSignalNames[NSIG] =
+{
+    [SIGHUP]    = "SIGHUP",
+    [SIGABRT]   = "SIGABRT",
+    [SIGALRM]   = "SIGALRM",
+    [SIGBUS]    = "SIGBUS",
+    [SIGCHLD]   = "SIGCHLD",
+    [SIGCONT]   = "SIGCONT",
+    [SIGFPE]    = "SIGFPE",
+    [SIGHUP]    = "SIGHUP",
+    [SIGILL]    = "SIGILL",
+    [SIGINT]    = "SIGINT",
+    [SIGKILL]   = "SIGKILL",
+    [SIGPIPE]   = "SIGPIPE",
+    [SIGQUIT]   = "SIGQUIT",
+    [SIGSEGV]   = "SIGSEGV",
+    [SIGSTOP]   = "SIGSTOP",
+    [SIGTERM]   = "SIGTERM",
+    [SIGTSTP]   = "SIGTSTP",
+    [SIGTTIN]   = "SIGTTIN",
+    [SIGTTOU]   = "SIGTTOU",
+    [SIGUSR1]   = "SIGUSR1",
+    [SIGUSR2]   = "SIGUSR2",
+    [SIGPOLL]   = "SIGPOLL",
+    [SIGPROF]   = "SIGPROF",
+    [SIGSYS]    = "SIGSYS",
+    [SIGTRAP]   = "SIGTRAP",
+    [SIGURG]    = "SIGURG",
+    [SIGVTALRM] = "SIGVTALRM",
+    [SIGXCPU]   = "SIGXCPU",
+    [SIGXFSZ]   = "SIGXFSZ",
+};
+
 /* -------------------------------------------------------------------------- */
 static struct sigaction sSignalVectors[NSIG];
 
@@ -862,11 +895,12 @@ initProcessDirName(struct ProcessDirName *self, pid_t aPid)
 const char *
 formatProcessSignalName(struct ProcessSignalName *self, int aSigNum)
 {
-    const char *signalName = strsignal(aSigNum);
+    self->mSignalName = 0;
 
-    if (signalName)
-        self->mSignalName = signalName;
-    else
+    if (0 <= aSigNum && NUMBEROF(sSignalNames) > aSigNum)
+        self->mSignalName = sSignalNames[aSigNum];
+
+    if ( ! self->mSignalName)
     {
         sprintf(self->mSignalText_, PROCESS_SIGNALNAME_FMT_, aSigNum);
         self->mSignalName = self->mSignalText_;
