@@ -81,6 +81,12 @@ void
 killChild(struct ChildProcess *self, int aSigNum);
 
 void
+pauseChild(struct ChildProcess *self);
+
+void
+resumeChild(struct ChildProcess *self);
+
+void
 closeChildTether(struct ChildProcess *self);
 
 void

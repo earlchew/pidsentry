@@ -217,6 +217,28 @@ killChild(struct ChildProcess *self, int aSigNum)
 }
 
 /* -------------------------------------------------------------------------- */
+void
+pauseChild(struct ChildProcess *self)
+{
+    if (killpg(self->mPgid, SIGSTOP))
+        terminate(
+            errno,
+            "Unable to stop child process group %jd",
+            (intmax_t) self->mPgid);
+}
+
+/* -------------------------------------------------------------------------- */
+void
+resumeChild(struct ChildProcess *self)
+{
+    if (killpg(self->mPgid, SIGCONT))
+        terminate(
+            errno,
+            "Unable to continue child process group %jd",
+            (intmax_t) self->mPgid);
+}
+
+/* -------------------------------------------------------------------------- */
 int
 forkChild(
     struct ChildProcess  *self,
@@ -1284,12 +1306,16 @@ monitorChild(struct ChildProcess *self,
      *
      * When terminating the child process, first request that the child
      * terminate by sending it SIGTERM, and if the child does not terminate,
-     * resort to sending SIGKILL. */
+     * resort to sending SIGKILL.
+     *
+     * Do not kill the child process group here since that would also terminate
+     * the umbilical process prematurely. Rely on the umbilical process
+     * to clean up the process group. */
 
     struct ChildSignalPlan signalPlan[] =
     {
-        {  self->mPid,  SIGTERM },
-        { -self->mPgid, SIGKILL },
+        { self->mPid, SIGTERM },
+        { self->mPid, SIGKILL },
         { 0 }
     };
 
