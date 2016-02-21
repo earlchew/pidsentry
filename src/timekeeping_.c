@@ -398,109 +398,11 @@ monotonicSleep(struct Duration aPeriod)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
-pushIntervalTimer_(int aSigNum)
-{ }
-
-static const struct itimerval sPauseDisableTimer;
-
-int
-pushIntervalTimer(struct PushedIntervalTimer *aPushedTimer,
-                  int                         aType,
-                  const struct itimerval     *aTimer)
-{
-    int rc = -1;
-
-    switch (aType)
-    {
-    default:
-        errno = EINVAL;
-        goto Finally;
-
-    case ITIMER_REAL:    aPushedTimer->mSignal = SIGALRM;   break;
-    case ITIMER_VIRTUAL: aPushedTimer->mSignal = SIGVTALRM; break;
-    case ITIMER_PROF:    aPushedTimer->mSignal = SIGPROF;   break;
-    }
-
-    aPushedTimer->mType = aType;
-    aPushedTimer->mMark = monotonicTime();
-
-    /* Disable the timer and signal action so that a new
-     * timer and action can be installed.
-     *
-     * Take care to disable the timer, before resetting the
-     * signal handler, then re-configuring the timer. */
-
-    if (setitimer(aType, &sPauseDisableTimer, &aPushedTimer->mTimer))
-        goto Finally;
-
-    struct sigaction timerAction =
-    {
-        .sa_handler = pushIntervalTimer_,
-    };
-
-    if (sigaction(aPushedTimer->mSignal, &timerAction, &aPushedTimer->mAction))
-        goto Finally;
-
-    if (aTimer && (aTimer->it_value.tv_sec || aTimer->it_value.tv_usec))
-    {
-        if (setitimer(aType, aTimer, 0))
-            goto Finally;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-popIntervalTimer(struct PushedIntervalTimer *aPushedTimer)
-{
-    int rc = -1;
-
-    /* Restore the previous setting of the timer and signal handler.
-     * Take care to disable the timer, before restoring the
-     * signal handler, then restoring the setting of the timer. */
-
-    if (setitimer(aPushedTimer->mType, &sPauseDisableTimer, 0))
-        goto Finally;
-
-    if (sigaction(aPushedTimer->mSignal, &aPushedTimer->mAction, 0))
-        goto Finally;
-
-    struct itimerval shortenedInterval =
-        shortenIntervalTime(
-            &aPushedTimer->mTimer,
-            Duration(
-                NanoSeconds(
-                    monotonicTime().monotonic.ns -
-                    aPushedTimer->mMark.monotonic.ns)));
-
-    if (setitimer(aPushedTimer->mType, &shortenedInterval, 0))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 int
 Timekeeping_init(void)
 {
     if (++sInit == 1)
-    {
         eventclockTime_init_();
-    }
 
     return 0;
 }

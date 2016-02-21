@@ -121,15 +121,6 @@ deadlineTimeExpired(
 
 /* -------------------------------------------------------------------------- */
 int
-pushIntervalTimer(struct PushedIntervalTimer *aPause,
-                   int                        aType,
-                   const struct itimerval    *aTimer);
-
-int
-popIntervalTimer(struct PushedIntervalTimer *aPause);
-
-/* -------------------------------------------------------------------------- */
-int
 Timekeeping_init(void);
 
 int
