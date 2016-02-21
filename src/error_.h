@@ -36,10 +36,12 @@ extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-#define breadcrumb() \
+#define breadcrumb Error_breadcrumb_
+#define Error_breadcrumb_() \
     debug_(__FILE__, __LINE__, ".")
 
-#define debug(aLevel, ...)                              \
+#define debug Error_debug_
+#define Error_debug_(aLevel, ...)                       \
     do                                                  \
         if ((aLevel) < gOptions.mDebug)                 \
             debug_(__FILE__, __LINE__, ## __VA_ARGS__); \
@@ -52,7 +54,8 @@ debug_(
     __attribute__ ((__format__(__printf__, 3, 4)));
 
 /* -------------------------------------------------------------------------- */
-#define ensure(aPredicate)                                      \
+#define ensure Error_ensure_
+#define Error_ensure_(aPredicate)                               \
     do                                                          \
         if ( ! (aPredicate))                                    \
             ensure_(__FILE__, __LINE__, # aPredicate);          \
@@ -62,7 +65,8 @@ void
 ensure_(const char *aFile, unsigned aLine, ...);
 
 /* -------------------------------------------------------------------------- */
-#define warn(aErrCode, ...) \
+#define warn Error_warn_
+#define Error_warn_(aErrCode, ...) \
     warn_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
 
 void
@@ -73,7 +77,8 @@ warn_(
     __attribute__ ((__format__(__printf__, 4, 5)));
 
 /* -------------------------------------------------------------------------- */
-#define terminate(aErrCode, ...) \
+#define terminate Error_terminate_
+#define Error_terminate_(aErrCode, ...) \
     terminate_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
 
 void

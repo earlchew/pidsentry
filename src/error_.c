@@ -31,12 +31,14 @@
 #include "macros_.h"
 #include "timekeeping_.h"
 #include "fd_.h"
+#include "test_.h"
 
 #include <stdlib.h>
 #include <stdarg.h>
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
 #include <sys/syscall.h>
 
@@ -51,10 +53,69 @@ gettid(void)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+findErrTextLength_(int aErrCode, size_t *aSize)
+{
+    int rc = -1;
+
+    char errCodeText[*aSize];
+
+    errno = 0;
+    const char *errText =
+        strerror_r(aErrCode, errCodeText, sizeof(errCodeText));
+    if (errno)
+        goto Finally;
+
+    *aSize = errCodeText != errText ? 1 : strlen(errCodeText);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static size_t
+findErrTextLength(int aErrCode)
+{
+    size_t rc = 0;
+
+    size_t textCapacity = testMode() ? 2 : 128;
+
+    while (1)
+    {
+        size_t textSize = textCapacity;
+
+        if (findErrTextLength_(aErrCode, &textSize))
+            goto Finally;
+
+        if (textCapacity > textSize)
+        {
+            rc = textSize;
+            break;
+        }
+
+        textSize = 2 * textCapacity;
+        ensure(textCapacity < textSize);
+
+        textCapacity = textSize;
+    }
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 dprint_(
     int                    aLockErr,
     int                    aErrCode,
+    const char            *aErrText,
     intmax_t               aPid,
     intmax_t               aTid,
     const struct Duration *aElapsed,
@@ -112,15 +173,18 @@ dprint_(
     }
 
     vdprintf(STDERR_FILENO, aFmt, aArgs);
-    if (aErrCode)
-        dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
-    else
+    if ( ! aErrCode)
         dprintf(STDERR_FILENO, "\n");
+    else if (aErrText)
+        dprintf(STDERR_FILENO, " - errno %d [%s]\n", aErrCode, aErrText);
+    else
+        dprintf(STDERR_FILENO, " - errno %d\n", aErrCode);
 }
 
 static void
 dprintf_(
     int                    aErrCode,
+    const char            *aErrText,
     intmax_t               aPid,
     intmax_t               aTid,
     const struct Duration *aElapsed,
@@ -135,7 +199,7 @@ dprintf_(
 
     va_start(args, aFmt);
     dprint_(EWOULDBLOCK,
-            aErrCode,
+            aErrCode, aErrText,
             aPid, aTid,
             aElapsed, aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
             aFile, aLine, aFmt, args);
@@ -182,7 +246,7 @@ print_(
 
         if (acquireProcessAppLock())
         {
-            lockerr  = errno;
+            lockerr  = errno ? errno : EPERM;
             locked   = false;
             buffered = false;
         }
@@ -191,6 +255,28 @@ print_(
             lockerr  = EWOULDBLOCK;
             locked   = true;
             buffered = !! sPrintBuf.mFile;
+        }
+
+        const char *errText    = "";
+        size_t      errTextLen = 0;
+
+        if (aErrCode)
+            errTextLen = findErrTextLength(aErrCode);
+
+        char errTextBuffer[1+errTextLen];
+
+        if (errTextLen)
+        {
+            /* Annoyingly strerror() is not thread safe, so is pretty
+             * much unusable in any contemporary context since there
+             * is no way to be absolutely sure that there is no other
+             * thread attempting to use it. */
+
+            errno = 0;
+            const char *errTextMsg =
+                strerror_r(aErrCode, errTextBuffer, sizeof(errTextBuffer));
+            if ( ! errno)
+                errText = errTextMsg;
         }
 
         if ( ! buffered)
@@ -204,7 +290,7 @@ print_(
              * SIGSEGV in fresetlockfiles(). */
 
             dprint_(lockerr,
-                    aErrCode,
+                    aErrCode, errText,
                     pid, tid,
                     &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                     aFile, aLine,
@@ -257,10 +343,13 @@ print_(
             }
 
             vfprintf(sPrintBuf.mFile, aFmt, aArgs);
-            if (aErrCode)
-                fprintf(sPrintBuf.mFile, " - errno %d\n", aErrCode);
-            else
+            if ( ! aErrCode)
                 fprintf(sPrintBuf.mFile, "\n");
+            else if (errText)
+                fprintf(
+                    sPrintBuf.mFile, " - errno %d [%s]\n", aErrCode, errText);
+            else
+                fprintf(sPrintBuf.mFile, " - errno %d\n", aErrCode);
             fflush(sPrintBuf.mFile);
 
             writeFd(STDERR_FILENO, sPrintBuf.mBuf, sPrintBuf.mSize);
@@ -271,7 +360,7 @@ print_(
             if (releaseProcessAppLock())
             {
                 dprintf_(
-                    errno,
+                    errno, 0,
                     pid, tid,
                     &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                     __FILE__, __LINE__,
