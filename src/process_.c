@@ -372,15 +372,17 @@ sigStop_(int aSigNum)
     lockThreadSigMutex(&sSigStop.mSigMutex);
 
     if (ownVoidMethodNil(sSigStop.mMethod))
+    {
         debug(1, "detected SIGTSTP");
+
+        if (raise(SIGSTOP))
+            terminate(errno, "Unable to stop process");
+    }
     else
     {
         debug(1, "observed SIGTSTP");
         callVoidMethod(sSigStop.mMethod);
     }
-
-    if (raise(SIGSTOP))
-        terminate(errno, "Unable to stop process");
 
     unlockThreadSigMutex(&sSigStop.mSigMutex);
 }
