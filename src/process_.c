@@ -700,7 +700,10 @@ caughtSignal_(int aSigNum)
 {
     if ( ! ownVoidIntMethodNil(sSignalMethod))
     {
-        debug(1, "observed signal %d", aSigNum);
+        struct ProcessSignalName sigName;
+
+        debug(1, "observed %s", formatProcessSignalName(&sigName, aSigNum));
+
         callVoidIntMethod(sSignalMethod, aSigNum);
     }
 }
@@ -747,12 +750,15 @@ Finally:
 
                 if (watchedSig->mWatched)
                 {
+                    struct ProcessSignalName sigName;
+
                     if (changeSigAction_(
                             watchedSig->mSigNum, &watchedSig->mSigAction, 0))
                         terminate(
                             errno,
-                            "Unable to revert action for signal %d",
-                            watchedSig->mSigNum);
+                            "Unable to revert action for %s",
+                            formatProcessSignalName(
+                                &sigName, watchedSig->mSigNum));
 
                     watchedSig->mWatched = false;
                 }
@@ -850,6 +856,23 @@ void
 initProcessDirName(struct ProcessDirName *self, pid_t aPid)
 {
     sprintf(self->mDirName, PROCESS_DIRNAME_FMT_, (intmax_t) aPid);
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+formatProcessSignalName(struct ProcessSignalName *self, int aSigNum)
+{
+    const char *signalName = strsignal(aSigNum);
+
+    if (signalName)
+        self->mSignalName = signalName;
+    else
+    {
+        sprintf(self->mSignalText_, PROCESS_SIGNALNAME_FMT_, aSigNum);
+        self->mSignalName = self->mSignalText_;
+    }
+
+    return self->mSignalName;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1517,7 +1540,12 @@ extractProcessExitStatus(int aStatus)
     }
     else if (WIFSIGNALED(aStatus))
     {
-        debug(0, "child terminated by signal %d", WTERMSIG(aStatus));
+        struct ProcessSignalName sigName;
+
+        debug(
+            0,
+            "child terminated by %s",
+            formatProcessSignalName(&sigName, WTERMSIG(aStatus)));
 
         exitCode.mStatus = 128 + WTERMSIG(aStatus);
         if (255 < exitCode.mStatus)

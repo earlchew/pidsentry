@@ -86,6 +86,21 @@ enum ProcessStatus
 };
 
 /* -------------------------------------------------------------------------- */
+#define PROCESS_SIGNALNAME_FMT_ "signal %d"
+
+struct ProcessSignalName
+{
+    char mSignalText_[sizeof(PROCESS_SIGNALNAME_FMT_) +
+                      sizeof("-") +
+                      sizeof(int) * CHAR_BIT];
+
+    const char *mSignalName;
+};
+
+const char *
+formatProcessSignalName(struct ProcessSignalName *self, int aSigNum);
+
+/* -------------------------------------------------------------------------- */
 #define PROCESS_DIRNAME_FMT_  "/proc/%jd"
 
 struct ProcessDirName

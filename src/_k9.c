@@ -72,7 +72,6 @@
  * Use struct Pid for type safety
  * Use SIGABRT to terminate children on error rather than SIGTERM
  * On receiving SIGABRT, trigger gdb
- * Pretty print signal names
  * Pretty print error codes
  */
 

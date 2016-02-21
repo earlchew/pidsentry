@@ -195,14 +195,17 @@ reapChild(struct ChildProcess *self, pid_t aUmbilicalPid)
 void
 killChild(struct ChildProcess *self, int aSigNum)
 {
+    struct ProcessSignalName sigName;
+
     if ( ! self->mPid)
         terminate(
             0,
-            "Signal race when trying to deliver signal %d", aSigNum);
+            "Signal race when trying to deliver %s",
+            formatProcessSignalName(&sigName, aSigNum));
 
     debug(0,
-          "sending signal %d to child pid %jd",
-          aSigNum,
+          "sending %s to child pid %jd",
+          formatProcessSignalName(&sigName, aSigNum),
           (intmax_t) self->mPid);
 
     if (kill(self->mPid, aSigNum))
@@ -210,8 +213,8 @@ killChild(struct ChildProcess *self, int aSigNum)
         if (ESRCH != errno)
             terminate(
                 errno,
-                "Unable to deliver signal %d to child pid %jd",
-                aSigNum,
+                "Unable to deliver %s to child pid %jd",
+                formatProcessSignalName(&sigName, aSigNum),
                 (intmax_t) self->mPid);
     }
 }
@@ -694,14 +697,20 @@ pollFdTimerTermination_(void                        *self_,
     if (self->mTermination.mSignalPlan[1].mSig)
         ++self->mTermination.mSignalPlan;
 
-    warn(0, "Killing child pid %jd with signal %d", (intmax_t) pidNum, sigNum);
+    struct ProcessSignalName sigName;
+
+    warn(
+        0,
+        "Killing child pid %jd with %s",
+        (intmax_t) pidNum,
+        formatProcessSignalName(&sigName, sigNum));
 
     if (kill(pidNum, sigNum))
         terminate(
             errno,
-            "Unable to kill child pid %jd with signal %d",
+            "Unable to kill child pid %jd with %s",
             (intmax_t) pidNum,
-            sigNum);
+            formatProcessSignalName(&sigName, sigNum));
 }
 
 /* -------------------------------------------------------------------------- */
