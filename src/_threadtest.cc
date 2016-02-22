@@ -31,14 +31,16 @@
 
 #include <unistd.h>
 
+#include <valgrind/valgrind.h>
+
 #include "gtest/gtest.h"
 
-static int sigFpeCount_;
+static int sigTermCount_;
 
 static void
-sigFpeAction_(int)
+sigTermAction_(int)
 {
-    ++sigFpeCount_;
+    ++sigTermCount_;
 }
 
 TEST(ThreadTest, ThreadSigMutex)
@@ -50,40 +52,40 @@ TEST(ThreadTest, ThreadSigMutex)
     struct sigaction prevAction;
     struct sigaction nextAction;
 
-    nextAction.sa_handler = sigFpeAction_;
+    nextAction.sa_handler = sigTermAction_;
     nextAction.sa_flags   = 0;
     EXPECT_FALSE(sigfillset(&nextAction.sa_mask));
 
-    EXPECT_FALSE(sigaction(SIGFPE, &nextAction, &prevAction));
+    EXPECT_FALSE(sigaction(SIGTERM, &nextAction, &prevAction));
 
-    EXPECT_FALSE(raise(SIGFPE));
-    EXPECT_EQ(1, sigFpeCount_);
+    EXPECT_FALSE(raise(SIGTERM));
+    EXPECT_EQ(1, sigTermCount_);
 
-    EXPECT_FALSE(raise(SIGFPE));
-    EXPECT_EQ(2, sigFpeCount_);
+    EXPECT_FALSE(raise(SIGTERM));
+    EXPECT_EQ(2, sigTermCount_);
 
     lockThreadSigMutex(&sigMutex);
     {
         // Verify that the lock also excludes the delivery of signals
         // while the lock is taken.
 
-        EXPECT_FALSE(raise(SIGFPE));
-        EXPECT_EQ(2, sigFpeCount_);
+        EXPECT_FALSE(raise(SIGTERM));
+        EXPECT_EQ(2, sigTermCount_);
 
-        EXPECT_FALSE(raise(SIGFPE));
-        EXPECT_EQ(2, sigFpeCount_);
+        EXPECT_FALSE(raise(SIGTERM));
+        EXPECT_EQ(2, sigTermCount_);
     }
     unlockThreadSigMutex(&sigMutex);
 
-    EXPECT_EQ(3, sigFpeCount_);
+    EXPECT_EQ(3, sigTermCount_);
 
-    EXPECT_FALSE(raise(SIGFPE));
-    EXPECT_EQ(4, sigFpeCount_);
+    EXPECT_FALSE(raise(SIGTERM));
+    EXPECT_EQ(4, sigTermCount_);
 
-    EXPECT_FALSE(raise(SIGFPE));
-    EXPECT_EQ(5, sigFpeCount_);
+    EXPECT_FALSE(raise(SIGTERM));
+    EXPECT_EQ(5, sigTermCount_);
 
-    EXPECT_FALSE(sigaction(SIGFPE, &prevAction, 0));
+    EXPECT_FALSE(sigaction(SIGTERM, &prevAction, 0));
 
     destroyThreadSigMutex(&sigMutex);
 }
