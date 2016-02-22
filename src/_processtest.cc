@@ -67,7 +67,10 @@ TEST(ProcessTest, ProcessStatus)
     EXPECT_NE(-1, childpid);
 
     if ( ! childpid)
-        _exit(EXIT_SUCCESS);
+    {
+        execlp("sh", "sh", "-c", "exit 0", 0);
+        _exit(EXIT_FAILURE);
+    }
 
     while (ProcessStatusRunning == monitorProcess(childpid))
         continue;
@@ -98,13 +101,19 @@ TEST(ProcessTest, ProcessSignature)
     EXPECT_NE(-1, firstChild);
 
     if ( ! firstChild)
-        _exit(0);
+    {
+        execlp("sh", "sh", "-c", "exit 0", 0);
+        _exit(EXIT_SUCCESS);
+    }
 
     pid_t secondChild = forkProcess(ForkProcessShareProcessGroup, 0);
     EXPECT_NE(-1, secondChild);
 
     if ( ! secondChild)
-        _exit(0);
+    {
+        execlp("sh", "sh", "-c", "exit 0", 0);
+        _exit(EXIT_SUCCESS);
+    }
 
     char *firstChildSignature = 0;
     EXPECT_EQ(0, fetchProcessSignature(firstChild, &firstChildSignature));
