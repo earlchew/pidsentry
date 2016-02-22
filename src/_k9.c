@@ -558,6 +558,18 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close sync pipe");
 
+    if (gOptions.mIdentify)
+    {
+        RACE
+        ({
+            if (-1 == dprintf(STDOUT_FILENO,
+                              "%jd\n", (intmax_t) childProcess.mPid))
+                terminate(
+                    errno,
+                    "Unable to print child pid");
+        });
+    }
+
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */

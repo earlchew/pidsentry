@@ -341,17 +341,6 @@ forkChild(
                 errno,
                 "Unable to close sync pipe");
 
-        if (gOptions.mIdentify)
-        {
-            RACE
-            ({
-                if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid))
-                    terminate(
-                        errno,
-                        "Unable to print child pid");
-            });
-        }
-
         do
         {
             /* Close the reading end of the tether pipe separately
