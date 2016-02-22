@@ -261,8 +261,11 @@ forkChild(
 
     pid_t childPid = forkProcess(ForkProcessSetProcessGroup, 0);
 
-    /* Although it would be better to ensure that the child process and watchdog
-     * in the same process group, switching the process group of the watchdog
+    /* Do not try to place the watchdog in the process group of the child.
+     * This allows the parent to supervise the watchdog, and the watchdog
+     * to monitor the child process group.
+     *
+     * Trying to force the watchdog into the new process group of the child
      * will likely cause a race in an inattentive parent of the watchdog.
      * For example upstart(8) has:
      *
@@ -337,6 +340,17 @@ forkChild(
             terminate(
                 errno,
                 "Unable to close sync pipe");
+
+        if (gOptions.mIdentify)
+        {
+            RACE
+            ({
+                if (-1 == dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) childPid))
+                    terminate(
+                        errno,
+                        "Unable to print child pid");
+            });
+        }
 
         do
         {

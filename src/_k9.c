@@ -72,7 +72,6 @@
  * Use struct Pid for type safety
  * Use SIGABRT to terminate children on error rather than SIGTERM
  * On receiving SIGABRT, trigger gdb
- * Pretty print error codes
  */
 
 /* -------------------------------------------------------------------------- */
@@ -539,7 +538,10 @@ cmdRunCommand(char **aCmd)
         });
 
     /* With the child process announced, and the umbilical monitor
-     * prepared, allow the child process to run the target program. */
+     * prepared, allow the child process to run the target program.
+     *
+     * A side-effect of synchronising with the child process is that
+     * the child process itself will identify itself as being ready. */
 
     RACE
     ({
@@ -555,18 +557,6 @@ cmdRunCommand(char **aCmd)
         terminate(
             errno,
             "Unable to close sync pipe");
-
-    if (gOptions.mIdentify)
-    {
-        RACE
-        ({
-            if (-1 == dprintf(STDOUT_FILENO,
-                              "%jd\n", (intmax_t) childProcess.mPid))
-                terminate(
-                    errno,
-                    "Unable to print child pid");
-        });
-    }
 
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped
