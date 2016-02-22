@@ -29,6 +29,8 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 
+#include <valgrind/valgrind.h>
+
 static struct {
     const char *const name;
     int in, out;
@@ -55,61 +57,66 @@ int main(int argc, char **argv)
     (void)argc;
     (void)argv;
 
-    /* open two file descriptors of each kind */
+    if ( ! RUNNING_ON_VALGRIND)
+    {
+        /* open two file descriptors of each kind */
 
-    fds[0].in = pipe(f) >= 0 ? f[0] : -1;
-    fds[0].out = pipe(f) >= 0 ? f[1] : -1;
-    fds[1].in = mkstemp(template1);
-    fds[1].out = mkstemp(template2);
-    fds[2].in = open("/dev/zero", O_RDONLY);
-    fds[2].out = open("/dev/null", O_WRONLY);
-    fds[3].in = socketpair(AF_UNIX, SOCK_STREAM, 0, f) >= 0 ? f[0] : -1;
-    fds[3].out = socketpair(AF_UNIX, SOCK_STREAM, 0, f) >= 0 ? f[0] : -1;
-    fds[4].in  = socket(AF_INET, SOCK_STREAM, 0);
-    fds[4].out = socket(AF_INET, SOCK_STREAM, 0);
-    fds[5].in  = socket(AF_INET, SOCK_DGRAM, 0);
-    fds[5].out = socket(AF_INET, SOCK_DGRAM, 0);
+        fds[0].in = pipe(f) >= 0 ? f[0] : -1;
+        fds[0].out = pipe(f) >= 0 ? f[1] : -1;
+        fds[1].in = mkstemp(template1);
+        fds[1].out = mkstemp(template2);
+        fds[2].in = open("/dev/zero", O_RDONLY);
+        fds[2].out = open("/dev/null", O_WRONLY);
+        fds[3].in = socketpair(AF_UNIX, SOCK_STREAM, 0, f) >= 0 ? f[0] : -1;
+        fds[3].out = socketpair(AF_UNIX, SOCK_STREAM, 0, f) >= 0 ? f[0] : -1;
+        fds[4].in  = socket(AF_INET, SOCK_STREAM, 0);
+        fds[4].out = socket(AF_INET, SOCK_STREAM, 0);
+        fds[5].in  = socket(AF_INET, SOCK_DGRAM, 0);
+        fds[5].out = socket(AF_INET, SOCK_DGRAM, 0);
 
-    /* print table header */
+        /* print table header */
 
-    printf("in\\out");
-    for (x = 0; x < NUM_FDS; ++x)
-        printf("\t%s", fds[x].name);
-    putchar('\n');
+        printf("in\\out");
+        for (x = 0; x < NUM_FDS; ++x)
+            printf("\t%s", fds[x].name);
+        putchar('\n');
 
-    for (y = 0; y < NUM_FDS; ++y) {
-        fputs(fds[y].name, stdout);
+        for (y = 0; y < NUM_FDS; ++y) {
+            fputs(fds[y].name, stdout);
 
-        for (x = 0; x < NUM_FDS; ++x) {
-            putchar('\t');
+            for (x = 0; x < NUM_FDS; ++x) {
+                putchar('\t');
 
-            if (fds[x].out < 0 || fds[y].in < 0) {
-                fputs("n/a", stdout);
-                continue;
+                if (fds[x].out < 0 || fds[y].in < 0) {
+                    fputs("n/a", stdout);
+                    continue;
+                }
+
+                ret = splice(fds[y].in, NULL, fds[x].out, NULL, 1,
+                             SPLICE_F_NONBLOCK);
+                if (ret >= 0 || errno == EAGAIN || errno == EWOULDBLOCK
+                    || errno == ENOTCONN)
+                    /* EAGAIN or EWOULDBLOCK means that the kernel has
+                       accepted this combination, but can't move pages
+                       right now */
+                    fputs("yes", stdout);
+                else if (errno == EINVAL)
+                    /* the kernel doesn't support this combination */
+                    fputs("no", stdout);
+                else if (errno == ENOSYS)
+                    /* splice() isn't supported at all */
+                    fputs("ENOSYS", stdout);
+                else
+                    /* an unexpected error code */
+                    fputs("err", stdout);
             }
 
-            ret = splice(fds[y].in, NULL, fds[x].out, NULL, 1,
-                         SPLICE_F_NONBLOCK);
-            if (ret >= 0 || errno == EAGAIN || errno == EWOULDBLOCK
-		|| errno == ENOTCONN)
-                /* EAGAIN or EWOULDBLOCK means that the kernel has
-                   accepted this combination, but can't move pages
-                   right now */
-                fputs("yes", stdout);
-            else if (errno == EINVAL)
-                /* the kernel doesn't support this combination */
-                fputs("no", stdout);
-            else if (errno == ENOSYS)
-                /* splice() isn't supported at all */
-                fputs("ENOSYS", stdout);
-            else
-                /* an unexpected error code */
-                fputs("err", stdout);
+            putchar('\n');
         }
 
-        putchar('\n');
+        unlink(template1);
+        unlink(template2);
     }
 
-    unlink(template1);
-    unlink(template2);
+    return 0;
 }
