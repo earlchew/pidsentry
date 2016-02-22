@@ -446,7 +446,7 @@ uptime()
                 "-c",
                 "set -xe ; read U I < /proc/uptime && echo ${U%%.*}", 0);
 
-        _exit(rc ? EXIT_FAILURE : EXIT_SUCCESS);
+        _exit(EXIT_FAILURE);
     }
 
     EXPECT_EQ(0, closePipeWriter(&pipe));
