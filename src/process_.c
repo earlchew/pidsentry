@@ -1462,6 +1462,13 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
         break;
 
     case 0:
+
+        /* Ensure that the behaviour of each child diverges from the
+         * behaviour of the parent. This is primarily useful for
+         * testing. */
+
+        srandom(getpid());
+
         /* Switch the process lock first in case the child process
          * needs to emit diagnostic messages so that the messages
          * will not be garbled. */
