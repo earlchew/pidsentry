@@ -32,6 +32,7 @@
 
 #include "gtest/gtest.h"
 
+#if 0
 bool
 operator==(const struct timespec &aLhs, const struct timespec &aRhs)
 {
@@ -414,6 +415,7 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
               shortenIntervalTime(&alarmVal,
                                   Duration(NanoSeconds(nsTime_1_0 * 11))));
 }
+#endif
 
 static struct Duration
 uptime()
@@ -428,25 +430,24 @@ uptime()
 
     if ( ! pid)
     {
-        /* This code assumes that there is enough buffer space in the
-         * pipe to hold the complete output of the system() call. */
-
         int rc = 0;
 
         rc = rc ||
             STDOUT_FILENO == dup2(pipe.mWrFile->mFd, STDOUT_FILENO)
             ? 0
             : -1;
-        rc = rc || system("read U I < /proc/uptime && echo ${U%%.*}");
-        _exit(rc);
+
+        closePipe(&pipe);
+
+        rc = rc ||
+            execlp(
+                "sh",
+                "sh",
+                "-c",
+                "set -xe ; read U I < /proc/uptime && echo ${U%%.*}", 0);
+
+        _exit(rc ? EXIT_FAILURE : EXIT_SUCCESS);
     }
-
-    int status;
-    EXPECT_EQ(0, reapProcess(pid, &status));
-
-    struct ExitCode exitcode = extractProcessExitStatus(status);
-
-    EXPECT_EQ(0, exitcode.mStatus);
 
     EXPECT_EQ(0, closePipeWriter(&pipe));
 
@@ -460,6 +461,13 @@ uptime()
 
     EXPECT_EQ(0, fclose(fp));
     EXPECT_EQ(0, closePipe(&pipe));
+
+    int status;
+    EXPECT_EQ(0, reapProcess(pid, &status));
+
+    struct ExitCode exitcode = extractProcessExitStatus(status);
+
+    EXPECT_EQ(0, exitcode.mStatus);
 
     return Duration(NSECS(Seconds(seconds)));
 }
