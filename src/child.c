@@ -247,7 +247,7 @@ forkChild(
     struct ChildProcess  *self,
     char                **aCmd,
     struct StdFdFiller   *aStdFdFiller,
-    struct Pipe          *aSyncPipe,
+    struct SocketPair    *aSyncSocket,
     struct SocketPair    *aUmbilicalSocket)
 {
     int rc = -1;
@@ -308,38 +308,25 @@ forkChild(
 
         debug(0, "synchronising child process");
 
-        RACE
-        ({
-            while (true)
-            {
-                char buf[1];
-
-                switch (read(aSyncPipe->mRdFile->mFd, buf, 1))
-                {
-                default:
-                        break;
-
-                case -1:
-                    if (EINTR == errno)
-                        continue;
-                    terminate(
-                        errno,
-                        "Unable to synchronise child");
-                    break;
-
-                case 0:
-                    _exit(EXIT_FAILURE);
-                    break;
-                }
-
-                break;
-            }
-        });
-
-        if (closePipe(aSyncPipe))
+        if (closeSocketPairParent(aSyncSocket))
             terminate(
                 errno,
-                "Unable to close sync pipe");
+                "Unable to close parent sync socket");
+
+        RACE
+        ({
+            char buf[1];
+
+            if (-1 == readFile(aSyncSocket->mChildFile, buf, 1))
+                terminate(
+                    errno,
+                    "Unable to synchronise child");
+        });
+
+        if (closeSocketPair(aSyncSocket))
+            terminate(
+                errno,
+                "Unable to close sync socket");
 
         do
         {

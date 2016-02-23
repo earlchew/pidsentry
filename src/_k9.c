@@ -72,6 +72,7 @@
  * Use struct Pid for type safety
  * Use SIGABRT to terminate children on error rather than SIGTERM
  * On receiving SIGABRT, trigger gdb
+ * Add test to kill umbilical, parent and child as early as possible
  */
 
 /* -------------------------------------------------------------------------- */
@@ -266,7 +267,7 @@ cmdRunCommand(char **aCmd)
             "Unable to create stdin, stdout, stderr filler");
 
     struct SocketPair umbilicalSocket;
-    if (createSocketPair(&umbilicalSocket))
+    if (createSocketPair(&umbilicalSocket, O_NONBLOCK | O_CLOEXEC))
         terminate(
             errno,
             "Unable to create umbilical socket");
@@ -286,14 +287,14 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to add watch on process termination");
 
-    struct Pipe syncPipe;
-    if (createPipe(&syncPipe, 0))
+    struct SocketPair syncSocket;
+    if (createSocketPair(&syncSocket, 0))
         terminate(
             errno,
-            "Unable to create sync pipe");
+            "Unable to create sync socket");
 
     if (forkChild(
-            &childProcess, aCmd, &stdFdFiller, &syncPipe, &umbilicalSocket))
+            &childProcess, aCmd, &stdFdFiller, &syncSocket, &umbilicalSocket))
         terminate(
             errno,
             "Unable to fork child");
@@ -497,10 +498,10 @@ cmdRunCommand(char **aCmd)
             pidFile = 0;
         }
 
-        if (closePipe(&syncPipe))
+        if (closeSocketPair(&syncSocket))
             terminate(
                 errno,
-                "Unable to close sync pipe");
+                "Unable to close sync socket");
 
         if (closeSocketPair(&umbilicalSocket))
             terminate(
@@ -540,23 +541,50 @@ cmdRunCommand(char **aCmd)
     /* With the child process announced, and the umbilical monitor
      * prepared, allow the child process to run the target program.
      *
-     * A side-effect of synchronising with the child process is that
-     * the child process itself will identify itself as being ready. */
+     * Wait until the child process acknowledges to avoid racing with
+     * the child process initialisation. */
+
+    if (closeSocketPairChild(&syncSocket))
+        terminate(
+            errno,
+            "Unable to close child sync socket");
 
     RACE
     ({
-        static char buf[1];
+        /* Be aware that the supervisor might have sent a signal to the
+         * watchdog which will have propagated it to the child, causing
+         * the child to terminate. */
 
-        if (1 != writeFile(syncPipe.mWrFile, buf, 1))
+        if (shutdownFileSocketWriter(syncSocket.mParentFile))
             terminate(
                 errno,
-                "Unable to synchronise child process");
+                "Unable to activate child process");
+
+        char buf[1];
+
+        switch (readFile(syncSocket.mParentFile, buf, 1))
+        {
+        default:
+            errno = 0;
+            /* Fall through */
+
+        case -1:
+            if (ECONNRESET != errno)
+                terminate(
+                    errno,
+                    "Unable synchronise child process");
+            break;
+
+        case 0:
+            break;
+
+        }
     });
 
-    if (closePipe(&syncPipe))
+    if (closeSocketPair(&syncSocket))
         terminate(
             errno,
-            "Unable to close sync pipe");
+            "Unable to close sync socket");
 
     if (gOptions.mIdentify)
     {

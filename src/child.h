@@ -74,7 +74,7 @@ forkChild(
     struct ChildProcess  *self,
     char                **aCmd,
     struct StdFdFiller   *aStdFdFiller,
-    struct Pipe          *aSyncPipe,
+    struct SocketPair    *aSyncSocket,
     struct SocketPair    *aUmbilicalSocket);
 
 void
