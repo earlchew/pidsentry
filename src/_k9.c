@@ -72,6 +72,7 @@
  * Use struct Pid for type safety
  * Use SIGABRT to terminate children on error rather than SIGTERM
  * On receiving SIGABRT, trigger gdb
+ * Isolate signal delivery to one thread
  * Add test to kill umbilical, parent and child as early as possible
  */
 
@@ -636,18 +637,6 @@ cmdRunCommand(char **aCmd)
         pidFile = 0;
     }
 
-    /* Reap the child only after the pid file is released. This ensures
-     * that any competing reader that manages to sucessfully lock and
-     * read the pid file will see that the process exists. */
-
-    debug(0, "reaping child pid %jd", (intmax_t) childProcess.mPid);
-
-    pid_t childPid = childProcess.mPid;
-
-    int status = closeChild(&childProcess);
-
-    debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
-
     /* Leave the umbilical process running until the watchdog process itself
      * has terminated. The umbilical process can sense this when the last
      * reference to the umbilical socket has been closed. The umbilical
@@ -662,9 +651,22 @@ cmdRunCommand(char **aCmd)
 
         if (-1 == wrlen)
         {
-            terminate(
-                errno,
-                "Unable to send termination message on umbilical");
+            /* The umbilical process might no longer running and thus
+             * unable to clean up the child process group. If so, have
+             * the watchdog clean up the child process group directly. */
+
+            if (EPIPE != errno)
+                terminate(
+                    errno,
+                    "Unable to send termination message on umbilical");
+            else
+            {
+                warn(0,
+                     "Killing child pgid %jd from watchdog",
+                     (intmax_t) childProcess.mPgid);
+
+                killChildProcessGroup(&childProcess);
+            }
         }
 
         if (STDOUT_FILENO != dup2(umbilicalSocket.mParentFile->mFd,
@@ -674,6 +676,18 @@ cmdRunCommand(char **aCmd)
                 "Unable to dup %d to stdout",
                 umbilicalSocket.mParentFile->mFd);
     }
+
+    /* Reap the child only after the pid file is released. This ensures
+     * that any competing reader that manages to sucessfully lock and
+     * read the pid file will see the terminated process. */
+
+    debug(0, "reaping child pid %jd", (intmax_t) childProcess.mPid);
+
+    pid_t childPid = childProcess.mPid;
+
+    int status = closeChild(&childProcess);
+
+    debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
 
     if (closeSocketPair(&umbilicalSocket))
         terminate(
