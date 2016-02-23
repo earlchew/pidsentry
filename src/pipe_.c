@@ -53,7 +53,7 @@ createPipe(struct Pipe *self, unsigned aFlags)
 
     int fd[2];
 
-    if (pipe(fd))
+    if (pipe2(fd, aFlags))
         goto Finally;
 
     if (-1 == fd[0] || -1 == fd[1])
@@ -73,18 +73,6 @@ createPipe(struct Pipe *self, unsigned aFlags)
     self->mWrFile = &self->mWrFile_;
 
     fd[1] = -1;
-
-    if (aFlags & O_CLOEXEC)
-    {
-        if (closePipeOnExec(self, O_CLOEXEC))
-            goto Finally;
-    }
-
-    if (aFlags & O_NONBLOCK)
-    {
-        if (nonblockingPipe(self))
-            goto Finally;
-    }
 
     rc = 0;
 
