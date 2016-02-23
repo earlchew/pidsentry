@@ -129,7 +129,7 @@ runPollFdLoop(struct PollFd *self)
 
     struct EventClockTime polltm;
 
-    do
+    while ( ! self->mCompletionQuery(self->mObserver))
     {
         /* Poll the file descriptors and process the file descriptor
          * events before attempting to check for timeouts. This
@@ -309,7 +309,7 @@ runPollFdLoop(struct PollFd *self)
             }
         }
 
-    } while ( ! self->mCompletionQuery(self->mObserver));
+    }
 
     rc = 0;
 
