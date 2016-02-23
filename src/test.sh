@@ -293,6 +293,34 @@ runTests()
     testOutput "x1x" = '$(
       k9 -T -n @tether@ -- /bin/echo x@tether@x | grep "1")'
 
+    testCase 'Early parent death'
+    k9 -i -T -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
+        read PARENT UMBILICAL
+        randomsleep 1
+        kill -9 $PARENT
+        sleep 3
+        ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+    }
+
+    testCase 'Early umbilical death'
+    k9 -i -T -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
+        read PARENT UMBILICAL
+        randomsleep 1
+        kill -9 $UMBILICAL
+        sleep 3
+        ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+    }
+
+    testCase 'Early child death'
+    k9 -i -T -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
+        read PARENT UMBILICAL
+        read CHILD
+        randomsleep 1
+        kill -9 $CHILD
+        sleep 3
+        ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+    }
+
     testCase 'Unexpected death of child'
     REPLY=$(
       exec 3>&1
@@ -337,6 +365,20 @@ runTests()
             read CHILD
             randomsleep 3
             kill -STOP $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            randomsleep 10
+            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            read REPLY
+            /bin/echo $REPLY
+        }
+    )'
+
+    testCase 'Randomly stopped process family'
+    testOutput 'OK' = '$(
+        { k9 -i -dd sleep 3 && /bin/echo OK ; } | {
+            read PARENT UMBILICAL
+            read CHILD
+            randomsleep 3
+            kill -TSTP $PARENT || { /bin/echo NOTOK ; exit 1 ; }
             randomsleep 10
             kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
             read REPLY
