@@ -209,20 +209,49 @@ killChild(struct ChildProcess *self, int aSigNum)
           (intmax_t) self->mPid);
 
     if (kill(self->mPid, aSigNum))
-    {
-        if (ESRCH != errno)
-            terminate(
-                errno,
-                "Unable to deliver %s to child pid %jd",
-                formatProcessSignalName(&sigName, aSigNum),
-                (intmax_t) self->mPid);
-    }
+        terminate(
+            errno,
+            "Unable to deliver %s to child pid %jd",
+            formatProcessSignalName(&sigName, aSigNum),
+            (intmax_t) self->mPid);
+}
+
+/* -------------------------------------------------------------------------- */
+void
+killChildProcessGroup(struct ChildProcess *self)
+{
+    int sigKill = SIGKILL;
+
+    struct ProcessSignalName sigName;
+
+    if ( ! self->mPgid)
+        terminate(
+            0,
+            "Signal race when trying to deliver %s",
+            formatProcessSignalName(&sigName, sigKill));
+
+    debug(0,
+          "sending %s to child pgid %jd",
+          formatProcessSignalName(&sigName, sigKill),
+          (intmax_t) self->mPgid);
+
+    if (killpg(self->mPgid, sigKill))
+        terminate(
+            errno,
+            "Unable to deliver %s to child pgid %jd",
+            formatProcessSignalName(&sigName, sigKill),
+            (intmax_t) self->mPgid);
 }
 
 /* -------------------------------------------------------------------------- */
 void
 pauseChildProcessGroup(struct ChildProcess *self)
 {
+    if ( ! self->mPgid)
+        terminate(
+            0,
+            "Signal race when trying to pause process group");
+
     if (killpg(self->mPgid, SIGSTOP))
         terminate(
             errno,
@@ -234,6 +263,11 @@ pauseChildProcessGroup(struct ChildProcess *self)
 void
 resumeChildProcessGroup(struct ChildProcess *self)
 {
+    if ( ! self->mPgid)
+        terminate(
+            0,
+            "Signal race when trying to resume process group");
+
     if (killpg(self->mPgid, SIGCONT))
         terminate(
             errno,
@@ -570,17 +604,12 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
      * is either lost or no longer active. Only issue a diagnostic if
      * the shutdown was not orderly. */
 
-    pid_t pgid = getpgid(0);
+    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
+        warn(0,
+             "Killing child pgid %jd from umbilical",
+             (intmax_t) self->mPgid);
 
-    if (ownUmbilicalMonitorClosedOrderly(&monitorpoll))
-        debug(0, "cleaning child pgid %jd", (intmax_t) pgid);
-    else
-        warn(0, "Killing child pgid %jd", (intmax_t) pgid);
-
-    if (kill(0, SIGKILL))
-        terminate(
-            errno,
-            "Unable to kill child pgid %jd", (intmax_t) pgid);
+    killChildProcessGroup(self);
 }
 
 /* -------------------------------------------------------------------------- */

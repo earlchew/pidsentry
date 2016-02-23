@@ -99,6 +99,9 @@ closeChild(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */
 void
+killChildProcessGroup(struct ChildProcess *self);
+
+void
 pauseChildProcessGroup(struct ChildProcess *self);
 
 void
