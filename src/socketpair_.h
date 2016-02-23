@@ -45,7 +45,7 @@ struct SocketPair
 
 /* -------------------------------------------------------------------------- */
 int
-createSocketPair(struct SocketPair *self);
+createSocketPair(struct SocketPair *self, unsigned aFlags);
 
 int
 closeSocketPair(struct SocketPair *self);

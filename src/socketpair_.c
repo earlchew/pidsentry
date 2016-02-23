@@ -33,19 +33,34 @@
 #include "error_.h"
 
 #include <errno.h>
+#include <fcntl.h>
 
 /* -------------------------------------------------------------------------- */
 int
-createSocketPair(struct SocketPair *self)
+createSocketPair(struct SocketPair *self, unsigned aFlags)
 {
     int rc = -1;
+
+    if (aFlags & ~ (O_CLOEXEC | O_NONBLOCK))
+    {
+        errno = EINVAL;
+        goto Finally;
+    }
+
+    int sockFlags = 0;
+
+    if (aFlags & O_NONBLOCK)
+        sockFlags |= SOCK_NONBLOCK;
+
+    if (aFlags & O_CLOEXEC)
+        sockFlags |= SOCK_CLOEXEC;
 
     self->mParentFile = 0;
     self->mChildFile  = 0;
 
     int fd[2];
 
-    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, fd))
+    if (socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd))
         goto Finally;
 
     if (-1 == fd[0] || -1 == fd[1])
