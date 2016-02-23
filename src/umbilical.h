@@ -73,8 +73,8 @@ struct UmbilicalMonitorPoll
 int
 createUmbilicalMonitor(
     struct UmbilicalMonitorPoll *self,
-    int   aStdinFd,
-    pid_t aParentPid);
+    int                          aStdinFd,
+    pid_t                        aParentPid);
 
 int
 synchroniseUmbilicalMonitor(struct UmbilicalMonitorPoll *self);
