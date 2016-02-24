@@ -64,7 +64,7 @@ static void
 pollFdUmbilical_(void                        *self_,
                  const struct EventClockTime *aPollTime)
 {
-    struct UmbilicalMonitorPoll *self = self_;
+    struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
 
@@ -163,7 +163,7 @@ pollFdTimerUmbilical_(
     void                        *self_,
     const struct EventClockTime *aPollTime)
 {
-    struct UmbilicalMonitorPoll *self = self_;
+    struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
 
@@ -191,7 +191,7 @@ pollFdTimerUmbilical_(
 static bool
 pollFdCompletion_(void *self_)
 {
-    struct UmbilicalMonitorPoll *self = self_;
+    struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
 
@@ -201,15 +201,15 @@ pollFdCompletion_(void *self_)
 /* -------------------------------------------------------------------------- */
 int
 createUmbilicalMonitor(
-    struct UmbilicalMonitorPoll *self,
-    int                          aStdinFd,
-    pid_t                        aParentPid)
+    struct UmbilicalMonitor *self,
+    int                      aStdinFd,
+    pid_t                    aParentPid)
 {
     int rc = -1;
 
     unsigned cycleLimit = 2;
 
-    *self = (struct UmbilicalMonitorPoll)
+    *self = (struct UmbilicalMonitor)
     {
         .mType       = umbilicalMonitorType_,
         .mCycleLimit = cycleLimit,
@@ -253,7 +253,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-synchroniseUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
+synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self)
 {
     int rc = -1;
 
@@ -276,7 +276,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-runUmbilicalMonitor(struct UmbilicalMonitorPoll *self)
+runUmbilicalMonitor(struct UmbilicalMonitor *self)
 {
     int rc = -1;
 
@@ -308,7 +308,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 bool
-ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitorPoll *self)
+ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 {
     return self->mClosed;
 }

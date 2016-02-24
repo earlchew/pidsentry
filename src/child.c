@@ -583,7 +583,7 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
      * process group as the child process and use the process group as
      * a means of controlling the cild process. */
 
-    struct UmbilicalMonitorPoll monitorpoll;
+    struct UmbilicalMonitor monitorpoll;
     if (createUmbilicalMonitor(&monitorpoll, STDIN_FILENO, aParentPid))
         terminate(errno, "Unable to create umbilical monitor");
 

@@ -55,7 +55,7 @@ enum PollFdMonitorTimerKind
     POLL_FD_MONITOR_TIMER_KINDS
 };
 
-struct UmbilicalMonitorPoll
+struct UmbilicalMonitor
 {
     const struct Type *mType;
 
@@ -72,18 +72,18 @@ struct UmbilicalMonitorPoll
 /* -------------------------------------------------------------------------- */
 int
 createUmbilicalMonitor(
-    struct UmbilicalMonitorPoll *self,
-    int                          aStdinFd,
-    pid_t                        aParentPid);
+    struct UmbilicalMonitor *self,
+    int                      aStdinFd,
+    pid_t                    aParentPid);
 
 int
-synchroniseUmbilicalMonitor(struct UmbilicalMonitorPoll *self);
+synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self);
 
 int
-runUmbilicalMonitor(struct UmbilicalMonitorPoll *self);
+runUmbilicalMonitor(struct UmbilicalMonitor *self);
 
 bool
-ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitorPoll *self);
+ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self);
 
 /* -------------------------------------------------------------------------- */
 
