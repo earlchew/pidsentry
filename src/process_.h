@@ -86,6 +86,14 @@ enum ProcessStatus
 };
 
 /* -------------------------------------------------------------------------- */
+#define PROCESS_CONTINUATION_INIT { 0 }
+
+struct ProcessContinuation
+{
+    unsigned mCount;
+};
+
+/* -------------------------------------------------------------------------- */
 #define PROCESS_SIGNALNAME_FMT_ "signal %d"
 
 struct ProcessSignalName
@@ -153,8 +161,8 @@ int
 unwatchProcessClock(void);
 
 /* -------------------------------------------------------------------------- */
-unsigned
-ownProcessSigContCount(void);
+bool
+detectProcessContinuation(struct ProcessContinuation *self);
 
 /* -------------------------------------------------------------------------- */
 pid_t

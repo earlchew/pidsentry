@@ -269,7 +269,7 @@ sigCont_(int aSigNum)
      * the motivation for using a lock free update here. Other solutions
      * are possible, but a lock free approach is the most straightforward. */
 
-    __sync_add_and_fetch(&sSigCont.mCount, 1);
+    __sync_add_and_fetch(&sSigCont.mCount, 2);
 
     lockThreadSigMutex(&sSigCont.mSigMutex);
 
@@ -356,14 +356,20 @@ Finally:
     return rc;
 }
 
-unsigned
-ownProcessSigContCount(void)
+bool
+detectProcessContinuation(struct ProcessContinuation *self)
 {
     /* Because this function is called from lockMutex(), amongst other places,
      * do not use or cause lockMutex() to be used here to avoid introducing
      * the chance of infinite recursion. */
 
-    return sSigCont.mCount;
+    unsigned contCount = 1 | sSigCont.mCount;
+
+    bool rv = self->mCount && (self->mCount != contCount);
+
+    self->mCount = contCount;
+
+    return rv;
 }
 
 int

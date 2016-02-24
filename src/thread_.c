@@ -134,12 +134,12 @@ destroyMutex(pthread_mutex_t *self)
 pthread_mutex_t *
 lockMutex(pthread_mutex_t *self)
 {
+    struct ProcessContinuation processContinuation = PROCESS_CONTINUATION_INIT;
+
     while (errno = pthread_mutex_trylock(self))
     {
         if (EBUSY != errno)
             terminate(errno, "Unable to lock mutex");
-
-        unsigned sigContCount = ownProcessSigContCount();
 
         /* There is no way to configure the mutex to use a monotonic
          * clock to compute the deadline. Since the timeout is only
@@ -164,7 +164,7 @@ lockMutex(pthread_mutex_t *self)
                 /* Try again if the attempt to lock the mutex timed out
                  * but the process was stopped for some part of that time. */
 
-                if (ownProcessSigContCount() != sigContCount)
+                if (detectProcessContinuation(&processContinuation))
                     continue;
             }
 
