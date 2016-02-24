@@ -41,6 +41,17 @@ extern "C" {
 #endif
 
 struct Type;
+struct SocketPair;
+struct PidFile;
+struct ChildProcess;
+
+/* -------------------------------------------------------------------------- */
+struct UmbilicalProcess
+{
+    pid_t              mPid;
+    pid_t              mPgid;
+    struct SocketPair *mSocket;
+};
 
 /* -------------------------------------------------------------------------- */
 enum PollFdMonitorKind
@@ -76,6 +87,7 @@ createUmbilicalMonitor(
     int                      aStdinFd,
     pid_t                    aParentPid);
 
+
 int
 synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self);
 
@@ -84,6 +96,17 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self);
 
 bool
 ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self);
+
+/* -------------------------------------------------------------------------- */
+int
+createUmbilicalProcess(struct UmbilicalProcess *self,
+                       struct ChildProcess     *aChildProcess,
+                       struct SocketPair       *aUmbilicalSocket,
+                       struct SocketPair       *aSyncSocket,
+                       struct PidFile          *aPidFile);
+
+int
+stopUmbilicalProcess(struct UmbilicalProcess *self);
 
 /* -------------------------------------------------------------------------- */
 

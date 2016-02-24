@@ -1323,9 +1323,9 @@ raiseChildSigCont(struct ChildProcess *self)
 
 /* -------------------------------------------------------------------------- */
 void
-monitorChild(struct ChildProcess *self,
-             pid_t                aUmbilicalPid,
-             struct File         *aUmbilicalFile)
+monitorChild(struct ChildProcess     *self,
+             struct UmbilicalProcess *aUmbilicalProcess,
+             struct File             *aUmbilicalFile)
 {
     debug(0, "start monitoring child");
 
@@ -1390,7 +1390,7 @@ monitorChild(struct ChildProcess *self,
         .mUmbilical =
         {
             .mFile       = aUmbilicalFile,
-            .mPid        = aUmbilicalPid,
+            .mPid        = aUmbilicalProcess->mPid,
             .mCycleCount = timeoutCycles,
             .mCycleLimit = timeoutCycles,
         },

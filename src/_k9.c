@@ -30,6 +30,7 @@
 #include "_k9.h"
 
 #include "child.h"
+#include "umbilical.h"
 
 #include "env_.h"
 #include "macros_.h"
@@ -424,88 +425,19 @@ cmdRunCommand(char **aCmd)
      * of this process can be detected independently. Only create the
      * monitoring process after all the file descriptors have been
      * purged so that the monitor does not inadvertently hold file
-     * descriptors that should only be held by the child.
-     *
-     * Ensure that SIGHUP is blocked so that the umbilical process
-     * will not terminate should it be orphaned when the parent process
-     * terminates. Verifying the signal is blocked here is important to
-     * avoid a termination race.
-     *
-     * Note that forkProcess() will reset all handled signals in
-     * the child process. */
+     * descriptors that should only be held by the child. */
 
-    ensure( ! pthread_kill(pthread_self(), SIGHUP));
-
-    pid_t watchdogPid  = getpid();
-    pid_t watchdogPgid = getpgid(0);
-    pid_t umbilicalPid = forkProcess(ForkProcessSetProcessGroup,
-                                     childProcess.mPgid);
-
-    if (-1 == umbilicalPid)
+    struct UmbilicalProcess umbilicalProcess;
+    if (createUmbilicalProcess(&umbilicalProcess,
+                               &childProcess,
+                               &umbilicalSocket,
+                               &syncSocket,
+                               pidFile))
         terminate(
             errno,
-            "Unable to fork umbilical monitor");
+            "Unable to create umbilical process");
 
-    if (umbilicalPid)
-    {
-        family.mUmbilicalPid = umbilicalPid;
-    }
-    else
-    {
-        debug(0, "umbilical process pid %jd pgid %jd",
-              (intmax_t) getpid(),
-              (intmax_t) getpgid(0));
-
-        if (childProcess.mPgid)
-            ensure(childProcess.mPgid == getpgid(0));
-        else
-            ensure(watchdogPgid == getpgid(0));
-
-        if (STDIN_FILENO !=
-            dup2(umbilicalSocket.mChildFile->mFd, STDIN_FILENO))
-            terminate(
-                errno,
-                "Unable to dup %d to stdin", umbilicalSocket.mChildFile->mFd);
-
-        if (STDOUT_FILENO != dup2(
-                umbilicalSocket.mChildFile->mFd, STDOUT_FILENO))
-            terminate(
-                errno,
-                "Unable to dup %d to stdout", umbilicalSocket.mChildFile->mFd);
-
-        if (pidFile)
-        {
-            if (acquireReadLockPidFile(pidFile))
-                terminate(
-                    errno,
-                    "Unable to acquire read lock on pid file '%s'",
-                    pidFile->mPathName.mFileName);
-
-            if (closePidFile(pidFile))
-                terminate(
-                    errno,
-                    "Cannot close pid file '%s'", pidFile->mPathName.mFileName);
-            pidFile = 0;
-        }
-
-        if (closeSocketPair(&syncSocket))
-            terminate(
-                errno,
-                "Unable to close sync socket");
-
-        if (closeSocketPair(&umbilicalSocket))
-            terminate(
-                errno,
-                "Unable to close umbilical socket");
-
-        monitorChildUmbilical(&childProcess, watchdogPid);
-
-        pid_t pgid = getpgid(0);
-
-        warn(0, "Umbilical failed to clean process group %jd", (intmax_t) pgid);
-
-        _exit(EXIT_FAILURE);
-    }
+    family.mUmbilicalPid = umbilicalProcess.mPid;
 
     if (closeSocketPairChild(&umbilicalSocket))
         terminate(
@@ -517,7 +449,8 @@ cmdRunCommand(char **aCmd)
         ({
             if (-1 == dprintf(STDOUT_FILENO,
                               "%jd %jd\n",
-                              (intmax_t) getpid(), (intmax_t) umbilicalPid))
+                              (intmax_t) getpid(),
+                              (intmax_t) umbilicalProcess.mPid))
                 terminate(
                     errno,
                     "Unable to print parent and umbilical pid");
@@ -588,7 +521,7 @@ cmdRunCommand(char **aCmd)
      * running, release the pid file if one was allocated. */
 
     monitorChild(&childProcess,
-                 umbilicalPid,
+                 &umbilicalProcess,
                  umbilicalSocket.mParentFile);
 
     if (unwatchProcessSigCont())
@@ -621,45 +554,22 @@ cmdRunCommand(char **aCmd)
         pidFile = 0;
     }
 
-    /* Leave the umbilical process running until the watchdog process itself
-     * has terminated. The umbilical process can sense this when the last
-     * reference to the umbilical socket has been closed. The umbilical
-     * process is then responsible for making sure that the entire
-     * process group is cleaned up. */
+    /* Attempt to stop the umbilical process cleanly so that the watchdog
+     * can exit in an orderly fashion with the exit status of the child
+     * process as the last line emitted. */
 
-    {
-        char buf[1] = { 0 };
+    debug(0, "stopping umbilical pid %jd", (intmax_t) umbilicalProcess.mPid);
 
-        ssize_t wrlen = writeFile(
-            umbilicalSocket.mParentFile, buf, sizeof(buf));
+    if (stopUmbilicalProcess(&umbilicalProcess))
+        warn(errno, "Unable to stop umbilical process cleanly");
 
-        if (-1 == wrlen)
-        {
-            /* The umbilical process might no longer running and thus
-             * unable to clean up the child process group. If so, have
-             * the watchdog clean up the child process group directly. */
+    /* The child process group is cleaned up from both the umbilical process
+     * and the watchdog with the expectation that at least one of them
+     * will succeed. At this point, the child process has already terminated
+     * so killing the child process group will not change its exit
+     * status. */
 
-            if (EPIPE != errno)
-                terminate(
-                    errno,
-                    "Unable to send termination message on umbilical");
-            else
-            {
-                warn(0,
-                     "Killing child pgid %jd from watchdog",
-                     (intmax_t) childProcess.mPgid);
-
-                killChildProcessGroup(&childProcess);
-            }
-        }
-
-        if (STDOUT_FILENO != dup2(umbilicalSocket.mParentFile->mFd,
-                                  STDOUT_FILENO))
-            terminate(
-                errno,
-                "Unable to dup %d to stdout",
-                umbilicalSocket.mParentFile->mFd);
-    }
+    killChildProcessGroup(&childProcess);
 
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and

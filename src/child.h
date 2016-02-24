@@ -41,6 +41,7 @@ extern "C" {
 struct StdFdFiller;
 struct SocketPair;
 struct ChildMonitor;
+struct UmbilicalProcess;
 
 /* -------------------------------------------------------------------------- */
 struct ChildProcess
@@ -87,9 +88,9 @@ void
 monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid);
 
 void
-monitorChild(struct ChildProcess *self,
-             pid_t                aUmbilicalPid,
-             struct File         *aUmbilicalFile);
+monitorChild(struct ChildProcess     *self,
+             struct UmbilicalProcess *aUmbilicalProcess,
+             struct File             *aUmbilicalFile);
 
 void
 raiseChildSigCont(struct ChildProcess *self);

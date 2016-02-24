@@ -28,13 +28,19 @@
 */
 
 #include "umbilical.h"
+#include "child.h"
+
 #include "macros_.h"
 #include "type_.h"
 #include "error_.h"
 #include "fd_.h"
+#include "socketpair_.h"
+#include "pidfile_.h"
 
+#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
 
 /* -------------------------------------------------------------------------- */
 /* Umbilical Process
@@ -311,6 +317,180 @@ bool
 ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 {
     return self->mClosed;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+runUmbilicalProcess_(struct UmbilicalProcess *self,
+                     pid_t                    aWatchdogPid,
+                     struct ChildProcess     *aChildProcess,
+                     struct SocketPair       *aUmbilicalSocket,
+                     struct SocketPair       *aSyncSocket,
+                     struct PidFile          *aPidFile)
+{
+    struct PidFile *pidFile = aPidFile;
+
+    debug(0, "umbilical process pid %jd pgid %jd",
+          (intmax_t) getpid(),
+          (intmax_t) getpgid(0));
+
+    ensure(aChildProcess->mPgid == getpgid(0));
+
+    if (STDIN_FILENO !=
+        dup2(aUmbilicalSocket->mChildFile->mFd, STDIN_FILENO))
+        terminate(
+            errno,
+            "Unable to dup %d to stdin",
+            aUmbilicalSocket->mChildFile->mFd);
+
+    if (STDOUT_FILENO != dup2(
+            aUmbilicalSocket->mChildFile->mFd, STDOUT_FILENO))
+        terminate(
+            errno,
+            "Unable to dup %d to stdout",
+            aUmbilicalSocket->mChildFile->mFd);
+
+    if (pidFile)
+    {
+        if (acquireReadLockPidFile(pidFile))
+            terminate(
+                errno,
+                "Unable to acquire read lock on pid file '%s'",
+                pidFile->mPathName.mFileName);
+
+        if (closePidFile(pidFile))
+            terminate(
+                errno,
+                "Cannot close pid file '%s'",
+                pidFile->mPathName.mFileName);
+        pidFile = 0;
+    }
+
+    if (closeSocketPair(aSyncSocket))
+        terminate(
+            errno,
+            "Unable to close sync socket");
+
+    if (closeSocketPair(aUmbilicalSocket))
+        terminate(
+            errno,
+            "Unable to close umbilical socket");
+
+    monitorChildUmbilical(aChildProcess, aWatchdogPid);
+
+    pid_t pgid = getpgid(0);
+
+    warn(0, "Umbilical failed to clean process group %jd", (intmax_t) pgid);
+
+    _exit(EXIT_FAILURE);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+createUmbilicalProcess(struct UmbilicalProcess *self,
+                       struct ChildProcess     *aChildProcess,
+                       struct SocketPair       *aUmbilicalSocket,
+                       struct SocketPair       *aSyncSocket,
+                       struct PidFile          *aPidFile)
+{
+    int rc = -1;
+
+    self->mPid    = 0;
+    self->mPgid   = aChildProcess->mPgid;
+    self->mSocket = aUmbilicalSocket;
+
+    /* Ensure that SIGHUP is blocked so that the umbilical process
+     * will not terminate should it be orphaned when the parent process
+     * terminates. Verifying the signal is blocked here is important to
+     * avoid a termination race.
+     *
+     * Note that forkProcess() will reset all handled signals in
+     * the child process. */
+
+    ensure( ! pthread_kill(pthread_self(), SIGHUP));
+
+    pid_t watchdogPid  = getpid();
+
+    pid_t umbilicalPid;
+    FINALLY_IF(
+        -1 == (umbilicalPid = forkProcess(ForkProcessSetProcessGroup,
+                                          self->mPgid)));
+
+    if (umbilicalPid)
+    {
+        self->mPid = umbilicalPid;
+    }
+    else
+    {
+        self->mPid = getpid();
+
+        runUmbilicalProcess_(self,
+                             watchdogPid,
+                             aChildProcess,
+                             aUmbilicalSocket,
+                             aSyncSocket,
+                             aPidFile);
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+stopUmbilicalProcess(struct UmbilicalProcess *self)
+{
+    int rc = -1;
+
+    char buf[1] = { 0 };
+
+    ssize_t wrlen = writeFile(self->mSocket->mParentFile, buf, sizeof(buf));
+
+    if (-1 == wrlen)
+    {
+        /* The umbilical process might no longer running and thus
+         * unable to clean up the child process group. If so, it is
+         * necessary for the watchdog clean up the child process
+         * group directly. */
+
+        if (EPIPE != errno)
+            goto Finally;
+    }
+    else
+    {
+        if (shutdownFileSocketWriter(self->mSocket->mParentFile))
+            goto Finally;
+
+        struct Duration umbilicalTimeout =
+            Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
+
+        switch (waitFileReadReady(
+                    self->mSocket->mParentFile, &umbilicalTimeout))
+        {
+        default:
+            break;
+
+        case -1:
+            goto Finally;
+
+        case 0:
+            errno = ETIMEDOUT;
+            goto Finally;
+        }
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
