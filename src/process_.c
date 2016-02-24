@@ -1110,6 +1110,11 @@ signalThread_(void *self_)
      * in which signals can be delivered in the case that all other
      * threads are unable accept signals. */
 
+    if (popThreadSigMask(&sSigMask))
+        terminate(
+            errno,
+            "Unable to pop thread signal mask");
+
     lockMutex(&self->mMutex);
     while ( ! self->mStopping)
         waitCond(&self->mCond, &self->mMutex);
@@ -1144,16 +1149,14 @@ Process_init(const char *aArg0)
 
         srandom(getpid());
 
-        const int sigList[] = { SIGALRM, 0 };
-
-        if (pushThreadSigMask(&sSigMask, ThreadSigMaskBlock, sigList))
-            goto Finally;
-
         if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
             goto Finally;
         sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
 
         if (Error_init())
+            goto Finally;
+
+        if (pushThreadSigMask(&sSigMask, ThreadSigMaskBlock, 0))
             goto Finally;
 
         createThread(
@@ -1496,9 +1499,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
         }
 
         /* This is the only thread running in the new process so
-         * it is safe to release the process mutex here. Once the
-         * process mutex and the signal mask are restored, reinstate
-         * the original process signal mask. */
+         * it is safe to release the process mutex here. */
 
         lock = unlockThreadSigMutex(lock);
 

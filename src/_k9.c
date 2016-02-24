@@ -426,21 +426,15 @@ cmdRunCommand(char **aCmd)
      * purged so that the monitor does not inadvertently hold file
      * descriptors that should only be held by the child.
      *
-     * Block SIGHUP so that the umbilical process will not terminate
-     * should it be orphaned when the parent process terminates. Blocking
-     * the signal here is important to avoid leaving open a window for
-     * a termination race.
+     * Ensure that SIGHUP is blocked so that the umbilical process
+     * will not terminate should it be orphaned when the parent process
+     * terminates. Verifying the signal is blocked here is important to
+     * avoid a termination race.
      *
      * Note that forkProcess() will reset all handled signals in
      * the child process. */
 
-    int sigList[] = { SIGHUP, 0 };
-
-    struct ThreadSigMask threadSigMask;
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, sigList))
-        terminate(
-            errno,
-            "Unable to push thread signal mask");
+    ensure( ! pthread_kill(pthread_self(), SIGHUP));
 
     pid_t watchdogPid  = getpid();
     pid_t watchdogPgid = getpgid(0);
@@ -455,11 +449,6 @@ cmdRunCommand(char **aCmd)
     if (umbilicalPid)
     {
         family.mUmbilicalPid = umbilicalPid;
-
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
     }
     else
     {
@@ -510,11 +499,6 @@ cmdRunCommand(char **aCmd)
                 "Unable to close umbilical socket");
 
         monitorChildUmbilical(&childProcess, watchdogPid);
-
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
 
         pid_t pgid = getpgid(0);
 
