@@ -64,17 +64,12 @@
  * Fix vgcore being dropped everywhere
  * Implement process lock in child process
  * When announcing child, ensure pid is active first
- * Use SIGHUP to kill umbilical monitor
  * Use struct Type for other poll loops
- * Handle SIGCHLD continue/stopped
  * Propagate signal termination from child to parent
- * Use round trip ping for maintaining umbilical
  * Improve FINALLY tracking
  * Use struct Pid for type safety
- * Use SIGABRT to terminate children on error rather than SIGTERM
  * On receiving SIGABRT, trigger gdb
  * Isolate signal delivery to one thread
- * Add test to kill umbilical, parent and child as early as possible
  */
 
 /* -------------------------------------------------------------------------- */

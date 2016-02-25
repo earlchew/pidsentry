@@ -621,6 +621,13 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
 static const struct Type * const childMonitorType_ = TYPE("ChildMonitor");
 
+enum ChildTerminationAction
+{
+    ChildTermination_Terminate,
+    ChildTermination_Abort,
+    ChildTermination_Actions,
+};
+
 struct ChildSignalPlan
 {
     pid_t mPid;
@@ -638,6 +645,7 @@ struct ChildMonitor
 
     struct
     {
+        const struct ChildSignalPlan *mSignalPlans[ChildTermination_Actions];
         const struct ChildSignalPlan *mSignalPlan;
         struct Duration               mSignalPeriod;
     } mTermination;
@@ -670,6 +678,7 @@ struct ChildMonitor
 
 static void
 activateFdTimerTermination_(struct ChildMonitor         *self,
+                            enum ChildTerminationAction  aAction,
                             const struct EventClockTime *aPollTime)
 {
     /* When it is necessary to terminate the child process, the child
@@ -688,6 +697,11 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
     if ( ! terminationTimer->mPeriod.duration.ns)
     {
         debug(1, "activating termination timer");
+
+        ensure( ! self->mTermination.mSignalPlan);
+
+        self->mTermination.mSignalPlan =
+            self->mTermination.mSignalPlans[aAction];
 
         terminationTimer->mPeriod = self->mTermination.mSignalPeriod;
 
@@ -770,7 +784,7 @@ pollFdCloseUmbilical_(struct ChildMonitor         *self,
 
     umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
 
-    activateFdTimerTermination_(self, aPollTime);
+    activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
 }
 
 static void
@@ -987,7 +1001,8 @@ pollFdTimerUmbilical_(void                        *self_,
             {
                 warn(0, "Umbilical connection timed out");
 
-                activateFdTimerTermination_(self, aPollTime);
+                activateFdTimerTermination_(
+                    self, ChildTermination_Terminate, aPollTime);
             }
         }
     }
@@ -1141,7 +1156,8 @@ pollFdTimerTether_(void                        *self_,
 
         debug(0, "timeout after %ds", gOptions.mTimeout.mTether_s);
 
-        activateFdTimerTermination_(self, aPollTime);
+        activateFdTimerTermination_(
+            self, ChildTermination_Abort, aPollTime);
 
     } while (0);
 }
@@ -1171,7 +1187,8 @@ pollFdTimerOrphan_(void                        *self_,
         self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_ORPHAN].mPeriod =
             Duration(NanoSeconds(0));
 
-        activateFdTimerTermination_(self, aPollTime);
+        activateFdTimerTermination_(
+            self, ChildTermination_Terminate, aPollTime);
     }
 }
 
@@ -1329,24 +1346,6 @@ monitorChild(struct ChildProcess     *self,
 {
     debug(0, "start monitoring child");
 
-    /* Remember that the child process might be in its own process group,
-     * or might be in the same process group as the watchdog.
-     *
-     * When terminating the child process, first request that the child
-     * terminate by sending it SIGTERM, and if the child does not terminate,
-     * resort to sending SIGKILL.
-     *
-     * Do not kill the child process group here since that would also terminate
-     * the umbilical process prematurely. Rely on the umbilical process
-     * to clean up the process group. */
-
-    struct ChildSignalPlan signalPlan[] =
-    {
-        { self->mPid, SIGTERM },
-        { self->mPid, SIGKILL },
-        { 0 }
-    };
-
     struct Pipe nullPipe;
     if (createPipe(&nullPipe, O_CLOEXEC | O_NONBLOCK))
         terminate(
@@ -1382,9 +1381,39 @@ monitorChild(struct ChildProcess     *self,
 
         .mTermination =
         {
-            .mSignalPlan   = signalPlan,
+            .mSignalPlan   = 0,
             .mSignalPeriod = Duration(
                 NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
+            .mSignalPlans  =
+            {
+                /* When terminating the child process, first request that
+                 * the child terminate by sending it SIGTERM or other, and
+                 * if the child does not terminate, resort to sending SIGKILL.
+                 *
+                 * Do not kill the child process group here since that would
+                 * also terminate the umbilical process prematurely. Rely on
+                 * the umbilical process to clean up the process group. */
+
+                [ChildTermination_Terminate] = (struct ChildSignalPlan[])
+                {
+                    { self->mPid, SIGTERM },
+                    { self->mPid, SIGKILL },
+                    { 0 }
+                },
+
+                /* Choose to send SIGABRT in the case that the tether
+                 * connection has been inactive past the timeout period.
+                 * The implication here is that the child might be
+                 * stuck and unable to produce output, so a core file
+                 * might be useful to diagnose the situation. */
+
+                [ChildTermination_Abort] = (struct ChildSignalPlan[])
+                {
+                    { self->mPid, SIGABRT },
+                    { self->mPid, SIGKILL },
+                    { 0 }
+                },
+            },
         },
 
         .mUmbilical =
