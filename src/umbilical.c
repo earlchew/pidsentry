@@ -469,18 +469,87 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
         struct Duration umbilicalTimeout =
             Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
 
-        switch (waitFileReadReady(
-                    self->mSocket->mParentFile, &umbilicalTimeout))
+        struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
+
+        struct EventClockTime since = EVENTCLOCKTIME_INIT;
+
+        while (1)
         {
-        default:
+            struct Duration remaining;
+
+            if (deadlineTimeExpired(&since, umbilicalTimeout, &remaining, 0))
+            {
+                if (checkProcessSigContTracker(&sigContTracker))
+                {
+                    since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                    continue;
+                }
+
+                break;
+            }
+
+            switch (waitFileReadReady(self->mSocket->mParentFile, &remaining))
+            {
+            default:
+                break;
+
+            case -1:
+                goto Finally;
+
+            case 0:
+                errno = ETIMEDOUT;
+                goto Finally;
+            }
+
+            /* Although the connection to the umbilical process is closed,
+             * there is no guarantee that waitpid() will not block. */
+
+            switch (monitorProcess(self->mPid))
+            {
+            default:
+                monotonicSleep(Duration(NSECS(Seconds(1))));
+                continue;
+
+            case ProcessStatusExited:
+            case ProcessStatusKilled:
+            case ProcessStatusDumped:
+                break;
+            }
+
+            int status;
+            if (reapProcess(self->mPid, &status))
+                goto Finally;
+
+            if (WIFEXITED(status))
+            {
+                errno = ECHILD;
+                warn(0,
+                     "Umbilical exited with status %d",
+                     WEXITSTATUS(status));
+                goto Finally;
+            }
+            else
+            {
+                if ( ! WIFSIGNALED(status))
+                    terminate(
+                        0,
+                        "Umbilical pid %jd terminated for unknown reason",
+                        (intmax_t) self->mPid);
+
+                int termSig = WTERMSIG(status);
+
+                struct ProcessSignalName sigName;
+
+                if (SIGKILL != termSig)
+                {
+                    errno = ECHILD;
+                    warn(0,
+                         "Umbilical killed by signal %s",
+                         formatProcessSignalName(&sigName, termSig));
+                }
+            }
+
             break;
-
-        case -1:
-            goto Finally;
-
-        case 0:
-            errno = ETIMEDOUT;
-            goto Finally;
         }
     }
 
