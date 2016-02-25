@@ -356,22 +356,6 @@ Finally:
     return rc;
 }
 
-bool
-detectProcessContinuation(struct ProcessContinuation *self)
-{
-    /* Because this function is called from lockMutex(), amongst other places,
-     * do not use or cause lockMutex() to be used here to avoid introducing
-     * the chance of infinite recursion. */
-
-    unsigned contCount = 1 | sSigCont.mCount;
-
-    bool rv = self->mCount && (self->mCount != contCount);
-
-    self->mCount = contCount;
-
-    return rv;
-}
-
 int
 watchProcessSigCont(struct VoidMethod aMethod)
 {
@@ -393,6 +377,39 @@ int
 unwatchProcessSigCont(void)
 {
     return resetProcessSigCont_();
+}
+
+/* -------------------------------------------------------------------------- */
+static unsigned
+fetchProcessSigContTracker_(void)
+{
+    /* Because this function is called from lockMutex(), amongst other places,
+     * do not use or cause lockMutex() to be used here to avoid introducing
+     * the chance of infinite recursion. */
+
+    return 1 | sSigCont.mCount;
+}
+
+struct ProcessSigContTracker
+ProcessSigContTracker(void)
+{
+    return (struct ProcessSigContTracker)
+    {
+        .mCount = fetchProcessSigContTracker_(),
+    };
+}
+
+/* -------------------------------------------------------------------------- */
+bool
+checkProcessSigContTracker(struct ProcessSigContTracker *self)
+{
+    unsigned sigContCount = self->mCount;
+
+    ensure(1 && sigContCount);
+
+    self->mCount = fetchProcessSigContTracker_();
+
+    return sigContCount == self->mCount;
 }
 
 /* -------------------------------------------------------------------------- */

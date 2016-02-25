@@ -376,7 +376,7 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
     const struct Duration timeout =
         aTimeout ? *aTimeout : Duration(NanoSeconds(0));
 
-    struct ProcessContinuation processContinuation = PROCESS_CONTINUATION_INIT;
+    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
 
     while (1)
     {
@@ -402,14 +402,16 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
             timeout_ms = -1;
         else
         {
-            if (detectProcessContinuation(&processContinuation))
-            {
-                since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
-                continue;
-            }
-
             if (deadlineTimeExpired(&since, timeout, &remaining, &tm))
+            {
+                if (checkProcessSigContTracker(&sigContTracker))
+                {
+                    since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                    continue;
+                }
+
                 break;
+            }
 
             uint64_t remaining_ms = MSECS(remaining.duration).ms;
 

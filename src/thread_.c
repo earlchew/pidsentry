@@ -134,7 +134,7 @@ destroyMutex(pthread_mutex_t *self)
 pthread_mutex_t *
 lockMutex(pthread_mutex_t *self)
 {
-    struct ProcessContinuation processContinuation = PROCESS_CONTINUATION_INIT;
+    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
 
     while (errno = pthread_mutex_trylock(self))
     {
@@ -164,7 +164,7 @@ lockMutex(pthread_mutex_t *self)
                 /* Try again if the attempt to lock the mutex timed out
                  * but the process was stopped for some part of that time. */
 
-                if (detectProcessContinuation(&processContinuation))
+                if (checkProcessSigContTracker(&sigContTracker))
                     continue;
             }
 

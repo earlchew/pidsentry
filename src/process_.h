@@ -86,9 +86,7 @@ enum ProcessStatus
 };
 
 /* -------------------------------------------------------------------------- */
-#define PROCESS_CONTINUATION_INIT { 0 }
-
-struct ProcessContinuation
+struct ProcessSigContTracker
 {
     unsigned mCount;
 };
@@ -161,8 +159,11 @@ int
 unwatchProcessClock(void);
 
 /* -------------------------------------------------------------------------- */
+struct ProcessSigContTracker
+ProcessSigContTracker(void);
+
 bool
-detectProcessContinuation(struct ProcessContinuation *self);
+checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
 pid_t
