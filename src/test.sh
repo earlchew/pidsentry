@@ -6,9 +6,14 @@ set -eu
 # process from the shell. This is important because SIGPIPE will be
 # delivered to the separate echo process, rather than to the shell.
 
+k9exec()
+{
+    exec setsid libtool --mode=execute $VALGRIND ./k9 "$@"
+}
+
 k9()
 {
-    setsid libtool --mode=execute $VALGRIND ./k9 "$@"
+    ( k9exec "$@" )
 }
 
 random()
@@ -364,9 +369,12 @@ runTests()
             read PARENT UMBILICAL
             read CHILD
             randomsleep 3
-            kill -STOP $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            randomsleep 10
-            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            if ! kill -STOP $PARENT ; then
+                kill -0 $PARENT && { /bin/echo NOTOK ; exit 1 ; }
+            else
+                randomsleep 10
+                kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            fi
             read REPLY
             /bin/echo $REPLY
         }
@@ -378,9 +386,12 @@ runTests()
             read PARENT UMBILICAL
             read CHILD
             randomsleep 3
-            kill -TSTP $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            randomsleep 10
-            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            if ! kill -TSTP $PARENT ; then
+                kill -0 $PARENT && { /bin/echo NOTOK ; exit 1 ; }
+            else
+                randomsleep 10
+                kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            fi
             read REPLY
             /bin/echo $REPLY
         }
@@ -452,12 +463,12 @@ runTests()
     testCase 'Fixed termination deadline'
     testOutput OK = '$(
         k9 -T -i -dd -t 3,,4 -- sh -cx "
-            trap : 15
+            trap : 15 6
             /bin/echo READY
             while : ; do sleep 1 ; done" |
         {
             set -x
-            # t+3s : Watchdog times out child and issues kill -TERM
+            # t+3s : Watchdog times out child and issues kill -ABRT
             # t+7s : Watchdog escalates and issues kill -KILL
             read PARENT UMBILCAL
             read CHILD
@@ -502,17 +513,20 @@ runTests()
     testOutput AABB = '$(
         exec 3>&1
         {
+            trap '\''[ -z "$K9PID" ] || kill -- -"$K9PID"'\'' 15
             sh -c '\''/bin/echo $PPID'\''
             dd if=/dev/zero bs=$((64 * 1024)) count=1
             ( sleep 2
                 dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
-            exec libtool --mode=execute '"$VALGRIND"' ./k9 -dd -- sh -c "
+            k9exec -dd -- sh -c "
                trap '\''/bin/echo -n AA >&3; exit 2'\'' 15
                sleep 2
                dd if=/dev/zero bs=$((64 * 1024)) count=1 &
-               while : ; do sleep 1 ; done" || :
+               while : ; do sleep 1 ; done" &
+            K9PID=$!
+            wait $K9PID
         } | {
-            read PARENT UMBILCAL
+            read SUBSHELL
 
             # Wait a little time before making some space in the pipe. The
             # two pipe writers will compete to fill the space.
@@ -523,7 +537,7 @@ runTests()
             # try to have the watchdoog propagate a signal to the child.
 
             sleep 2
-            kill $PARENT
+            kill $SUBSHELL
             sleep 2
             /bin/echo -n BB
         }
@@ -531,10 +545,11 @@ runTests()
 
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
-      /usr/bin/time -p libtool --mode=execute $VALGRIND ./k9 -T -t 4 -- sh -c '
-        trap "" 15 ; sleep 6' 2>&1 | grep real)
-    REPLY=${REPLY%%.*}
-    REPLY=${REPLY##* }
+        START=$(date +%s)
+        k9 -T -t 4 -- sh -c 'trap : 6 ; sleep 6'
+        STOP=$(date +%s)
+        /bin/echo $(( STOP - START))
+    )
     [ "$REPLY" -ge 6 ]
 }
 
