@@ -409,7 +409,7 @@ checkProcessSigContTracker(struct ProcessSigContTracker *self)
 
     self->mCount = fetchProcessSigContTracker_();
 
-    return sigContCount == self->mCount;
+    return sigContCount != self->mCount;
 }
 
 /* -------------------------------------------------------------------------- */
