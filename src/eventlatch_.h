@@ -26,26 +26,29 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef EVENTCOUNTER_H
-#define EVENTCOUNTER_H
+#ifndef EVENTLATCH_H
+#define EVENTLATCH_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct EventCounter
+struct EventLatch
 {
-    unsigned mEvents;
+    unsigned mEvent;
 };
 
-#define EVENTCOUNTER_INIT { 0 }
+#define EVENTLATCH_INIT { 0 }
 
 /* -------------------------------------------------------------------------- */
-int
-triggerEventCounter(struct EventCounter *self);
+unsigned
+setEventLatch(struct EventLatch *self);
 
 unsigned
-flushEventCounter(struct EventCounter *self);
+resetEventLatch(struct EventLatch *self);
+
+unsigned
+ownEventLatchSetting(const struct EventLatch *self);
 
 /* -------------------------------------------------------------------------- */
 
@@ -53,4 +56,4 @@ flushEventCounter(struct EventCounter *self);
 }
 #endif
 
-#endif /* EVENTCOUNTER_H */
+#endif /* EVENTLATCH_H */

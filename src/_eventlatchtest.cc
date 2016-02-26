@@ -28,29 +28,32 @@
 */
 
 #include "eventlatch_.h"
-#include "macros_.h"
 
-#include <errno.h>
+#include "gtest/gtest.h"
 
-/* -------------------------------------------------------------------------- */
-unsigned
-setEventLatch(struct EventLatch *self)
+TEST(EventLatchTest, SetReset)
 {
-    return 1 & (1 ^ __sync_fetch_and_or(&self->mEvent, 1));
+    struct EventLatch eventLatch = EVENTLATCH_INIT;
+
+    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(1u, setEventLatch(&eventLatch));
+    EXPECT_EQ(1u, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(0u, setEventLatch(&eventLatch));
+    EXPECT_EQ(1u, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(0u, setEventLatch(&eventLatch));
+    EXPECT_EQ(1u, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(1u, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(0u, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(0u, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
 }
 
-/* -------------------------------------------------------------------------- */
-unsigned
-resetEventLatch(struct EventLatch *self)
-{
-    return 1 & (0 ^ __sync_fetch_and_and(&self->mEvent, 0));
-}
-
-/* -------------------------------------------------------------------------- */
-unsigned
-ownEventLatchSetting(const struct EventLatch *self)
-{
-    return 1 & self->mEvent;
-}
-
-/* -------------------------------------------------------------------------- */
+#include "../googletest/src/gtest_main.cc"

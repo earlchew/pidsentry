@@ -35,6 +35,13 @@
 #include <errno.h>
 
 /* -------------------------------------------------------------------------- */
+#define EVENTPIPE_PENDING_BIT_   0
+#define EVENTPIPE_SIGNALLED_BIT_ 1
+
+#define EVENTPIPE_PENDING_MASK_   (1u << EVENTPIPE_PENDING_BIT_)
+#define EVENTPIPE_SIGNALLED_MASK_ (1u << EVENTPIPE_SIGNALLED_BIT_)
+
+/* -------------------------------------------------------------------------- */
 int
 createEventPipe(struct EventPipe *self, unsigned aFlags)
 {
@@ -88,22 +95,18 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-triggerEventPipe(struct EventPipe *self)
+setEventPipe(struct EventPipe *self)
 {
     int rc = -1;
 
-    char buf[1] = { 0 };
+    /* Be prepared for multiple writers and only allow the first writer
+     * to signal the reader on the underlying pipe. */
 
-    switch (__sync_add_and_fetch(&self->mEvents, 1))
+    if ( ! (EVENTPIPE_PENDING_MASK_ &
+            __sync_fetch_and_or(&self->mEvents, EVENTPIPE_PENDING_MASK_)))
     {
-    default:
-        break;
+        char buf[1] = { 0 };
 
-    case 0:
-        errno = ERANGE;
-        goto Finally;
-
-    case 1:
         switch (writeFile(self->mPipe->mWrFile, buf, 1))
         {
         default:
@@ -116,7 +119,11 @@ triggerEventPipe(struct EventPipe *self)
         case 1:
             break;
         }
-        break;
+
+        ensure(
+            __sync_fetch_and_or(
+                &self->mEvents,
+                EVENTPIPE_SIGNALLED_MASK_) == EVENTPIPE_PENDING_MASK_);
     }
 
     rc = 0;
@@ -130,21 +137,28 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-flushEventPipe(struct EventPipe *self, unsigned *aEvents)
+resetEventPipe(struct EventPipe *self)
 {
     int rc = -1;
 
-    unsigned events = 0;
+    /* Be prepared for multiple readers and only allow the first reader
+     * to read the signal from the underlying pipe. */
 
-    struct Duration timeout = Duration(NanoSeconds(0));
+    int signalled = 0;
 
-    int ready = waitFileReadReady(self->mPipe->mRdFile, &timeout);
-
-    if (-1 == ready)
-        goto Finally;
-
-    if (ready)
+    while (1)
     {
+        unsigned events = self->mEvents;
+
+        if ( ! (events & EVENTPIPE_SIGNALLED_MASK_))
+            break;
+
+        ensure(
+            (EVENTPIPE_PENDING_MASK_ | EVENTPIPE_SIGNALLED_MASK_) == events);
+
+        if ( ! __sync_fetch_and_and(&self->mEvents, 0))
+            continue;
+
         char buf[1];
 
         switch (readFile(self->mPipe->mRdFile, buf, 1))
@@ -162,14 +176,11 @@ flushEventPipe(struct EventPipe *self, unsigned *aEvents)
 
         ensure( ! buf[0]);
 
-        do
-            events = self->mEvents;
-        while ( ! __sync_bool_compare_and_swap(&self->mEvents, events, 0));
+        signalled = 1;
+        break;
     }
 
-    *aEvents = events;
-
-    rc = 0;
+    rc = signalled;
 
 Finally:
 

@@ -59,6 +59,8 @@ check_PROGRAMS     += _systemtest
 check_PROGRAMS     += _timekeepingtest
 check_PROGRAMS     += _envtest
 check_PROGRAMS     += _errortest
+check_PROGRAMS     += _eventlatchtest
+check_PROGRAMS     += _eventpipetest
 check_PROGRAMS     += _fdtest
 check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
@@ -84,6 +86,12 @@ _envtest_LDADD   = $(TEST_LIBS)
 
 _errortest_SOURCES = _errortest.cc
 _errortest_LDADD   = $(TEST_LIBS)
+
+_eventlatchtest_SOURCES = _eventlatchtest.cc
+_eventlatchtest_LDADD   = $(TEST_LIBS)
+
+_eventpipetest_SOURCES = _eventpipetest.cc
+_eventpipetest_LDADD   = $(TEST_LIBS)
 
 _fdtest_SOURCES = _fdtest.cc
 _fdtest_LDADD   = $(TEST_LIBS)

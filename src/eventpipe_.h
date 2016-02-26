@@ -50,10 +50,10 @@ int
 closeEventPipe(struct EventPipe *self);
 
 int
-triggerEventPipe(struct EventPipe *self);
+setEventPipe(struct EventPipe *self);
 
 int
-flushEventPipe(struct EventPipe *self, unsigned *aEvents);
+resetEventPipe(struct EventPipe *self);
 
 /* -------------------------------------------------------------------------- */
 
