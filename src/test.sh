@@ -8,7 +8,7 @@ set -eu
 
 k9exec()
 {
-    exec setsid libtool --mode=execute $VALGRIND ./k9 "$@"
+    exec libtool --mode=execute $VALGRIND ./k9 "$@"
 }
 
 k9()
@@ -513,7 +513,7 @@ runTests()
     testOutput AABB = '$(
         exec 3>&1
         {
-            trap '\''[ -z "$K9PID" ] || kill -- -"$K9PID"'\'' 15
+            trap '\''[ -z "$K9PID" ] || kill -- "$K9PID"'\'' 15
             sh -c '\''/bin/echo $PPID'\''
             dd if=/dev/zero bs=$((64 * 1024)) count=1
             ( sleep 2
