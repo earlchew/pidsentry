@@ -80,19 +80,20 @@ disableEventLatch(struct EventLatch *self)
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
-        rc = 0;
-    else
     {
-        self->mEvent |= EVENTLATCH_DISABLE_MASK_;
-
-        if (self->mPipe)
-        {
-            if (-1 == setEventPipe(self->mPipe))
-                goto Finally;
-        }
-
-        rc = 1;
+        errno = ERANGE;
+        goto Finally;
     }
+
+    self->mEvent |= EVENTLATCH_DISABLE_MASK_;
+
+    if (self->mPipe)
+    {
+        if (-1 == setEventPipe(self->mPipe))
+            goto Finally;
+    }
+
+    rc = 0;
 
 Finally:
 

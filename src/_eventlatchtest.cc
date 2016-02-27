@@ -66,7 +66,10 @@ TEST(EventLatchTest, DisableSetReset)
     EXPECT_EQ(0, createEventLatch(&eventLatch));
     EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(1,  disableEventLatch(&eventLatch));
+    EXPECT_EQ(0, disableEventLatch(&eventLatch));
+    errno = 0;
+    EXPECT_EQ(-1, disableEventLatch(&eventLatch));
+    EXPECT_EQ(ERANGE, errno);
     errno = 0;
     EXPECT_EQ(-1, ownEventLatchSetting(&eventLatch));
     EXPECT_EQ(ERANGE, errno);
@@ -90,7 +93,10 @@ TEST(EventLatchTest, SetDisableSetReset)
     EXPECT_EQ(1, setEventLatch(&eventLatch));
     EXPECT_EQ(1, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(1,  disableEventLatch(&eventLatch));
+    EXPECT_EQ(0, disableEventLatch(&eventLatch));
+    errno = 0;
+    EXPECT_EQ(-1, disableEventLatch(&eventLatch));
+    EXPECT_EQ(ERANGE, errno);
     errno = 0;
     EXPECT_EQ(-1, ownEventLatchSetting(&eventLatch));
     EXPECT_EQ(ERANGE, errno);
