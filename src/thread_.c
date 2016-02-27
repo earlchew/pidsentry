@@ -93,7 +93,19 @@ destroyThreadAttr(pthread_attr_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_mutex_t *
+createMutex(pthread_mutex_t *self)
+{
+    if (errno = pthread_mutex_init(self, 0))
+        terminate(
+            errno,
+            "Unable to create mutex");
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+pthread_mutex_t *
 createSharedMutex(pthread_mutex_t *self)
 {
     pthread_mutexattr_t mutexattr;
@@ -118,16 +130,23 @@ createSharedMutex(pthread_mutex_t *self)
         terminate(
             errno,
             "Unable to destroy mutex attribute");
+
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_mutex_t *
 destroyMutex(pthread_mutex_t *self)
 {
-    if (errno = pthread_mutex_destroy(self))
-        terminate(
-            errno,
-            "Unable to destroy mutex");
+    if (self)
+    {
+        if (errno = pthread_mutex_destroy(self))
+            terminate(
+                errno,
+                "Unable to destroy mutex");
+    }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -225,7 +244,19 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_cond_t *
+createCond(pthread_cond_t *self)
+{
+    if (errno = pthread_cond_init(self, 0))
+        terminate(
+            errno,
+            "Unable to create condition variable");
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+pthread_cond_t *
 createSharedCond(pthread_cond_t *self)
 {
     pthread_condattr_t condattr;
@@ -250,16 +281,23 @@ createSharedCond(pthread_cond_t *self)
         terminate(
             errno,
             "Unable to destroy condition variable attribute");
+
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_cond_t *
 destroyCond(pthread_cond_t *self)
 {
-    if (errno = pthread_cond_destroy(self))
-        terminate(
-            errno,
-            "Unable to destroy condition variable");
+    if (self)
+    {
+        if (errno = pthread_cond_destroy(self))
+            terminate(
+                errno,
+                "Unable to destroy condition variable");
+    }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

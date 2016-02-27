@@ -99,10 +99,13 @@ struct ThreadSigMutex *
 unlockThreadSigMutex(struct ThreadSigMutex *self);
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_mutex_t *
+createMutex(pthread_mutex_t *self);
+
+pthread_mutex_t *
 createSharedMutex(pthread_mutex_t *self);
 
-void
+pthread_mutex_t *
 destroyMutex(pthread_mutex_t *self);
 
 pthread_mutex_t *
@@ -118,10 +121,13 @@ pthread_mutex_t *
 unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond);
 
 /* -------------------------------------------------------------------------- */
-void
+pthread_cond_t *
+createCond(pthread_cond_t *self);
+
+pthread_cond_t *
 createSharedCond(pthread_cond_t *self);
 
-void
+pthread_cond_t *
 destroyCond(pthread_cond_t *self);
 
 void
