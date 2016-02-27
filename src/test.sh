@@ -308,22 +308,32 @@ runTests()
     }
 
     testCase 'Early umbilical death'
+    ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
     k9 -i -T -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
         kill -9 $UMBILICAL
-        sleep 3
-        ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+        SLEPT=0
+        while : ; do
+            ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9 || break
+            sleep 1
+            [ $(( ++SLEPT )) -lt 60 ] || exit 1
+        done
     }
 
     testCase 'Early child death'
+    ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
     k9 -i -T -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         read CHILD
         randomsleep 1
         kill -9 $CHILD
-        sleep 3
-        ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+        SLEPT=0
+        while : ; do
+            ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9 || break
+            sleep 1
+            [ $(( ++SLEPT )) -lt 60 ] || exit 1
+        done
     }
 
     testCase 'Unexpected death of child'
