@@ -351,14 +351,9 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
     if (createPipe(&self->mControlPipe, O_CLOEXEC | O_NONBLOCK))
         terminate(errno, "Unable to create tether control pipe");
 
-    if (errno = pthread_mutex_init(&self->mActivity.mMutex, 0))
-        terminate(errno, "Unable to create activity mutex");
-
-    if (errno = pthread_mutex_init(&self->mState.mMutex, 0))
-        terminate(errno, "Unable to create state mutex");
-
-    if (errno = pthread_cond_init(&self->mState.mCond, 0))
-        terminate(errno, "Unable to create state condition");
+    createMutex(&self->mActivity.mMutex);
+    createMutex(&self->mState.mMutex);
+    createCond(&self->mState.mCond);
 
     self->mNullPipe        = aNullPipe;
     self->mActivity.mSince = eventclockTime();
@@ -456,14 +451,9 @@ closeTetherThread(struct TetherThread *self)
             errno,
             "Unable to reset synchronisation clock");
 
-    if (errno = pthread_cond_destroy(&self->mState.mCond))
-        terminate(errno, "Unable to destroy state condition");
-
-    if (errno = pthread_mutex_destroy(&self->mState.mMutex))
-        terminate(errno, "Unable to destroy state mutex");
-
-    if (errno = pthread_mutex_destroy(&self->mActivity.mMutex))
-        terminate(errno, "Unable to destroy activity mutex");
+    destroyCond(&self->mState.mCond);
+    destroyMutex(&self->mState.mMutex);
+    destroyMutex(&self->mActivity.mMutex);
 
     if (closePipe(&self->mControlPipe))
         terminate(errno, "Unable to close tether control pipe");
