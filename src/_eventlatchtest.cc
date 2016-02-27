@@ -34,8 +34,9 @@
 
 TEST(EventLatchTest, SetReset)
 {
-    struct EventLatch eventLatch = EVENTLATCH_INIT;
+    struct EventLatch eventLatch;
 
+    EXPECT_EQ(0, createEventLatch(&eventLatch));
     EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
 
     EXPECT_EQ(1, setEventLatch(&eventLatch));
@@ -55,12 +56,14 @@ TEST(EventLatchTest, SetReset)
 
     EXPECT_EQ(0, resetEventLatch(&eventLatch));
     EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(0, closeEventLatch(&eventLatch));
 }
 
 TEST(EventLatchTest, DisableSetReset)
 {
-    struct EventLatch eventLatch = EVENTLATCH_INIT;
+    struct EventLatch eventLatch;
 
+    EXPECT_EQ(0, createEventLatch(&eventLatch));
     EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
 
     EXPECT_EQ(1,  disableEventLatch(&eventLatch));
@@ -68,12 +71,14 @@ TEST(EventLatchTest, DisableSetReset)
 
     EXPECT_EQ(-1, setEventLatch(&eventLatch));
     EXPECT_EQ(-1, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, closeEventLatch(&eventLatch));
 }
 
 TEST(EventLatchTest, SetDisableSetReset)
 {
-    struct EventLatch eventLatch = EVENTLATCH_INIT;
+    struct EventLatch eventLatch;
 
+    EXPECT_EQ(0, createEventLatch(&eventLatch));
     EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
 
     EXPECT_EQ(1, setEventLatch(&eventLatch));
@@ -84,13 +89,15 @@ TEST(EventLatchTest, SetDisableSetReset)
 
     EXPECT_EQ(-1, setEventLatch(&eventLatch));
     EXPECT_EQ(-1, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, closeEventLatch(&eventLatch));
 }
 
 TEST(EventLatchTest, Pipe)
 {
-    struct EventLatch eventLatch = EVENTLATCH_INIT;
+    struct EventLatch eventLatch;
     struct EventPipe  eventPipe;
 
+    EXPECT_EQ(0, createEventLatch(&eventLatch));
     EXPECT_EQ(0, createEventPipe(&eventPipe, 0));
 
     bindEventLatchPipe(&eventLatch, &eventPipe);
@@ -117,6 +124,7 @@ TEST(EventLatchTest, Pipe)
     EXPECT_EQ(0, resetEventPipe(&eventPipe));
 
     EXPECT_EQ(0, closeEventPipe(&eventPipe));
+    EXPECT_EQ(0, closeEventLatch(&eventLatch));
 }
 
 #include "../googletest/src/gtest_main.cc"

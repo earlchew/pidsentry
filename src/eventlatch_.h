@@ -39,14 +39,19 @@ struct EventPipe;
 
 struct EventLatch
 {
-    pthread_mutex_t   mMutex;
+    pthread_mutex_t   mMutex_;
+    pthread_mutex_t  *mMutex;
     unsigned          mEvent;
     struct EventPipe *mPipe;
 };
 
-#define EVENTLATCH_INIT { PTHREAD_MUTEX_INITIALIZER, 0, 0 }
-
 /* -------------------------------------------------------------------------- */
+int
+createEventLatch(struct EventLatch *self);
+
+int
+closeEventLatch(struct EventLatch *self);
+
 void
 bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe);
 

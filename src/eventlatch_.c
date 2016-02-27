@@ -42,12 +42,32 @@
 #define EVENTLATCH_DATA_MASK_    (1u << EVENTLATCH_DATA_BIT_)
 
 /* -------------------------------------------------------------------------- */
+int
+createEventLatch(struct EventLatch *self)
+{
+    self->mMutex = createMutex(&self->mMutex_);
+    self->mEvent = 0;
+    self->mPipe  = 0;
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+closeEventLatch(struct EventLatch *self)
+{
+    destroyMutex(self->mMutex);
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
 void
 bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
 {
-    lockMutex(&self->mMutex);
+    lockMutex(self->mMutex);
     self->mPipe = aPipe;
-    unlockMutex(&self->mMutex);
+    unlockMutex(self->mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -56,7 +76,7 @@ disableEventLatch(struct EventLatch *self)
 {
     int rc = -1;
 
-    lockMutex(&self->mMutex);
+    lockMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -78,7 +98,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mMutex);
+        unlockMutex(self->mMutex);
     });
 
     return rc;
@@ -90,7 +110,7 @@ setEventLatch(struct EventLatch *self)
 {
     int rc = -1;
 
-    lockMutex(&self->mMutex);
+    lockMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -118,7 +138,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mMutex);
+        unlockMutex(self->mMutex);
     });
 
     return rc;
@@ -130,7 +150,7 @@ resetEventLatch(struct EventLatch *self)
 {
     int rc = -1;
 
-    lockMutex(&self->mMutex);
+    lockMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -151,7 +171,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mMutex);
+        unlockMutex(self->mMutex);
     });
 
     return rc;
@@ -165,7 +185,7 @@ ownEventLatchSetting(const struct EventLatch *self_)
 
     struct EventLatch *self = (struct EventLatch *) self_;
 
-    lockMutex(&self->mMutex);
+    lockMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -180,7 +200,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mMutex);
+        unlockMutex(self->mMutex);
     });
 
     return rc;
