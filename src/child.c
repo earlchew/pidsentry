@@ -803,18 +803,42 @@ pollFdUmbilical_(void                        *self_,
     ssize_t rdlen = read(
         self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd, buf, sizeof(buf));
 
+    /* If the far end did not read the previous ping, and simply closed its
+     * end of the connection (likely because it either failed or was
+     * inadvertently killed), then the read will return ECONNRESET. This
+     * is equivalent to encountering the end of file. */
+
+    bool umbilicalClosed = false;
+
+    if ( ! rdlen)
+    {
+        umbilicalClosed = true;
+
+        errno = ECONNRESET;
+        rdlen = -1;
+    }
+
     if (-1 == rdlen)
     {
-        if (EINTR != errno)
+        switch (errno)
+        {
+        default:
             terminate(
                 errno,
                 "Unable to read umbilical connection");
-    }
-    else if ( ! rdlen)
-    {
-        debug(0, "umbilical connection closed");
 
-        pollFdCloseUmbilical_(self, aPollTime);
+        case EINTR:
+            break;
+
+        case ECONNRESET:
+            if (umbilicalClosed)
+                debug(0, "umbilical connection closed");
+            else
+                warn(0, "Umbilical connection broken");
+
+            pollFdCloseUmbilical_(self, aPollTime);
+            break;
+        }
     }
     else
     {

@@ -79,7 +79,7 @@ pollFdUmbilical_(void                        *self_,
     ssize_t rdlen = read(
         self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf));
 
-    /* If the far end did not the previous echo, and simply closed its
+    /* If the far end did not read the previous echo, and simply closed its
      * end of the connection (likely because it detected the child
      * process terminated), then the read will return ECONNRESET. This
      * is equivalent to encountering the end of file. */
