@@ -357,7 +357,7 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to close stdin, stdout and stderr fillers");
 
-    /* Discard the origin stdin file descriptor, and instead attach
+    /* Discard the original stdin file descriptor, and instead attach
      * the reading end of the tether as stdin. This means that the
      * watchdog does not contribute any more references to the
      * original stdin file table entry. */

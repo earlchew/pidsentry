@@ -40,6 +40,7 @@
 #include "test_.h"
 #include "socketpair_.h"
 #include "stdfdfiller_.h"
+#include "eventpipe_.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -54,8 +55,6 @@
 enum PollFdChildKind
 {
     POLL_FD_CHILD_TETHER,
-    POLL_FD_CHILD_REAP_CHILD,
-    POLL_FD_CHILD_REAP_UMBILICAL,
     POLL_FD_CHILD_UMBILICAL,
     POLL_FD_CHILD_EVENT_PIPE,
     POLL_FD_CHILD_KINDS
@@ -63,11 +62,9 @@ enum PollFdChildKind
 
 static const char *sPollFdNames[POLL_FD_CHILD_KINDS] =
 {
-    [POLL_FD_CHILD_TETHER]         = "tether",
-    [POLL_FD_CHILD_REAP_CHILD]     = "reap child",
-    [POLL_FD_CHILD_REAP_UMBILICAL] = "reap umbilical",
-    [POLL_FD_CHILD_UMBILICAL]      = "umbilical",
-    [POLL_FD_CHILD_EVENT_PIPE]     = "event pipe",
+    [POLL_FD_CHILD_TETHER]     = "tether",
+    [POLL_FD_CHILD_UMBILICAL]  = "umbilical",
+    [POLL_FD_CHILD_EVENT_PIPE] = "event pipe",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -97,6 +94,16 @@ createChild(struct ChildProcess *self)
     self->mPid  = 0;
     self->mPgid = 0;
 
+    if (createEventLatch(&self->mChildLatch))
+        terminate(
+            errno,
+            "Unable to create child event latch");
+
+    if (createEventLatch(&self->mUmbilicalLatch))
+        terminate(
+            errno,
+            "Unable to create umbilical event latch");
+
     self->mChildMonitor.mMonitor = 0;
     createThreadSigMutex(&self->mChildMonitor.mMutex);
 
@@ -120,23 +127,11 @@ createChild(struct ChildProcess *self)
         terminate(
             errno,
             "Unable to mark tether non-blocking");
-
-    if (createPipe(&self->mChildPipe_, O_CLOEXEC | O_NONBLOCK))
-        terminate(
-            errno,
-            "Unable to create child pipe");
-    self->mChildPipe = &self->mChildPipe_;
-
-    if (createPipe(&self->mUmbilicalPipe_, O_CLOEXEC | O_NONBLOCK))
-        terminate(
-            errno,
-            "Unable to create umbilical pipe");
-    self->mUmbilicalPipe = &self->mUmbilicalPipe_;
 }
 
 /* -------------------------------------------------------------------------- */
 static void
-reapChild_(const char *aRole, pid_t aPid, struct Pipe *aPipe)
+reapChild_(const char *aRole, pid_t aPid, struct EventLatch *aLatch)
 {
     /* Check that the process being monitored is the one
      * is the subject of the signal. Here is a way for a parent
@@ -157,19 +152,12 @@ reapChild_(const char *aRole, pid_t aPid, struct Pipe *aPipe)
 
     if (ProcessStatusRunning == status)
     {
-        /* Only write when the process starts running again. This avoids
-         * questionable semantics should the pipe overflow since the
-         * only significance of the pipe is whether or not there is content. */
+        debug(1, "%s pid %jd running", aRole, (intmax_t) aPid);
 
-        char buf[1] = { 0 };
-
-        if (-1 == writeFile(aPipe->mWrFile, buf, sizeof(buf)))
-        {
-            if (EWOULDBLOCK != errno)
-                terminate(
-                    errno,
-                    "Unable to write status to %s pipe", aRole);
-        }
+        if (-1 == setEventLatch(aLatch))
+            terminate(
+                errno,
+                "Unable to set %s event latch", aRole);
     }
     else if (ProcessStatusExited != status &&
              ProcessStatusKilled != status &&
@@ -179,8 +167,15 @@ reapChild_(const char *aRole, pid_t aPid, struct Pipe *aPipe)
     }
     else
     {
-        if (closePipeWriter(aPipe))
-            terminate(errno, "Unable to close %s pipe writer", aRole);
+        debug(1, "%s pid %jd terminated", aRole, (intmax_t) aPid);
+
+        if (-1 == disableEventLatch(aLatch))
+        {
+            if (ERANGE != errno)
+                terminate(
+                    errno,
+                    "Unable to disable %s event latch", aRole);
+        }
     }
 }
 
@@ -188,9 +183,9 @@ void
 reapChild(struct ChildProcess *self, pid_t aUmbilicalPid)
 {
     if (aUmbilicalPid)
-        reapChild_("umbilical", aUmbilicalPid, self->mUmbilicalPipe);
+        reapChild_("umbilical", aUmbilicalPid, &self->mUmbilicalLatch);
 
-    reapChild_("child", self->mPid, self->mChildPipe);
+    reapChild_("child", self->mPid, &self->mChildLatch);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -330,12 +325,6 @@ forkChild(
             terminate(
                 errno,
                 "Unable to close stdin, stdout and stderr fillers");
-
-        if (closePipe(self->mChildPipe))
-            terminate(
-                errno,
-                "Unable to close child pipe");
-        self->mChildPipe = 0;
 
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
@@ -525,18 +514,6 @@ closeChildTether(struct ChildProcess *self)
 static void
 closeChildFiles_(struct ChildProcess *self)
 {
-    if (closePipe(self->mUmbilicalPipe))
-        terminate(
-            errno,
-            "Unable to close umbilical pipe");
-    self->mUmbilicalPipe = 0;
-
-    if (closePipe(self->mChildPipe))
-        terminate(
-            errno,
-            "Unable to close child pipe");
-    self->mChildPipe = 0;
-
     if (closePipe(self->mTetherPipe))
         terminate(
             errno,
@@ -552,6 +529,16 @@ closeChild(struct ChildProcess *self)
     destroyThreadSigMutex(&self->mChildMonitor.mMutex);
 
     closeChildFiles_(self);
+
+    if (closeEventLatch(&self->mUmbilicalLatch))
+        terminate(
+            errno,
+            "Unable to close umbilical event latch");
+
+    if (closeEventLatch(&self->mChildLatch))
+        terminate(
+            errno,
+            "Unable to close child event latch");
 
     int status;
 
@@ -666,6 +653,12 @@ struct ChildMonitor
         unsigned mCycleCount;       /* Current number of cycles */
         unsigned mCycleLimit;       /* Cycles before triggering */
     } mTether;
+
+    struct
+    {
+        struct EventLatch *mChildLatch;
+        struct EventLatch *mUmbilicalLatch;
+    } mEvent;
 
     struct pollfd            mPollFds[POLL_FD_CHILD_KINDS];
     struct PollFdAction      mPollFdActions[POLL_FD_CHILD_KINDS];
@@ -928,29 +921,12 @@ pollFdContUmbilical_(void *self_)
 }
 
 static void
-pollFdReapUmbilical_(void                        *self_,
-                     const struct EventClockTime *aPollTime)
+pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
+                          int                          aEvent,
+                          const struct EventClockTime *aPollTime)
 {
-    struct ChildMonitor *self = self_;
-
-    ensure(childMonitorType_ == self->mType);
-
-    struct PollEventText pollEventText;
-    debug(
-        1,
-        "detected umbilical %s",
-        createPollEventText(
-            &pollEventText,
-            self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].revents));
-
-    ensure(self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].events);
-
-    char buf[1];
-
-    switch (
-        read(self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].fd, buf, sizeof(buf)))
+    if (aEvent)
     {
-    default:
         /* The umbilical process is running again after being stopped for
          * some time. Restart the tether timeout so that the stoppage
          * is not mistaken for a failure. */
@@ -960,28 +936,15 @@ pollFdReapUmbilical_(void                        *self_,
               (intmax_t) self->mUmbilical.mPid);
 
         restartFdTimerUmbilical_(self, aPollTime);
-        break;
-
-    case -1:
-        if (EINTR != errno)
-            terminate(
-                errno,
-                "Unable to read umbilical pipe");
-        break;
-
-    case 0:
+    }
+    else
+    {
         /* The umbilical process has terminated, so there is no longer
          * any need to monitor for SIGCHLD. */
 
         debug(0,
               "umbilical pid %jd has terminated",
               (intmax_t) self->mUmbilical.mPid);
-
-        self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].events = 0;
-        self->mPollFds[POLL_FD_CHILD_REAP_UMBILICAL].fd     =
-            self->mNullPipe->mRdFile->mFd;
-
-        break;
     }
 }
 
@@ -1231,7 +1194,7 @@ pollFdCompletion_(void *self_)
      * has completed. */
 
     return
-        ! (self->mPollFds[POLL_FD_CHILD_REAP_CHILD].events |
+        ! (self->mEvent.mChildLatch ||
            self->mPollFds[POLL_FD_CHILD_TETHER].events);
 }
 
@@ -1245,88 +1208,45 @@ pollFdCompletion_(void *self_)
  * to be dead. */
 
 static void
-pollFdReapChild_(void                        *self_,
-                 const struct EventClockTime *aPollTime)
+pollFdReapChildEvent_(struct ChildMonitor         *self,
+                      int                          aEvent,
+                      const struct EventClockTime *aPollTime)
 {
-    struct ChildMonitor *self = self_;
-
-    ensure(childMonitorType_ == self->mType);
-
-    /* There is a race here between receiving the indication that the
-     * child process has terminated, and the other watchdog actions
-     * that might be taking place to actively monitor or terminate
-     * the child process. In other words, those actions might be
-     * attempting to manage a child process that is already dead,
-     * or declare the child process errant when it has already exited.
-     *
-     * Actively test the race by occasionally delaying this activity
-     * when in test mode. */
-
-    if ( ! testSleep())
+    if (aEvent)
     {
-        struct PollEventText pollEventText;
-        debug(
-            1,
-            "detected child %s",
-            createPollEventText(
-                &pollEventText,
-                self->mPollFds[POLL_FD_CHILD_REAP_CHILD].revents));
+        /* The child process is running again after being stopped for
+         * some time. Restart the tether timeout so that the stoppage
+         * is not mistaken for a failure. */
 
-        ensure(self->mPollFds[POLL_FD_CHILD_REAP_CHILD].events);
+        debug(0,
+              "child pid %jd is running",
+              (intmax_t) self->mChildPid);
 
-        char buf[1];
+        restartFdTimerTether_(self, aPollTime);
+    }
+    else
+    {
+        /* The child process has terminated, so there is no longer
+         * any need to monitor for SIGCHLD. */
 
-        switch (
-            read(self->mPollFds[POLL_FD_CHILD_REAP_CHILD].fd, buf, sizeof(buf)))
-        {
-        default:
-            /* The child process is running again after being stopped for
-             * some time. Restart the tether timeout so that the stoppage
-             * is not mistaken for a failure. */
+        debug(0,
+              "child pid %jd has terminated",
+              (intmax_t) self->mChildPid);
 
-            debug(0,
-                  "child pid %jd is running",
-                  (intmax_t) self->mChildPid);
+        /* Record when the child has terminated, but do not exit
+         * the event loop until all the IO has been flushed. With the
+         * child terminated, no further input can be produced so indicate
+         * to the tether thread that it should start flushing data now. */
 
-            restartFdTimerTether_(self, aPollTime);
-            break;
+        flushTetherThread(self->mTetherThread);
 
-        case -1:
-            if (EINTR != errno)
-                terminate(
-                    errno,
-                    "Unable to read child pipe");
-            break;
+        /* Once the child process has terminated, start the disconnection
+         * timer that sends a periodic signal to the tether thread
+         * to ensure that it will not block. */
 
-        case 0:
-            /* The child process has terminated, so there is no longer
-             * any need to monitor for SIGCHLD. */
-
-            debug(0,
-                  "child pid %jd has terminated",
-                  (intmax_t) self->mChildPid);
-
-            self->mPollFds[POLL_FD_CHILD_REAP_CHILD].events = 0;
-            self->mPollFds[POLL_FD_CHILD_REAP_CHILD].fd     =
-                self->mNullPipe->mRdFile->mFd;
-
-            /* Record when the child has terminated, but do not exit
-             * the event loop until all the IO has been flushed. With the
-             * child terminated, no further input can be produced so indicate
-             * to the tether thread that it should start flushing data now. */
-
-            flushTetherThread(self->mTetherThread);
-
-            /* Once the child process has terminated, start the disconnection
-             * timer that sends a periodic signal to the tether thread
-             * to ensure that it will not block. */
-
-            self->mPollFdTimerActions[
-                POLL_FD_CHILD_TIMER_DISCONNECTION].mPeriod = Duration(
-                    NSECS(Seconds(1)));
-
-            break;
-        }
+        self->mPollFdTimerActions[
+            POLL_FD_CHILD_TIMER_DISCONNECTION].mPeriod = Duration(
+                NSECS(Seconds(1)));
     }
 }
 
@@ -1350,6 +1270,29 @@ pollFdTimerChild_(void                        *self_,
  * a single rather expensive file descriptor can be used to service
  * multiple events. */
 
+static int
+pollFdEventLatch_(struct EventLatch **aLatch, const char *aRole)
+{
+    int signalled = 0;
+
+    if (*aLatch)
+    {
+        signalled = resetEventLatch(*aLatch);
+
+        if (-1 == signalled)
+        {
+            if (ERANGE != errno)
+                terminate(
+                    errno,
+                    "Unable to reset %s event latch", aRole);
+
+            *aLatch = 0;
+        }
+    }
+
+    return signalled;
+}
+
 static void
 pollFdEventPipe_(void                        *self_,
                  const struct EventClockTime *aPollTime)
@@ -1358,9 +1301,49 @@ pollFdEventPipe_(void                        *self_,
 
     ensure(childMonitorType_ == self->mType);
 
-    if (resetEventPipe(self->mEventPipe))
+    /* There is a race here between receiving the indication that there
+     * is an event, and other watchdog actions that might be taking place
+     * to actively monitor or terminate the child process. In other words,
+     * those actions might be attempting to manage a child process that
+     * is already dead, or declare the child process errant when it has
+     * already exited.
+     *
+     * Actively test the race by occasionally delaying this activity
+     * when in test mode. */
+
+    if ( ! testSleep())
     {
-        debug(0, "checking event pipe");
+        do
+        {
+            debug(0, "checking event pipe");
+
+            switch (resetEventPipe(self->mEventPipe))
+            {
+            default:
+                break;
+
+            case -1:
+                if (EINTR != errno)
+                    terminate(
+                        errno,
+                        "Unable to reset event pipe");
+                break;
+
+            case 0:
+                continue;
+            }
+
+            int event;
+
+            if ((event = pollFdEventLatch_(&self->mEvent.mChildLatch,
+                                           "child")))
+                pollFdReapChildEvent_(self, event > 0, aPollTime);
+
+            if ((event = pollFdEventLatch_(&self->mEvent.mUmbilicalLatch,
+                                           "umbilical")))
+                pollFdReapUmbilicalEvent_(self, event > 0, aPollTime);
+        }
+        while (0);
     }
 }
 
@@ -1419,6 +1402,22 @@ monitorChild(struct ChildProcess     *self,
             errno,
             "Unable to create event pipe");
 
+    if (-1 == bindEventLatchPipe(&self->mChildLatch, &eventPipe))
+    {
+        if (ERANGE != errno)
+            terminate(
+                errno,
+                "Unable to bind event pipe to child event latch");
+    }
+
+    if (-1 == bindEventLatchPipe(&self->mUmbilicalLatch, &eventPipe))
+    {
+        if (ERANGE != errno)
+            terminate(
+                errno,
+                "Unable to bind event pipe to umblical event latch");
+    }
+
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
      * defer the timeout. */
@@ -1432,6 +1431,13 @@ monitorChild(struct ChildProcess     *self,
         .mChildPid     = self->mPid,
         .mNullPipe     = &nullPipe,
         .mTetherThread = &tetherThread,
+        .mEventPipe    = &eventPipe,
+
+        .mEvent =
+        {
+            .mChildLatch     = &self->mChildLatch,
+            .mUmbilicalLatch = &self->mUmbilicalLatch,
+        },
 
         .mTermination =
         {
@@ -1496,18 +1502,6 @@ monitorChild(struct ChildProcess     *self,
 
         .mPollFds =
         {
-            [POLL_FD_CHILD_REAP_CHILD] =
-            {
-                .fd     = self->mChildPipe->mRdFile->mFd,
-                .events = POLL_INPUTEVENTS,
-            },
-
-            [POLL_FD_CHILD_REAP_UMBILICAL] =
-            {
-                .fd     = self->mUmbilicalPipe->mRdFile->mFd,
-                .events = POLL_INPUTEVENTS,
-            },
-
             [POLL_FD_CHILD_UMBILICAL] =
             {
                 .fd     = aUmbilicalFile->mFd,
@@ -1529,11 +1523,9 @@ monitorChild(struct ChildProcess     *self,
 
         .mPollFdActions =
         {
-            [POLL_FD_CHILD_REAP_UMBILICAL] = { pollFdReapUmbilical_ },
-            [POLL_FD_CHILD_REAP_CHILD]     = { pollFdReapChild_ },
-            [POLL_FD_CHILD_UMBILICAL]      = { pollFdUmbilical_ },
-            [POLL_FD_CHILD_EVENT_PIPE]     = { pollFdEventPipe_ },
-            [POLL_FD_CHILD_TETHER]         = { pollFdTether_ },
+            [POLL_FD_CHILD_UMBILICAL]  = { pollFdUmbilical_ },
+            [POLL_FD_CHILD_EVENT_PIPE] = { pollFdEventPipe_ },
+            [POLL_FD_CHILD_TETHER]     = { pollFdTether_ },
         },
 
         .mPollFdTimerActions =
@@ -1646,6 +1638,22 @@ monitorChild(struct ChildProcess     *self,
         terminate(
             errno,
             "Unable to close polling loop");
+
+    if (bindEventLatchPipe(&self->mUmbilicalLatch, 0))
+    {
+        if (ERANGE != errno)
+            terminate(
+                errno,
+                "Unable to unbind event pipe from umbilical event latch");
+    }
+
+    if (-1 == bindEventLatchPipe(&self->mChildLatch, 0))
+    {
+        if (ERANGE != errno)
+            terminate(
+                errno,
+                "Unable to unbind event pipe from umbilical event latch");
+    }
 
     if (closeEventPipe(&eventPipe))
         terminate(

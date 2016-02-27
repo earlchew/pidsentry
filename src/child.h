@@ -31,7 +31,6 @@
 
 #include "pipe_.h"
 #include "thread_.h"
-#include "eventpipe_.h"
 #include "eventlatch_.h"
 
 #include <sys/types.h>
@@ -51,12 +50,11 @@ struct ChildProcess
     pid_t mPid;
     pid_t mPgid;
 
-    struct Pipe  mChildPipe_;
-    struct Pipe* mChildPipe;
+    struct EventLatch mChildLatch;
+    struct EventLatch mUmbilicalLatch;
+
     struct Pipe  mTetherPipe_;
     struct Pipe* mTetherPipe;
-    struct Pipe  mUmbilicalPipe_;
-    struct Pipe* mUmbilicalPipe;
 
     struct
     {
