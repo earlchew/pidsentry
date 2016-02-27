@@ -189,14 +189,14 @@ dispatchSigHandler_(int aSigNum)
 
 static int
 changeSigAction_(unsigned          aSigNum,
-                 const struct sigaction  *aNewAction,
+                 struct sigaction  aNewAction,
                  struct sigaction *aOldAction)
 {
     int rc = -1;
 
     ensure(NUMBEROF(sSignalVectors) > aSigNum);
 
-    struct sigaction nextAction = *aNewAction;
+    struct sigaction nextAction = aNewAction;
 
     if (SIG_DFL != nextAction.sa_handler && SIG_IGN != nextAction.sa_handler)
     {
@@ -236,10 +236,13 @@ changeSigAction_(unsigned          aSigNum,
     if (sigaction(aSigNum, &nextAction, &prevAction))
         goto Finally;
 
+    /* Do not overwrite the output result unless the underlying
+     * sigaction() call succeeds. */
+
     if (aOldAction)
         *aOldAction = prevAction;
 
-    sSignalVectors[aSigNum].mAction = *aNewAction;
+    sSignalVectors[aSigNum].mAction = aNewAction;
 
     rc = 0;
 
@@ -269,17 +272,10 @@ ignoreProcessSigPipe(void)
 {
     int rc = -1;
 
-    struct sigaction prevAction;
-    struct sigaction nextAction =
-    {
-        .sa_handler = SIG_IGN,
-        .sa_mask    = filledSigSet(),
-    };
-
-    if (changeSigAction_(SIGPIPE, &nextAction, &prevAction))
+    if (changeSigAction_(SIGPIPE,
+                         (struct sigaction) { .sa_handler = SIG_IGN },
+                         &sSigPipeAction))
         goto Finally;
-
-    sSigPipeAction = prevAction;
 
     rc = 0;
 
@@ -298,11 +294,11 @@ resetProcessSigPipe_(void)
     if (SIG_ERR != sSigPipeAction.sa_handler ||
         (sSigPipeAction.sa_flags & SA_SIGINFO))
     {
-        if (changeSigAction_(SIGPIPE, &sSigPipeAction, 0))
+        if (changeSigAction_(SIGPIPE, sSigPipeAction, 0))
             goto Finally;
 
         sSigPipeAction.sa_handler = SIG_ERR;
-        sSigPipeAction.sa_flags = 0;
+        sSigPipeAction.sa_flags   = 0;
     }
 
     rc = 0;
@@ -358,13 +354,8 @@ hookProcessSigCont_(void)
 {
     int rc = -1;
 
-    struct sigaction sigAction =
-    {
-        .sa_handler = sigCont_,
-        .sa_mask    = filledSigSet(),
-    };
-
-    if (changeSigAction_(SIGCONT, &sigAction, 0))
+    if (changeSigAction_(SIGCONT,
+                         (struct sigaction) { .sa_handler = sigCont_ }, 0))
         goto Finally;
 
     rc = 0;
@@ -381,12 +372,8 @@ unhookProcessSigCont_(void)
 {
     int rc = -1;
 
-    struct sigaction sigAction =
-    {
-        .sa_handler = SIG_DFL,
-    };
-
-    if (changeSigAction_(SIGCONT, &sigAction, 0))
+    if (changeSigAction_(SIGCONT,
+                         (struct sigaction) { .sa_handler = SIG_DFL }, 0))
         goto Finally;
 
     rc = 0;
@@ -517,13 +504,8 @@ hookProcessSigStop_(void)
 {
     int rc = -1;
 
-    struct sigaction sigAction =
-    {
-        .sa_handler = sigStop_,
-        .sa_mask    = filledSigSet(),
-    };
-
-    if (changeSigAction_(SIGTSTP, &sigAction, 0))
+    if (changeSigAction_(SIGTSTP,
+                         (struct sigaction) { .sa_handler = sigStop_ }, 0))
         goto Finally;
 
     rc = 0;
@@ -540,12 +522,8 @@ unhookProcessSigStop_(void)
 {
     int rc = -1;
 
-    struct sigaction sigAction =
-    {
-        .sa_handler = SIG_DFL,
-    };
-
-    if (changeSigAction_(SIGTSTP, &sigAction, 0))
+    if (changeSigAction_(SIGTSTP,
+                         (struct sigaction) { .sa_handler = SIG_DFL }, 0))
         goto Finally;
 
     rc = 0;
@@ -625,12 +603,8 @@ resetProcessChildrenWatch_(void)
 {
     int rc = -1;
 
-    struct sigaction sigAction =
-    {
-        .sa_handler = SIG_DFL,
-    };
-
-    if (changeSigAction_(SIGCHLD, &sigAction, 0))
+    if (changeSigAction_(SIGCHLD,
+                         (struct sigaction) { .sa_handler = SIG_DFL }, 0))
         goto Finally;
 
     sSigChldMethod = VoidMethod(0, 0);
@@ -649,15 +623,12 @@ watchProcessChildren(struct VoidMethod aMethod)
 {
     int rc = -1;
 
+    struct VoidMethod sigChldMethod = sSigChldMethod;
+
     sSigChldMethod = aMethod;
 
-    struct sigaction sigAction =
-    {
-        .sa_handler = sigChld_,
-        .sa_mask    = filledSigSet(),
-    };
-
-    if (changeSigAction_(SIGCHLD, &sigAction, 0))
+    if (changeSigAction_(SIGCHLD,
+                         (struct sigaction) { .sa_handler = sigChld_ }, 0))
         goto Finally;
 
     rc = 0;
@@ -667,7 +638,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            sSigChldMethod = VoidMethod(0, 0);
+            sSigChldMethod = sigChldMethod;
     });
 
     return rc;
@@ -716,7 +687,7 @@ resetProcessClockWatch_(void)
         if (setitimer(ITIMER_REAL, &disableClock, 0))
             goto Finally;
 
-        if (changeSigAction_(SIGALRM, &sClockTickSigAction, 0))
+        if (changeSigAction_(SIGALRM, sClockTickSigAction, 0))
             goto Finally;
 
         sClockMethod = VoidMethod(0, 0);
@@ -742,18 +713,16 @@ watchProcessClock(struct VoidMethod aMethod,
 {
     int rc = -1;
 
+    struct VoidMethod clockMethod = sClockMethod;
+
     sClockMethod = aMethod;
 
-    struct sigaction prevAction_;
+    struct sigaction  prevAction_;
     struct sigaction *prevAction = 0;
 
-    struct sigaction clockAction =
-    {
-        .sa_handler = clockTick_,
-        .sa_mask    = filledSigSet(),
-    };
-
-    if (changeSigAction_(SIGALRM, &clockAction, &prevAction_))
+    if (changeSigAction_(SIGALRM,
+                         (struct sigaction) { .sa_handler = clockTick_ },
+                         &prevAction_))
         goto Finally;
     prevAction = &prevAction_;
 
@@ -789,10 +758,10 @@ Finally:
         if (rc)
         {
             if (prevAction)
-                if (changeSigAction_(SIGALRM, prevAction, 0))
+                if (changeSigAction_(SIGALRM, *prevAction, 0))
                     terminate(errno, "Unable to revert SIGALRM handler");
 
-            sClockMethod = VoidMethod(0, 0);
+            sClockMethod = clockMethod;
         }
     });
 
@@ -847,14 +816,8 @@ watchProcessSignals(struct VoidIntMethod aMethod)
     {
         struct SignalWatch *watchedSig = sWatchedSignals + ix;
 
-        struct sigaction watchAction =
-        {
-            .sa_handler = caughtSignal_,
-            .sa_mask    = filledSigSet(),
-        };
-
         if (changeSigAction_(watchedSig->mSigNum,
-                             &watchAction,
+                             (struct sigaction) { .sa_handler = caughtSignal_ },
                              &watchedSig->mSigAction))
             goto Finally;
 
@@ -878,7 +841,7 @@ Finally:
                     struct ProcessSignalName sigName;
 
                     if (changeSigAction_(
-                            watchedSig->mSigNum, &watchedSig->mSigAction, 0))
+                            watchedSig->mSigNum, watchedSig->mSigAction, 0))
                         terminate(
                             errno,
                             "Unable to revert action for %s",
@@ -909,7 +872,7 @@ resetProcessSignalsWatch_(void)
         if (watchedSig->mWatched)
         {
             if (changeSigAction_(
-                    watchedSig->mSigNum, &watchedSig->mSigAction, 0))
+                    watchedSig->mSigNum, watchedSig->mSigAction, 0))
             {
                 if ( ! rc)
                 {
