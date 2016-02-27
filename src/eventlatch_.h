@@ -52,7 +52,7 @@ createEventLatch(struct EventLatch *self);
 int
 closeEventLatch(struct EventLatch *self);
 
-void
+int
 bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe);
 
 int

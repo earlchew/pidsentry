@@ -62,12 +62,44 @@ closeEventLatch(struct EventLatch *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
 {
+    int rc = -1;
+
     lockMutex(self->mMutex);
+
+    int signalled = 0;
+
+    if (aPipe)
+    {
+        if (self->mEvent)
+        {
+            if (-1 == setEventPipe(aPipe))
+                goto Finally;
+
+            if (self->mEvent & EVENTLATCH_DISABLE_MASK_)
+            {
+                errno = ERANGE;
+                goto Finally;
+            }
+
+            signalled = 1;
+        }
+    }
+
     self->mPipe = aPipe;
-    unlockMutex(self->mMutex);
+
+    rc = signalled;
+
+Finally:
+
+    FINALLY
+    ({
+        unlockMutex(self->mMutex);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -165,6 +197,7 @@ resetEventLatch(struct EventLatch *self)
     else
     {
         self->mEvent ^= EVENTLATCH_DATA_MASK_;
+
         rc = 1;
     }
 
