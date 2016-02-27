@@ -29,25 +29,31 @@
 #ifndef EVENTLATCH_H
 #define EVENTLATCH_H
 
+#include <pthread.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct EventLatch
 {
-    unsigned mEvent;
+    pthread_mutex_t mMutex;
+    unsigned        mEvent;
 };
 
-#define EVENTLATCH_INIT { 0 }
+#define EVENTLATCH_INIT { PTHREAD_MUTEX_INITIALIZER, 0 }
 
 /* -------------------------------------------------------------------------- */
-unsigned
+int
+disableEventLatch(struct EventLatch *self);
+
+int
 setEventLatch(struct EventLatch *self);
 
-unsigned
+int
 resetEventLatch(struct EventLatch *self);
 
-unsigned
+int
 ownEventLatchSetting(const struct EventLatch *self);
 
 /* -------------------------------------------------------------------------- */

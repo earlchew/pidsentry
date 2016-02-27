@@ -28,29 +28,99 @@
 */
 
 #include "eventlatch_.h"
+#include "thread_.h"
 #include "macros_.h"
 
 #include <errno.h>
 
 /* -------------------------------------------------------------------------- */
-unsigned
+#define EVENTLATCH_DISABLE_BIT_ 0
+#define EVENTLATCH_DATA_BIT_    1
+
+#define EVENTLATCH_DISABLE_MASK_ (1u << EVENTLATCH_DISABLE_BIT_)
+#define EVENTLATCH_DATA_MASK_    (1u << EVENTLATCH_DATA_BIT_)
+
+/* -------------------------------------------------------------------------- */
+int
+disableEventLatch(struct EventLatch *self)
+{
+    int rc;
+
+    lockMutex(&self->mMutex);
+    unsigned event = self->mEvent;
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        rc = 0;
+    else
+    {
+        self->mEvent |= EVENTLATCH_DISABLE_MASK_;
+        rc = 1;
+    }
+    unlockMutex(&self->mMutex);
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 setEventLatch(struct EventLatch *self)
 {
-    return 1 & (1 ^ __sync_fetch_and_or(&self->mEvent, 1));
+    int rc;
+
+    lockMutex(&self->mMutex);
+    unsigned event = self->mEvent;
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        rc = -1;
+    else if (event & EVENTLATCH_DATA_MASK_)
+        rc = 0;
+    else
+    {
+        self->mEvent ^= EVENTLATCH_DATA_MASK_;
+        rc = 1;
+    }
+    unlockMutex(&self->mMutex);
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-unsigned
+int
 resetEventLatch(struct EventLatch *self)
 {
-    return 1 & (0 ^ __sync_fetch_and_and(&self->mEvent, 0));
+    int rc;
+
+    lockMutex(&self->mMutex);
+    unsigned event = self->mEvent;
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        rc = -1;
+    else if ( ! (event & EVENTLATCH_DATA_MASK_))
+        rc = 0;
+    else
+    {
+        self->mEvent ^= EVENTLATCH_DATA_MASK_;
+        rc = 1;
+    }
+    unlockMutex(&self->mMutex);
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-unsigned
-ownEventLatchSetting(const struct EventLatch *self)
+int
+ownEventLatchSetting(const struct EventLatch *self_)
 {
-    return 1 & self->mEvent;
+    int rc;
+
+    struct EventLatch *self = (struct EventLatch *) self_;
+
+    lockMutex(&self->mMutex);
+    unsigned event = self->mEvent;
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        rc = -1;
+    else
+        rc = (event & EVENTLATCH_DATA_MASK_) ? 1 : 0;
+    unlockMutex(&self->mMutex);
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

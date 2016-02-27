@@ -35,25 +35,54 @@ TEST(EventLatchTest, SetReset)
 {
     struct EventLatch eventLatch = EVENTLATCH_INIT;
 
-    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(1u, setEventLatch(&eventLatch));
-    EXPECT_EQ(1u, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(1, setEventLatch(&eventLatch));
+    EXPECT_EQ(1, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(0u, setEventLatch(&eventLatch));
-    EXPECT_EQ(1u, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(0, setEventLatch(&eventLatch));
+    EXPECT_EQ(1, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(0u, setEventLatch(&eventLatch));
-    EXPECT_EQ(1u, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(0, setEventLatch(&eventLatch));
+    EXPECT_EQ(1, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(1u, resetEventLatch(&eventLatch));
-    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(1, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(0u, resetEventLatch(&eventLatch));
-    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(0, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
 
-    EXPECT_EQ(0u, resetEventLatch(&eventLatch));
-    EXPECT_EQ(0u, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(0, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
+}
+
+TEST(EventLatchTest, DisableSetReset)
+{
+    struct EventLatch eventLatch = EVENTLATCH_INIT;
+
+    EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(1,  disableEventLatch(&eventLatch));
+    EXPECT_EQ(-1, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(-1, setEventLatch(&eventLatch));
+    EXPECT_EQ(-1, resetEventLatch(&eventLatch));
+}
+
+TEST(EventLatchTest, SetDisableSetReset)
+{
+    struct EventLatch eventLatch = EVENTLATCH_INIT;
+
+    EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(1, setEventLatch(&eventLatch));
+    EXPECT_EQ(1, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(1,  disableEventLatch(&eventLatch));
+    EXPECT_EQ(-1, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(-1, setEventLatch(&eventLatch));
+    EXPECT_EQ(-1, resetEventLatch(&eventLatch));
 }
 
 #include "../googletest/src/gtest_main.cc"

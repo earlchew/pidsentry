@@ -30,16 +30,10 @@
 #include "eventpipe_.h"
 #include "macros_.h"
 #include "error_.h"
+#include "thread_.h"
 #include "timekeeping_.h"
 
 #include <errno.h>
-
-/* -------------------------------------------------------------------------- */
-#define EVENTPIPE_PENDING_BIT_   0
-#define EVENTPIPE_SIGNALLED_BIT_ 1
-
-#define EVENTPIPE_PENDING_MASK_   (1u << EVENTPIPE_PENDING_BIT_)
-#define EVENTPIPE_SIGNALLED_MASK_ (1u << EVENTPIPE_SIGNALLED_BIT_)
 
 /* -------------------------------------------------------------------------- */
 int
@@ -47,8 +41,9 @@ createEventPipe(struct EventPipe *self, unsigned aFlags)
 {
     int rc = -1;
 
-    self->mPipe   = 0;
-    self->mEvents = 0;
+    self->mPipe      = 0;
+    self->mSignalled = false;
+    self->mMutex     = createMutex(&self->mMutex_);
 
     if (createPipe(&self->mPipe_, aFlags))
         goto Finally;
@@ -66,6 +61,8 @@ Finally:
                 terminate(
                     errno,
                     "Unable to close pipe");
+
+            self->mMutex = destroyMutex(self->mMutex);
         }
     });
 
@@ -82,6 +79,8 @@ closeEventPipe(struct EventPipe *self)
     {
         if (closePipe(self->mPipe))
             goto Finally;
+
+        self->mMutex = destroyMutex(self->mMutex);
     }
 
     rc = 0;
@@ -99,11 +98,11 @@ setEventPipe(struct EventPipe *self)
 {
     int rc = -1;
 
-    /* Be prepared for multiple writers and only allow the first writer
-     * to signal the reader on the underlying pipe. */
+    pthread_mutex_t *lock = lockMutex(self->mMutex);
 
-    if ( ! (EVENTPIPE_PENDING_MASK_ &
-            __sync_fetch_and_or(&self->mEvents, EVENTPIPE_PENDING_MASK_)))
+    int signalled = 0;
+
+    if ( ! self->mSignalled)
     {
         char buf[1] = { 0 };
 
@@ -120,17 +119,18 @@ setEventPipe(struct EventPipe *self)
             break;
         }
 
-        ensure(
-            __sync_fetch_and_or(
-                &self->mEvents,
-                EVENTPIPE_SIGNALLED_MASK_) == EVENTPIPE_PENDING_MASK_);
+        self->mSignalled = true;
+        signalled        = 1;
     }
 
-    rc = 0;
+    rc = signalled;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        lock = unlockMutex(lock);
+    });
 
     return rc;
 }
@@ -141,24 +141,12 @@ resetEventPipe(struct EventPipe *self)
 {
     int rc = -1;
 
-    /* Be prepared for multiple readers and only allow the first reader
-     * to read the signal from the underlying pipe. */
+    pthread_mutex_t *lock = lockMutex(self->mMutex);
 
     int signalled = 0;
 
-    while (1)
+    if (self->mSignalled)
     {
-        unsigned events = self->mEvents;
-
-        if ( ! (events & EVENTPIPE_SIGNALLED_MASK_))
-            break;
-
-        ensure(
-            (EVENTPIPE_PENDING_MASK_ | EVENTPIPE_SIGNALLED_MASK_) == events);
-
-        if ( ! __sync_fetch_and_and(&self->mEvents, 0))
-            continue;
-
         char buf[1];
 
         switch (readFile(self->mPipe->mRdFile, buf, 1))
@@ -176,15 +164,18 @@ resetEventPipe(struct EventPipe *self)
 
         ensure( ! buf[0]);
 
-        signalled = 1;
-        break;
+        self->mSignalled = false;
+        signalled        = 1;
     }
 
     rc = signalled;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+     ({
+         lock = unlockMutex(lock);
+     });
 
     return rc;
 }

@@ -31,15 +31,20 @@
 
 #include "pipe_.h"
 
+#include <pthread.h>
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct EventPipe
 {
-    struct Pipe  mPipe_;
-    struct Pipe *mPipe;
-    unsigned     mEvents;
+    pthread_mutex_t  mMutex_;
+    pthread_mutex_t *mMutex;
+    struct Pipe      mPipe_;
+    struct Pipe     *mPipe;
+    bool             mSignalled;
 };
 
 /* -------------------------------------------------------------------------- */
