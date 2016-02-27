@@ -122,60 +122,6 @@ static const char *sSignalNames[NSIG] =
 };
 
 /* -------------------------------------------------------------------------- */
-static struct sigaction sSignalVectors[NSIG];
-
-static void
-dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
-{
-    FINALLY
-    ({
-        sSignalVectors[aSigNum].sa_sigaction(aSigNum, aSigInfo, aSigContext);
-    });
-}
-
-static void
-dispatchSigHandler_(int aSigNum)
-{
-    FINALLY
-    ({
-        sSignalVectors[aSigNum].sa_handler(aSigNum);
-    });
-}
-
-static int
-changeSigAction_(unsigned                aSigNum,
-                 const struct sigaction *aNewAction,
-                 struct sigaction       *aOldAction)
-{
-    int rc = -1;
-
-    ensure(NUMBEROF(sSignalVectors) > aSigNum);
-
-    if (SIG_DFL != aNewAction->sa_handler || SIG_IGN != aNewAction->sa_handler)
-    {
-        struct sigaction sigAction = *aNewAction;
-
-        if (aNewAction->sa_flags & SA_SIGINFO)
-            sigAction.sa_sigaction = dispatchSigAction_;
-        else
-            sigAction.sa_handler = dispatchSigHandler_;
-    }
-
-    if (sigaction(aSigNum, aNewAction, aOldAction))
-        goto Finally;
-
-    sSignalVectors[aSigNum] = *aNewAction;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 static sigset_t
 filledSigSet(void)
 {
@@ -187,6 +133,129 @@ filledSigSet(void)
             "Unable to create filled signal set");
 
     return sigset;
+}
+
+/* -------------------------------------------------------------------------- */
+static struct ProcessSignalVector
+{
+    struct sigaction mAction;
+    pthread_mutex_t  mMutex_;
+    pthread_mutex_t *mMutex;
+} sSignalVectors[NSIG];
+
+static void
+dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
+{
+    FINALLY
+    ({
+        struct ProcessSignalVector *sv = &sSignalVectors[aSigNum];
+
+        struct ProcessSignalName sigName;
+        debug(1,
+              "dispatch signal %s",
+              formatProcessSignalName(&sigName, aSigNum));
+
+        lockMutex(sv->mMutex);
+        if (SIG_DFL != sv->mAction.sa_handler &&
+            SIG_IGN != sv->mAction.sa_handler)
+        {
+            sv->mAction.sa_sigaction(aSigNum, aSigInfo, aSigContext);
+        }
+        unlockMutex(sv->mMutex);
+    });
+}
+
+static void
+dispatchSigHandler_(int aSigNum)
+{
+    FINALLY
+    ({
+        struct ProcessSignalVector *sv = &sSignalVectors[aSigNum];
+
+        struct ProcessSignalName sigName;
+        debug(1,
+              "dispatch signal %s",
+              formatProcessSignalName(&sigName, aSigNum));
+
+        lockMutex(sv->mMutex);
+        if (SIG_DFL != sv->mAction.sa_handler &&
+            SIG_IGN != sv->mAction.sa_handler)
+        {
+            sv->mAction.sa_handler(aSigNum);
+        }
+        unlockMutex(sv->mMutex);
+    });
+}
+
+static int
+changeSigAction_(unsigned          aSigNum,
+                 const struct sigaction  *aNewAction,
+                 struct sigaction *aOldAction)
+{
+    int rc = -1;
+
+    ensure(NUMBEROF(sSignalVectors) > aSigNum);
+
+    struct sigaction nextAction = *aNewAction;
+
+    if (SIG_DFL != nextAction.sa_handler && SIG_IGN != nextAction.sa_handler)
+    {
+        if (nextAction.sa_flags & SA_SIGINFO)
+            nextAction.sa_sigaction = dispatchSigAction_;
+        else
+            nextAction.sa_handler = dispatchSigHandler_;
+
+        /* Require that signal delivery is not recursive to avoid
+         * having to deal with too many levels of re-entrancy. */
+
+        nextAction.sa_mask   = filledSigSet();
+        nextAction.sa_flags &= ~ SA_NODEFER;
+    }
+
+    lockThreadSigMutex(&sProcessSigMutex);
+    if ( ! sSignalVectors[aSigNum].mMutex)
+        sSignalVectors[aSigNum].mMutex =
+            createMutex(&sSignalVectors[aSigNum].mMutex_);
+    unlockThreadSigMutex(&sProcessSigMutex);
+
+    struct ThreadSigMask  threadSigMask_;
+    struct ThreadSigMask *threadSigMask = 0;
+
+    pthread_mutex_t *lock = 0;
+
+    int sigList[] = { aSigNum, 0 };
+
+    if (pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, sigList))
+        goto Finally;
+    threadSigMask = &threadSigMask_;
+
+    lock = lockMutex(sSignalVectors[aSigNum].mMutex);
+
+    struct sigaction prevAction;
+
+    if (sigaction(aSigNum, &nextAction, &prevAction))
+        goto Finally;
+
+    if (aOldAction)
+        *aOldAction = prevAction;
+
+    sSignalVectors[aSigNum].mAction = *aNewAction;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        lock = unlockMutex(lock);
+
+        if (popThreadSigMask(threadSigMask))
+            terminate(
+                errno,
+                "Unable to pop thread signal mask");
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
