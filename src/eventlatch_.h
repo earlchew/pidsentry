@@ -35,15 +35,21 @@
 extern "C" {
 #endif
 
+struct EventPipe;
+
 struct EventLatch
 {
-    pthread_mutex_t mMutex;
-    unsigned        mEvent;
+    pthread_mutex_t   mMutex;
+    unsigned          mEvent;
+    struct EventPipe *mPipe;
 };
 
-#define EVENTLATCH_INIT { PTHREAD_MUTEX_INITIALIZER, 0 }
+#define EVENTLATCH_INIT { PTHREAD_MUTEX_INITIALIZER, 0, 0 }
 
 /* -------------------------------------------------------------------------- */
+void
+bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe);
+
 int
 disableEventLatch(struct EventLatch *self);
 

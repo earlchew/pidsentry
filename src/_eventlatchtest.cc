@@ -28,6 +28,7 @@
 */
 
 #include "eventlatch_.h"
+#include "eventpipe_.h"
 
 #include "gtest/gtest.h"
 
@@ -83,6 +84,39 @@ TEST(EventLatchTest, SetDisableSetReset)
 
     EXPECT_EQ(-1, setEventLatch(&eventLatch));
     EXPECT_EQ(-1, resetEventLatch(&eventLatch));
+}
+
+TEST(EventLatchTest, Pipe)
+{
+    struct EventLatch eventLatch = EVENTLATCH_INIT;
+    struct EventPipe  eventPipe;
+
+    EXPECT_EQ(0, createEventPipe(&eventPipe, 0));
+
+    bindEventLatchPipe(&eventLatch, &eventPipe);
+
+    EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
+
+    EXPECT_EQ(0, resetEventPipe(&eventPipe));
+    EXPECT_EQ(1, setEventLatch(&eventLatch));
+    EXPECT_EQ(1, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(1, resetEventPipe(&eventPipe));
+    EXPECT_EQ(0, resetEventPipe(&eventPipe));
+    EXPECT_EQ(1, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, resetEventPipe(&eventPipe));
+
+    EXPECT_EQ(0, resetEventPipe(&eventPipe));
+    EXPECT_EQ(1, setEventLatch(&eventLatch));
+    EXPECT_EQ(1, ownEventLatchSetting(&eventLatch));
+    EXPECT_EQ(1, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, resetEventLatch(&eventLatch));
+    EXPECT_EQ(1, resetEventPipe(&eventPipe));
+    EXPECT_EQ(0, resetEventPipe(&eventPipe));
+    EXPECT_EQ(0, resetEventLatch(&eventLatch));
+    EXPECT_EQ(0, resetEventPipe(&eventPipe));
+
+    EXPECT_EQ(0, closeEventPipe(&eventPipe));
 }
 
 #include "../googletest/src/gtest_main.cc"
