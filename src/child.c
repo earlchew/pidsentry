@@ -57,6 +57,7 @@ enum PollFdChildKind
     POLL_FD_CHILD_REAP_CHILD,
     POLL_FD_CHILD_REAP_UMBILICAL,
     POLL_FD_CHILD_UMBILICAL,
+    POLL_FD_CHILD_EVENT_PIPE,
     POLL_FD_CHILD_KINDS
 };
 
@@ -66,6 +67,7 @@ static const char *sPollFdNames[POLL_FD_CHILD_KINDS] =
     [POLL_FD_CHILD_REAP_CHILD]     = "reap child",
     [POLL_FD_CHILD_REAP_UMBILICAL] = "reap umbilical",
     [POLL_FD_CHILD_UMBILICAL]      = "umbilical",
+    [POLL_FD_CHILD_EVENT_PIPE]     = "event pipe",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -642,6 +644,7 @@ struct ChildMonitor
 
     struct Pipe         *mNullPipe;
     struct TetherThread *mTetherThread;
+    struct EventPipe    *mEventPipe;
 
     struct
     {
@@ -1341,6 +1344,27 @@ pollFdTimerChild_(void                        *self_,
 }
 
 /* -------------------------------------------------------------------------- */
+/* Event Pipe
+ *
+ * An event pipe is used to trigger activity on the event loop so that
+ * a single rather expensive file descriptor can be used to service
+ * multiple events. */
+
+static void
+pollFdEventPipe_(void                        *self_,
+                 const struct EventClockTime *aPollTime)
+{
+    struct ChildMonitor *self = self_;
+
+    ensure(childMonitorType_ == self->mType);
+
+    if (resetEventPipe(self->mEventPipe))
+    {
+        debug(0, "checking event pipe");
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 updateChildMonitor_(struct ChildProcess *self, struct ChildMonitor *aMonitor)
 {
@@ -1388,6 +1412,12 @@ monitorChild(struct ChildProcess     *self,
 
     struct TetherThread tetherThread;
     createTetherThread(&tetherThread, &nullPipe);
+
+    struct EventPipe eventPipe;
+    if (createEventPipe(&eventPipe, O_CLOEXEC | O_NONBLOCK))
+        terminate(
+            errno,
+            "Unable to create event pipe");
 
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
@@ -1484,6 +1514,12 @@ monitorChild(struct ChildProcess     *self,
                 .events = POLL_INPUTEVENTS,
             },
 
+            [POLL_FD_CHILD_EVENT_PIPE] =
+            {
+                .fd     = eventPipe.mPipe->mRdFile->mFd,
+                .events = POLL_INPUTEVENTS,
+            },
+
             [POLL_FD_CHILD_TETHER] =
             {
                 .fd     = tetherThread.mControlPipe.mWrFile->mFd,
@@ -1496,6 +1532,7 @@ monitorChild(struct ChildProcess     *self,
             [POLL_FD_CHILD_REAP_UMBILICAL] = { pollFdReapUmbilical_ },
             [POLL_FD_CHILD_REAP_CHILD]     = { pollFdReapChild_ },
             [POLL_FD_CHILD_UMBILICAL]      = { pollFdUmbilical_ },
+            [POLL_FD_CHILD_EVENT_PIPE]     = { pollFdEventPipe_ },
             [POLL_FD_CHILD_TETHER]         = { pollFdTether_ },
         },
 
@@ -1609,6 +1646,11 @@ monitorChild(struct ChildProcess     *self,
         terminate(
             errno,
             "Unable to close polling loop");
+
+    if (closeEventPipe(&eventPipe))
+        terminate(
+            errno,
+            "Unable to close event pipe");
 
     closeTetherThread(&tetherThread);
 

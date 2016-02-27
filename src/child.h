@@ -31,6 +31,8 @@
 
 #include "pipe_.h"
 #include "thread_.h"
+#include "eventpipe_.h"
+#include "eventlatch_.h"
 
 #include <sys/types.h>
 
