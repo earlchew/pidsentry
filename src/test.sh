@@ -247,7 +247,7 @@ runTests()
     }
 
     testCase 'Umbilical process file descriptors'
-    testOutput "3" = '$(
+    [ -n "$VALGRIND" ] || testOutput "3" = '$(
         k9 --test --test -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
@@ -267,7 +267,7 @@ runTests()
     )'
 
     testCase 'Watchdog process file descriptors'
-    testOutput "4" = '$(
+    [ -n "$VALGRIND" ] || testOutput "4" = '$(
         k9 --test --test -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
@@ -287,7 +287,7 @@ runTests()
     )'
 
     testCase 'Untethered watchdog process file descriptors'
-    testOutput "4" = '$(
+    [ -n "$VALGRIND" ] || testOutput "4" = '$(
         k9 --test --test -i -u -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
