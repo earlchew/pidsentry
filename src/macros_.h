@@ -56,9 +56,9 @@
 #define RACE(...) \
     do                    \
     {                     \
-        testSleep();      \
+        testSleep(0);     \
         __VA_ARGS__;      \
-        testSleep();      \
+        testSleep(0);     \
     } while (0)
 
 #endif /* MACROS_H */

@@ -105,7 +105,7 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
     ensure(LOCK_UN != aLock);
     ensure(LOCK_UN == self->mLock);
 
-    testSleep();
+    testSleep(0);
 
     if (lockFile(self->mFile, aLock))
         goto Finally;
@@ -267,7 +267,7 @@ Finally:
 
     FINALLY
     ({
-        testSleep();
+        testSleep(0);
     });
 
     return rc;
@@ -448,7 +448,7 @@ Finally:
 
     FINALLY({});
 
-    if ( ! rc && testAction())
+    if ( ! rc && testAction(0))
         rc = 1;
 
     return rc;

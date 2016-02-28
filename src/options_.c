@@ -55,7 +55,8 @@ static const char sUsage[] =
 "\n"
 "options:\n"
 "  --debug | -d\n"
-"      Print debug information.\n"
+"      Print debug information. Specify the option multiple times to\n"
+"      increase the debug level.\n"
 "  --cordless | -c\n"
 "      When running with a tether, do not run the child with an umbilical\n"
 "      connection. An umbilical cord allows the child terminate immediately\n"
@@ -67,10 +68,6 @@ static const char sUsage[] =
 "  --identify | -i\n"
 "      Print the pid of the child process on stdout before starting\n"
 "      the child program. [Default: Do not print the pid of the child]\n"
-"  --library [N] | -L [N]\n"
-"      Specify the libk9.so to use when tethering the child. If N is not\n"
-"      provided, do not attach libk9.so to the child process.\n"
-"      [Default: Use installed libk9.so]\n"
 "  --name N | -n N\n"
 "      Name the fd of the tether. If N matches [A-Z][A-Z0-9_]*, then\n"
 "      create an environment variable of that name and set is value to\n"
@@ -91,6 +88,9 @@ static const char sUsage[] =
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
+"  --test | -T\n"
+"      Run in test mode. Specify the option multiple times to increase\n"
+"      the test level.\n"
 "  --timeout L | -t L\n"
 "      Specify the timeout list L. The list L comprises up to four\n"
 "      comma separated values: T, U, V and W. Each of the values is either\n"
@@ -119,7 +119,6 @@ static struct option sLongOptions[] =
     { "debug",      0, 0, 'd' },
     { "fd",         1, 0, 'f' },
     { "identify",   0, 0, 'i' },
-    { "library",    1, 0, 'L' },
     { "name",       1, 0, 'n' },
     { "orphaned",   0, 0, 'o' },
     { "pid",        1, 0, 'P' },
@@ -317,7 +316,7 @@ processOptions(int argc, char **argv)
             break;
 
         case 'T':
-            gOptions.mTest = true;
+            ++gOptions.mTest;
             break;
 
         case 't':

@@ -36,6 +36,7 @@
 #include "fd_.h"
 #include "socketpair_.h"
 #include "pidfile_.h"
+#include "test_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -375,6 +376,14 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
         terminate(
             errno,
             "Unable to close umbilical socket");
+
+    if (testMode(1))
+    {
+        if (raise(SIGSTOP))
+            terminate(
+                errno,
+                "Unable to stop process");
+    }
 
     monitorChildUmbilical(aChildProcess, aWatchdogPid);
 

@@ -560,7 +560,7 @@ readFdFully(int aFd, char **aBuf, size_t aBufSize)
         {
             len =
                 len ? 2 * len :
-                testMode() ? 1 :
+                testMode(0) ? 1 :
                 aBufSize ? aBufSize : getpagesize();
 
             char *ptr = realloc(buf, len);

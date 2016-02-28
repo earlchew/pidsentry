@@ -82,7 +82,7 @@ findErrTextLength(int aErrCode)
 {
     size_t rc = 0;
 
-    size_t textCapacity = testMode() ? 2 : 128;
+    size_t textCapacity = testMode(0) ? 2 : 128;
 
     while (1)
     {

@@ -1370,7 +1370,7 @@ pollFdEventPipe_(void                        *self_,
      * Actively test the race by occasionally delaying this activity
      * when in test mode. */
 
-    if ( ! testSleep())
+    if ( ! testSleep(0))
     {
         do
         {

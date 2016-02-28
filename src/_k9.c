@@ -368,42 +368,6 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to dup tether pipe to stdin");
 
-    /* Avoid closing the original stdout file descriptor only if
-     * there is a need to copy the contents of the tether to it.
-     * Otherwise, close the original stdout and open it as a sink so
-     * that the watchdog does not contribute any more references to the
-     * original stdout file table entry. */
-
-    bool discardStdout = gOptions.mQuiet;
-
-    if ( ! gOptions.mTether)
-        discardStdout = true;
-    else
-    {
-        switch (ownFdValid(STDOUT_FILENO))
-        {
-        default:
-            break;
-
-        case -1:
-            terminate(
-                errno,
-                "Unable to check validity of stdout");
-
-        case 0:
-            discardStdout = true;
-            break;
-        }
-    }
-
-    if (discardStdout)
-    {
-        if (nullifyFd(STDOUT_FILENO))
-            terminate(
-                errno,
-                "Unable to nullify stdout");
-    }
-
     /* Now that the tether has been duplicated onto stdin and stdout
      * as required, it is important to close the tether to ensure that
      * the only possible references to the tether pipe remain in the
@@ -509,6 +473,50 @@ cmdRunCommand(char **aCmd)
                     errno,
                     "Unable to print child pid");
         });
+    }
+
+    /* Avoid closing the original stdout file descriptor only if
+     * there is a need to copy the contents of the tether to it.
+     * Otherwise, close the original stdout and open it as a sink so
+     * that the watchdog does not contribute any more references to the
+     * original stdout file table entry. */
+
+    bool discardStdout = gOptions.mQuiet;
+
+    if ( ! gOptions.mTether)
+        discardStdout = true;
+    else
+    {
+        switch (ownFdValid(STDOUT_FILENO))
+        {
+        default:
+            break;
+
+        case -1:
+            terminate(
+                errno,
+                "Unable to check validity of stdout");
+
+        case 0:
+            discardStdout = true;
+            break;
+        }
+    }
+
+    if (discardStdout)
+    {
+        if (nullifyFd(STDOUT_FILENO))
+            terminate(
+                errno,
+                "Unable to nullify stdout");
+    }
+
+    if (testMode(1))
+    {
+        if (raise(SIGSTOP))
+            terminate(
+                errno,
+                "Unable to stop process");
     }
 
     /* Monitor the running child until it has either completed of

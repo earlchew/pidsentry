@@ -37,24 +37,24 @@
 
 /* -------------------------------------------------------------------------- */
 bool
-testMode(void)
+testMode(unsigned aLevel)
 {
-    return gOptions.mTest;
+    return 0 < gOptions.mTest;
 }
 
 /* -------------------------------------------------------------------------- */
 bool
-testAction(void)
+testAction(unsigned aLevel)
 {
     /* If test mode has been enabled, choose to activate a test action
      * a small percentage of the time. */
 
-    return gOptions.mTest && 3 > random() % 10;
+    return aLevel < gOptions.mTest && 3 > random() % 10;
 }
 
 /* -------------------------------------------------------------------------- */
 bool
-testSleep(void)
+testSleep(unsigned aLevel)
 {
     bool slept = false;
 
@@ -65,7 +65,7 @@ testSleep(void)
 
     if ( ! RUNNING_ON_VALGRIND)
     {
-        if (testAction())
+        if (testAction(aLevel))
         {
             slept = true;
             usleep(random() % (500 * 1000));

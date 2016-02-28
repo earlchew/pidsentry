@@ -246,6 +246,61 @@ runTests()
         [ x"$CHILD" != x"$CHILDPGID" ]
     }
 
+    testCase 'Umbilical process file descriptors'
+    testOutput "3" = '$(
+        k9 -TT -i -- sh -c "while : ; do sleep 1 ; done" |
+        {
+            read PARENT UMBILICAL
+            read CHILD
+            while ! grep -q " [tT] " /proc/$UMBILICAL/stat ; do sleep 1 ; done
+            ls -l /proc/$UMBILICAL/fd |
+                grep -v " -> /proc/$PARENT" |
+                grep "[0-9]-[0-9]" |
+                wc -l
+            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            kill -CONT $UMBILICAL || { /bin/echo NOTOK ; exit 1 ; }
+            kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
+        }
+    )'
+
+    testCase 'Watchdog process file descriptors'
+    testOutput "4" = '$(
+        k9 -TT -i -- sh -c "while : ; do sleep 1 ; done" |
+        {
+            read PARENT UMBILICAL
+            read CHILD
+            while ! grep -q " [tT] " /proc/$PARENT/stat ; do sleep 1 ; done
+            /bin/echo $PARENT $UMBILICAL $CHILD >&2
+            ls -l /proc/$PARENT/fd >&2
+            ls -l /proc/$PARENT/fd |
+                grep -v " -> /proc/$PARENT" |
+                grep "[0-9]-[0-9]" |
+                wc -l
+            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            kill -CONT $UMBILICAL || { /bin/echo NOTOK ; exit 1 ; }
+            kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
+        }
+    )'
+
+    testCase 'Untethered watchdog process file descriptors'
+    testOutput "4" = '$(
+        k9 -TT -i -u -- sh -c "while : ; do sleep 1 ; done" |
+        {
+            read PARENT UMBILICAL
+            read CHILD
+            while ! grep -q " [tT] " /proc/$PARENT/stat ; do sleep 1 ; done
+            /bin/echo $PARENT $UMBILICAL $CHILD >&2
+            ls -l /proc/$PARENT/fd >&2
+            ls -l /proc/$PARENT/fd |
+                grep -v " -> /proc/$PARENT" |
+                grep "[0-9]-[0-9]" |
+                wc -l
+            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+            kill -CONT $UMBILICAL || { /bin/echo NOTOK ; exit 1 ; }
+            kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
+        }
+    )'
+
     testCase 'Untethered child process'
     testOutput '$(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(

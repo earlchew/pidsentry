@@ -45,10 +45,10 @@ struct Options
     int         mTetherFd;
     const int  *mTether;
     unsigned    mDebug;
+    unsigned    mTest;
     bool        mCordless;
     bool        mIdentify;
     bool        mQuiet;
-    bool        mTest;
     bool        mOrphaned;
     struct
     {

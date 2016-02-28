@@ -37,13 +37,13 @@ extern "C" {
 
 /* -------------------------------------------------------------------------- */
 bool
-testSleep(void);
+testSleep(unsigned aLevel);
 
 bool
-testAction(void);
+testAction(unsigned aLevel);
 
 bool
-testMode(void);
+testMode(unsigned aLevel);
 
 /* -------------------------------------------------------------------------- */
 
