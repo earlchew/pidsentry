@@ -632,6 +632,7 @@ struct ChildMonitor
     struct Pipe         *mNullPipe;
     struct TetherThread *mTetherThread;
     struct EventPipe    *mEventPipe;
+    struct EventLatch   *mContLatch;
 
     struct
     {
@@ -644,6 +645,7 @@ struct ChildMonitor
     {
         struct File *mFile;
         pid_t        mPid;
+        bool         mPreempt;
         unsigned     mCycleCount;    /* Current number of cycles */
         unsigned     mCycleLimit;    /* Cycles before triggering */
     } mUmbilical;
@@ -842,13 +844,22 @@ pollFdUmbilical_(void                        *self_,
         ensure(sizeof(buf) == rdlen);
 
         /* When the echo is received on the umbilical connection
-         * schedule the next umbilical ping. */
+         * schedule the next umbilical ping. The next ping is
+         * scheduled immediately if the timer has been preempted. */
 
         ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
 
         self->mUmbilical.mCycleCount = self->mUmbilical.mCycleLimit;
 
-        lapTimeRestart(&umbilicalTimer->mSince, aPollTime);
+        if ( ! self->mUmbilical.mPreempt)
+            lapTimeRestart(&umbilicalTimer->mSince, aPollTime);
+        else
+        {
+            self->mUmbilical.mPreempt = false;
+
+            lapTimeTrigger(&umbilicalTimer->mSince,
+                           umbilicalTimer->mPeriod, aPollTime);
+        }
     }
 }
 
@@ -907,20 +918,6 @@ Finally:
 }
 
 static void
-pollFdContUmbilical_(void *self_)
-{
-    struct ChildMonitor *self = self_;
-
-    ensure(childMonitorType_ == self->mType);
-
-    /* This function is called when the process receives SIGCONT. The
-     * function indicates to the umbilical monitor that the process
-     * has just woken, so that the monitor can restart the timeout. */
-
-    pollFdWriteUmbilical_(self);
-}
-
-static void
 pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
                           int                          aEvent,
                           const struct EventClockTime *aPollTime)
@@ -949,6 +946,41 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
 }
 
 static void
+pollFdContUmbilical_(struct ChildMonitor         *self,
+                     const struct EventClockTime *aPollTime)
+{
+    /* This function is called after the process receives SIGCONT and
+     * processes the event in the context of the event loop. The
+     * function must indicate to the umbilical monitor that the
+     * process has just woken, but there are two considerations:
+     *
+     *  a. The process is just about to receive the echo from the
+     *     previous ping
+     *  b. The process has yet to send the next ping */
+
+    if (self->mUmbilical.mCycleCount != self->mUmbilical.mCycleLimit)
+    {
+        /* Accommodate the second case by expiring the timer
+         * that controls the sending of the pings so that the
+         * ping is sent immediately.  */
+
+        struct PollFdTimerAction *umbilicalTimer =
+            &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
+
+        lapTimeTrigger(&umbilicalTimer->mSince,
+                       umbilicalTimer->mPeriod, aPollTime);
+    }
+    else
+    {
+        /* Handle the first case by indicating that another ping
+         * should be scheduled immediately after the echo is
+         * received. */
+
+        self->mUmbilical.mPreempt = true;
+    }
+}
+
+static void
 pollFdTimerUmbilical_(void                        *self_,
                       const struct EventClockTime *aPollTime)
 {
@@ -961,7 +993,8 @@ pollFdTimerUmbilical_(void                        *self_,
         ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
 
         /* If waiting on a response from the umbilical monitor, apply
-         * a timeout, and if the timeout is exceeded, */
+         * a timeout, and if the timeout is exceeded terminate the
+         * child process. */
 
         enum ProcessStatus umbilicalstatus =
             monitorProcess(self->mUmbilical.mPid);
@@ -1027,6 +1060,32 @@ pollFdTimerUmbilical_(void                        *self_,
             }
         }
     }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Process Continuation
+ *
+ * This method is called soon after the process continues after being
+ * stopped to alert the monitoring loop that timers must be re-synchronised
+ * to compensate for the outage. */
+
+static void
+pollFdContEvent_(struct ChildMonitor         *self,
+                 int                          aEvent,
+                 const struct EventClockTime *aPollTime)
+{
+    ensure(aEvent);
+
+    pollFdContUmbilical_(self, aPollTime);
+}
+
+static void
+raiseFdContEvent_(struct ChildMonitor *self)
+{
+    if (-1 == setEventLatch(self->mContLatch))
+        terminate(
+            errno,
+            "Unable to set continuation event latch");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1342,6 +1401,9 @@ pollFdEventPipe_(void                        *self_,
             if ((event = pollFdEventLatch_(&self->mEvent.mUmbilicalLatch,
                                            "umbilical")))
                 pollFdReapUmbilicalEvent_(self, event > 0, aPollTime);
+            if ((event = pollFdEventLatch_(&self->mContLatch,
+                                           "continuation")))
+                pollFdContEvent_(self, event > 0, aPollTime);
         }
         while (0);
     }
@@ -1364,7 +1426,7 @@ raiseChildSigCont(struct ChildProcess *self)
     lockThreadSigMutex(&self->mChildMonitor.mMutex);
 
     if (self->mChildMonitor.mMonitor)
-        pollFdContUmbilical_(self->mChildMonitor.mMonitor);
+        raiseFdContEvent_(self->mChildMonitor.mMonitor);
 
     unlockThreadSigMutex(&self->mChildMonitor.mMutex);
 }
@@ -1396,6 +1458,12 @@ monitorChild(struct ChildProcess     *self,
     struct TetherThread tetherThread;
     createTetherThread(&tetherThread, &nullPipe);
 
+    struct EventLatch contLatch;
+    if (createEventLatch(&contLatch))
+        terminate(
+            errno,
+            "Unable to create continuation event latch");
+
     struct EventPipe eventPipe;
     if (createEventPipe(&eventPipe, O_CLOEXEC | O_NONBLOCK))
         terminate(
@@ -1418,6 +1486,14 @@ monitorChild(struct ChildProcess     *self,
                 "Unable to bind event pipe to umblical event latch");
     }
 
+    if (-1 == bindEventLatchPipe(&contLatch, &eventPipe))
+    {
+        if (ERANGE != errno)
+            terminate(
+                errno,
+                "Unable to bind event pipe to continuation event latch");
+    }
+
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
      * defer the timeout. */
@@ -1432,6 +1508,7 @@ monitorChild(struct ChildProcess     *self,
         .mNullPipe     = &nullPipe,
         .mTetherThread = &tetherThread,
         .mEventPipe    = &eventPipe,
+        .mContLatch    = &contLatch,
 
         .mEvent =
         {
@@ -1480,6 +1557,7 @@ monitorChild(struct ChildProcess     *self,
         {
             .mFile       = aUmbilicalFile,
             .mPid        = aUmbilicalProcess->mPid,
+            .mPreempt    = false,
             .mCycleCount = timeoutCycles,
             .mCycleLimit = timeoutCycles,
         },
@@ -1659,6 +1737,11 @@ monitorChild(struct ChildProcess     *self,
         terminate(
             errno,
             "Unable to close event pipe");
+
+    if (closeEventLatch(&contLatch))
+        terminate(
+            errno,
+            "Unable to close continuation event latch");
 
     closeTetherThread(&tetherThread);
 
