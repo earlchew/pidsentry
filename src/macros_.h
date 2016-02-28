@@ -34,25 +34,6 @@
 #define STRINGIFY_(Text_) #Text_
 #define STRINGIFY(Text_)  STRINGIFY_(Text_)
 
-#define FINALLY(...)      \
-    do                    \
-    {                     \
-        int err_ = errno; \
-        __VA_ARGS__;      \
-        errno = err_;     \
-    } while (0)
-
-#define FINALLY_IF(Predicate_)                  \
-    do                                          \
-    {                                           \
-        if ((Predicate_))                       \
-        {                                       \
-            warn(errno, ".. %s", # Predicate_); \
-            goto Finally;                       \
-        }                                       \
-    }                                           \
-    while (0)
-
 #define RACE(...) \
     do                    \
     {                     \

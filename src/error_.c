@@ -43,18 +43,109 @@
 #include <sys/syscall.h>
 
 /* -------------------------------------------------------------------------- */
-static unsigned sInit;
+static unsigned sInit_;
+
+static struct
+{
+    struct
+    {
+        unsigned          mLevel;
+        struct ErrorFrame mFrame[64];
+    } mStack_[ErrorFrameStackKinds], *mStack;
+
+} __thread sErrorStack_;
+
+/* -------------------------------------------------------------------------- */
+void
+pushErrorFrameLevel(const struct ErrorFrame *aFrame, int aErrno)
+{
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+
+    unsigned level = sErrorStack_.mStack->mLevel++;
+
+    if (NUMBEROF(sErrorStack_.mStack->mFrame) <= level)
+        abort();
+
+    sErrorStack_.mStack->mFrame[level]        = *aFrame;
+    sErrorStack_.mStack->mFrame[level].mErrno = aErrno;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+resetErrorFrameLevel(void)
+{
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+
+    sErrorStack_.mStack->mLevel = 0;
+}
+
+/* -------------------------------------------------------------------------- */
+enum ErrorFrameStackKind
+switchErrorFrameStack(enum ErrorFrameStackKind aStack)
+{
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+
+    enum ErrorFrameStackKind stackKind =
+        sErrorStack_.mStack - &sErrorStack_.mStack_[0];
+
+    sErrorStack_.mStack = &sErrorStack_.mStack_[aStack];
+
+    return stackKind;
+}
+
+/* -------------------------------------------------------------------------- */
+unsigned
+ownErrorFrameLevel(void)
+{
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+
+    return sErrorStack_.mStack->mLevel;
+}
+
+/* -------------------------------------------------------------------------- */
+const struct ErrorFrame *
+ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
+{
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+
+    return
+        (aLevel >= sErrorStack_.mStack->mLevel)
+        ? 0
+        : &sErrorStack_.mStack->mFrame[aLevel];
+}
+
+/* -------------------------------------------------------------------------- */
+void
+logErrorFrameWarning(void)
+{
+    for (unsigned ix = 0; ix < sErrorStack_.mStack->mLevel; ++ix)
+    {
+        warn_(
+            sErrorStack_.mStack->mFrame[ix].mErrno,
+            sErrorStack_.mStack->mFrame[ix].mFile,
+            sErrorStack_.mStack->mFrame[ix].mLine,
+            "Error frame %u - %s - %s",
+            sErrorStack_.mStack->mLevel - ix - 1,
+            sErrorStack_.mStack->mFrame[ix].mName,
+            sErrorStack_.mStack->mFrame[ix].mText);
+    }
+}
 
 /* -------------------------------------------------------------------------- */
 static pid_t
-gettid(void)
+gettid_(void)
 {
     return syscall(SYS_gettid);
 }
 
 /* -------------------------------------------------------------------------- */
 static int
-findErrTextLength_(int aErrCode, size_t *aSize)
+tryErrTextLength_(int aErrCode, size_t *aSize)
 {
     int rc = -1;
 
@@ -78,7 +169,7 @@ Finally:
 }
 
 static size_t
-findErrTextLength(int aErrCode)
+findErrTextLength_(int aErrCode)
 {
     size_t rc = 0;
 
@@ -88,7 +179,7 @@ findErrTextLength(int aErrCode)
     {
         size_t textSize = textCapacity;
 
-        if (findErrTextLength_(aErrCode, &textSize))
+        if (tryErrTextLength_(aErrCode, &textSize))
             goto Finally;
 
         if (textCapacity > textSize)
@@ -221,20 +312,8 @@ print_(
 {
     FINALLY
     ({
-        struct Duration elapsed = ownProcessElapsedTime();
-
-        uint64_t elapsed_ms = MSECS(elapsed.duration).ms;
-        uint64_t elapsed_s;
-        uint64_t elapsed_m;
-        uint64_t elapsed_h;
-
-        elapsed_h  = elapsed_ms / (1000 * 60 * 60);
-        elapsed_m  = elapsed_ms % (1000 * 60 * 60) / (1000 * 60);
-        elapsed_s  = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) / 1000;
-        elapsed_ms = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) % 1000;
-
         intmax_t pid = getpid();
-        intmax_t tid = gettid();
+        intmax_t tid = gettid_();
 
         /* The availability of buffered IO might be lost while a message
          * is being processed since this code might run in a thread
@@ -257,11 +336,23 @@ print_(
             buffered = !! sPrintBuf.mFile;
         }
 
+        struct Duration elapsed = ownProcessElapsedTime();
+
+        uint64_t elapsed_ms = MSECS(elapsed.duration).ms;
+        uint64_t elapsed_s;
+        uint64_t elapsed_m;
+        uint64_t elapsed_h;
+
+        elapsed_h  = elapsed_ms / (1000 * 60 * 60);
+        elapsed_m  = elapsed_ms % (1000 * 60 * 60) / (1000 * 60);
+        elapsed_s  = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) / 1000;
+        elapsed_ms = elapsed_ms % (1000 * 60 * 60) % (1000 * 60) % 1000;
+
         const char *errText    = "";
         size_t      errTextLen = 0;
 
         if (aErrCode)
-            errTextLen = findErrTextLength(aErrCode);
+            errTextLen = findErrTextLength_(aErrCode);
 
         char errTextBuffer[1+errTextLen];
 
@@ -439,6 +530,8 @@ terminate_(
             va_end(args);
         }
 
+        logErrorFrameWarning();
+
         va_start(args, aFmt);
         print_(aErrCode, 0, 0, aFmt, args);
         va_end(args);
@@ -454,7 +547,7 @@ Error_init(void)
 
     struct ProcessAppLock *applock = 0;
 
-    if (1 == ++sInit)
+    if (1 == ++sInit_)
     {
         FILE *file = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize);
 
@@ -486,7 +579,7 @@ Error_exit(void)
 
     struct ProcessAppLock *applock = 0;
 
-    if (0 == --sInit)
+    if (0 == --sInit_)
     {
         applock = createProcessAppLock();
 

@@ -30,10 +30,104 @@
 #define ERROR_H
 
 #include "options_.h"
+#include "process_.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* -------------------------------------------------------------------------- */
+#define FINALLY(...)      \
+    do                    \
+    {                     \
+        int err_ = errno; \
+        __VA_ARGS__;      \
+        errno = err_;     \
+    } while (0)
+
+#define FINALLY_IF(Predicate_, ...)                  \
+    do                                               \
+    {                                                \
+        struct ErrorFrame frame_ =                   \
+            ERRORFRAME_INIT( # Predicate_ );         \
+                                                     \
+        unsigned frameLevel_ = ownErrorFrameLevel(); \
+                                                     \
+        if ((Predicate_))                            \
+        {                                            \
+            __VA_ARGS__;                             \
+            if ( ! frameLevel_)                      \
+                pushErrorFrameLevel(&frame_, errno); \
+            goto Finally;                            \
+        }                                            \
+                                                     \
+        resetErrorFrameLevel();                      \
+    }                                                \
+    while (0)
+
+#define TERMINATE_IF(Predicate_, ...)                           \
+    do                                                          \
+    {                                                           \
+        if ((Predicate_))                                       \
+        {                                                       \
+            __VA_ARGS__;                                        \
+            Error_terminate_(errno, "%s", # Predicate_);        \
+        }                                                       \
+    }                                                           \
+    while (0)
+
+#define TERMINATE_UNLESS(Predicate_, ...)                       \
+    do                                                          \
+    {                                                           \
+        if ( ! (Predicate_))                                    \
+        {                                                       \
+            __VA_ARGS__;                                        \
+            Error_terminate_(errno, "%s", # Predicate_);        \
+        }                                                       \
+    }                                                           \
+    while (0)
+
+/* -------------------------------------------------------------------------- */
+struct ErrorFrame
+{
+    const char *mFile;
+    unsigned    mLine;
+    const char *mName;
+    const char *mText;
+    int         mErrno;
+};
+
+#define ERRORFRAME_INIT(aText) { __FILE__, __LINE__, __func__, aText }
+
+struct ErrorFrameLevel
+{
+    unsigned mLevel;
+};
+
+enum ErrorFrameStackKind
+{
+    ErrorFrameStackThread,
+    ErrorFrameStackSignal,
+    ErrorFrameStackKinds,
+};
+
+void
+pushErrorFrameLevel(const struct ErrorFrame *aFrame, int aErrno);
+
+void
+resetErrorFrameLevel(void);
+
+enum ErrorFrameStackKind
+switchErrorFrameStack(enum ErrorFrameStackKind aStack);
+
+unsigned
+ownErrorFrameLevel(void);
+
+const struct ErrorFrame *
+ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel);
+
+void
+logErrorFrameWarning(void);
 
 /* -------------------------------------------------------------------------- */
 #define breadcrumb Error_breadcrumb_

@@ -30,7 +30,6 @@
 #include "umbilical.h"
 #include "child.h"
 
-#include "macros_.h"
 #include "type_.h"
 #include "error_.h"
 #include "fd_.h"

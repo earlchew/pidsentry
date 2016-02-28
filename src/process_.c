@@ -148,7 +148,16 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
             SIG_IGN != sv->mAction.sa_handler)
         {
             ++sProcessSignalContext;
+
+            enum ErrorFrameStackKind stackKind =
+                switchErrorFrameStack(ErrorFrameStackSignal);
+
+            resetErrorFrameLevel();
+
             sv->mAction.sa_sigaction(aSigNum, aSigInfo, aSigContext);
+
+            switchErrorFrameStack(stackKind);
+
             --sProcessSignalContext;
         }
         unlockMutex(sv->mMutex);
@@ -172,7 +181,16 @@ dispatchSigHandler_(int aSigNum)
             SIG_IGN != sv->mAction.sa_handler)
         {
             ++sProcessSignalContext;
+
+            enum ErrorFrameStackKind stackKind =
+                switchErrorFrameStack(ErrorFrameStackSignal);
+
+            resetErrorFrameLevel();
+
             sv->mAction.sa_handler(aSigNum);
+
+            switchErrorFrameStack(stackKind);
+
             --sProcessSignalContext;
         }
         unlockMutex(sv->mMutex);
