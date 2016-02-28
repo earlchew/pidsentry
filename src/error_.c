@@ -123,6 +123,9 @@ ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
 void
 logErrorFrameWarning(void)
 {
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+
     for (unsigned ix = 0; ix < sErrorStack_.mStack->mLevel; ++ix)
     {
         warn_(

@@ -88,7 +88,7 @@ static const char sUsage[] =
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
-"  --test | -T\n"
+"  --test\n"
 "      Run in test mode. Specify the option multiple times to increase\n"
 "      the test level.\n"
 "  --timeout L | -t L\n"
@@ -113,6 +113,11 @@ static const char sUsage[] =
 static const char sShortOptions[] =
     "+cD:df:iL::n:oP:p:qTt:u";
 
+enum OptionKind
+{
+    OptionTest = CHAR_MAX + 1,
+};
+
 static struct option sLongOptions[] =
 {
     { "cordless",   0, 0, 'c' },
@@ -124,7 +129,7 @@ static struct option sLongOptions[] =
     { "pid",        1, 0, 'P' },
     { "pidfile",    1, 0, 'p' },
     { "quiet",      0, 0, 'q' },
-    { "test",       0, 0, 'T' },
+    { "test",       0, 0,  OptionTest },
     { "timeout",    1, 0, 't' },
     { "untethered", 0, 0, 'u' },
     { 0 },
@@ -315,7 +320,7 @@ processOptions(int argc, char **argv)
             gOptions.mQuiet = true;
             break;
 
-        case 'T':
+        case OptionTest:
             ++gOptions.mTest;
             break;
 
