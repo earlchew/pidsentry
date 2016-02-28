@@ -8,7 +8,7 @@ set -eu
 
 k9exec()
 {
-    exec libtool --mode=execute $VALGRIND ./k9 "$@"
+    exec libtool --mode=execute $VALGRIND ./blackdog "$@"
 }
 
 k9()

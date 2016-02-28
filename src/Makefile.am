@@ -44,14 +44,14 @@ COMMON_CFLAGS     += -Wmissing-prototypes -Wmissing-declarations
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x
 COMMON_CXXFLAGS   += -Wno-variadic-macros -Wno-long-long
 COMMON_LINKFLAGS   = -Wl,--gc-sections
-TEST_LIBS          = libk9_.la libgoogletest.la -lrt
+TEST_LIBS          = libblackdog_.la libgoogletest.la -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
 TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
 TEST_CXXFLAGS      = $(TEST_FLAGS) $(COMMON_CXXFLAGS)
 TESTS              = $(check_PROGRAMS) $(check_SCRIPTS)
 
-k9dir               = $(datadir)/k9
-k9_PROGRAMS         = k9
+blackdogdir         = $(datadir)/blackdog
+blackdog_PROGRAMS   = blackdog
 check_SCRIPTS       = test.sh
 check_PROGRAMS      = _splicetest
 check_PROGRAMS     += _isblockingtest
@@ -68,13 +68,13 @@ check_PROGRAMS     += _processtest
 check_PROGRAMS     += _threadtest
 noinst_PROGRAMS     =
 noinst_SCRIPTS      = $(check_SCRIPTS)
-noinst_LTLIBRARIES  = libgoogletest.la libk9_.la
+noinst_LTLIBRARIES  = libgoogletest.la libblackdog_.la
 lib_LTLIBRARIES     =
 
-k9_CFLAGS    = $(COMMON_CFLAGS)
-k9_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,k9.map -Wl,-cref
-k9_LDADD     = libk9_.la -lrt -lpthread
-k9_SOURCES   = _k9.c umbilical.c tether.c child.c
+blackdog_CFLAGS    = $(COMMON_CFLAGS)
+blackdog_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,blackdog.map -Wl,-cref
+blackdog_LDADD     = libblackdog_.la -lrt -lpthread
+blackdog_SOURCES   = _blackdog.c umbilical.c tether.c child.c
 
 _splicetest_SOURCES = _splicetest.c
 
@@ -114,9 +114,9 @@ _unixsockettest_LDADD   = $(TEST_LIBS)
 _isblockingtest_SOURCES = _isblockingtest.c
 _isblockingtest_LDADD   = $(TEST_LIBS)
 
-include libk9__la.am
-$(call WILDCARD,libk9__la,libk9__la_SOURCES,[a-z]*_.[ch])
-libk9__la_CFLAGS = $(COMMON_CFLAGS)
+include libblackdog__la.am
+$(call WILDCARD,libblackdog__la,libblackdog__la_SOURCES,[a-z]*_.[ch])
+libblackdog__la_CFLAGS = $(COMMON_CFLAGS)
 
 libgoogletest_la_SOURCES  = gtest-all.cc
 libgoogletest_la_CPPFLAGS = -I ../googletest
