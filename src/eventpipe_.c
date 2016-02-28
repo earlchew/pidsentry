@@ -43,7 +43,7 @@ createEventPipe(struct EventPipe *self, unsigned aFlags)
 
     self->mPipe      = 0;
     self->mSignalled = false;
-    self->mMutex     = createMutex(&self->mMutex_);
+    self->mMutex     = createThreadSigMutex(&self->mMutex_);
 
     if (createPipe(&self->mPipe_, aFlags))
         goto Finally;
@@ -62,7 +62,7 @@ Finally:
                     errno,
                     "Unable to close pipe");
 
-            self->mMutex = destroyMutex(self->mMutex);
+            self->mMutex = destroyThreadSigMutex(self->mMutex);
         }
     });
 
@@ -80,7 +80,7 @@ closeEventPipe(struct EventPipe *self)
         if (closePipe(self->mPipe))
             goto Finally;
 
-        self->mMutex = destroyMutex(self->mMutex);
+        self->mMutex = destroyThreadSigMutex(self->mMutex);
     }
 
     rc = 0;
@@ -98,7 +98,7 @@ setEventPipe(struct EventPipe *self)
 {
     int rc = -1;
 
-    pthread_mutex_t *lock = lockMutex(self->mMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     int signalled = 0;
 
@@ -129,7 +129,7 @@ Finally:
 
     FINALLY
     ({
-        lock = unlockMutex(lock);
+        lock = unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -141,7 +141,7 @@ resetEventPipe(struct EventPipe *self)
 {
     int rc = -1;
 
-    pthread_mutex_t *lock = lockMutex(self->mMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     int signalled = 0;
 
@@ -174,7 +174,7 @@ Finally:
 
     FINALLY
      ({
-         lock = unlockMutex(lock);
+         lock = unlockThreadSigMutex(lock);
      });
 
     return rc;

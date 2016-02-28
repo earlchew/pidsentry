@@ -30,8 +30,8 @@
 #define EVENTPIPE_H
 
 #include "pipe_.h"
+#include "thread_.h"
 
-#include <pthread.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -40,11 +40,11 @@ extern "C" {
 
 struct EventPipe
 {
-    pthread_mutex_t  mMutex_;
-    pthread_mutex_t *mMutex;
-    struct Pipe      mPipe_;
-    struct Pipe     *mPipe;
-    bool             mSignalled;
+    struct ThreadSigMutex  mMutex_;
+    struct ThreadSigMutex *mMutex;
+    struct Pipe            mPipe_;
+    struct Pipe           *mPipe;
+    bool                   mSignalled;
 };
 
 /* -------------------------------------------------------------------------- */

@@ -29,7 +29,7 @@
 #ifndef EVENTLATCH_H
 #define EVENTLATCH_H
 
-#include <pthread.h>
+#include "thread_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,10 +39,10 @@ struct EventPipe;
 
 struct EventLatch
 {
-    pthread_mutex_t   mMutex_;
-    pthread_mutex_t  *mMutex;
-    unsigned          mEvent;
-    struct EventPipe *mPipe;
+    struct ThreadSigMutex  mMutex_;
+    struct ThreadSigMutex *mMutex;
+    unsigned               mEvent;
+    struct EventPipe      *mPipe;
 };
 
 /* -------------------------------------------------------------------------- */

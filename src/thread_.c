@@ -424,17 +424,30 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ThreadSigMutex *
 createThreadSigMutex(struct ThreadSigMutex *self)
 {
-    *self = (struct ThreadSigMutex) THREAD_SIG_MUTEX_INITIALIZER;
+    createMutex(&self->mMutex);
+    createCond(&self->mCond);
+
+    self->mLocked = 0;
+
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ThreadSigMutex *
 destroyThreadSigMutex(struct ThreadSigMutex *self)
 {
-    ensure( ! self->mLocked);
+    if (self)
+    {
+        ensure( ! self->mLocked);
+
+        destroyCond(&self->mCond);
+        destroyMutex(&self->mMutex);
+    }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -45,7 +45,7 @@
 int
 createEventLatch(struct EventLatch *self)
 {
-    self->mMutex = createMutex(&self->mMutex_);
+    self->mMutex = createThreadSigMutex(&self->mMutex_);
     self->mEvent = 0;
     self->mPipe  = 0;
 
@@ -56,7 +56,8 @@ createEventLatch(struct EventLatch *self)
 int
 closeEventLatch(struct EventLatch *self)
 {
-    destroyMutex(self->mMutex);
+    if (self)
+        self->mMutex = destroyThreadSigMutex(self->mMutex);
 
     return 0;
 }
@@ -67,7 +68,7 @@ bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
 {
     int rc = -1;
 
-    lockMutex(self->mMutex);
+    lockThreadSigMutex(self->mMutex);
 
     int signalled = 0;
 
@@ -96,7 +97,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(self->mMutex);
+        unlockThreadSigMutex(self->mMutex);
     });
 
     return rc;
@@ -108,7 +109,7 @@ disableEventLatch(struct EventLatch *self)
 {
     int rc = -1;
 
-    lockMutex(self->mMutex);
+    lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -131,7 +132,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(self->mMutex);
+        unlockThreadSigMutex(self->mMutex);
     });
 
     return rc;
@@ -143,7 +144,7 @@ setEventLatch(struct EventLatch *self)
 {
     int rc = -1;
 
-    lockMutex(self->mMutex);
+    lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -171,7 +172,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(self->mMutex);
+        unlockThreadSigMutex(self->mMutex);
     });
 
     return rc;
@@ -183,7 +184,7 @@ resetEventLatch(struct EventLatch *self)
 {
     int rc = -1;
 
-    lockMutex(self->mMutex);
+    lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -205,7 +206,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(self->mMutex);
+        unlockThreadSigMutex(self->mMutex);
     });
 
     return rc;
@@ -219,7 +220,7 @@ ownEventLatchSetting(const struct EventLatch *self_)
 
     struct EventLatch *self = (struct EventLatch *) self_;
 
-    lockMutex(self->mMutex);
+    lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
     if (event & EVENTLATCH_DISABLE_MASK_)
@@ -234,7 +235,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(self->mMutex);
+        unlockThreadSigMutex(self->mMutex);
     });
 
     return rc;

@@ -83,10 +83,10 @@ void
 setThreadAttrDetachState(pthread_attr_t *self, int aState);
 
 /* -------------------------------------------------------------------------- */
-void
+struct ThreadSigMutex *
 createThreadSigMutex(struct ThreadSigMutex *self);
 
-void
+struct ThreadSigMutex *
 destroyThreadSigMutex(struct ThreadSigMutex *self);
 
 struct ThreadSigMutex *
