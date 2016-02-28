@@ -150,8 +150,8 @@ destroyMutex(pthread_mutex_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-pthread_mutex_t *
-lockMutex(pthread_mutex_t *self)
+static pthread_mutex_t *
+lockMutex_(pthread_mutex_t *self)
 {
     struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
 
@@ -196,9 +196,17 @@ lockMutex(pthread_mutex_t *self)
     return self;
 }
 
-/* -------------------------------------------------------------------------- */
 pthread_mutex_t *
-unlockMutex(pthread_mutex_t *self)
+lockMutex(pthread_mutex_t *self)
+{
+    ensure( ! ownProcessSignalContext());
+
+    return lockMutex_(self);
+}
+
+/* -------------------------------------------------------------------------- */
+static pthread_mutex_t *
+unlockMutex_(pthread_mutex_t *self)
 {
     if (self)
     {
@@ -209,38 +217,68 @@ unlockMutex(pthread_mutex_t *self)
     return 0;
 }
 
-/* -------------------------------------------------------------------------- */
 pthread_mutex_t *
-unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond)
+unlockMutex(pthread_mutex_t *self)
 {
-    if (errno = pthread_cond_signal(aCond))
-        terminate(
-            errno,
-            "Unable to signal to condition variable");
+    ensure( ! ownProcessSignalContext());
 
-    if (errno = pthread_mutex_unlock(self))
-        terminate(
-            errno,
-            "Unable to lock mutex");
+    return unlockMutex_(self);
+}
+
+/* -------------------------------------------------------------------------- */
+static pthread_mutex_t *
+unlockMutexSignal_(pthread_mutex_t *self, pthread_cond_t *aCond)
+{
+    if (self)
+    {
+        if (errno = pthread_cond_signal(aCond))
+            terminate(
+                errno,
+                "Unable to signal to condition variable");
+
+        if (errno = pthread_mutex_unlock(self))
+            terminate(
+                errno,
+                "Unable to lock mutex");
+    }
 
     return 0;
 }
 
+pthread_mutex_t *
+unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond)
+{
+    ensure( ! ownProcessSignalContext());
+
+    return unlockMutexSignal_(self, aCond);
+}
+
 /* -------------------------------------------------------------------------- */
+static pthread_mutex_t *
+unlockMutexBroadcast_(pthread_mutex_t *self, pthread_cond_t *aCond)
+{
+    if (self)
+    {
+        if (errno = pthread_cond_broadcast(aCond))
+            terminate(
+                errno,
+                "Unable to broadcast to condition variable");
+
+        if (errno = pthread_mutex_unlock(self))
+            terminate(
+                errno,
+                "Unable to lock mutex");
+    }
+
+    return 0;
+}
+
 pthread_mutex_t *
 unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 {
-    if (errno = pthread_cond_broadcast(aCond))
-        terminate(
-            errno,
-            "Unable to broadcast to condition variable");
+    ensure( ! ownProcessSignalContext());
 
-    if (errno = pthread_mutex_unlock(self))
-        terminate(
-            errno,
-            "Unable to lock mutex");
-
-    return 0;
+    return unlockMutexBroadcast_(self, aCond);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -301,13 +339,21 @@ destroyCond(pthread_cond_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
-waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex)
+static void
+waitCond_(pthread_cond_t *self, pthread_mutex_t *aMutex)
 {
     if (errno = pthread_cond_wait(self, aMutex))
         terminate(
             errno,
             "Unable to wait for condition variable");
+}
+
+void
+waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex)
+{
+    ensure( ! ownProcessSignalContext());
+
+    waitCond_(self, aMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -406,12 +452,12 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
             errno,
             "Unable to push thread signal mask");
 
-    lockMutex(&self->mMutex);
+    lockMutex_(&self->mMutex);
 
     if (self->mLocked && ! pthread_equal(self->mOwner, pthread_self()))
     {
         do
-            waitCond(&self->mCond, &self->mMutex);
+            waitCond_(&self->mCond, &self->mMutex);
         while (self->mLocked);
     }
 
@@ -421,7 +467,7 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
         self->mOwner = pthread_self();
     }
 
-    unlockMutex(&self->mMutex);
+    unlockMutex_(&self->mMutex);
 
     ensure(self->mLocked);
     ensure(pthread_equal(self->mOwner, pthread_self()));
@@ -443,16 +489,16 @@ unlockThreadSigMutex(struct ThreadSigMutex *self)
         ensure(self->mLocked);
         ensure(pthread_equal(self->mOwner, pthread_self()));
 
-        lockMutex(&self->mMutex);
+        lockMutex_(&self->mMutex);
 
         unsigned             locked        = --self->mLocked;
         struct ThreadSigMask threadSigMask = self->mMask;
 
         if (locked)
-            unlockMutex(&self->mMutex);
+            unlockMutex_(&self->mMutex);
         else
         {
-            unlockMutexSignal(&self->mMutex, &self->mCond);
+            unlockMutexSignal_(&self->mMutex, &self->mCond);
 
             if (popThreadSigMask(&threadSigMask))
                 terminate(
@@ -470,14 +516,14 @@ ownThreadSigMutexLocked(struct ThreadSigMutex *self)
 {
     unsigned locked;
 
-    lockMutex(&self->mMutex);
+    lockMutex_(&self->mMutex);
 
     locked = self->mLocked;
 
     if (locked && ! pthread_equal(self->mOwner, pthread_self()))
         locked = 0;
 
-    unlockMutex(&self->mMutex);
+    unlockMutex_(&self->mMutex);
 
     return locked;
 }

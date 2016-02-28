@@ -122,6 +122,9 @@ int
 purgeProcessOrphanedFds(void);
 
 /* -------------------------------------------------------------------------- */
+unsigned
+ownProcessSignalContext(void);
+
 int
 watchProcessChildren(struct VoidMethod aMethod);
 

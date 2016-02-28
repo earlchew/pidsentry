@@ -122,20 +122,8 @@ static const char *sSignalNames[NSIG] =
 };
 
 /* -------------------------------------------------------------------------- */
-static sigset_t
-filledSigSet(void)
-{
-    sigset_t sigset;
+static unsigned __thread sProcessSignalContext;
 
-    if (sigfillset(&sigset))
-        terminate(
-            errno,
-            "Unable to create filled signal set");
-
-    return sigset;
-}
-
-/* -------------------------------------------------------------------------- */
 static struct ProcessSignalVector
 {
     struct sigaction mAction;
@@ -159,7 +147,9 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
         if (SIG_DFL != sv->mAction.sa_handler &&
             SIG_IGN != sv->mAction.sa_handler)
         {
+            ++sProcessSignalContext;
             sv->mAction.sa_sigaction(aSigNum, aSigInfo, aSigContext);
+            --sProcessSignalContext;
         }
         unlockMutex(sv->mMutex);
     });
@@ -181,7 +171,9 @@ dispatchSigHandler_(int aSigNum)
         if (SIG_DFL != sv->mAction.sa_handler &&
             SIG_IGN != sv->mAction.sa_handler)
         {
+            ++sProcessSignalContext;
             sv->mAction.sa_handler(aSigNum);
+            --sProcessSignalContext;
         }
         unlockMutex(sv->mMutex);
     });
@@ -196,6 +188,11 @@ changeSigAction_(unsigned          aSigNum,
 
     ensure(NUMBEROF(sSignalVectors) > aSigNum);
 
+    struct ThreadSigMask  threadSigMask_;
+    struct ThreadSigMask *threadSigMask = 0;
+
+    pthread_mutex_t *lock = 0;
+
     struct sigaction nextAction = aNewAction;
 
     if (SIG_DFL != nextAction.sa_handler && SIG_IGN != nextAction.sa_handler)
@@ -208,7 +205,12 @@ changeSigAction_(unsigned          aSigNum,
         /* Require that signal delivery is not recursive to avoid
          * having to deal with too many levels of re-entrancy. */
 
-        nextAction.sa_mask   = filledSigSet();
+        sigset_t filledSigSet;
+
+        if (sigfillset(&filledSigSet))
+            goto Finally;
+
+        nextAction.sa_mask   = filledSigSet;
         nextAction.sa_flags &= ~ SA_NODEFER;
     }
 
@@ -217,11 +219,6 @@ changeSigAction_(unsigned          aSigNum,
         sSignalVectors[aSigNum].mMutex =
             createMutex(&sSignalVectors[aSigNum].mMutex_);
     unlockThreadSigMutex(&sProcessSigMutex);
-
-    struct ThreadSigMask  threadSigMask_;
-    struct ThreadSigMask *threadSigMask = 0;
-
-    pthread_mutex_t *lock = 0;
 
     int sigList[] = { aSigNum, 0 };
 
@@ -259,6 +256,12 @@ Finally:
     });
 
     return rc;
+}
+
+unsigned
+ownProcessSignalContext(void)
+{
+    return sProcessSignalContext;
 }
 
 /* -------------------------------------------------------------------------- */
