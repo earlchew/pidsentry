@@ -39,7 +39,7 @@
 bool
 testMode(unsigned aLevel)
 {
-    return 0 < gOptions.mTest;
+    return aLevel < gOptions.mTest;
 }
 
 /* -------------------------------------------------------------------------- */
