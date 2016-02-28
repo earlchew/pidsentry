@@ -252,13 +252,16 @@ runTests()
         {
             read PARENT UMBILICAL
             read CHILD
-            while ! grep -q " [tT] " /proc/$UMBILICAL/stat ; do sleep 1 ; done
+            for P in $PARENT $UMBILICAL ; do
+                while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
+            done
             ls -l /proc/$UMBILICAL/fd |
                 grep -v " -> /proc/$PARENT" |
                 grep "[0-9]-[0-9]" |
                 wc -l
-            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            kill -CONT $UMBILICAL || { /bin/echo NOTOK ; exit 1 ; }
+            for P in $PARENT $UMBILICAL ; do
+               kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
+            done
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
         }
     )'
@@ -269,15 +272,16 @@ runTests()
         {
             read PARENT UMBILICAL
             read CHILD
-            while ! grep -q " [tT] " /proc/$PARENT/stat ; do sleep 1 ; done
-            /bin/echo $PARENT $UMBILICAL $CHILD >&2
-            ls -l /proc/$PARENT/fd >&2
+            for P in $PARENT $UMBILICAL ; do
+                while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
+            done
             ls -l /proc/$PARENT/fd |
                 grep -v " -> /proc/$PARENT" |
                 grep "[0-9]-[0-9]" |
                 wc -l
-            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            kill -CONT $UMBILICAL || { /bin/echo NOTOK ; exit 1 ; }
+            for P in $PARENT $UMBILICAL ; do
+               kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
+            done
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
         }
     )'
@@ -288,15 +292,16 @@ runTests()
         {
             read PARENT UMBILICAL
             read CHILD
-            while ! grep -q " [tT] " /proc/$PARENT/stat ; do sleep 1 ; done
-            /bin/echo $PARENT $UMBILICAL $CHILD >&2
-            ls -l /proc/$PARENT/fd >&2
+            for P in $PARENT $UMBILICAL ; do
+                while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
+            done
             ls -l /proc/$PARENT/fd |
                 grep -v " -> /proc/$PARENT" |
                 grep "[0-9]-[0-9]" |
                 wc -l
-            kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            kill -CONT $UMBILICAL || { /bin/echo NOTOK ; exit 1 ; }
+            for P in $PARENT $UMBILICAL ; do
+               kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
+            done
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
         }
     )'
