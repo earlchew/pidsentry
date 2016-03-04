@@ -563,7 +563,8 @@ cmdRunCommand(char **aCmd)
 
     debug(0, "stopping umbilical pid %jd", (intmax_t) umbilicalProcess.mPid);
 
-    if (stopUmbilicalProcess(&umbilicalProcess))
+    int umbilicalerr = stopUmbilicalProcess(&umbilicalProcess);
+    if (umbilicalerr)
         warn(errno, "Unable to stop umbilical process cleanly");
 
     /* The child process group is cleaned up from both the umbilical process
@@ -596,7 +597,18 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to reset SIGPIPE");
 
-    return extractProcessExitStatus(status, childPid);
+    /* Ensure that the overall exit status indicates success if both
+     * the child process and the umbilical process completed
+     * successfully. */
+
+    struct ExitCode exitcode = extractProcessExitStatus(status, childPid);
+    if ( ! exitcode.mStatus)
+    {
+        if (umbilicalerr)
+            exitcode.mStatus = 255;
+    }
+
+    return exitcode;
 }
 
 /* -------------------------------------------------------------------------- */
