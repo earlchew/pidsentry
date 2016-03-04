@@ -596,7 +596,7 @@ cmdRunCommand(char **aCmd)
             errno,
             "Unable to reset SIGPIPE");
 
-    return extractProcessExitStatus(status);
+    return extractProcessExitStatus(status, childPid);
 }
 
 /* -------------------------------------------------------------------------- */

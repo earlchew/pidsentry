@@ -1638,7 +1638,7 @@ ownProcessName(void)
 
 /* -------------------------------------------------------------------------- */
 struct ExitCode
-extractProcessExitStatus(int aStatus)
+extractProcessExitStatus(int aStatus, pid_t aPid)
 {
     /* Taking guidance from OpenGroup:
      *
@@ -1652,7 +1652,11 @@ extractProcessExitStatus(int aStatus)
 
     if (WIFEXITED(aStatus))
     {
-        debug(0, "child exited %d", WEXITSTATUS(aStatus));
+        debug(
+            0,
+            "process pid %jd exited %d",
+            (intmax_t) aPid,
+            WEXITSTATUS(aStatus));
 
         exitCode.mStatus = WEXITSTATUS(aStatus);
     }
@@ -1662,7 +1666,8 @@ extractProcessExitStatus(int aStatus)
 
         debug(
             0,
-            "child terminated by %s",
+            "process pid %jd terminated by %s",
+            (intmax_t) aPid,
             formatProcessSignalName(&sigName, WTERMSIG(aStatus)));
 
         exitCode.mStatus = 128 + WTERMSIG(aStatus);
@@ -1670,7 +1675,7 @@ extractProcessExitStatus(int aStatus)
             exitCode.mStatus = 255;
     }
 
-    debug(0, "exit code %d", exitCode.mStatus);
+    debug(0, "process pid %jd exit code %d", (intmax_t) aPid, exitCode.mStatus);
 
     return exitCode;
 }

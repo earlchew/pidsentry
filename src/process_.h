@@ -179,7 +179,7 @@ enum ProcessStatus
 monitorProcess(pid_t aPid);
 
 struct ExitCode
-extractProcessExitStatus(int aStatus);
+extractProcessExitStatus(int aStatus, pid_t aPid);
 
 void
 execProcess(const char *aCmd, char **aArgv);
