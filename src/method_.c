@@ -33,7 +33,7 @@
 
 /* -------------------------------------------------------------------------- */
 struct VoidMethod
-VoidMethod(void (*aMethod)(void *), void *aObject)
+VoidMethod_(VoidMethodT_ aMethod, void *aObject)
 {
     ensure(aMethod || ! aObject);
 
@@ -62,7 +62,7 @@ ownVoidMethodNil(struct VoidMethod self)
 
 /* -------------------------------------------------------------------------- */
 struct VoidIntMethod
-VoidIntMethod(void (*aMethod)(void *, int), void *aObject)
+VoidIntMethod_(VoidIntMethodT_ aMethod, void *aObject)
 {
     ensure(aMethod || ! aObject);
 

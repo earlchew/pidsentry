@@ -36,6 +36,7 @@
 #include "socketpair_.h"
 #include "pidfile_.h"
 #include "test_.h"
+#include "error_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -76,8 +77,18 @@ pollFdUmbilical_(void                        *self_,
 
     char buf[1];
 
-    ssize_t rdlen = read(
-        self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf));
+    ssize_t rdlen;
+    ABORT_IF(
+        (rdlen = read(
+            self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
+         -1 == rdlen
+         ? EINTR != errno && ECONNRESET != errno
+         : (errno = 0, rdlen && sizeof(buf) != rdlen)),
+        {
+            terminate(
+                errno,
+                "Unable to read umbilical connection");
+        });
 
     /* If the far end did not read the previous echo, and simply closed its
      * end of the connection (likely because it detected the child
@@ -92,30 +103,19 @@ pollFdUmbilical_(void                        *self_,
 
     if (-1 == rdlen)
     {
-        switch (errno)
+        if (ECONNRESET == errno)
         {
-        default:
-            terminate(
-                errno,
-                "Unable to read umbilical connection");
-
-        case EINTR:
-            break;
-
-        case ECONNRESET:
             if (self->mClosed)
                 debug(0, "umbilical connection closed");
             else
                 warn(0, "Umbilical connection broken");
 
             self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
-            break;
         }
     }
     else
     {
         debug(1, "received umbilical connection ping %zd", rdlen);
-        ensure(sizeof(buf) == rdlen);
 
         ensure( ! self->mClosed);
 
@@ -129,19 +129,23 @@ pollFdUmbilical_(void                        *self_,
         {
             debug(1, "umbilical connection echo request");
 
-            if (writeFd(
+            ssize_t wrlen;
+            ABORT_IF(
+                (wrlen = writeFd(
                     self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
-                    buf, rdlen) != rdlen)
-            {
-                /* Receiving EPIPE means that the umbilical connection
-                 * has been closed. Rely on the umbilical connection
-                 * reader to reactivate and detect the closed connection. */
+                    buf, rdlen),
+                 -1 == wrlen
+                 ? EPIPE != errno
+                 : (errno = 0, wrlen != rdlen)),
+                {
+                    /* Receiving EPIPE means that the umbilical connection
+                     * has been closed. Rely on the umbilical connection
+                     * reader to reactivate and detect the closed connection. */
 
-                if (EPIPE != errno)
                     terminate(
                         errno,
                         "Unable to echo activity into umbilical connection");
-            }
+                });
         }
 
         /* Once activity is detected on the umbilical, reset the
@@ -248,8 +252,6 @@ createUmbilicalMonitor(
 
     rc = 0;
 
-    goto Finally;
-
 Finally:
 
     FINALLY({});
@@ -266,7 +268,7 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self)
     /* Use a blocking read to wait for the watchdog to signal that the
      * umbilical monitor should proceed. */
 
-    FINALLY_IF(
+    ERROR_IF(
         -1 == waitFdReadReady(STDIN_FILENO, 0));
 
     pollFdUmbilical_(self, 0);
@@ -287,7 +289,7 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
     int rc = -1;
 
     struct PollFd pollfd;
-    FINALLY_IF(
+    ERROR_IF(
         createPollFd(
             &pollfd,
             self->mPollFds,
@@ -297,11 +299,10 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
             pollFdTimerNames_, POLL_FD_MONITOR_TIMER_KINDS,
             pollFdCompletion_, self));
 
-    FINALLY_IF(
+    ERROR_IF(
         runPollFdLoop(&pollfd));
 
-    FINALLY_IF(
-        closePollFd(&pollfd));
+    closePollFd(&pollfd);
 
     rc = 0;
 
@@ -336,52 +337,53 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     ensure(aChildProcess->mPgid == getpgid(0));
 
-    if (STDIN_FILENO !=
-        dup2(aUmbilicalSocket->mChildFile->mFd, STDIN_FILENO))
-        terminate(
-            errno,
-            "Unable to dup %d to stdin",
-            aUmbilicalSocket->mChildFile->mFd);
+    ABORT_IF(
+        STDIN_FILENO !=
+        dup2(aUmbilicalSocket->mChildFile->mFd, STDIN_FILENO),
+        {
+            terminate(
+                errno,
+                "Unable to dup %d to stdin",
+                aUmbilicalSocket->mChildFile->mFd);
+        });
 
-    if (STDOUT_FILENO != dup2(
-            aUmbilicalSocket->mChildFile->mFd, STDOUT_FILENO))
-        terminate(
-            errno,
-            "Unable to dup %d to stdout",
-            aUmbilicalSocket->mChildFile->mFd);
+    ABORT_IF(
+        STDOUT_FILENO != dup2(
+            aUmbilicalSocket->mChildFile->mFd, STDOUT_FILENO),
+        {
+            terminate(
+                errno,
+                "Unable to dup %d to stdout",
+                aUmbilicalSocket->mChildFile->mFd);
+        });
 
     if (pidFile)
     {
-        if (acquireReadLockPidFile(pidFile))
-            terminate(
-                errno,
-                "Unable to acquire read lock on pid file '%s'",
-                pidFile->mPathName.mFileName);
+        ABORT_IF(
+            acquireReadLockPidFile(pidFile),
+            {
+                terminate(
+                    errno,
+                    "Unable to acquire read lock on pid file '%s'",
+                    pidFile->mPathName.mFileName);
+            });
 
-        if (closePidFile(pidFile))
-            terminate(
-                errno,
-                "Cannot close pid file '%s'",
-                pidFile->mPathName.mFileName);
+        closePidFile(pidFile);
         pidFile = 0;
     }
 
-    if (closeSocketPair(aSyncSocket))
-        terminate(
-            errno,
-            "Unable to close sync socket");
+    closeSocketPair(aSyncSocket);
+    closeSocketPair(aUmbilicalSocket);
 
-    if (closeSocketPair(aUmbilicalSocket))
-        terminate(
-            errno,
-            "Unable to close umbilical socket");
-
-    if (testMode(1))
+    if (testMode(TestLevelSync))
     {
-        if (raise(SIGSTOP))
-            terminate(
-                errno,
-                "Unable to stop process");
+        ABORT_IF(
+            raise(SIGSTOP),
+            {
+                terminate(
+                    errno,
+                    "Unable to stop process");
+            });
     }
 
     monitorChildUmbilical(aChildProcess, aWatchdogPid);
@@ -390,7 +392,7 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     warn(0, "Umbilical failed to clean process group %jd", (intmax_t) pgid);
 
-    _exit(EXIT_FAILURE);
+    quitProcess(EXIT_FAILURE);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -420,9 +422,10 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     pid_t watchdogPid  = getpid();
 
     pid_t umbilicalPid;
-    FINALLY_IF(
-        -1 == (umbilicalPid = forkProcess(ForkProcessSetProcessGroup,
-                                          self->mPgid)));
+    ERROR_IF(
+        (umbilicalPid = forkProcess(
+            ForkProcessSetProcessGroup, self->mPgid),
+         -1 == umbilicalPid));
 
     if (umbilicalPid)
     {
@@ -457,22 +460,20 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
 
     char buf[1] = { 0 };
 
-    ssize_t wrlen = writeFile(self->mSocket->mParentFile, buf, sizeof(buf));
+    ssize_t wrlen;
+    ERROR_IF(
+        (wrlen = writeFile(self->mSocket->mParentFile, buf, sizeof(buf)),
+         -1 == wrlen && EPIPE != errno));
 
-    if (-1 == wrlen)
-    {
-        /* The umbilical process might no longer running and thus
-         * unable to clean up the child process group. If so, it is
-         * necessary for the watchdog clean up the child process
-         * group directly. */
+    /* The umbilical process might no longer running and thus
+     * unable to clean up the child process group. If so, it is
+     * necessary for the watchdog clean up the child process
+     * group directly. */
 
-        if (EPIPE != errno)
-            goto Finally;
-    }
-    else
+    if (-1 != wrlen)
     {
-        if (shutdownFileSocketWriter(self->mSocket->mParentFile))
-            goto Finally;
+        ERROR_IF(
+            shutdownFileSocketWriter(self->mSocket->mParentFile));
 
         struct Duration umbilicalTimeout =
             Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
@@ -485,29 +486,29 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
         {
             struct Duration remaining;
 
-            if (deadlineTimeExpired(&since, umbilicalTimeout, &remaining, 0))
-            {
-                if (checkProcessSigContTracker(&sigContTracker))
+            int expired;
+            ERROR_IF(
+                (expired = deadlineTimeExpired(
+                    &since, umbilicalTimeout, &remaining, 0),
+                 expired && ! checkProcessSigContTracker(&sigContTracker)),
                 {
-                    since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
-                    continue;
-                }
+                    errno = ETIMEDOUT;
+                });
 
-                break;
-            }
-
-            switch (waitFileReadReady(self->mSocket->mParentFile, &remaining))
+            if (expired)
             {
-            default:
-                break;
-
-            case -1:
-                goto Finally;
-
-            case 0:
-                errno = ETIMEDOUT;
-                goto Finally;
+                since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                continue;
             }
+
+            int ready = 0;
+            ERROR_IF(
+                (ready = waitFileReadReady(
+                    self->mSocket->mParentFile, &remaining),
+                 -1 == ready));
+
+            if ( ! ready)
+                continue;
 
             /* Although the connection to the umbilical process is closed,
              * there is no guarantee that waitpid() will not block. */
@@ -524,38 +525,39 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
                 break;
             }
 
-            int status;
-            if (reapProcess(self->mPid, &status))
-                goto Finally;
+            int umbilicalStatus;
+            ERROR_IF(
+                reapProcess(self->mPid, &umbilicalStatus));
 
-            if (WIFEXITED(status))
-            {
-                errno = ECHILD;
-                warn(0,
-                     "Umbilical exited with status %d",
-                     WEXITSTATUS(status));
-                goto Finally;
-            }
-            else
-            {
-                if ( ! WIFSIGNALED(status))
+            ABORT_UNLESS(
+                WIFEXITED(umbilicalStatus) || WIFSIGNALED(umbilicalStatus),
+                {
                     terminate(
                         0,
                         "Umbilical pid %jd terminated for unknown reason",
                         (intmax_t) self->mPid);
+                });
 
-                int termSig = WTERMSIG(status);
-
-                struct ProcessSignalName sigName;
-
-                if (SIGKILL != termSig)
+            ERROR_IF(
+                ( ! WTERMSIG(umbilicalStatus) ||
+                  SIGKILL != WTERMSIG(umbilicalStatus)),
                 {
                     errno = ECHILD;
-                    warn(0,
-                         "Umbilical killed by signal %s",
-                         formatProcessSignalName(&sigName, termSig));
-                }
-            }
+
+                    if (WIFEXITED(umbilicalStatus))
+                        warn(0,
+                             "Umbilical exited with status %d",
+                             WEXITSTATUS(umbilicalStatus));
+                    else
+                    {
+                        struct ProcessSignalName sigName;
+                        warn(0,
+                             "Umbilical killed by signal %s",
+                             formatProcessSignalName(
+                                 &sigName,
+                                 WTERMSIG(umbilicalStatus)));
+                    }
+                });
 
             break;
         }

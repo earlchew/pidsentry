@@ -83,10 +83,10 @@ createUnixSocket(
 
     self->mFile = 0;
 
-    if (createFile(&self->mFile_,
+    ERROR_IF(
+        createFile(&self->mFile_,
                    socket(AF_UNIX,
-                          SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)))
-        goto Finally;
+                          SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)));
     self->mFile = &self->mFile_;
 
     /* Do not use random() from stdlib to avoid perturbing the behaviour of
@@ -114,29 +114,31 @@ createUnixSocket(
                 strncpy(sockAddr.sun_path, aName, sizeof(sockAddr.sun_path));
             else
             {
-                if (sizeof(sockAddr.sun_path) < aNameLen)
-                {
-                    errno = EINVAL;
-                    goto Finally;
-                }
+                ERROR_IF(
+                    sizeof(sockAddr.sun_path) < aNameLen,
+                    {
+                        errno = EINVAL;
+                    });
                 memcpy(sockAddr.sun_path, aName, aNameLen);
             }
         }
 
-        if (bindFileSocket(self->mFile,
-                           (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
-        {
-            /* Only perform an automatic retry if requested. This is
-             * primarily to allow the unit test to verify correct
-             * operation of the retry and name generation code. */
+        /* Only perform an automatic retry if requested. This is
+         * primarily to allow the unit test to verify correct
+         * operation of the retry and name generation code. */
 
-            if (EADDRINUSE == errno && ! aName && ! aNameLen)
-                continue;
-            goto Finally;
-        }
+        int err;
+        ERROR_IF(
+            (err = bindFileSocket(
+                self->mFile,
+                (struct sockaddr *) &sockAddr, sizeof(sockAddr)),
+             err && (EADDRINUSE != errno || aName || aNameLen)));
 
-        if (listenFileSocket(self->mFile, aQueueLen))
-            goto Finally;
+        if (err)
+            continue;
+
+        ERROR_IF(
+            listenFileSocket(self->mFile, aQueueLen));
 
         break;
     }
@@ -165,15 +167,15 @@ acceptUnixSocket(
 
     while (1)
     {
-        if (createFile(
+        int err;
+        ERROR_IF(
+            (err = createFile(
                 &self->mFile_,
-                acceptFileSocket(aServer->mFile, O_NONBLOCK | O_CLOEXEC)))
-        {
-            if (EINTR == errno)
-                continue;
-            goto Finally;
-        }
-        break;
+                acceptFileSocket(aServer->mFile, O_NONBLOCK | O_CLOEXEC)),
+             err && EINTR != errno));
+
+        if ( ! err)
+            break;
     }
     self->mFile = &self->mFile_;
 
@@ -203,40 +205,37 @@ connectUnixSocket(struct UnixSocket *self, const char *aName, size_t aNameLen)
 
     if ( ! aNameLen)
         aNameLen = strlen(aName);
-    if ( ! aNameLen)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
-    if (sizeof(sockAddr.sun_path) < aNameLen)
-        goto Finally;
+    ERROR_UNLESS(
+        aNameLen,
+        {
+            errno = EINVAL;
+        });
+    ERROR_IF(
+        sizeof(sockAddr.sun_path) < aNameLen);
 
     sockAddr.sun_family = AF_UNIX;
     memcpy(sockAddr.sun_path, aName, aNameLen);
     memset(
         sockAddr.sun_path + aNameLen, 0, sizeof(sockAddr.sun_path) - aNameLen);
 
-    if (createFile(&self->mFile_,
-                   socket(AF_UNIX, SOCK_STREAM, 0)))
-        goto Finally;
+    ERROR_IF(
+        createFile(
+            &self->mFile_,
+            socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)));
     self->mFile = &self->mFile_;
-
-    if (closeFileOnExec(self->mFile, O_CLOEXEC))
-        goto Finally;
-
-    if (nonblockingFile(self->mFile))
-        goto Finally;
 
     while (1)
     {
-        if (connectFileSocket(
+        ERROR_IF(
+            (err = connectFileSocket(
                 self->mFile,
-                (struct sockaddr *) &sockAddr, sizeof(sockAddr)))
+                (struct sockaddr *) &sockAddr, sizeof(sockAddr)),
+             err && EINTR != errno && EINPROGRESS != errno));
+
+        if (err)
         {
             if (EINTR == errno)
                 continue;
-            if (EINPROGRESS != errno)
-                goto Finally;
 
             err = EINPROGRESS;
         }
@@ -258,26 +257,14 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeUnixSocket(struct UnixSocket *self)
 {
-    int rc = -1;
-
     if (self)
     {
-        if (closeFile(self->mFile))
-            goto Finally;
-
+        closeFile(self->mFile);
         self->mFile = 0;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

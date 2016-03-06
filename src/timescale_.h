@@ -40,6 +40,14 @@ struct itimerval;
 extern "C" {
 #endif
 
+#ifndef __cplusplus
+#define TIMESCALE_CTOR_(Struct_, Type_, Field_)
+#else
+#define TIMESCALE_CTOR_(Struct_, Type_, Field_) \
+    Struct_(Type_ Field_ ## _)                  \
+    { *this = Struct_ ## _(Field_ ## _); }
+#endif
+
 enum TimeScale
 {
     TimeScale_ns = 1000 * 1000 * 1000,
@@ -48,12 +56,19 @@ enum TimeScale
     TimeScale_s  = 1,
 };
 
+/* -------------------------------------------------------------------------- */
 #define PRIu_NanoSeconds PRIu64
 #define PRIs_NanoSeconds PRIu64 ".%09" PRIu64 "s"
 #define FMTs_NanoSeconds(NanoSeconds) \
     ((NanoSeconds).ns / TimeScale_ns), ((NanoSeconds).ns % TimeScale_ns)
+
+struct NanoSeconds
+NanoSeconds_(uint64_t ns);
+
 struct NanoSeconds
 {
+    TIMESCALE_CTOR_(NanoSeconds, uint64_t, ns)
+
     union
     {
         uint64_t ns;
@@ -62,11 +77,19 @@ struct NanoSeconds
     };
 };
 
+/* -------------------------------------------------------------------------- */
+#define PRIu_MilliSeconds PRIu64
 #define PRIs_MilliSeconds PRIu64 ".%03" PRIu64 "s"
 #define FMTs_MilliSeconds(MilliSeconds) \
     ((MilliSeconds).ms / 1000), ((MilliSeconds).ms % 1000)
+
+struct MilliSeconds
+MilliSeconds_(uint64_t ms);
+
 struct MilliSeconds
 {
+    TIMESCALE_CTOR_(MilliSeconds, uint64_t, ms)
+
     union
     {
         uint64_t ms;
@@ -75,10 +98,18 @@ struct MilliSeconds
     };
 };
 
+/* -------------------------------------------------------------------------- */
+#define PRIu_Seconds PRIu64
 #define PRIs_Seconds PRIu64 "s"
 #define FMTs_Seconds(Seconds) ((Seconds).s)
+
+struct Seconds
+Seconds_(uint64_t s);
+
 struct Seconds
 {
+    TIMESCALE_CTOR_(Seconds, uint64_t, s)
+
     union
     {
         uint64_t s;
@@ -87,38 +118,54 @@ struct Seconds
     };
 };
 
+/* -------------------------------------------------------------------------- */
+#define PRIs_Duration PRIs_NanoSeconds
+#define FMTs_Duration(Duration) FMTs_NanoSeconds((Duration).duration)
+
+struct Duration
+Duration_(struct NanoSeconds duration);
+
 struct Duration
 {
+#ifdef __cplusplus
+    Duration(struct NanoSeconds duration_)
+    : duration(duration_)
+    { }
+#endif
+
     struct NanoSeconds duration;
 };
 
 /* -------------------------------------------------------------------------- */
 #define EVENTCLOCKTIME_INIT ((struct EventClockTime) { { { ns : 0 } } })
 
-static inline struct Duration
-Duration(struct NanoSeconds aDuration)
-{
-    return (struct Duration) { duration : aDuration };
-}
-
+#ifndef __cplusplus
 static inline struct NanoSeconds
 NanoSeconds(uint64_t ns)
 {
-    return (struct NanoSeconds) { { ns : ns } };
+    return NanoSeconds_(ns);
 }
 
 static inline struct MilliSeconds
 MilliSeconds(uint64_t ms)
 {
-    return (struct MilliSeconds) { { ms : ms } };
+    return MilliSeconds_(ms);
 }
 
 static inline struct Seconds
 Seconds(uint64_t s)
 {
-    return (struct Seconds) { { s : s } };
+    return Seconds_(s);
 }
 
+static inline struct Duration
+Duration(struct NanoSeconds aDuration)
+{
+    return Duration_(aDuration);
+}
+#endif
+
+/* -------------------------------------------------------------------------- */
 #define NSECS(Time)                                             \
     ( (struct NanoSeconds)                                      \
       { {                                                       \

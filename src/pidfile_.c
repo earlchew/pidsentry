@@ -61,8 +61,8 @@ openPidFile_(struct PidFile *self, const char *aFileName)
     self->mFile = 0;
     self->mLock = LOCK_UN;
 
-    if (createPathName(&self->mPathName, aFileName))
-        goto Finally;
+    ERROR_IF(
+        createPathName(&self->mPathName, aFileName));
 
     rc = 0;
 
@@ -74,24 +74,14 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static void
 closePidFile_(struct PidFile *self)
 {
-    int rc = -1;
-
-    if (closeFile(self->mFile))
-        goto Finally;
-
-    if (closePathName(&self->mPathName))
-        goto Finally;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+    if (self)
+    {
+        closeFile(self->mFile);
+        closePathName(&self->mPathName);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -105,10 +95,11 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
     ensure(LOCK_UN != aLock);
     ensure(LOCK_UN == self->mLock);
 
-    testSleep(0);
-
-    if (lockFile(self->mFile, aLock))
-        goto Finally;
+    TEST_RACE
+    ({
+        ERROR_IF(
+            lockFile(self->mFile, aLock));
+    });
 
     self->mLock = aLock;
 
@@ -134,35 +125,34 @@ readPidFile_(char *aBuf)
     char *endptr = strchr(aBuf, 0);
     char *nlptr  = strchr(aBuf, '\n');
 
-    if (endptr == aBuf)
-        goto Finally;
-
-    if ( ! nlptr)
-        goto Finally;
-
-    if (nlptr + 1 == endptr)
-        goto Finally;
-
-    if ('\n' != endptr[-1])
-        goto Finally;
+    ERROR_IF(
+        endptr == aBuf      ||
+        ! nlptr             ||
+        nlptr + 1 == endptr ||
+        '\n' != endptr[-1],
+        {
+            errno = ENOENT;
+        });
 
     *nlptr     = 0;
     endptr[-1] = 0;
 
-    if (parsePid(aBuf, &pid) || ! pid)
-        goto Finally;
+    ERROR_IF(
+        parsePid(aBuf, &pid));
+
+    ERROR_UNLESS(
+        pid,
+        {
+            errno = ENOENT;
+        });
 
     do
     {
-        if (fetchProcessSignature(pid, &signature))
-        {
-            if (ENOENT != errno)
-            {
-                err = -1;
-                goto Finally;
-            }
-        }
-        else
+        ERROR_IF(
+            (err = fetchProcessSignature(pid, &signature),
+             err && ENOENT != errno));
+
+        if ( ! err)
         {
             debug(0, "pidfile signature %s vs %s", pidsignature, signature);
 
@@ -205,22 +195,24 @@ readPidFile(const struct PidFile *self)
     {
         char buf[PIDFILE_SIZE_+1];
 
-        ssize_t buflen = readFile(self->mFile, buf, sizeof(buf));
-        if (-1 == buflen)
-            goto Finally;
+        ssize_t buflen;
+        ERROR_IF(
+            (buflen = readFile(self->mFile, buf, sizeof(buf)),
+             -1 == buflen));
 
         if (sizeof(buf) > buflen)
         {
-            ssize_t lastlen = readFile(self->mFile, buf + buflen, 1);
-            if (-1 == lastlen)
-                goto Finally;
+            ssize_t lastlen;
+            ERROR_IF(
+                (lastlen = readFile(
+                    self->mFile, buf + buflen, 1), -1 == lastlen));
 
             if ( ! lastlen)
             {
                 buf[buflen] = 0;
-                pid = readPidFile_(buf);
-                if (-1 == pid)
-                    goto Finally;
+                ERROR_IF(
+                    (pid = readPidFile_(buf),
+                     -1 == pid));
                 break;
             }
         }
@@ -235,9 +227,7 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&pidfd))
-            terminate(
-                errno, "Unable to close file descriptor %d", pidfd);
+        closeFd(&pidfd);
 
         free(pidsignature);
         free(signature);
@@ -254,8 +244,8 @@ releaseLockPidFile(struct PidFile *self)
 
     ensure(LOCK_UN != self->mLock);
 
-    if (unlockFile(self->mFile))
-        goto Finally;
+    ERROR_IF(
+        unlockFile(self->mFile));
 
     self->mLock = LOCK_UN;
 
@@ -267,7 +257,7 @@ Finally:
 
     FINALLY
     ({
-        testSleep(0);
+        TEST_RACE({});
     });
 
     return rc;
@@ -293,57 +283,55 @@ createPidFile(struct PidFile *self, const char *aFileName)
 {
     int rc = -1;
 
-    if (openPidFile_(self, aFileName))
-        goto Finally;
+    struct PidFile *pidFile = 0;
+    ERROR_IF(
+        openPidFile_(self, aFileName));
+    pidFile = self;
 
     /* Check if the pidfile already exists, and if the process that
      * it names is still running.
      */
 
-    if (createFile(
+    int err;
+    ERROR_IF(
+        (err = createFile(
             &self->mFile_,
-            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)))
-    {
-        if (ENOENT != errno)
-            goto Finally;
-    }
-    else
+            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)),
+         err && ENOENT != errno));
+
+    if ( ! err)
     {
         self->mFile = &self->mFile_;
 
-        if (acquireWriteLockPidFile(self))
-            goto Finally;
+        ERROR_IF(
+            acquireWriteLockPidFile(self));
 
         /* If the pidfile names a valid process then give up since
          * it means that the pidfile is already owned. Otherwise,
          * the pidfile is not owned, and can be deleted. */
 
-        switch (readPidFile(self))
-        {
-        default:
-            errno = EEXIST;
-            goto Finally;
-        case -1:
-            goto Finally;
-        case 0:
-            break;
-        }
+        pid_t pid;
+        ERROR_IF(
+            (pid = readPidFile(self),
+             -1 == pid));
+
+        ERROR_IF(
+            pid,
+            {
+                errno = EEXIST;
+            });
 
         debug(
             0,
             "removing existing pidfile '%s'", self->mPathName.mFileName);
 
-        if (unlinkPathName(&self->mPathName, 0))
-        {
-            if (ENOENT != errno)
-                goto Finally;
-        }
+        ERROR_IF(
+            unlinkPathName(&self->mPathName, 0) && ENOENT != errno);
 
-        if (releaseLockPidFile(self))
-            goto Finally;
+        ERROR_IF(
+            releaseLockPidFile(self));
 
-        if (closeFile(self->mFile))
-            goto Finally;
+        closeFile(self->mFile);
 
         self->mFile = 0;
     }
@@ -355,14 +343,14 @@ createPidFile(struct PidFile *self, const char *aFileName)
      * the content. */
 
     ensure( ! self->mFile);
-    RACE
+    TEST_RACE
     ({
-        if (createFile(
+        ERROR_IF(
+            createFile(
                 &self->mFile_,
                 openPathName(&self->mPathName,
                              O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-                             S_IRUSR | S_IRGRP | S_IROTH)))
-            goto Finally;
+                             S_IRUSR | S_IRGRP | S_IROTH)));
     });
     self->mFile = &self->mFile_;
 
@@ -374,8 +362,7 @@ Finally:
     ({
         if (rc)
         {
-            if (closePidFile_(self))
-                terminate(errno, "Unable to close pidfile '%s'", aFileName);
+            closePidFile_(pidFile);
         }
     });
 
@@ -388,13 +375,14 @@ openPidFile(struct PidFile *self, const char *aFileName)
 {
     int rc = -1;
 
-    if (openPidFile_(self, aFileName))
-        goto Finally;
+    ERROR_IF(
+        openPidFile_(self, aFileName));
 
-    if (createFile(
+    ERROR_IF(
+        createFile(
             &self->mFile_,
-            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)))
-        goto Finally;
+            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)));
+
     self->mFile = &self->mFile_;
 
     rc = 0;
@@ -404,10 +392,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            if (closePidFile_(self))
-                terminate(errno, "Unable to close pidfile '%s'", aFileName);
-        }
+            closePidFile_(self);
     });
 
     return rc;
@@ -429,17 +414,18 @@ detectPidFileZombie(const struct PidFile *self)
 
     struct stat fileStatus;
 
-    if (fstatPathName(&self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW))
-    {
-        if (ENOENT == errno)
-            rc = 1;
-        goto Finally;
-    }
+    ERROR_IF(
+        fstatPathName(
+            &self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW),
+        {
+            if (ENOENT == errno)
+                rc = 1;
+        });
 
     struct stat fdStatus;
 
-    if (fstatFile(self->mFile, &fdStatus))
-        goto Finally;
+    ERROR_IF(
+        fstatFile(self->mFile, &fdStatus));
 
     rc = ( fdStatus.st_dev != fileStatus.st_dev ||
            fdStatus.st_ino != fileStatus.st_ino );
@@ -448,26 +434,29 @@ Finally:
 
     FINALLY({});
 
-    if ( ! rc && testAction(0))
+    if ( ! rc && testAction(TestLevelRace))
         rc = 1;
 
     return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closePidFile(struct PidFile *self)
 {
-    int rc = -1;
-
     if (self)
     {
         ensure(LOCK_UN != self->mLock);
 
-        int flags = fcntlFileGetFlags(self->mFile);
-
-        if (-1 == flags)
-            goto Finally;
+        int flags;
+        ABORT_IF(
+            (flags = fcntlFileGetFlags(self->mFile), -1 == flags),
+            {
+                terminate(
+                    errno,
+                    "Unable to get flags for pid file '%s'",
+                    self->mPathName.mFileName);
+            });
 
         if (O_RDONLY != (flags & O_ACCMODE) && LOCK_EX == self->mLock)
         {
@@ -477,39 +466,37 @@ closePidFile(struct PidFile *self)
              * remove the pidfile so that no other process will be
              * able to find the file. */
 
-            if (ftruncateFile(self->mFile, 0))
-                goto Finally;
+            ABORT_IF(
+                ftruncateFile(self->mFile, 0),
+                {
+                    terminate(
+                        errno,
+                        "Unable to truncate pid file '%s'",
+                        self->mPathName.mFileName);
+                });
 
-            if (unlinkPathName(&self->mPathName, 0))
-            {
-                /* In theory, ENOENT should not occur since the pidfile
-                 * is locked, and competing processes need to hold the
-                 * lock to remove the pidfile. It might be possible
-                 * that the pidfile is deleted from, say, the command
-                 * line. */
+            /* In theory, ENOENT should not occur since the pidfile
+             * is locked, and competing processes need to hold the
+             * lock to remove the pidfile. It might be possible
+             * that the pidfile is deleted from, say, the command
+             * line. */
 
-                if (ENOENT != errno)
-                    goto Finally;
-            }
+            ABORT_IF(
+                unlinkPathName(&self->mPathName, 0) && ENOENT != errno,
+                {
+                    terminate(
+                        errno,
+                        "Unable to unlink pid file '%s'",
+                        self->mPathName.mFileName);
+                });
         }
 
-        if (closeFile(self->mFile))
-            goto Finally;
-
-        if (closePathName(&self->mPathName))
-            goto Finally;
+        closeFile(self->mFile);
+        closePathName(&self->mPathName);
 
         self->mFile = 0;
         self->mLock = LOCK_UN;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -521,31 +508,35 @@ writePidFile(struct PidFile *self, pid_t aPid)
 
     ensure(0 < aPid);
 
-    if (fetchProcessSignature(aPid, &signature))
-        goto Finally;
+    ERROR_IF(
+        fetchProcessSignature(aPid, &signature));
 
     char buf[PIDFILE_SIZE_+1];
 
     int buflen =
         snprintf(buf, sizeof(buf), "%jd\n%s\n", (intmax_t) aPid, signature);
 
-    if (0 > buflen)
-        goto Finally;
-    if ( ! buflen || sizeof(buf) <= buflen)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ERROR_IF(
+        0 > buflen,
+        {
+            errno = EIO;
+        });
+
+    ERROR_IF(
+        ! buflen || sizeof(buf) <= buflen,
+        {
+            errno = ERANGE;
+        });
 
     /* Separate the formatting of the signature from the actual IO
      * so that it is possible to determine if there is a formatting
      * error, or an IO error. */
 
-    if (writeFile(self->mFile, buf, buflen) != buflen)
-    {
-        errno = EIO;
-        goto Finally;
-    }
+    ERROR_IF(
+        writeFile(self->mFile, buf, buflen) != buflen,
+        {
+            errno = EIO;
+        });
 
     rc = 0;
 

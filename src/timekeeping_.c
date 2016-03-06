@@ -54,10 +54,13 @@ monotonicTime(void)
 {
     struct timespec ts;
 
-    if (clock_gettime(CLOCK_MONOTONIC, &ts))
-        terminate(
-            errno,
-            "Unable to fetch monotonic time");
+    ABORT_IF(
+        clock_gettime(CLOCK_MONOTONIC, &ts),
+        {
+            terminate(
+                errno,
+                "Unable to fetch monotonic time");
+        });
 
     return (struct MonotonicTime) { .monotonic = timeSpecToNanoSeconds(&ts) };
 }
@@ -71,26 +74,28 @@ procUptime(struct Duration *aUptime, const char *aFileName)
     char *buf = 0;
     int   fd  = -1;
 
-    fd = open(aFileName, O_RDONLY);
-    if (-1 == fd)
-        goto Finally;
+    ERROR_IF(
+        (fd = open(aFileName, O_RDONLY),
+         -1 == fd));
 
-    ssize_t buflen = readFdFully(fd, &buf, 64);
+    ssize_t buflen;
 
-    if (-1 == buflen)
-        goto Finally;
-    if ( ! buflen)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ERROR_IF(
+        (buflen = readFdFully(fd, &buf, 64),
+         -1 == buflen));
 
-    char *end = strchr(buf, ' ');
-    if ( ! end)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ERROR_UNLESS(
+        buflen,
+        {
+            errno = ERANGE;
+        });
+
+    char *end;
+    ERROR_UNLESS(
+        (end = strchr(buf, ' ')),
+        {
+            errno = ERANGE;
+        });
 
     uint64_t uptime_ns  = 0;
     unsigned fracdigits = 0;
@@ -102,15 +107,18 @@ procUptime(struct Duration *aUptime, const char *aFileName)
         switch (*ptr)
         {
         default:
-            errno = ERANGE;
-            goto Finally;
+            ERROR_IF(
+                true,
+                {
+                    errno = ERANGE;
+                });
 
         case '.':
-            if (fracdigits)
-            {
-                errno = ERANGE;
-                goto Finally;
-            }
+            ERROR_IF(
+                fracdigits,
+                {
+                    errno = ERANGE;
+                });
             fracdigits = 1;
             continue;
 
@@ -127,11 +135,11 @@ procUptime(struct Duration *aUptime, const char *aFileName)
         }
 
         uint64_t value = uptime_ns * 10;
-        if (value / 10 != uptime_ns || value + digit < uptime_ns)
-        {
-            errno = ERANGE;
-            goto Finally;
-        }
+        ERROR_IF(
+            value / 10 != uptime_ns || value + digit < uptime_ns,
+            {
+                errno = ERANGE;
+            });
 
         uptime_ns = value + digit;
 
@@ -142,8 +150,11 @@ procUptime(struct Duration *aUptime, const char *aFileName)
     switch (fracdigits / 2)
     {
     default:
-        errno = ERANGE;
-        goto Finally;
+        ERROR_IF(
+            true,
+            {
+                errno = ERANGE;
+            });
 
     case 0: uptime_ns *= 1000000000; break;
     case 1: uptime_ns *=  100000000; break;
@@ -165,8 +176,7 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&fd))
-            terminate(errno, "Unable to close file descriptor %d", fd);
+        closeFd(&fd);
 
         free(buf);
     });
@@ -192,10 +202,13 @@ bootclockTime(void)
 
                 struct Duration uptime;
 
-                if (procUptime(&uptime, procUptimeFileName))
-                    terminate(
-                        errno,
-                        "Unable to read %s", procUptimeFileName);
+                ABORT_IF(
+                    procUptime(&uptime, procUptimeFileName),
+                    {
+                        terminate(
+                            errno,
+                            "Unable to read %s", procUptimeFileName);
+                    });
 
                 ts.tv_nsec = uptime.duration.ns % TimeScale_ns;
                 ts.tv_sec  = uptime.duration.ns / TimeScale_ns;
@@ -203,9 +216,13 @@ bootclockTime(void)
             }
 #endif
 
-            terminate(
-                errno,
-                "Unable to fetch boot time");
+            ABORT_IF(
+                true,
+                {
+                    terminate(
+                        errno,
+                        "Unable to fetch boot time");
+                });
 
         } while (0);
     }
@@ -242,10 +259,13 @@ wallclockTime(void)
 {
     struct timespec ts;
 
-    if (clock_gettime(CLOCK_REALTIME, &ts))
-        terminate(
-            errno,
-            "Unable to fetch monotonic time");
+    ABORT_IF(
+        clock_gettime(CLOCK_REALTIME, &ts),
+        {
+            terminate(
+                errno,
+                "Unable to fetch monotonic time");
+        });
 
     return (struct WallClockTime) { .wallclock = timeSpecToNanoSeconds(&ts) };
 }
@@ -408,12 +428,10 @@ Timekeeping_init(void)
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 Timekeeping_exit(void)
 {
     --sInit;
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

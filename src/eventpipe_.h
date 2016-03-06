@@ -51,7 +51,7 @@ struct EventPipe
 int
 createEventPipe(struct EventPipe *self, unsigned aFlags);
 
-int
+void
 closeEventPipe(struct EventPipe *self);
 
 int

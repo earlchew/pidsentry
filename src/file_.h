@@ -57,7 +57,7 @@ createFile(struct File *self, int aFd);
 int
 detachFile(struct File *self);
 
-int
+void
 closeFile(struct File *self);
 
 void
@@ -67,7 +67,7 @@ walkFileList(void *aOther,
 int
 dupFile(struct File *self, const struct File *aOther);
 
-int
+void
 closeFilePair(struct File **aFile1,
                         struct File **aFile2);
 

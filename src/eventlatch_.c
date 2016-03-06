@@ -53,13 +53,11 @@ createEventLatch(struct EventLatch *self)
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeEventLatch(struct EventLatch *self)
 {
     if (self)
         self->mMutex = destroyThreadSigMutex(self->mMutex);
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -76,14 +74,14 @@ bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
     {
         if (self->mEvent)
         {
-            if (-1 == setEventPipe(aPipe))
-                goto Finally;
+            ERROR_IF(
+                -1 == setEventPipe(aPipe));
 
-            if (self->mEvent & EVENTLATCH_DISABLE_MASK_)
-            {
-                errno = ERANGE;
-                goto Finally;
-            }
+            ERROR_IF(
+                self->mEvent & EVENTLATCH_DISABLE_MASK_,
+                {
+                    errno = ERANGE;
+                });
 
             signalled = 1;
         }
@@ -112,19 +110,17 @@ disableEventLatch(struct EventLatch *self)
     lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
-    if (event & EVENTLATCH_DISABLE_MASK_)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ERROR_IF(
+        event & EVENTLATCH_DISABLE_MASK_,
+        {
+            errno = ERANGE;
+        });
 
     self->mEvent |= EVENTLATCH_DISABLE_MASK_;
 
     if (self->mPipe)
-    {
-        if (-1 == setEventPipe(self->mPipe))
-            goto Finally;
-    }
+        ERROR_IF(
+            -1 == setEventPipe(self->mPipe));
 
     rc = 0;
 
@@ -147,11 +143,11 @@ setEventLatch(struct EventLatch *self)
     lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
-    if (event & EVENTLATCH_DISABLE_MASK_)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ERROR_IF(
+        event & EVENTLATCH_DISABLE_MASK_,
+        {
+            errno = ERANGE;
+        });
 
     if (event & EVENTLATCH_DATA_MASK_)
         rc = 0;
@@ -160,10 +156,8 @@ setEventLatch(struct EventLatch *self)
         self->mEvent ^= EVENTLATCH_DATA_MASK_;
 
         if (self->mPipe)
-        {
-            if (-1 == setEventPipe(self->mPipe))
-                goto Finally;
-        }
+            ERROR_IF(
+                -1 == setEventPipe(self->mPipe));
 
         rc = 1;
     }
@@ -187,11 +181,11 @@ resetEventLatch(struct EventLatch *self)
     lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
-    if (event & EVENTLATCH_DISABLE_MASK_)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ERROR_IF(
+        event & EVENTLATCH_DISABLE_MASK_,
+        {
+            errno = ERANGE;
+        });
 
     if ( ! (event & EVENTLATCH_DATA_MASK_))
         rc = 0;
@@ -223,11 +217,11 @@ ownEventLatchSetting(const struct EventLatch *self_)
     lockThreadSigMutex(self->mMutex);
 
     unsigned event = self->mEvent;
-    if (event & EVENTLATCH_DISABLE_MASK_)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ERROR_IF(
+        event & EVENTLATCH_DISABLE_MASK_,
+        {
+            errno = ERANGE;
+        });
 
     rc = (event & EVENTLATCH_DATA_MASK_) ? 1 : 0;
 

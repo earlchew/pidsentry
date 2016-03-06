@@ -53,7 +53,7 @@ openPidFile(struct PidFile *self, const char *aFileName);
 int
 detectPidFileZombie(const struct PidFile *self);
 
-int
+void
 closePidFile(struct PidFile *self);
 
 pid_t

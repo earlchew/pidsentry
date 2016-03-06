@@ -47,7 +47,7 @@ struct Pipe
 int
 createPipe(struct Pipe *self, unsigned aFlags);
 
-int
+void
 closePipe(struct Pipe *self);
 
 int
@@ -56,10 +56,10 @@ detachPipeReader(struct Pipe *self);
 int
 detachPipeWriter(struct Pipe *self);
 
-int
+void
 closePipeReader(struct Pipe *self);
 
-int
+void
 closePipeWriter(struct Pipe *self);
 
 int

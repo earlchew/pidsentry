@@ -50,25 +50,28 @@ struct ChildProcess
     pid_t mPid;
     pid_t mPgid;
 
-    struct EventLatch mChildLatch;
-    struct EventLatch mUmbilicalLatch;
+    struct EventLatch  mChildLatch_;
+    struct EventLatch *mChildLatch;
+    struct EventLatch  mUmbilicalLatch_;
+    struct EventLatch *mUmbilicalLatch;
 
     struct Pipe  mTetherPipe_;
     struct Pipe* mTetherPipe;
 
     struct
     {
-        struct ThreadSigMutex mMutex;
-        struct ChildMonitor  *mMonitor;
+        struct ThreadSigMutex  mMutex_;
+        struct ThreadSigMutex *mMutex;
+        struct ChildMonitor   *mMonitor;
     } mChildMonitor;
 };
 
 /* -------------------------------------------------------------------------- */
-void
+int
 createChild(struct ChildProcess *self);
 
 void
-reapChild(struct ChildProcess *self, pid_t aUmbilicalPid);
+superviseChildProcess(struct ChildProcess *self, pid_t aUmbilicalPid);
 
 int
 forkChild(
@@ -87,7 +90,7 @@ closeChildTether(struct ChildProcess *self);
 void
 monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid);
 
-void
+int
 monitorChild(struct ChildProcess     *self,
              struct UmbilicalProcess *aUmbilicalProcess,
              struct File             *aUmbilicalFile);
@@ -96,6 +99,9 @@ void
 raiseChildSigCont(struct ChildProcess *self);
 
 int
+reapChild(struct ChildProcess *self, int *aStatus);
+
+void
 closeChild(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */

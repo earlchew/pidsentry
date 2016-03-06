@@ -96,10 +96,14 @@ pollFdControl_(void                        *self_,
 
     char buf[1];
 
-    if (0 > readFd(self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf)))
-        terminate(
-            errno,
-            "Unable to read tether control");
+    ABORT_IF(
+        -1 == readFd(
+            self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf)),
+        {
+            terminate(
+                errno,
+                "Unable to read tether control");
+        });
 
     debug(0, "tether disconnection request received");
 
@@ -137,11 +141,14 @@ pollFdDrain_(void                        *self_,
 
             int available;
 
-            if (ioctl(self->mSrcFd, FIONREAD, &available))
-                terminate(
-                    errno,
-                    "Unable to find amount of readable data in fd %d",
-                    self->mSrcFd);
+            ABORT_IF(
+                ioctl(self->mSrcFd, FIONREAD, &available),
+                {
+                    terminate(
+                        errno,
+                        "Unable to find amount of readable data in fd %d",
+                        self->mSrcFd);
+                });
 
             if ( ! available)
             {
@@ -156,8 +163,23 @@ pollFdDrain_(void                        *self_,
              * amount of input available is known and is only read by this
              * thread. */
 
-            ssize_t bytes = spliceFd(
-                self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE);
+            ssize_t bytes;
+
+            ABORT_IF(
+                (bytes = spliceFd(
+                    self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE),
+                 -1 == bytes &&
+                 EPIPE       != errno &&
+                 EWOULDBLOCK != errno &&
+                 EINTR       != errno),
+                {
+                    terminate(
+                        errno,
+                        "Unable to splice %d bytes from fd %d to fd %d",
+                        available,
+                        self->mSrcFd,
+                        self->mDstFd);
+                });
 
             if ( ! bytes)
             {
@@ -172,14 +194,6 @@ pollFdDrain_(void                        *self_,
                     debug(0, "tether drain output broken");
                     break;
                 }
-
-                if (EWOULDBLOCK != errno && EINTR != errno)
-                    terminate(
-                        errno,
-                        "Unable to splice %d bytes from fd %d to fd %d",
-                        available,
-                        self->mSrcFd,
-                        self->mDstFd);
             }
             else
             {
@@ -254,8 +268,7 @@ tetherThreadMain_(void *self_)
 
     const int sigList[] = { SIGALRM, 0 };
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskUnblock, sigList))
-        terminate(errno, "Unable to push thread signal mask");
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskUnblock, sigList);
 
     struct TetherPoll tetherpoll =
     {
@@ -287,48 +300,56 @@ tetherThreadMain_(void *self_)
     };
 
     struct PollFd pollfd;
-    if (createPollFd(
+    ABORT_IF(
+        createPollFd(
             &pollfd,
             tetherpoll.mPollFds,
             tetherpoll.mPollFdActions,
             pollFdNames_, POLL_FD_TETHER_KINDS,
             tetherpoll.mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_TETHER_TIMER_KINDS,
-            pollFdCompletion_, &tetherpoll))
-        terminate(
-            errno,
-            "Unable to initialise polling loop");
+            pollFdCompletion_, &tetherpoll),
+        {
+            terminate(
+                errno,
+                "Unable to initialise polling loop");
+        });
 
-    if (runPollFdLoop(&pollfd))
-        terminate(
-            errno,
-            "Unable to run polling loop");
+    ABORT_IF(
+        runPollFdLoop(&pollfd),
+        {
+            terminate(
+                errno,
+                "Unable to run polling loop");
+        });
 
-    if (closePollFd(&pollfd))
-        terminate(
-            errno,
-            "Unable to close polling loop");
+    closePollFd(&pollfd);
 
-    if (popThreadSigMask(&threadSigMask))
-        terminate(errno, "Unable to pop process signal mask");
+    popThreadSigMask(&threadSigMask);
 
     /* Close the input file descriptor so that there is a chance
      * to propagte SIGPIPE to the child process. */
 
-    if (dup2(self->mNullPipe->mRdFile->mFd, srcFd) != srcFd)
-        terminate(
-            errno,
-            "Unable to dup fd %d to fd %d",
-            self->mNullPipe->mRdFile->mFd,
-            srcFd);
+    ABORT_IF(
+        dup2(self->mNullPipe->mRdFile->mFd, srcFd) != srcFd,
+        {
+            terminate(
+                errno,
+                "Unable to dup fd %d to fd %d",
+                self->mNullPipe->mRdFile->mFd,
+                srcFd);
+        });
 
     /* Shut down the end of the control pipe controlled by this thread,
      * without closing the control pipe file descriptor itself. The
      * monitoring loop is waiting for the control pipe to close before
      * exiting the event loop. */
 
-    if (dup2(self->mNullPipe->mRdFile->mFd, controlFd) != controlFd)
-        terminate(errno, "Unable to shut down tether thread control");
+    ABORT_IF(
+        dup2(self->mNullPipe->mRdFile->mFd, controlFd) != controlFd,
+        {
+            terminate(errno, "Unable to shut down tether thread control");
+        });
 
     debug(0, "tether emptied");
 
@@ -348,8 +369,11 @@ tetherThreadMain_(void *self_)
 void
 createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 {
-    if (createPipe(&self->mControlPipe, O_CLOEXEC | O_NONBLOCK))
-        terminate(errno, "Unable to create tether control pipe");
+    ABORT_IF(
+        createPipe(&self->mControlPipe, O_CLOEXEC | O_NONBLOCK),
+        {
+            terminate(errno, "Unable to create tether control pipe");
+        });
 
     createMutex(&self->mActivity.mMutex);
     createMutex(&self->mState.mMutex);
@@ -363,13 +387,11 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
     {
         struct ThreadSigMask threadSigMask;
 
-        if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-            terminate(errno, "Unable to push thread signal mask");
+        pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
         createThread(&self->mThread, 0, tetherThreadMain_, self);
 
-        if (popThreadSigMask(&threadSigMask))
-            terminate(errno, "Unable to pop thread signal mask");
+        popThreadSigMask(&threadSigMask);
     }
 
     {
@@ -388,10 +410,13 @@ pingTetherThread(struct TetherThread *self)
 {
     debug(0, "ping tether thread");
 
-    if (errno = pthread_kill(self->mThread, SIGALRM))
-        terminate(
-            errno,
-            "Unable to signal tether thread");
+    ABORT_IF(
+        (errno = pthread_kill(self->mThread, SIGALRM)),
+        {
+            terminate(
+                errno,
+                "Unable to signal tether thread");
+        });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -400,24 +425,31 @@ flushTetherThread(struct TetherThread *self)
 {
     debug(0, "flushing tether thread");
 
-    if (watchProcessClock(VoidMethod(0, 0), Duration(NanoSeconds(0))))
-        terminate(
-            errno,
-            "Unable to configure synchronisation clock");
+    ABORT_IF(
+        watchProcessClock(VoidMethod(0, 0), Duration(NanoSeconds(0))),
+        {
+            terminate(
+                errno,
+                "Unable to configure synchronisation clock");
+        });
 
     char buf[1] = { 0 };
 
-    if (sizeof(buf) != writeFile(self->mControlPipe.mWrFile, buf, sizeof(buf)))
-    {
-        /* This code will race the tether thread which might finished
-         * because it already has detected that the child process has
-         * terminated and closed its file descriptors. */
+    ssize_t wrlen;
+    ABORT_IF(
+        (wrlen = writeFile(self->mControlPipe.mWrFile, buf, sizeof(buf)),
+         -1 == wrlen
+         ? EPIPE != errno
+         : (errno = 0, sizeof(buf) != wrlen)),
+        {
+            /* This code will race the tether thread which might finished
+             * because it already has detected that the child process has
+             * terminated and closed its file descriptors. */
 
-        if (EPIPE != errno)
             terminate(
                 errno,
                 "Unable to flush tether thread");
-    }
+        });
 
     self->mFlushed = true;
 }
@@ -446,17 +478,19 @@ closeTetherThread(struct TetherThread *self)
 
     (void) joinThread(&self->mThread);
 
-    if (unwatchProcessClock())
-        terminate(
-            errno,
-            "Unable to reset synchronisation clock");
+    ABORT_IF(
+        unwatchProcessClock(),
+        {
+            terminate(
+                errno,
+                "Unable to reset synchronisation clock");
+        });
 
     destroyCond(&self->mState.mCond);
     destroyMutex(&self->mState.mMutex);
     destroyMutex(&self->mActivity.mMutex);
 
-    if (closePipe(&self->mControlPipe))
-        terminate(errno, "Unable to close tether control pipe");
+    closePipe(&self->mControlPipe);
 }
 
 /* -------------------------------------------------------------------------- */

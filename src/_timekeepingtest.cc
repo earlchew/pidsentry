@@ -449,7 +449,7 @@ uptime()
         _exit(EXIT_FAILURE);
     }
 
-    EXPECT_EQ(0, closePipeWriter(&pipe));
+    closePipeWriter(&pipe);
 
     FILE *fp = fdopen(pipe.mRdFile->mFd, "r");
 
@@ -460,7 +460,7 @@ uptime()
     EXPECT_EQ(1, fscanf(fp, "%u", &seconds));
 
     EXPECT_EQ(0, fclose(fp));
-    EXPECT_EQ(0, closePipe(&pipe));
+    closePipe(&pipe);
 
     int status;
     EXPECT_EQ(0, reapProcess(pid, &status));

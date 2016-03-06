@@ -115,11 +115,9 @@ createPollFd(struct PollFd            *self,
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closePollFd(struct PollFd *self)
-{
-    return 0;
-}
+{ }
 
 /* -------------------------------------------------------------------------- */
 int
@@ -189,12 +187,11 @@ runPollFdLoop(struct PollFd *self)
 
         debug(1, "poll wait %dms", timeout_ms);
 
-        int rc = poll(self->mPoll, self->mFdActions.mSize, timeout_ms);
-
-        if (-1 == rc)
         {
-            if (EINTR != errno)
-                goto Finally;
+            int events;
+            ERROR_IF(
+                (events = poll(self->mPoll, self->mFdActions.mSize, timeout_ms),
+                 -1 == events && EINTR != errno));
         }
 
         /* Latch the event clock time here before quickly polling the
@@ -203,23 +200,16 @@ runPollFdLoop(struct PollFd *self)
 
         polltm = eventclockTime();
 
-        RACE
+        int events;
+        TEST_RACE
         ({
             while (1)
             {
-                rc = poll(self->mPoll, self->mFdActions.mSize, 0);
-
-                if (-1 == rc)
-                {
-                    if (EINTR == errno)
-                        continue;
-
-                    terminate(
-                        errno,
-                        "Unable to poll for activity");
-                }
-
-                break;
+                ERROR_IF(
+                    (events = poll(self->mPoll, self->mFdActions.mSize, 0),
+                     -1 == events && EINTR != errno));
+                if (-1 != events)
+                    break;
             }
         });
 
@@ -229,16 +219,13 @@ runPollFdLoop(struct PollFd *self)
              * the event loop will not remain stuck processing a single
              * file descriptor. */
 
-            unsigned eventCount = 0;
-
-            if ( ! rc)
-                ++eventCount;
+            unsigned eventCount = ! events;
 
             /* The poll(2) call will mark POLLNVAL, POLLERR or POLLHUP
              * no matter what the caller has subscribed for. Only pay
              * attention to what was subscribed. */
 
-            debug(1, "polled result %d", rc);
+            debug(1, "polled event count %d", events);
 
             for (size_t ix = 0; self->mFdActions.mSize > ix; ++ix)
             {

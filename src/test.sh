@@ -638,6 +638,14 @@ for TEST in runTest runTests ; do
     $TEST
 done
 
+testCase 'Error handling'
+testOutput 128 != '$(
+    {
+        k9 -d --test --test --test -- dd if=/dev/zero bs=64K count=4
+    } > /dev/null
+    /bin/echo $?
+)'
+
 testCase 'No lost watchdogs'
 testOutput "" = '$(ps -C k9 -o user=,ppid=,pid=,pgid=,command=)'
 

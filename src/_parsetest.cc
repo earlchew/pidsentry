@@ -40,91 +40,91 @@ TEST(ParseTest, ArgListCSV)
     EXPECT_EQ(0,  createParseArgListCSV(&argList, 0));
     EXPECT_EQ(0U, argList.mArgc);
     EXPECT_FALSE(argList.mArgv);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, ""));
     EXPECT_EQ(1U, argList.mArgc);
     EXPECT_EQ(std::string(""), argList.mArgv[0]);
     EXPECT_FALSE(argList.mArgv[1]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, " "));
     EXPECT_EQ(1U, argList.mArgc);
     EXPECT_EQ(std::string(""), argList.mArgv[0]);
     EXPECT_FALSE(argList.mArgv[1]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "  "));
     EXPECT_EQ(1U, argList.mArgc);
     EXPECT_EQ(std::string(""), argList.mArgv[0]);
     EXPECT_FALSE(argList.mArgv[1]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "a"));
     EXPECT_EQ(1U, argList.mArgc);
     EXPECT_EQ(std::string("a"), argList.mArgv[0]);
     EXPECT_FALSE(argList.mArgv[1]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, " a"));
     EXPECT_EQ(1U, argList.mArgc);
     EXPECT_EQ(std::string("a"), argList.mArgv[0]);
     EXPECT_FALSE(argList.mArgv[1]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "a "));
     EXPECT_EQ(1U, argList.mArgc);
     EXPECT_EQ(std::string("a"), argList.mArgv[0]);
     EXPECT_FALSE(argList.mArgv[1]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, " a "));
     EXPECT_EQ(1U, argList.mArgc);
     EXPECT_EQ(std::string("a"), argList.mArgv[0]);
     EXPECT_FALSE(argList.mArgv[1]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, ","));
     EXPECT_EQ(2U, argList.mArgc);
     EXPECT_EQ(std::string(""), argList.mArgv[0]);
     EXPECT_EQ(std::string(""), argList.mArgv[1]);
     EXPECT_FALSE(argList.mArgv[2]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "  ,  "));
     EXPECT_EQ(2U, argList.mArgc);
     EXPECT_EQ(std::string(""), argList.mArgv[0]);
     EXPECT_EQ(std::string(""), argList.mArgv[1]);
     EXPECT_FALSE(argList.mArgv[2]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "a,"));
     EXPECT_EQ(2U, argList.mArgc);
     EXPECT_EQ(std::string("a"), argList.mArgv[0]);
     EXPECT_EQ(std::string(""), argList.mArgv[1]);
     EXPECT_FALSE(argList.mArgv[2]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, ",b"));
     EXPECT_EQ(2U, argList.mArgc);
     EXPECT_EQ(std::string(""), argList.mArgv[0]);
     EXPECT_EQ(std::string("b"), argList.mArgv[1]);
     EXPECT_FALSE(argList.mArgv[2]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "a,b"));
     EXPECT_EQ(2U, argList.mArgc);
     EXPECT_EQ(std::string("a"), argList.mArgv[0]);
     EXPECT_EQ(std::string("b"), argList.mArgv[1]);
     EXPECT_FALSE(argList.mArgv[2]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "  a  ,  b  "));
     EXPECT_EQ(2U, argList.mArgc);
     EXPECT_EQ(std::string("a"), argList.mArgv[0]);
     EXPECT_EQ(std::string("b"), argList.mArgv[1]);
     EXPECT_FALSE(argList.mArgv[2]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, ",,"));
     EXPECT_EQ(3U, argList.mArgc);
@@ -132,7 +132,7 @@ TEST(ParseTest, ArgListCSV)
     EXPECT_EQ(std::string(""), argList.mArgv[1]);
     EXPECT_EQ(std::string(""), argList.mArgv[2]);
     EXPECT_FALSE(argList.mArgv[3]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "  ,  ,  "));
     EXPECT_EQ(3U, argList.mArgc);
@@ -140,7 +140,7 @@ TEST(ParseTest, ArgListCSV)
     EXPECT_EQ(std::string(""), argList.mArgv[1]);
     EXPECT_EQ(std::string(""), argList.mArgv[2]);
     EXPECT_FALSE(argList.mArgv[3]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 
     EXPECT_EQ(0,  createParseArgListCSV(&argList, "  a  ,  b  ,  c  "));
     EXPECT_EQ(3U, argList.mArgc);
@@ -148,7 +148,7 @@ TEST(ParseTest, ArgListCSV)
     EXPECT_EQ(std::string("b"), argList.mArgv[1]);
     EXPECT_EQ(std::string("c"), argList.mArgv[2]);
     EXPECT_FALSE(argList.mArgv[3]);
-    EXPECT_EQ(0,  closeParseArgList(&argList));
+    closeParseArgList(&argList);
 }
 
 #include "../googletest/src/gtest_main.cc"

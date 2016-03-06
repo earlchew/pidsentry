@@ -54,7 +54,7 @@ struct PathName
 int
 createPathName(struct PathName *self, const char *aFileName);
 
-int
+void
 closePathName(struct PathName *self);
 
 int

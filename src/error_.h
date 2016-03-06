@@ -31,10 +31,108 @@
 
 #include "options_.h"
 #include "process_.h"
+#include "test_.h"
+
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* -------------------------------------------------------------------------- */
+/* Finally Unwinding
+ *
+ * Use ERROR_IF() and ERROR_UNLESS() to wrap calls to functions
+ * that have error returns.
+ *
+ * Only wrap function calls because error simulation will conditionally
+ * simulate error returns from these functions.
+ *
+ * Do not use these to wrap destructors since the destructors will
+ * be used on the error return path. Destructors should have void
+ * returns to avoid inadvertentl having an error return. */
+
+#define ERROR_IF_(Sense_, Predicate_, ...)           \
+    do                                               \
+    {                                                \
+        /* Do not allow error management within      \
+         * FINALLY() blocks. */                      \
+                                                     \
+        const void *finally_                         \
+        __attribute__((__unused__)) = 0;             \
+                                                     \
+        struct ErrorFrame frame_ =                   \
+            ERRORFRAME_INIT( # Predicate_ );         \
+                                                     \
+        /* Stack unwinding restarts if a new frame   \
+         * sequence is started. */                   \
+                                                     \
+        restartErrorFrameSequence();                 \
+                                                     \
+        if (testFinally(&frame_) ||                  \
+            Sense_ (Predicate_))                     \
+        {                                            \
+            __VA_ARGS__                              \
+                                                     \
+            addErrorFrame(&frame_, errno);           \
+            goto Error_;                             \
+        }                                            \
+    }                                                \
+    while (0)
+
+#define ERROR_IF(Predicate_, ...)                  \
+    ERROR_IF_(/*!!*/, Predicate_, ## __VA_ARGS__)
+
+#define ERROR_UNLESS(Predicate_, ...)              \
+    ERROR_IF_(!, Predicate_, ##  __VA_ARGS__)
+
+/* -------------------------------------------------------------------------- */
+#define EXIT_IF(Predicate_, ...)                                \
+    TERMINATE_IF_(exit_, /*!!*/, Predicate_, ## __VA_ARGS__)
+
+#define EXIT_UNLESS(Predicate_, ...)                            \
+    TERMINATE_IF_(exit_, !, Predicate_, ## __VA_ARGS__)
+
+#define ABORT_IF(Predicate_, ...)                               \
+    TERMINATE_IF_(terminate_, /*!!*/, Predicate_, ## __VA_ARGS__)
+
+#define ABORT_UNLESS(Predicate_, ...)                           \
+    TERMINATE_IF_(terminate_, !, Predicate_, ## __VA_ARGS__)
+
+#define TERMINATE_IF_(Terminate_, Sense_, Predicate_, ...)      \
+    do                                                          \
+    {                                                           \
+        /* Stack unwinding restarts if a new frame              \
+         * sequence is started. */                              \
+                                                                \
+        struct ErrorFrameSequence frameSequence_ =              \
+            pushErrorFrameSequence();                           \
+                                                                \
+        if (Sense_ (Predicate_))                                \
+        {                                                       \
+            void (*terminate)(                                  \
+                int         aErrCode,                           \
+                const char *aFunction,                          \
+                const char *aFile,                              \
+                unsigned    aLine,                              \
+                const char *aFmt, ...)                          \
+                __attribute__ ((                                \
+                    __format__(__printf__, 5, 6),               \
+                    __noreturn__)) = Terminate_;                \
+                                                                \
+            __VA_ARGS__                                         \
+                                                                \
+            do                                                  \
+                (terminate)(                                    \
+                    errno,                                      \
+                    __func__, __FILE__, __LINE__,               \
+                    "%s", # Predicate_);                        \
+            while (0);                                          \
+        }                                                       \
+                                                                \
+        popErrorFrameSequence(frameSequence_);                  \
+    }                                                           \
+    while (0)
 
 /* -------------------------------------------------------------------------- */
 #define FINALLY(...)      \
@@ -45,47 +143,17 @@ extern "C" {
         errno = err_;     \
     } while (0)
 
-#define FINALLY_IF(Predicate_, ...)                  \
-    do                                               \
-    {                                                \
-        struct ErrorFrame frame_ =                   \
-            ERRORFRAME_INIT( # Predicate_ );         \
-                                                     \
-        unsigned frameLevel_ = ownErrorFrameLevel(); \
-                                                     \
-        if ((Predicate_))                            \
-        {                                            \
-            __VA_ARGS__;                             \
-            if ( ! frameLevel_)                      \
-                pushErrorFrameLevel(&frame_, errno); \
-            goto Finally;                            \
-        }                                            \
-                                                     \
-        resetErrorFrameLevel();                      \
-    }                                                \
-    while (0)
-
-#define TERMINATE_IF(Predicate_, ...)                           \
-    do                                                          \
-    {                                                           \
-        if ((Predicate_))                                       \
-        {                                                       \
-            __VA_ARGS__;                                        \
-            Error_terminate_(errno, "%s", # Predicate_);        \
-        }                                                       \
-    }                                                           \
-    while (0)
-
-#define TERMINATE_UNLESS(Predicate_, ...)                       \
-    do                                                          \
-    {                                                           \
-        if ( ! (Predicate_))                                    \
-        {                                                       \
-            __VA_ARGS__;                                        \
-            Error_terminate_(errno, "%s", # Predicate_);        \
-        }                                                       \
-    }                                                           \
-    while (0)
+#define Finally                                 \
+        /* Stack unwinding restarts if the      \
+         * function completes without error. */ \
+                                                \
+        restartErrorFrameSequence();            \
+                                                \
+        int finally_                            \
+        __attribute__((__unused__));            \
+                                                \
+        goto Error_;                            \
+    Error_
 
 /* -------------------------------------------------------------------------- */
 struct ErrorFrame
@@ -99,9 +167,9 @@ struct ErrorFrame
 
 #define ERRORFRAME_INIT(aText) { __FILE__, __LINE__, __func__, aText }
 
-struct ErrorFrameLevel
+struct ErrorFrameSequence
 {
-    unsigned mLevel;
+    unsigned mSequence;
 };
 
 enum ErrorFrameStackKind
@@ -112,10 +180,19 @@ enum ErrorFrameStackKind
 };
 
 void
-pushErrorFrameLevel(const struct ErrorFrame *aFrame, int aErrno);
+addErrorFrame(const struct ErrorFrame *aFrame, int aErrno);
 
 void
-resetErrorFrameLevel(void);
+restartErrorFrameSequence_(const char *aFile, unsigned aLine);
+
+void
+restartErrorFrameSequence(void);
+
+struct ErrorFrameSequence
+pushErrorFrameSequence(void);
+
+void
+popErrorFrameSequence(struct ErrorFrameSequence aSequence);
 
 enum ErrorFrameStackKind
 switchErrorFrameStack(enum ErrorFrameStackKind aStack);
@@ -127,66 +204,76 @@ const struct ErrorFrame *
 ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel);
 
 void
-logErrorFrameWarning(void);
+logErrorFrameSequence(void);
 
 /* -------------------------------------------------------------------------- */
 #define breadcrumb Error_breadcrumb_
 #define Error_breadcrumb_() \
-    debug_(__FILE__, __LINE__, ".")
+    debug_(__func__, __FILE__, __LINE__, ".")
 
 #define debug Error_debug_
-#define Error_debug_(aLevel, ...)                       \
-    do                                                  \
-        if ((aLevel) < gOptions.mDebug)                 \
-            debug_(__FILE__, __LINE__, ## __VA_ARGS__); \
+#define Error_debug_(aLevel, ...)                                       \
+    do                                                                  \
+        if ((aLevel) < gOptions.mDebug)                                 \
+            debug_(__func__, __FILE__, __LINE__, ## __VA_ARGS__);       \
     while (0)
 
 void
 debug_(
-    const char *aFile, unsigned aLine,
+    const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
-    __attribute__ ((__format__(__printf__, 3, 4)));
+    __attribute__ ((__format__(__printf__, 4, 5)));
 
 /* -------------------------------------------------------------------------- */
 #define ensure Error_ensure_
 #define Error_ensure_(aPredicate)                               \
     do                                                          \
         if ( ! (aPredicate))                                    \
-            ensure_(__FILE__, __LINE__, # aPredicate);          \
+            ensure_(__func__, __FILE__, __LINE__, # aPredicate); \
     while (0)
 
 void
-ensure_(const char *aFile, unsigned aLine, ...);
+ensure_(const char *aFunction, const char *aFile, unsigned aLine, ...);
 
 /* -------------------------------------------------------------------------- */
 #define warn Error_warn_
 #define Error_warn_(aErrCode, ...) \
-    warn_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
+    warn_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
 void
 warn_(
     int aErrCode,
-    const char *aFile, unsigned aLine,
+    const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
-    __attribute__ ((__format__(__printf__, 4, 5)));
+    __attribute__ ((__format__(__printf__, 5, 6)));
 
 /* -------------------------------------------------------------------------- */
-#define terminate Error_terminate_
+#define terminate(aErrCode, ...) \
+    terminate(aErrCode, __func__, __FILE__, __LINE__, ## __VA_ARGS__)
+
 #define Error_terminate_(aErrCode, ...) \
-    terminate_((aErrCode), __FILE__, __LINE__, ## __VA_ARGS__)
+    terminate_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
 void
 terminate_(
     int aErrCode,
-    const char *aFile, unsigned aLine,
+    const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
-    __attribute__ ((__format__(__printf__, 4, 5), __noreturn__));
+    __attribute__ ((__format__(__printf__, 5, 6), __noreturn__));
+
+/* -------------------------------------------------------------------------- */
+void
+exit_(
+    int aErrCode,
+    const char *aFunction, const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
+    __attribute__ ((__format__(__printf__, 5, 6), __noreturn__));
 
 /* -------------------------------------------------------------------------- */
 int
 Error_init(void);
 
-int
+void
 Error_exit(void);
 
 /* -------------------------------------------------------------------------- */

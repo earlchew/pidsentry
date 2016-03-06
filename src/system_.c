@@ -52,18 +52,19 @@ fetchSystemIncarnation_(void)
 
     static const char procBootId[] = "/proc/sys/kernel/random/boot_id";
 
-    fd = open(procBootId, O_RDONLY);
-    if (-1 == fd)
-        goto Finally;
+    ERROR_IF(
+        (fd = open(procBootId, O_RDONLY),
+         -1 == fd));
 
-    ssize_t buflen = readFdFully(fd, &buf, 64);
-    if (-1 == buflen)
-        goto Finally;
-    if ( ! buflen)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ssize_t buflen;
+    ERROR_IF(
+        (buflen = readFdFully(fd, &buf, 64),
+         -1 == buflen));
+    ERROR_UNLESS(
+        buflen,
+        {
+            errno = EINVAL;
+        });
 
     char *end = memchr(buf, '\n', buflen);
     if (end)
@@ -71,9 +72,9 @@ fetchSystemIncarnation_(void)
     else
         end = buf + buflen;
 
-    char *bootIncarnation = malloc(buflen + 1);
-    if ( ! bootIncarnation)
-        goto Finally;
+    char *bootIncarnation;
+    ERROR_UNLESS(
+        (bootIncarnation = malloc(buflen + 1)));
 
     memcpy(bootIncarnation, buf, buflen);
     bootIncarnation[buflen] = 0;
@@ -86,8 +87,7 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&fd))
-            terminate(errno, "Unable to close file descriptor %d", fd);
+        closeFd(&fd);
 
         free(buf);
     });
@@ -99,10 +99,13 @@ Finally:
 const char *
 fetchSystemIncarnation(void)
 {
-    if (errno = pthread_once(&sBootIncarnationOnce, fetchSystemIncarnation_))
-        terminate(
-            errno,
-            "Unable to fetch system incarnation");
+    ABORT_IF(
+        (errno = pthread_once(&sBootIncarnationOnce, fetchSystemIncarnation_)),
+        {
+            terminate(
+                errno,
+                "Unable to fetch system incarnation");
+        });
 
     if ( ! sBootIncarnation)
         errno = sBootIncarnationErr;

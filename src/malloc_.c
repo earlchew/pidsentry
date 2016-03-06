@@ -55,19 +55,16 @@ malloc(size_t aSize)
 
     struct ThreadSigMask threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        goto Finally;
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
-    block = __libc_malloc(aSize);
+    ERROR_UNLESS(
+        (block = __libc_malloc(aSize)));
 
 Finally:
 
     FINALLY
     ({
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(&threadSigMask);
     });
 
     return block;
@@ -81,19 +78,16 @@ valloc(size_t aSize)
 
     struct ThreadSigMask threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        goto Finally;
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
-    block = __libc_valloc(aSize);
+    ERROR_UNLESS(
+        (block = __libc_valloc(aSize)));
 
 Finally:
 
     FINALLY
     ({
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(&threadSigMask);
     });
 
     return block;
@@ -107,19 +101,16 @@ pvalloc(size_t aSize)
 
     struct ThreadSigMask threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        goto Finally;
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
-    block = __libc_pvalloc(aSize);
+    ERROR_UNLESS(
+        (block = __libc_pvalloc(aSize)));
 
 Finally:
 
     FINALLY
     ({
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(&threadSigMask);
     });
 
     return block;
@@ -131,17 +122,11 @@ free(void *aBlock)
 {
     struct ThreadSigMask threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        terminate(
-            errno,
-            "Unable to push thread signal mask");
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
     __libc_free(aBlock);
 
-    if (popThreadSigMask(&threadSigMask))
-        terminate(
-            errno,
-            "Unable to pop thread signal mask");
+    popThreadSigMask(&threadSigMask);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -159,19 +144,16 @@ memalign(size_t aAlign, size_t aSize)
 
     struct ThreadSigMask threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        goto Finally;
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
-    block = __libc_memalign(aAlign, aSize);
+    ERROR_UNLESS(
+        (block = __libc_memalign(aAlign, aSize)));
 
 Finally:
 
     FINALLY
     ({
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(&threadSigMask);
     });
 
     return block;
@@ -192,19 +174,16 @@ realloc(void *aBlock, size_t aSize)
 
     struct ThreadSigMask threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        goto Finally;
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
-    block = __libc_realloc(aBlock, aSize);
+    ERROR_UNLESS(
+        (block = __libc_realloc(aBlock, aSize)));
 
 Finally:
 
     FINALLY
     ({
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(&threadSigMask);
     });
 
     return block;
@@ -218,19 +197,16 @@ calloc(size_t aSize, size_t aElems)
 
     struct ThreadSigMask threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        goto Finally;
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
-    block = __libc_calloc(aSize, aElems);
+    ERROR_UNLESS(
+        (block = __libc_calloc(aSize, aElems)));
 
 Finally:
 
     FINALLY
     ({
-        if (popThreadSigMask(&threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(&threadSigMask);
     });
 
     return block;
@@ -243,30 +219,24 @@ posix_memalign(void **aBlock, size_t aAlign, size_t aSize)
     int rc;
 
     struct ThreadSigMask  threadSigMask_;
-    struct ThreadSigMask *threadSigMask = 0;
+    struct ThreadSigMask *threadSigMask;
 
-    if (pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0))
-    {
-        rc = errno;
-        goto Finally;
-    }
-    threadSigMask = &threadSigMask_;
+    threadSigMask = pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
 
     size_t words = aAlign / sizeof(void *);
 
-    if ((aAlign % sizeof(void *)) || ! aAlign || (words & (words-1)))
-    {
-        rc = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        (aAlign % sizeof(void *)) || ! aAlign || (words & (words-1)),
+        {
+            rc = EINVAL;
+        });
 
-    void *block = __libc_memalign(aAlign, aSize);
-
-    if ( ! block)
-    {
-        rc = errno;
-        goto Finally;
-    }
+    void *block;
+    ERROR_UNLESS(
+        (block = __libc_memalign(aAlign, aSize)),
+        {
+            rc = errno;
+        });
 
     *aBlock = block;
 
@@ -276,10 +246,7 @@ Finally:
 
     FINALLY
     ({
-        if (popThreadSigMask(threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(threadSigMask);
     });
 
     return rc;

@@ -34,12 +34,4 @@
 #define STRINGIFY_(Text_) #Text_
 #define STRINGIFY(Text_)  STRINGIFY_(Text_)
 
-#define RACE(...) \
-    do                    \
-    {                     \
-        testSleep(0);     \
-        __VA_ARGS__;      \
-        testSleep(0);     \
-    } while (0)
-
 #endif /* MACROS_H */

@@ -47,13 +47,13 @@ struct SocketPair
 int
 createSocketPair(struct SocketPair *self, unsigned aFlags);
 
-int
+void
 closeSocketPair(struct SocketPair *self);
 
-int
+void
 closeSocketPairParent(struct SocketPair *self);
 
-int
+void
 closeSocketPairChild(struct SocketPair *self);
 
 /* -------------------------------------------------------------------------- */

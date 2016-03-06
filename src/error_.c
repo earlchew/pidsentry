@@ -50,14 +50,22 @@ static struct
     struct
     {
         unsigned          mLevel;
+        unsigned          mSequence;
         struct ErrorFrame mFrame[64];
     } mStack_[ErrorFrameStackKinds], *mStack;
 
 } __thread sErrorStack_;
 
 /* -------------------------------------------------------------------------- */
+static pid_t
+gettid_(void)
+{
+    return syscall(SYS_gettid);
+}
+
+/* -------------------------------------------------------------------------- */
 void
-pushErrorFrameLevel(const struct ErrorFrame *aFrame, int aErrno)
+addErrorFrame(const struct ErrorFrame *aFrame, int aErrno)
 {
     if ( ! sErrorStack_.mStack)
         sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
@@ -73,12 +81,38 @@ pushErrorFrameLevel(const struct ErrorFrame *aFrame, int aErrno)
 
 /* -------------------------------------------------------------------------- */
 void
-resetErrorFrameLevel(void)
+restartErrorFrameSequence(void)
 {
     if ( ! sErrorStack_.mStack)
         sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
 
-    sErrorStack_.mStack->mLevel = 0;
+    sErrorStack_.mStack->mLevel = sErrorStack_.mStack->mSequence;
+}
+
+/* -------------------------------------------------------------------------- */
+struct ErrorFrameSequence
+pushErrorFrameSequence(void)
+{
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+
+    unsigned sequence = sErrorStack_.mStack->mSequence;
+
+    sErrorStack_.mStack->mSequence = sErrorStack_.mStack->mLevel;
+
+    return (struct ErrorFrameSequence)
+    {
+        .mSequence = sequence,
+    };
+}
+
+/* -------------------------------------------------------------------------- */
+void
+popErrorFrameSequence(struct ErrorFrameSequence aSequence)
+{
+    restartErrorFrameSequence();
+
+    sErrorStack_.mStack->mSequence = aSequence.mSequence;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -121,29 +155,27 @@ ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
 
 /* -------------------------------------------------------------------------- */
 void
-logErrorFrameWarning(void)
+logErrorFrameSequence(void)
 {
     if ( ! sErrorStack_.mStack)
         sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
 
-    for (unsigned ix = 0; ix < sErrorStack_.mStack->mLevel; ++ix)
-    {
-        warn_(
-            sErrorStack_.mStack->mFrame[ix].mErrno,
-            sErrorStack_.mStack->mFrame[ix].mFile,
-            sErrorStack_.mStack->mFrame[ix].mLine,
-            "Error frame %u - %s - %s",
-            sErrorStack_.mStack->mLevel - ix - 1,
-            sErrorStack_.mStack->mFrame[ix].mName,
-            sErrorStack_.mStack->mFrame[ix].mText);
-    }
-}
+    unsigned seqLen =
+        sErrorStack_.mStack->mLevel - sErrorStack_.mStack->mSequence;
 
-/* -------------------------------------------------------------------------- */
-static pid_t
-gettid_(void)
-{
-    return syscall(SYS_gettid);
+    for (unsigned ix = 0; ix < seqLen; ++ix)
+    {
+        unsigned frame = sErrorStack_.mStack->mSequence + ix;
+
+        warn_(
+            sErrorStack_.mStack->mFrame[frame].mErrno,
+            sErrorStack_.mStack->mFrame[frame].mName,
+            sErrorStack_.mStack->mFrame[frame].mFile,
+            sErrorStack_.mStack->mFrame[frame].mLine,
+            "Error frame %u - %s",
+            seqLen - ix - 1,
+            sErrorStack_.mStack->mFrame[frame].mText);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -154,11 +186,11 @@ tryErrTextLength_(int aErrCode, size_t *aSize)
 
     char errCodeText[*aSize];
 
-    errno = 0;
-    const char *errText =
-        strerror_r(aErrCode, errCodeText, sizeof(errCodeText));
-    if (errno)
-        goto Finally;
+    const char *errText;
+    ERROR_IF(
+        (errno = 0,
+         errText = strerror_r(aErrCode, errCodeText, sizeof(errCodeText)),
+         errno));
 
     *aSize = errCodeText != errText ? 1 : strlen(errCodeText);
 
@@ -176,14 +208,14 @@ findErrTextLength_(int aErrCode)
 {
     size_t rc = 0;
 
-    size_t textCapacity = testMode(0) ? 2 : 128;
+    size_t textCapacity = testMode(TestLevelRace) ? 2 : 128;
 
     while (1)
     {
         size_t textSize = textCapacity;
 
-        if (tryErrTextLength_(aErrCode, &textSize))
-            goto Finally;
+        ERROR_IF(
+            tryErrTextLength_(aErrCode, &textSize));
 
         if (textCapacity > textSize)
         {
@@ -217,7 +249,9 @@ dprint_(
     uint64_t               aElapsed_m,
     uint64_t               aElapsed_s,
     uint64_t               aElapsed_ms,
-    const char            *aFile, unsigned aLine,
+    const char            *aFunction,
+    const char            *aFile,
+    unsigned               aLine,
     const char            *aFmt, va_list aArgs)
 {
 
@@ -232,16 +266,16 @@ dprint_(
                     STDERR_FILENO,
                     "%s: [%04" PRIu64 ":%02" PRIu64
                     ":%02" PRIu64
-                    ".%03" PRIu64 " %jd %s:%u] ",
+                    ".%03" PRIu64 " %jd %s %s:%u] ",
                     ownProcessName(),
                     aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
-                    aPid, aFile, aLine);
+                    aPid, aFunction, aFile, aLine);
             else
                 dprintf(
                     STDERR_FILENO,
-                    "%s: [%jd %s:%u] ",
+                    "%s: [%jd %s %s:%u] ",
                     ownProcessName(),
-                    aPid, aFile, aLine);
+                    aPid, aFunction, aFile, aLine);
         }
         else
         {
@@ -250,16 +284,16 @@ dprint_(
                     STDERR_FILENO,
                     "%s: [%04" PRIu64 ":%02" PRIu64
                     ":%02" PRIu64
-                    ".%03" PRIu64 " %jd:%jd %s:%u] ",
+                    ".%03" PRIu64 " %jd:%jd %s %s:%u] ",
                     ownProcessName(),
                     aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
-                    aPid, aTid, aFile, aLine);
+                    aPid, aTid, aFunction, aFile, aLine);
             else
                 dprintf(
                     STDERR_FILENO,
-                    "%s: [%jd:%jd %s:%u] ",
+                    "%s: [%jd:%jd %s %s:%u] ",
                     ownProcessName(),
-                    aPid, aTid, aFile, aLine);
+                    aPid, aTid, aFunction, aFile, aLine);
         }
 
         if (EWOULDBLOCK != aLockErr)
@@ -286,7 +320,9 @@ dprintf_(
     uint64_t               aElapsed_m,
     uint64_t               aElapsed_s,
     uint64_t               aElapsed_ms,
-    const char            *aFile, unsigned aLine,
+    const char            *aFunction,
+    const char            *aFile,
+    unsigned               aLine,
     const char            *aFmt, ...)
 {
     va_list args;
@@ -296,7 +332,7 @@ dprintf_(
             aErrCode, aErrText,
             aPid, aTid,
             aElapsed, aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
-            aFile, aLine, aFmt, args);
+            aFunction, aFile, aLine, aFmt, args);
     va_end(args);
 }
 
@@ -310,7 +346,7 @@ static struct {
 static void
 print_(
     int aErrCode,
-    const char *aFile, unsigned aLine,
+    const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, va_list aArgs)
 {
     FINALLY
@@ -387,7 +423,7 @@ print_(
                     aErrCode, errText,
                     pid, tid,
                     &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                    aFile, aLine,
+                    aFunction, aFile, aLine,
                     aFmt, aArgs);
         }
         else
@@ -405,16 +441,16 @@ print_(
                             sPrintBuf.mFile,
                             "%s: [%04" PRIu64 ":%02" PRIu64
                             ":%02" PRIu64
-                            ".%03" PRIu64 " %jd %s:%u] ",
+                            ".%03" PRIu64 " %jd %s %s:%u] ",
                             ownProcessName(),
                             elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                            pid, aFile, aLine);
+                            pid, aFunction, aFile, aLine);
                     else
                         fprintf(
                             sPrintBuf.mFile,
-                            "%s: [%jd %s:%u] ",
+                            "%s: [%jd %s %s:%u] ",
                             ownProcessName(),
-                            pid, aFile, aLine);
+                            pid, aFunction, aFile, aLine);
                 }
                 else
                 {
@@ -423,16 +459,16 @@ print_(
                             sPrintBuf.mFile,
                             "%s: [%04" PRIu64 ":%02" PRIu64
                             ":%02" PRIu64
-                            ".%03" PRIu64 " %jd:%jd %s:%u] ",
+                            ".%03" PRIu64 " %jd:%jd %s %s:%u] ",
                             ownProcessName(),
                             elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                            pid, tid, aFile, aLine);
+                            pid, tid, aFunction, aFile, aLine);
                     else
                         fprintf(
                             sPrintBuf.mFile,
-                            "%s: [%jd:%jd %s:%u] ",
+                            "%s: [%jd:%jd %s %s:%u] ",
                             ownProcessName(),
-                            pid, tid, aFile, aLine);
+                            pid, tid, aFunction, aFile, aLine);
                 }
             }
 
@@ -457,7 +493,7 @@ print_(
                     errno, 0,
                     pid, tid,
                     &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                    __FILE__, __LINE__,
+                    __func__, __FILE__, __LINE__,
                     "Unable to release process lock");
                 abort();
             }
@@ -467,14 +503,14 @@ print_(
 
 /* -------------------------------------------------------------------------- */
 void
-ensure_(const char *aFile, unsigned aLine, ...)
+ensure_(const char *aFunction, const char *aFile, unsigned aLine, ...)
 {
     FINALLY
     ({
         va_list args;
 
         va_start(args, aLine);
-        print_(0, aFile, aLine, "Assertion failure - %s", args);
+        print_(0, aFunction, aFile, aLine, "Assertion failure - %s", args);
         va_end(args);
 
         while (1)
@@ -485,16 +521,21 @@ ensure_(const char *aFile, unsigned aLine, ...)
 /* -------------------------------------------------------------------------- */
 void
 debug_(
-    const char *aFile, unsigned aLine,
+    const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
 {
     FINALLY
     ({
         va_list args;
 
+        struct ErrorFrameSequence frameSequence =
+            pushErrorFrameSequence();
+
         va_start(args, aFmt);
-        print_(0, aFile, aLine, aFmt, args);
+        print_(0, aFunction, aFile, aLine, aFmt, args);
         va_end(args);
+
+        popErrorFrameSequence(frameSequence);
     });
 }
 
@@ -502,16 +543,21 @@ debug_(
 void
 warn_(
     int aErrCode,
-    const char *aFile, unsigned aLine,
+    const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
 {
     FINALLY
     ({
         va_list args;
 
+        struct ErrorFrameSequence frameSequence =
+            pushErrorFrameSequence();
+
         va_start(args, aFmt);
-        print_(aErrCode, aFile, aLine, aFmt, args);
+        print_(aErrCode, aFunction, aFile, aLine, aFmt, args);
         va_end(args);
+
+        popErrorFrameSequence(frameSequence);
     });
 }
 
@@ -519,7 +565,40 @@ warn_(
 void
 terminate_(
     int aErrCode,
-    const char *aFile, unsigned aLine,
+    const char *aFunction, const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
+{
+    FINALLY
+    ({
+        va_list args;
+
+        struct ErrorFrameSequence frameSequence =
+            pushErrorFrameSequence();
+
+        if (gOptions.mDebug)
+        {
+            va_start(args, aFmt);
+            print_(aErrCode, aFunction, aFile, aLine, aFmt, args);
+            va_end(args);
+        }
+
+        popErrorFrameSequence(frameSequence);
+
+        logErrorFrameSequence();
+
+        va_start(args, aFmt);
+        print_(aErrCode, 0, 0, 0, aFmt, args);
+        va_end(args);
+
+        abortProcess();
+    });
+}
+
+/* -------------------------------------------------------------------------- */
+void
+exit_(
+    int aErrCode,
+    const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
 {
     FINALLY
@@ -528,17 +607,23 @@ terminate_(
 
         if (gOptions.mDebug)
         {
+            struct ErrorFrameSequence frameSequence =
+                pushErrorFrameSequence();
+
             va_start(args, aFmt);
-            print_(aErrCode, aFile, aLine, aFmt, args);
+            print_(aErrCode, aFunction, aFile, aLine, aFmt, args);
             va_end(args);
+
+            popErrorFrameSequence(frameSequence);
+
+            logErrorFrameSequence();
         }
 
-        logErrorFrameWarning();
-
         va_start(args, aFmt);
-        print_(aErrCode, 0, 0, aFmt, args);
+        print_(aErrCode, 0, 0, 0, aFmt, args);
         va_end(args);
-        _exit(EXIT_FAILURE);
+
+        exitProcess(EXIT_FAILURE);
     });
 }
 
@@ -552,10 +637,9 @@ Error_init(void)
 
     if (1 == ++sInit_)
     {
-        FILE *file = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize);
-
-        if ( ! file)
-            goto Finally;
+        FILE *file;
+        ERROR_UNLESS(
+            (file = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize)));
 
         applock = createProcessAppLock();
 
@@ -575,37 +659,25 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 Error_exit(void)
 {
-    int rc = -1;
-
-    struct ProcessAppLock *applock = 0;
-
     if (0 == --sInit_)
     {
-        applock = createProcessAppLock();
+        struct ProcessAppLock *applock = createProcessAppLock();
 
-        if (fclose(sPrintBuf.mFile))
-            goto Finally;
-
-        free(sPrintBuf.mBuf);
+        FILE *file = sPrintBuf.mFile;
 
         sPrintBuf.mFile = 0;
         sPrintBuf.mBuf  = 0;
         sPrintBuf.mSize = 0;
-    }
 
-    rc = 0;
+        ABORT_IF(fclose(file));
 
-Finally:
+        free(sPrintBuf.mBuf);
 
-    FINALLY
-    ({
         destroyProcessAppLock(applock);
-    });
-
-    return rc;
+    }
 }
 
 /* -------------------------------------------------------------------------- */

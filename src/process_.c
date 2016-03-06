@@ -75,6 +75,7 @@ static struct ThreadSigMutex  sProcessSigMutex = THREAD_SIG_MUTEX_INITIALIZER;
 static struct ProcessLock     sProcessLock_[2];
 static struct ProcessLock    *sProcessLock[2];
 static unsigned               sActiveProcessLock;
+static unsigned               sProcessAbort;
 
 static struct ProcessSignalThread sProcessSignalThread =
 {
@@ -132,6 +133,18 @@ static struct ProcessSignalVector
 } sSignalVectors[NSIG];
 
 static void
+dispatchSigAbort_(void)
+{
+    if (sProcessAbort)
+    {
+        /* A handler for SIGABRT is established, but abortProcess() was
+         * invoked. Abort the process from here. */
+
+        abortProcess();
+    }
+}
+
+static void
 dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
 {
     FINALLY
@@ -144,21 +157,29 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
               formatProcessSignalName(&sigName, aSigNum));
 
         lockMutex(sv->mMutex);
-        if (SIG_DFL != sv->mAction.sa_handler &&
-            SIG_IGN != sv->mAction.sa_handler)
         {
-            ++sProcessSignalContext;
+            if (SIGABRT == aSigNum)
+                dispatchSigAbort_();
 
-            enum ErrorFrameStackKind stackKind =
-                switchErrorFrameStack(ErrorFrameStackSignal);
+            if (SIG_DFL != sv->mAction.sa_handler &&
+                SIG_IGN != sv->mAction.sa_handler)
+            {
+                ++sProcessSignalContext;
 
-            resetErrorFrameLevel();
+                enum ErrorFrameStackKind stackKind =
+                    switchErrorFrameStack(ErrorFrameStackSignal);
 
-            sv->mAction.sa_sigaction(aSigNum, aSigInfo, aSigContext);
+                struct ErrorFrameSequence frameSequence =
+                    pushErrorFrameSequence();
 
-            switchErrorFrameStack(stackKind);
+                sv->mAction.sa_sigaction(aSigNum, aSigInfo, aSigContext);
 
-            --sProcessSignalContext;
+                popErrorFrameSequence(frameSequence);
+
+                switchErrorFrameStack(stackKind);
+
+                --sProcessSignalContext;
+            }
         }
         unlockMutex(sv->mMutex);
     });
@@ -177,21 +198,29 @@ dispatchSigHandler_(int aSigNum)
               formatProcessSignalName(&sigName, aSigNum));
 
         lockMutex(sv->mMutex);
-        if (SIG_DFL != sv->mAction.sa_handler &&
-            SIG_IGN != sv->mAction.sa_handler)
         {
-            ++sProcessSignalContext;
+            if (SIGABRT == aSigNum)
+                dispatchSigAbort_();
 
-            enum ErrorFrameStackKind stackKind =
-                switchErrorFrameStack(ErrorFrameStackSignal);
+            if (SIG_DFL != sv->mAction.sa_handler &&
+                SIG_IGN != sv->mAction.sa_handler)
+            {
+                ++sProcessSignalContext;
 
-            resetErrorFrameLevel();
+                enum ErrorFrameStackKind stackKind =
+                    switchErrorFrameStack(ErrorFrameStackSignal);
 
-            sv->mAction.sa_handler(aSigNum);
+                struct ErrorFrameSequence frameSequence =
+                    pushErrorFrameSequence();
 
-            switchErrorFrameStack(stackKind);
+                sv->mAction.sa_handler(aSigNum);
 
-            --sProcessSignalContext;
+                popErrorFrameSequence(frameSequence);
+
+                switchErrorFrameStack(stackKind);
+
+                --sProcessSignalContext;
+            }
         }
         unlockMutex(sv->mMutex);
     });
@@ -224,9 +253,8 @@ changeSigAction_(unsigned          aSigNum,
          * having to deal with too many levels of re-entrancy. */
 
         sigset_t filledSigSet;
-
-        if (sigfillset(&filledSigSet))
-            goto Finally;
+        ERROR_IF(
+            sigfillset(&filledSigSet));
 
         nextAction.sa_mask   = filledSigSet;
         nextAction.sa_flags &= ~ SA_NODEFER;
@@ -240,16 +268,15 @@ changeSigAction_(unsigned          aSigNum,
 
     int sigList[] = { aSigNum, 0 };
 
-    if (pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, sigList))
-        goto Finally;
+    pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, sigList);
+
     threadSigMask = &threadSigMask_;
 
     lock = lockMutex(sSignalVectors[aSigNum].mMutex);
 
     struct sigaction prevAction;
-
-    if (sigaction(aSigNum, &nextAction, &prevAction))
-        goto Finally;
+    ERROR_IF(
+        sigaction(aSigNum, &nextAction, &prevAction));
 
     /* Do not overwrite the output result unless the underlying
      * sigaction() call succeeds. */
@@ -267,10 +294,7 @@ Finally:
     ({
         lock = unlockMutex(lock);
 
-        if (popThreadSigMask(threadSigMask))
-            terminate(
-                errno,
-                "Unable to pop thread signal mask");
+        popThreadSigMask(threadSigMask);
     });
 
     return rc;
@@ -293,10 +317,11 @@ ignoreProcessSigPipe(void)
 {
     int rc = -1;
 
-    if (changeSigAction_(SIGPIPE,
-                         (struct sigaction) { .sa_handler = SIG_IGN },
-                         &sSigPipeAction))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGPIPE,
+            (struct sigaction) { .sa_handler = SIG_IGN },
+            &sSigPipeAction));
 
     rc = 0;
 
@@ -315,8 +340,8 @@ resetProcessSigPipe_(void)
     if (SIG_ERR != sSigPipeAction.sa_handler ||
         (sSigPipeAction.sa_flags & SA_SIGINFO))
     {
-        if (changeSigAction_(SIGPIPE, sSigPipeAction, 0))
-            goto Finally;
+        ERROR_IF(
+            changeSigAction_(SIGPIPE, sSigPipeAction, 0));
 
         sSigPipeAction.sa_handler = SIG_ERR;
         sSigPipeAction.sa_flags   = 0;
@@ -375,9 +400,10 @@ hookProcessSigCont_(void)
 {
     int rc = -1;
 
-    if (changeSigAction_(SIGCONT,
-                         (struct sigaction) { .sa_handler = sigCont_ }, 0))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGCONT,
+            (struct sigaction) { .sa_handler = sigCont_ }, 0));
 
     rc = 0;
 
@@ -393,9 +419,11 @@ unhookProcessSigCont_(void)
 {
     int rc = -1;
 
-    if (changeSigAction_(SIGCONT,
-                         (struct sigaction) { .sa_handler = SIG_DFL }, 0))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGCONT,
+            (struct sigaction) { .sa_handler = SIG_DFL },
+            0));
 
     rc = 0;
 
@@ -421,8 +449,8 @@ resetProcessSigCont_(void)
 {
     int rc = -1;
 
-    if (updateProcessSigContMethod_(VoidMethod(0, 0)))
-        goto Finally;
+    ERROR_IF(
+        updateProcessSigContMethod_(VoidMethod(0, 0)));
 
     rc = 0;
 
@@ -438,8 +466,8 @@ watchProcessSigCont(struct VoidMethod aMethod)
 {
     int rc = -1;
 
-    if (updateProcessSigContMethod_(aMethod))
-        goto Finally;
+    ERROR_IF(
+        updateProcessSigContMethod_(aMethod));
 
     rc = 0;
 
@@ -468,7 +496,7 @@ fetchProcessSigContTracker_(void)
 }
 
 struct ProcessSigContTracker
-ProcessSigContTracker(void)
+ProcessSigContTracker_(void)
 {
     return (struct ProcessSigContTracker)
     {
@@ -508,8 +536,11 @@ sigStop_(int aSigNum)
     {
         debug(1, "detected SIGTSTP");
 
-        if (raise(SIGSTOP))
-            terminate(errno, "Unable to stop process");
+        ABORT_IF(
+            raise(SIGSTOP),
+            {
+                terminate(errno, "Unable to stop process");
+            });
     }
     else
     {
@@ -525,9 +556,11 @@ hookProcessSigStop_(void)
 {
     int rc = -1;
 
-    if (changeSigAction_(SIGTSTP,
-                         (struct sigaction) { .sa_handler = sigStop_ }, 0))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGTSTP,
+            (struct sigaction) { .sa_handler = sigStop_ },
+            0));
 
     rc = 0;
 
@@ -543,9 +576,11 @@ unhookProcessSigStop_(void)
 {
     int rc = -1;
 
-    if (changeSigAction_(SIGTSTP,
-                         (struct sigaction) { .sa_handler = SIG_DFL }, 0))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGTSTP,
+            (struct sigaction) { .sa_handler = SIG_DFL },
+            0));
 
     rc = 0;
 
@@ -571,8 +606,8 @@ resetProcessSigStop_(void)
 {
     int rc = -1;
 
-    if (updateProcessSigStopMethod_(VoidMethod(0, 0)))
-        goto Finally;
+    ERROR_IF(
+        updateProcessSigStopMethod_(VoidMethod(0, 0)));
 
     rc = 0;
 
@@ -588,8 +623,8 @@ watchProcessSigStop(struct VoidMethod aMethod)
 {
     int rc = -1;
 
-    if (updateProcessSigStopMethod_(aMethod))
-        goto Finally;
+    ERROR_IF(
+        updateProcessSigStopMethod_(aMethod));
 
     rc = 0;
 
@@ -624,9 +659,11 @@ resetProcessChildrenWatch_(void)
 {
     int rc = -1;
 
-    if (changeSigAction_(SIGCHLD,
-                         (struct sigaction) { .sa_handler = SIG_DFL }, 0))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGCHLD,
+            (struct sigaction) { .sa_handler = SIG_DFL },
+            0));
 
     sSigChldMethod = VoidMethod(0, 0);
 
@@ -648,9 +685,11 @@ watchProcessChildren(struct VoidMethod aMethod)
 
     sSigChldMethod = aMethod;
 
-    if (changeSigAction_(SIGCHLD,
-                         (struct sigaction) { .sa_handler = sigChld_ }, 0))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGCHLD,
+            (struct sigaction) { .sa_handler = sigChld_ },
+            0));
 
     rc = 0;
 
@@ -705,11 +744,11 @@ resetProcessClockWatch_(void)
             .it_interval = { .tv_sec = 0 },
         };
 
-        if (setitimer(ITIMER_REAL, &disableClock, 0))
-            goto Finally;
+        ERROR_IF(
+            setitimer(ITIMER_REAL, &disableClock, 0));
 
-        if (changeSigAction_(SIGALRM, sClockTickSigAction, 0))
-            goto Finally;
+        ERROR_IF(
+            changeSigAction_(SIGALRM, sClockTickSigAction, 0));
 
         sClockMethod = VoidMethod(0, 0);
 
@@ -741,10 +780,11 @@ watchProcessClock(struct VoidMethod aMethod,
     struct sigaction  prevAction_;
     struct sigaction *prevAction = 0;
 
-    if (changeSigAction_(SIGALRM,
-                         (struct sigaction) { .sa_handler = clockTick_ },
-                         &prevAction_))
-        goto Finally;
+    ERROR_IF(
+        changeSigAction_(
+            SIGALRM,
+            (struct sigaction) { .sa_handler = clockTick_ },
+            &prevAction_));
     prevAction = &prevAction_;
 
     /* Make sure that there are no timers already running. The
@@ -752,20 +792,20 @@ watchProcessClock(struct VoidMethod aMethod,
 
     struct itimerval clockTimer;
 
-    if (getitimer(ITIMER_REAL, &clockTimer))
-        goto Finally;
+    ERROR_IF(
+        getitimer(ITIMER_REAL, &clockTimer));
 
-    if (clockTimer.it_value.tv_sec || clockTimer.it_value.tv_usec)
-    {
-        errno = EPERM;
-        goto Finally;
-    }
+    ERROR_IF(
+        clockTimer.it_value.tv_sec || clockTimer.it_value.tv_usec,
+        {
+            errno = EPERM;
+        });
 
     clockTimer.it_value    = timeValFromNanoSeconds(sClockTickPeriod.duration);
     clockTimer.it_interval = clockTimer.it_value;
 
-    if (setitimer(ITIMER_REAL, &clockTimer, 0))
-        goto Finally;
+    ERROR_IF(
+        setitimer(ITIMER_REAL, &clockTimer, 0));
 
     sClockTickSigAction = *prevAction;
     sClockTickPeriod    = aClockPeriod;
@@ -779,8 +819,11 @@ Finally:
         if (rc)
         {
             if (prevAction)
-                if (changeSigAction_(SIGALRM, *prevAction, 0))
-                    terminate(errno, "Unable to revert SIGALRM handler");
+                ABORT_IF(
+                    changeSigAction_(SIGALRM, *prevAction, 0),
+                    {
+                        terminate(errno, "Unable to revert SIGALRM handler");
+                    });
 
             sClockMethod = clockMethod;
         }
@@ -837,10 +880,11 @@ watchProcessSignals(struct VoidIntMethod aMethod)
     {
         struct SignalWatch *watchedSig = sWatchedSignals + ix;
 
-        if (changeSigAction_(watchedSig->mSigNum,
-                             (struct sigaction) { .sa_handler = caughtSignal_ },
-                             &watchedSig->mSigAction))
-            goto Finally;
+        ERROR_IF(
+            changeSigAction_(
+                watchedSig->mSigNum,
+                (struct sigaction) { .sa_handler = caughtSignal_ },
+                &watchedSig->mSigAction));
 
         watchedSig->mWatched = true;
     }
@@ -861,13 +905,16 @@ Finally:
                 {
                     struct ProcessSignalName sigName;
 
-                    if (changeSigAction_(
-                            watchedSig->mSigNum, watchedSig->mSigAction, 0))
-                        terminate(
-                            errno,
-                            "Unable to revert action for %s",
-                            formatProcessSignalName(
-                                &sigName, watchedSig->mSigNum));
+                    ABORT_IF(
+                        changeSigAction_(
+                            watchedSig->mSigNum, watchedSig->mSigAction, 0),
+                        {
+                            terminate(
+                                errno,
+                                "Unable to revert action for %s",
+                                formatProcessSignalName(
+                                    &sigName, watchedSig->mSigNum));
+                        });
 
                     watchedSig->mWatched = false;
                 }
@@ -926,20 +973,16 @@ resetSignals_(void)
 {
     int rc = -1;
 
-    if (resetProcessSigStop_())
-        goto Finally;
-
-    if (resetProcessSigCont_())
-        goto Finally;
-
-    if (resetProcessClockWatch_())
-        goto Finally;
-
-    if (resetProcessSignalsWatch_())
-        goto Finally;
-
-    if (resetProcessChildrenWatch_())
-        goto Finally;
+    ERROR_IF(
+        resetProcessSigStop_());
+    ERROR_IF(
+        resetProcessSigCont_());
+    ERROR_IF(
+        resetProcessClockWatch_());
+    ERROR_IF(
+        resetProcessSignalsWatch_());
+    ERROR_IF(
+        resetProcessChildrenWatch_());
 
     /* Do not call resetProcessSigPipe_() here since this function is
      * called from forkProcess() and that would mean that the child
@@ -948,7 +991,7 @@ resetSignals_(void)
      * SIGPIPE delivered.
      *
      *    if (resetProcessSigPipe_())
-     *       goto Finally;
+     *       goto Finally_;
      */
 
     rc = 0;
@@ -1006,13 +1049,14 @@ fetchProcessState(pid_t aPid)
     sprintf(processStatFileName,
             sProcessStatFileNameFmt, processDirName.mDirName);
 
-    statfd = open(processStatFileName, O_RDONLY);
-    if (-1 == statfd)
-        goto Finally;
+    ERROR_IF(
+        (statfd = open(processStatFileName, O_RDONLY),
+         -1 == statfd));
 
-    ssize_t statlen = readFdFully(statfd, &statbuf, 0);
-    if (-1 == statlen)
-        goto Finally;
+    ssize_t statlen;
+    ERROR_IF(
+        (statlen = readFdFully(statfd, &statbuf, 0),
+         -1 == statlen));
 
     char *statend = statbuf + statlen;
 
@@ -1025,8 +1069,11 @@ fetchProcessState(pid_t aPid)
                 switch (bufptr[1])
                 {
                 default:
-                    errno = ENOSYS;
-                    goto Finally;
+                    ERROR_IF(
+                        true,
+                        {
+                            errno = ENOSYS;
+                        });
 
                 case 'R': rc = ProcessStateRunning;  break;
                 case 'S': rc = ProcessStateSleeping; break;
@@ -1045,9 +1092,7 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&statfd))
-            terminate(
-                errno, "Unable to close file descriptor %d", statfd);
+        closeFd(&statfd);
 
         free(statbuf);
     });
@@ -1069,17 +1114,16 @@ createProcessLock_(struct ProcessLock *self)
 
     char path[sizeof(pathFmt) + sizeof(pid_t) * CHAR_BIT];
 
-    if (-1 == sprintf(path, pathFmt, (intmax_t) getpid()))
-        goto Finally;
+    ERROR_IF(
+        0 > sprintf(path, pathFmt, (intmax_t) getpid()));
 
-    self->mFileName = strdup(path);
-    if ( ! self->mFileName)
-        goto Finally;
+    ERROR_UNLESS(
+        (self->mFileName = strdup(path)));
 
-    if (createFile(
+    ERROR_IF(
+        createFile(
             &self->mFile_,
-            open(self->mFileName, O_RDONLY | O_CLOEXEC)))
-        goto Finally;
+            open(self->mFileName, O_RDONLY | O_CLOEXEC)));
     self->mFile = &self->mFile_;
 
     rc = 0;
@@ -1090,11 +1134,7 @@ Finally:
     ({
         if (rc)
         {
-            if (closeFile(self->mFile))
-                terminate(
-                    errno,
-                    "Unable to close file descriptor %d",
-                    self->mFile->mFd);
+            closeFile(self->mFile);
 
             free(self->mFileName);
         }
@@ -1104,26 +1144,15 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static void
 closeProcessLock_(struct ProcessLock *self)
 {
-    int rc = -1;
-
     if (self)
     {
         free(self->mFileName);
 
-        if (closeFile(self->mFile))
-            goto Finally;
+        closeFile(self->mFile);
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1136,8 +1165,8 @@ lockProcessLock_(struct ProcessLock *self)
     {
         ensure(LOCK_UN == self->mLock);
 
-        if (lockFile(self->mFile, LOCK_EX))
-            goto Finally;
+        ERROR_IF(
+            lockFile(self->mFile, LOCK_EX));
 
         self->mLock = LOCK_EX;
     }
@@ -1152,28 +1181,17 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static void
 unlockProcessLock_(struct ProcessLock *self)
 {
-    int rc = -1;
-
     if (self)
     {
         ensure(LOCK_UN != self->mLock);
 
-        if (unlockFile(self->mFile))
-            goto Finally;
+        ABORT_IF(unlockFile(self->mFile));
 
         self->mLock = LOCK_UN;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1186,10 +1204,7 @@ signalThread_(void *self_)
      * in which signals can be delivered in the case that all other
      * threads are unable accept signals. */
 
-    if (popThreadSigMask(&sSigMask))
-        terminate(
-            errno,
-            "Unable to pop thread signal mask");
+    popThreadSigMask(&sSigMask);
 
     lockMutex(&self->mMutex);
     while ( ! self->mStopping)
@@ -1225,15 +1240,14 @@ Process_init(const char *aArg0)
 
         srandom(getpid());
 
-        if (createProcessLock_(&sProcessLock_[sActiveProcessLock]))
-            goto Finally;
+        ERROR_IF(
+            createProcessLock_(&sProcessLock_[sActiveProcessLock]));
         sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
 
-        if (Error_init())
-            goto Finally;
+        ERROR_IF(
+            Error_init());
 
-        if (pushThreadSigMask(&sSigMask, ThreadSigMaskBlock, 0))
-            goto Finally;
+        pushThreadSigMask(&sSigMask, ThreadSigMaskBlock, 0);
 
         createThread(
             &sProcessSignalThread.mThread, 0,
@@ -1253,11 +1267,9 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 Process_exit(void)
 {
-    int rc = -1;
-
     if (0 == --sInit)
     {
         struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
@@ -1274,21 +1286,11 @@ Process_exit(void)
 
         joinThread(&sProcessSignalThread.mThread);
 
-        if (Error_exit())
-            goto Finally;
+        Error_exit();
 
-        if (closeProcessLock_(processLock))
-            goto Finally;
+        closeProcessLock_(processLock);
         sProcessLock[sActiveProcessLock] = 0;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1305,8 +1307,8 @@ acquireProcessAppLock(void)
     {
         struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
-        if (processLock && lockProcessLock_(processLock))
-            goto Finally;
+        ERROR_IF(
+            processLock && lockProcessLock_(processLock));
     }
 
     rc = 0;
@@ -1334,8 +1336,8 @@ releaseProcessAppLock(void)
     {
         struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
 
-        if (processLock && unlockProcessLock_(processLock))
-            goto Finally;
+        if (processLock)
+            unlockProcessLock_(processLock);
     }
 
     rc = 0;
@@ -1356,8 +1358,11 @@ createProcessAppLock(void)
 {
     struct ProcessAppLock *self = &sProcessAppLock;
 
-    if (acquireProcessAppLock())
-        terminate(errno, "Unable to acquire application lock");
+    ABORT_IF(
+        acquireProcessAppLock(),
+        {
+            terminate(errno, "Unable to acquire application lock");
+        });
 
     return self;
 }
@@ -1370,8 +1375,11 @@ destroyProcessAppLock(struct ProcessAppLock *self)
     {
         ensure(&sProcessAppLock == self);
 
-        if (releaseProcessAppLock())
-            terminate(errno, "Unable to release application lock");
+        ABORT_IF(
+            releaseProcessAppLock(),
+            {
+                terminate(errno, "Unable to release application lock");
+            });
     }
 }
 
@@ -1390,18 +1398,19 @@ reapProcess(pid_t aPid, int *aStatus)
 {
     int rc = -1;
 
-    if (-1 == aPid || ! aPid)
-        goto Finally;
+    ERROR_IF(
+        -1 == aPid || ! aPid,
+        {
+            errno = EINVAL;
+        });
 
     pid_t pid;
 
     do
     {
-        pid = waitpid(aPid, aStatus, __WALL);
-
-        if (-1 == pid && EINTR != errno)
-            goto Finally;
-
+        ERROR_IF(
+            (pid = waitpid(aPid, aStatus, __WALL),
+             -1 == pid && EINTR != errno));
     } while (pid != aPid);
 
     rc = 0;
@@ -1422,9 +1431,9 @@ monitorProcess(pid_t aPid)
     siginfo_t siginfo;
 
     siginfo.si_pid = 0;
-    if (waitid(P_PID, aPid, &siginfo,
-               WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT))
-        goto Finally;
+    ERROR_IF(
+        waitid(P_PID, aPid, &siginfo,
+               WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT));
 
     if (siginfo.si_pid != aPid)
         rc = ProcessStatusRunning;
@@ -1433,8 +1442,11 @@ monitorProcess(pid_t aPid)
         switch (siginfo.si_code)
         {
         default:
-            errno = EINVAL;
-            goto Finally;
+            ERROR_IF(
+                true,
+                {
+                    errno = EINVAL;
+                });
 
         case CLD_EXITED:    rc = ProcessStatusExited;  break;
         case CLD_KILLED:    rc = ProcessStatusKilled;  break;
@@ -1470,9 +1482,10 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
     ensure( ! sProcessLock[inactiveProcessLock]);
 
 #ifdef __linux__
-    long clocktick = sysconf(_SC_CLK_TCK);
-    if (-1 == clocktick)
-        goto Finally;
+    long clocktick;
+    ERROR_IF(
+        (clocktick = sysconf(_SC_CLK_TCK),
+         -1 == clocktick));
 #endif
 
     /* Temporarily block all signals so that the child will not receive
@@ -1494,8 +1507,8 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
             sProcessLock[activeProcessLock] ==
             &sProcessLock_[activeProcessLock]);
 
-        if (createProcessLock_(&sProcessLock_[inactiveProcessLock]))
-            goto Finally;
+        ERROR_IF(
+            createProcessLock_(&sProcessLock_[inactiveProcessLock]));
         sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
     }
 
@@ -1506,7 +1519,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 
     pid_t childPid;
 
-    RACE
+    TEST_RACE
     ({
         childPid = fork();
     });
@@ -1519,10 +1532,8 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
          * to set its own process group */
 
         if (ForkProcessSetProcessGroup == aOption)
-        {
-            if (setpgid(childPid, aPgid ? aPgid : childPid))
-                goto Finally;
-        }
+            ERROR_IF(
+                setpgid(childPid, aPgid ? aPgid : childPid));
 
         /* On Linux, fetchProcessSignature() uses the process start
          * time from /proc/pid/stat, but that start time is measured
@@ -1557,22 +1568,22 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 
         if (ForkProcessSetProcessGroup == aOption)
         {
-            if (setpgid(0, aPgid))
-            {
-                err = "Unable to set process group";
-                goto Finally;
-            }
+            ERROR_IF(
+                setpgid(0, aPgid),
+                {
+                    err = "Unable to set process group";
+                });
         }
 
         /* Reset all the signals so that the child will not attempt
          * to catch signals. After that, reset the signal mask so
          * that the child will receive signals. */
 
-        if (resetSignals_())
-        {
-            err = "Unable to reset signal handlers";
-            goto Finally;
-        }
+        ERROR_IF(
+            resetSignals_(),
+            {
+                err = "Unable to reset signal handlers";
+            });
 
         /* This is the only thread running in the new process so
          * it is safe to release the process mutex here. */
@@ -1590,41 +1601,159 @@ Finally:
     ({
         int errcode = errno;
 
-        if (closeProcessLock_(sProcessLock[inactiveProcessLock]))
-            terminate(
-                errno,
-                "Unable to close process lock");
+        closeProcessLock_(sProcessLock[inactiveProcessLock]);
         sProcessLock[inactiveProcessLock] = 0;
 
         lock = unlockThreadSigMutex(lock);
 
-        if (err)
-            terminate(errcode, "%s", err);
+        ABORT_IF(
+            err,
+            {
+                terminate(errcode, "%s", err);
+            });
     });
 
     return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 execProcess(const char *aCmd, char **aArgv)
 {
-    if (popThreadSigMask(&sSigMask))
-        goto Finally;
+    int rc = -1;
+
+    popThreadSigMask(&sSigMask);
 
     /* Call resetProcessSigPipe_() here to ensure that SIGPIPE will be
      * delivered to the new program. Note that it is possible that there
      * was no previous call to forkProcess(), though this is normally
      * the case. */
 
-    if (resetProcessSigPipe_())
-        goto Finally;
+    ERROR_IF(
+        resetProcessSigPipe_());
 
     execvp(aCmd, aArgv);
 
 Finally:
 
     FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+exitProcess(int aStatus)
+{
+    exit(aStatus);
+
+    while (1)
+        raise(SIGKILL);
+}
+
+/* -------------------------------------------------------------------------- */
+void
+quitProcess(int aStatus)
+{
+    _exit(aStatus);
+
+    while (1)
+        raise(SIGKILL);
+}
+
+/* -------------------------------------------------------------------------- */
+void
+abortProcess(void)
+{
+    /* Other threads might be attaching or have attached a handler for SIGABRT,
+     * and the SIGABRT signal might be blocked.
+     *
+     * Also, multiple threads might call this function at the same time.
+     *
+     * Try to raise SIGABRT in this thread, but also mark sProcessAbort
+     * which will be noticed if a handler is already attached.
+     *
+     * Do not call back into any application libraries to avoid the risk
+     * of infinite recursion, however be aware that dispatchSigAbort_()
+     * might end up calling into this function recursively.
+     *
+     * Do not call abort(3) because that will try to flush IO streams
+     * and perform other activity that might fail. */
+
+    __sync_or_and_fetch(&sProcessAbort, 1);
+
+    do
+    {
+        sigset_t sigSet;
+
+        if (pthread_sigmask(SIG_SETMASK, 0, &sigSet))
+            break;
+
+        if (1 == sigismember(&sigSet, SIGABRT))
+        {
+            if (sigdelset(&sigSet, SIGABRT))
+                break;
+
+            if (pthread_sigmask(SIG_SETMASK, &sigSet, 0))
+                break;
+        }
+
+        for (unsigned ix = 0; 10 > ix; ++ix)
+        {
+            struct sigaction sigAction = { .sa_handler = SIG_DFL };
+
+            if (sigaction(SIGABRT, &sigAction, 0))
+                break;
+
+            /* There is a window here for another thread to configure SIGABRT
+             * to be ignored, or handled. So when SIGABRT is raised, it might
+             * not actually cause the process to abort. */
+
+            if ( ! testAction(TestLevelRace))
+            {
+                if (raise(SIGABRT))
+                    break;
+            }
+
+            sigset_t pendingSet;
+
+            if (sigpending(&pendingSet))
+                break;
+
+            int pendingSignal = sigismember(&pendingSet, SIGABRT);
+            if (-1 == pendingSignal)
+                break;
+
+            if (pendingSignal)
+            {
+                struct timespec sleepTime =
+                {
+                    .tv_sec  = 0,
+                    .tv_nsec = 100 * 1000 * 1000,
+                };
+
+                if (-1 == nanosleep(&sleepTime, 0) && EINTR != errno)
+                    break;
+            }
+        }
+    }
+    while (0);
+
+    /* There was an error trying to deliver SIGABRT to the process, so
+     * try one last time, then resort to killing the process. */
+
+    if ( ! testAction(TestLevelRace))
+        raise(SIGABRT);
+
+    while (1)
+    {
+        struct timespec sleepTime = { .tv_sec = 1 };
+
+        nanosleep(&sleepTime, 0);
+
+        if ( ! testAction(TestLevelRace))
+            raise(SIGKILL);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1703,16 +1832,16 @@ ownProcessBaseTime(void)
 int
 fetchProcessSignature(pid_t aPid, char **aSignature)
 {
-    int rc  = -1;
-    int err = 0;
-    int fd  = -1;
+    int rc = -1;
+    int fd = -1;
 
     char *buf       = 0;
     char *signature = 0;
 
-    const char *incarnation = fetchSystemIncarnation();
-    if ( ! incarnation)
-        goto Finally;
+    const char *incarnation;
+
+    ERROR_UNLESS(
+        (incarnation = fetchSystemIncarnation()));
 
     /* Note that it is expected that forkProcess() will guarantee that
      * the pid of the child process combined with its signature results
@@ -1734,42 +1863,40 @@ fetchProcessSignature(pid_t aPid, char **aSignature)
         sprintf(processStatFileName,
                 sProcessStatFileNameFmt, processDirName.mDirName);
 
-        fd = open(processStatFileName, O_RDONLY);
-        if (-1 == fd)
-        {
-            err = errno;
-            goto Finally;
-        }
+        ERROR_IF(
+            (fd = open(processStatFileName, O_RDONLY),
+             -1 == fd));
 
     } while (0);
 
-    ssize_t buflen = readFdFully(fd, &buf, 0);
-    if (-1 == buflen)
-        goto Finally;
-    if ( ! buflen)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    ssize_t buflen;
+    ERROR_IF(
+        (buflen = readFdFully(fd, &buf, 0),
+         -1 == buflen));
+    ERROR_UNLESS(
+        buflen,
+        {
+            errno = ERANGE;
+        });
 
     char *bufend = buf + buflen;
-    char *word   = memrchr(buf, ')', buflen);
-    if ( ! word)
-    {
-        errno = ERANGE;
-        goto Finally;
-    }
+    char *word;
+    ERROR_UNLESS(
+        (word = memrchr(buf, ')', buflen)),
+        {
+            errno = ERANGE;
+        });
 
     for (unsigned ix = 2; 22 > ix; ++ix)
     {
         while (word != bufend && ! isspace((unsigned char) *word))
             ++word;
 
-        if (word == bufend)
-        {
-            errno = ERANGE;
-            goto Finally;
-        }
+        ERROR_IF(
+            word == bufend,
+            {
+                errno = ERANGE;
+            });
 
         while (word != bufend && isspace((unsigned char) *word))
             ++word;
@@ -1790,12 +1917,11 @@ fetchProcessSignature(pid_t aPid, char **aSignature)
         size_t signatureLen =
             strlen(incarnation) + sizeof(timestamp) + sizeof(signatureFmt);
 
-        signature = malloc(signatureLen);
-        if ( ! signature)
-            goto Finally;
+        ERROR_UNLESS(
+            (signature = malloc(signatureLen)));
 
-        if (0 > sprintf(signature, signatureFmt, incarnation, timestamp))
-            goto Finally;
+        ERROR_IF(
+            0 > sprintf(signature, signatureFmt, incarnation, timestamp));
 
     } while (0);
 
@@ -1808,8 +1934,7 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&fd))
-            terminate(errno, "Unable to close file descriptor %d", fd);
+        closeFd(&fd);
 
         free(buf);
         free(signature);
@@ -1894,8 +2019,8 @@ purgeProcessOrphanedFds(void)
         ensure(fdWhiteList.mLen == numFds);
     }
 
-    if (closeFdDescriptors(whiteList, NUMBEROF(whiteList)))
-        goto Finally;
+    ERROR_IF(
+        closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
 
     rc = 0;
 

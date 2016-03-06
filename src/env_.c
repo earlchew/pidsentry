@@ -42,13 +42,16 @@ deleteEnv(const char *aName)
 {
     int rc = -1;
 
-    if ( ! getenv(aName))
-    {
-        errno = ENOENT;
-        goto Finally;
-    }
+    ERROR_UNLESS(
+        getenv(aName),
+        {
+            errno = ENOENT;
+        });
 
-    rc = unsetenv(aName);
+    ERROR_IF(
+        unsetenv(aName));
+
+    rc = 0;
 
 Finally:
 
@@ -63,13 +66,11 @@ getEnvString(const char *aName, const char **aValue)
 {
     int rc = -1;
 
-    *aValue = getenv(aName);
-
-    if ( ! *aValue)
-    {
-        errno = ENOENT;
-        goto Finally;
-    }
+    ERROR_UNLESS(
+        *aValue = getenv(aName),
+        {
+            errno = ENOENT;
+        });
 
     rc = 0;
 
@@ -86,13 +87,13 @@ setEnvString(const char *aName, const char *aValue)
 {
     const char *rc = 0;
 
-    if (setenv(aName, aValue, 1))
-        goto Finally;
+    ERROR_IF(
+        setenv(aName, aValue, 1));
 
     const char *env;
 
-    if (getEnvString(aName, &env))
-        goto Finally;
+    ERROR_IF(
+        getEnvString(aName, &env));
 
     rc = env;
 
@@ -111,10 +112,13 @@ getEnvInt(const char *aName, int *aValue)
 
     const char *env;
 
-    if (getEnvString(aName, &env))
-        goto Finally;
+    ERROR_IF(
+        getEnvString(aName, &env));
 
-    rc = parseInt(env, aValue);
+    ERROR_IF(
+        parseInt(env, aValue));
+
+    rc = 0;
 
 Finally:
 
@@ -127,12 +131,25 @@ Finally:
 const char *
 setEnvInt(const char *aName, int aValue)
 {
+    const char *rc = 0;
+
     char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
 
-    if (0 > sprintf(value, "%d", aValue))
-        return 0;
+    ERROR_IF(
+        0 > sprintf(value, "%d", aValue));
 
-    return setEnvString(aName, value);
+    const char *env = 0;
+
+    ERROR_UNLESS(
+        (env = setEnvString(aName, value)));
+
+    rc = env;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -143,10 +160,13 @@ getEnvUInt(const char *aName, unsigned *aValue)
 
     const char *env;
 
-    if (getEnvString(aName, &env))
-        goto Finally;
+    ERROR_IF(
+        getEnvString(aName, &env));
 
-    rc = parseUInt(env, aValue);
+    ERROR_IF(
+        parseUInt(env, aValue));
+
+    rc = 0;
 
 Finally:
 
@@ -159,12 +179,25 @@ Finally:
 const char *
 setEnvUInt(const char *aName, unsigned aValue)
 {
+    const char *rc = 0;
+
     char value[sizeof(aValue) * CHAR_BIT];
 
-    if (0 > sprintf(value, "%u", aValue))
-        return 0;
+    ERROR_IF(
+        0 > sprintf(value, "%u", aValue));
 
-    return setEnvString(aName, value);
+    const char *env = 0;
+
+    ERROR_UNLESS(
+        (env = setEnvString(aName, value)));
+
+    rc = env;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -175,10 +208,13 @@ getEnvUInt64(const char *aName, uint64_t *aValue)
 
     const char *env;
 
-    if (getEnvString(aName, &env))
-        goto Finally;
+    ERROR_IF(
+        getEnvString(aName, &env));
 
-    rc = parseUInt64(env, aValue);
+    ERROR_IF(
+        parseUInt64(env, aValue));
+
+    rc = 0;
 
 Finally:
 
@@ -191,12 +227,25 @@ Finally:
 const char *
 setEnvUInt64(const char *aName, uint64_t aValue)
 {
+    const char *rc = 0;
+
     char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
 
-    if (0 > sprintf(value, "%" PRIu64, aValue))
-        return 0;
+    ERROR_IF(
+        0 > sprintf(value, "%" PRIu64, aValue));
 
-    return setEnvString(aName, value);
+    const char *env = 0;
+
+    ERROR_UNLESS(
+        (env = setEnvString(aName, value)));
+
+    rc = env;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -207,10 +256,13 @@ getEnvPid(const char *aName, pid_t *aValue)
 
     const char *env;
 
-    if (getEnvString(aName, &env))
-        goto Finally;
+    ERROR_IF(
+        getEnvString(aName, &env));
 
-    rc = parsePid(env, aValue);
+    ERROR_IF(
+        parsePid(env, aValue));
+
+    rc = 0;
 
 Finally:
 
@@ -223,12 +275,25 @@ Finally:
 const char *
 setEnvPid(const char *aName, pid_t aValue)
 {
+    const char *rc = 0;
+
     char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
 
-    if (0 > sprintf(value, "%jd", (intmax_t) aValue))
-        return 0;
+    ERROR_IF(
+        0 > sprintf(value, "%jd", (intmax_t) aValue));
 
-    return setEnvString(aName, value);
+    const char *env = 0;
+
+    ERROR_UNLESS(
+        (env = setEnvString(aName, value)));
+
+    rc = env;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

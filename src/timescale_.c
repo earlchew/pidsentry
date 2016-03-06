@@ -33,6 +33,31 @@
 #include <sys/time.h>
 
 /* -------------------------------------------------------------------------- */
+struct NanoSeconds
+NanoSeconds_(uint64_t ns)
+{
+    return (struct NanoSeconds) { { ns : ns } };
+}
+
+struct MilliSeconds
+MilliSeconds_(uint64_t ms)
+{
+    return (struct MilliSeconds) { { ms : ms } };
+}
+
+struct Seconds
+Seconds_(uint64_t s)
+{
+    return (struct Seconds) { { s : s } };
+}
+
+struct Duration
+Duration_(struct NanoSeconds duration)
+{
+    return (struct Duration) { duration : duration };
+}
+
+/* -------------------------------------------------------------------------- */
 uint64_t
 changeTimeScale_(uint64_t aSrcTime, size_t aSrcScale, size_t aDstScale)
 {
@@ -48,14 +73,17 @@ changeTimeScale_(uint64_t aSrcTime, size_t aSrcScale, size_t aDstScale)
 
         uint64_t dstTime = aSrcTime * scaleUp;
 
-        if (dstTime / scaleUp != aSrcTime)
-            terminate(
-                0,
-                "Time scale overflow converting %" PRIu64
-                " from scale %zu to scale %zu",
-                aSrcTime,
-                aSrcScale,
-                aDstScale);
+        ABORT_IF(
+            dstTime / scaleUp != aSrcTime,
+            {
+                terminate(
+                    0,
+                    "Time scale overflow converting %" PRIu64
+                    " from scale %zu to scale %zu",
+                    aSrcTime,
+                    aSrcScale,
+                    aDstScale);
+            });
 
         return dstTime;
     }

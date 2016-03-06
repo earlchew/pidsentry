@@ -41,11 +41,11 @@ createSocketPair(struct SocketPair *self, unsigned aFlags)
 {
     int rc = -1;
 
-    if (aFlags & ~ (O_CLOEXEC | O_NONBLOCK))
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        aFlags & ~ (O_CLOEXEC | O_NONBLOCK),
+        {
+            errno = EINVAL;
+        });
 
     int sockFlags = 0;
 
@@ -60,23 +60,23 @@ createSocketPair(struct SocketPair *self, unsigned aFlags)
 
     int fd[2];
 
-    if (socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd))
-        goto Finally;
+    ERROR_IF(
+        socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd));
 
-    if (-1 == fd[0] || -1 == fd[1])
-        goto Finally;
+    ERROR_IF(
+        -1 == fd[0] || -1 == fd[1]);
 
     ensure( ! stdFd(fd[0]));
     ensure( ! stdFd(fd[1]));
 
-    if (createFile(&self->mParentFile_, fd[0]))
-        goto Finally;
+    ERROR_IF(
+        createFile(&self->mParentFile_, fd[0]));
     self->mParentFile = &self->mParentFile_;
 
     fd[0] = -1;
 
-    if (createFile(&self->mChildFile_, fd[1]))
-        goto Finally;
+    ERROR_IF(
+        createFile(&self->mChildFile_, fd[1]));
     self->mChildFile = &self->mChildFile_;
 
     fd[1] = -1;
@@ -87,23 +87,13 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&fd[0]))
-            terminate(errno, "Unable to close file descriptor %d", fd[0]);
-        if (closeFd(&fd[1]))
-            terminate(errno, "Unable to close file descriptor %d", fd[1]);
+        closeFd(&fd[0]);
+        closeFd(&fd[1]);
 
         if (rc)
         {
-            if (closeFile(self->mParentFile))
-                terminate(
-                    errno,
-                    "Unable to close file descriptor %d",
-                    self->mParentFile->mFd);
-            if (closeFile(self->mChildFile))
-                terminate(
-                    errno,
-                    "Unable to close file descriptor %d",
-                    self->mChildFile->mFd);
+            closeFile(self->mParentFile);
+            closeFile(self->mChildFile);
         }
     });
 
@@ -111,62 +101,27 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeSocketPairParent(struct SocketPair *self)
 {
-    int rc = -1;
-
-    if (closeFile(self->mParentFile))
-        goto Finally;
+    closeFile(self->mParentFile);
     self->mParentFile = 0;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeSocketPairChild(struct SocketPair *self)
 {
-    int rc = -1;
-
-    if (closeFile(self->mChildFile))
-        goto Finally;
+    closeFile(self->mChildFile);
     self->mChildFile = 0;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeSocketPair(struct SocketPair *self)
 {
-    int rc = -1;
-
     if (self)
-    {
-        if (closeFilePair(&self->mParentFile, &self->mChildFile))
-            goto Finally;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+        closeFilePair(&self->mParentFile, &self->mChildFile);
 }
 
 /* -------------------------------------------------------------------------- */

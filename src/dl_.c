@@ -29,7 +29,6 @@
 
 #include "dl_.h"
 #include "error_.h"
-#include "macros_.h"
 
 #include <string.h>
 #include <errno.h>
@@ -47,6 +46,8 @@ dlSymbolVisitor_(struct dl_phdr_info *aInfo, size_t aSize, void *aVisitor)
 {
     int rc = -1;
 
+    int matched = 0;
+
     struct DlSymbolVisitor_ *visitor = aVisitor;
 
     for (unsigned ix = 0; ix < aInfo->dlpi_phnum; ++ix)
@@ -56,25 +57,24 @@ dlSymbolVisitor_(struct dl_phdr_info *aInfo, size_t aSize, void *aVisitor)
 
         if (addr <= visitor->mSoAddr && visitor->mSoAddr < addr + size)
         {
-            if (aInfo->dlpi_name)
-            {
-                char *sopath = strdup(aInfo->dlpi_name);
+            ERROR_UNLESS(
+                aInfo->dlpi_name,
+                {
+                    errno = ENOENT;
+                });
 
-                if ( ! sopath)
-                    terminate(
-                        errno,
-                        "Unable to duplicate string '%s'", aInfo->dlpi_name);
+            char *sopath;
+            ERROR_UNLESS(
+                (sopath = strdup(aInfo->dlpi_name)));
 
-                visitor->mSoPath = sopath;
+            visitor->mSoPath = sopath;
 
-                rc = 1;
-            }
-
-            goto Finally;
+            matched = 1;
+            break;
         }
     }
 
-    rc = 0;
+    rc = matched;
 
 Finally:
 
@@ -101,14 +101,14 @@ findDlSymbol(const char *aSymName, uintptr_t *aSymAddr, const char **aErr)
     {
         dlerror();
         void       *next = dlsym(RTLD_DEFAULT, aSymName);
-        const char *err  = dlerror();
+        const char *err  = "<ERROR>";
 
-        if (err)
-        {
-            if (aErr)
-                *aErr = err;
-            goto Finally;
-        }
+        ERROR_IF(
+            err = dlerror(),
+            {
+                if (aErr)
+                    *aErr = err;
+            });
 
         do
         {

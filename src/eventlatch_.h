@@ -49,7 +49,7 @@ struct EventLatch
 int
 createEventLatch(struct EventLatch *self);
 
-int
+void
 closeEventLatch(struct EventLatch *self);
 
 int

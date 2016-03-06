@@ -48,12 +48,12 @@ TEST(FdTest, ReadFully)
         struct Pipe pipe;
 
         EXPECT_EQ(0, createPipe(&pipe, 0));
-        EXPECT_EQ(0, closePipeWriter(&pipe));
+        closePipeWriter(&pipe);
 
         EXPECT_EQ(0, readFdFully(pipe.mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, buf);
 
-        EXPECT_EQ(0, closePipe(&pipe));
+        closePipe(&pipe);
     }
 
     {
@@ -64,14 +64,14 @@ TEST(FdTest, ReadFully)
 
         EXPECT_EQ(0, createPipe(&pipe, 0));
         EXPECT_EQ(1, writeFd(pipe.mWrFile->mFd, "1", 1));
-        EXPECT_EQ(0, closePipeWriter(&pipe));
+        closePipeWriter(&pipe);
 
         EXPECT_EQ(1, readFdFully(pipe.mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, strncmp("1", buf, 1));
 
         free(buf);
 
-        EXPECT_EQ(0, closePipe(&pipe));
+        closePipe(&pipe);
     }
 
     {
@@ -82,14 +82,14 @@ TEST(FdTest, ReadFully)
 
         EXPECT_EQ(0, createPipe(&pipe, 0));
         EXPECT_EQ(4, writeFd(pipe.mWrFile->mFd, "1234", 4));
-        EXPECT_EQ(0, closePipeWriter(&pipe));
+        closePipeWriter(&pipe);
 
         EXPECT_EQ(4, readFdFully(pipe.mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, strncmp("1234", buf, 4));
 
         free(buf);
 
-        EXPECT_EQ(0, closePipe(&pipe));
+        closePipe(&pipe);
     }
 
     {
@@ -100,14 +100,14 @@ TEST(FdTest, ReadFully)
 
         EXPECT_EQ(0, createPipe(&pipe, 0));
         EXPECT_EQ(5, writeFd(pipe.mWrFile->mFd, "12345", 5));
-        EXPECT_EQ(0, closePipeWriter(&pipe));
+        closePipeWriter(&pipe);
 
         EXPECT_EQ(5, readFdFully(pipe.mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, strncmp("12345", buf, 5));
 
         free(buf);
 
-        EXPECT_EQ(0, closePipe(&pipe));
+        closePipe(&pipe);
     }
 }
 

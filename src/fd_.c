@@ -49,25 +49,14 @@
 static const char sDevNullPath[] = DEVNULLPATH;
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeFd(int *aFd)
 {
-    int rc = -1;
-
     if (-1 != *aFd)
     {
-        if (close(*aFd))
-            goto Finally;
+        ABORT_IF(close(*aFd));
         *aFd = -1;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -91,8 +80,8 @@ closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
     {
         struct rlimit noFile;
 
-        if (getrlimit(RLIMIT_NOFILE, &noFile))
-            goto Finally;
+        ERROR_IF(
+            getrlimit(RLIMIT_NOFILE, &noFile));
 
         int whiteList[aWhiteListLen + 1];
 
@@ -120,10 +109,17 @@ closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
 
             if (fd != whiteList[wx])
             {
-                int closedFd = fd;
+                int valid;
+                ERROR_IF(
+                    (valid = ownFdValid(fd),
+                     -1 == valid));
 
-                if (closeFd(&closedFd) && EBADF != errno)
-                    goto Finally;
+                if (valid)
+                {
+                    int closedFd = fd;
+
+                    closeFd(&closedFd);
+                }
             }
             else
             {
@@ -162,11 +158,11 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
 
     if (aCloseOnExec)
     {
-        if (aCloseOnExec != O_CLOEXEC)
-        {
-            errno = EINVAL;
-            goto Finally;
-        }
+        ERROR_IF(
+            aCloseOnExec != O_CLOEXEC,
+            {
+                errno = EINVAL;
+            });
 
         /* Take care. O_CLOEXEC is the flag for obtaining close-on-exec
          * semantics when using open(), but fcntl() requires FD_CLOEXEC. */
@@ -174,12 +170,15 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
         closeOnExec = FD_CLOEXEC;
     }
 
-    long flags = fcntl(aFd, F_GETFD);
+    long flags;
+    ERROR_IF(
+        (flags = fcntl(aFd, F_GETFD),
+         -1 == flags));
 
-    if (-1 == flags)
-        goto Finally;
+    ERROR_IF(
+        fcntl(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec));
 
-    rc = fcntl(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec);
+    rc = 0;
 
 Finally:
 
@@ -193,18 +192,17 @@ int
 nullifyFd(int aFd)
 {
     int rc = -1;
-    int fd = open(sDevNullPath, O_WRONLY);
+    int fd;
 
-    if (-1 == fd)
-        goto Finally;
+    ERROR_IF(
+        (fd = open(sDevNullPath, O_WRONLY),
+         -1 == fd));
 
     if (fd == aFd)
         fd = -1;
     else
-    {
-        if (aFd != dup2(fd, aFd))
-            goto Finally;
-    }
+        ERROR_IF(
+            aFd != dup2(fd, aFd));
 
     rc = 0;
 
@@ -212,8 +210,7 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&fd))
-            terminate(errno, "Unable to close file descriptor %d", fd);
+        closeFd(&fd);
     });
 
     return rc;
@@ -225,25 +222,32 @@ nonblockingFd(int aFd)
 {
     int rc = -1;
 
-    long statusFlags = fcntl(aFd, F_GETFL);
-    int  descriptorFlags = fcntl(aFd, F_GETFD);
+    int statusFlags;
+    ERROR_IF(
+        (statusFlags = fcntl(aFd, F_GETFL),
+         -1 == statusFlags));
 
-    if (-1 == statusFlags || -1 == descriptorFlags)
-        goto Finally;
+    int descriptorFlags;
+    ERROR_IF(
+        (descriptorFlags = fcntl(aFd, F_GETFD),
+         -1 == descriptorFlags));
 
     /* Because O_NONBLOCK affects the underlying open file, to get some
      * peace of mind, only allow non-blocking mode on file descriptors
      * that are not going to be shared. This is not a water-tight
      * defense, but seeks to prevent some careless mistakes. */
 
-    if ( ! (descriptorFlags & FD_CLOEXEC))
-    {
-        errno = EBADF;
-        goto Finally;
-    }
+    ERROR_UNLESS(
+        descriptorFlags & FD_CLOEXEC,
+        {
+            errno = EBADF;
+        });
 
-    rc = (statusFlags & O_NONBLOCK) ? 0 : fcntl(aFd, F_SETFL,
-                                                statusFlags | O_NONBLOCK);
+    if ( ! (statusFlags & O_NONBLOCK))
+        ERROR_IF(
+            fcntl(aFd, F_SETFL, statusFlags | O_NONBLOCK));
+
+    rc = 0;
 
 Finally:
 
@@ -258,10 +262,10 @@ ownFdNonBlocking(int aFd)
 {
     int rc = -1;
 
-    int flags = fcntl(aFd, F_GETFL);
-
-    if (-1 == flags)
-        goto Finally;
+    int flags;
+    ERROR_IF(
+        (flags = fcntl(aFd, F_GETFL),
+         -1 == flags));
 
     rc = flags & O_NONBLOCK ? 1 : 0;
 
@@ -280,12 +284,8 @@ ownFdValid(int aFd)
 
     int valid = 1;
 
-    if (-1 == fcntl(aFd, F_GETFL))
-    {
-        if (EBADF != errno)
-            goto Finally;
-        valid = 0;
-    }
+    ERROR_IF(
+        (-1 == fcntl(aFd, F_GETFL) && (valid = 0, EBADF != errno)));
 
     rc = valid;
 
@@ -321,11 +321,10 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
         ssize_t bytes;
 
         do
-            bytes = read(aSrcFd, buffer, len);
-        while (-1 == bytes && EINTR == errno);
-
-        if (-1 == bytes)
-            goto Finally;
+            ERROR_IF(
+                (bytes = read(aSrcFd, buffer, len),
+                 -1 == bytes && EINTR != errno));
+        while (-1 == bytes);
 
         if (bytes)
         {
@@ -337,11 +336,10 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
                 ssize_t wrote;
 
                 do
-                    wrote = write(aDstFd, bufptr, bufend - bufptr);
-                while (-1 == wrote  && EINTR == errno);
-
-                if (-1 == wrote)
-                    goto Finally;
+                    ERROR_IF(
+                        (wrote = write(aDstFd, bufptr, bufend - bufptr),
+                         -1 == wrote && EINTR != errno));
+                while (-1 == wrote);
 
                 bufptr += wrote;
             }
@@ -382,15 +380,16 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
     {
         struct EventClockTime tm = eventclockTime();
 
-        RACE
+        TEST_RACE
         ({
             /* In case the process is stopped after the time is
              * latched, check once more if the fds are ready
              * before checking the deadline. */
 
-            int events = poll(pollfd, NUMBEROF(pollfd), 0);
-            if (-1 == events)
-                goto Finally;
+            int events;
+            ERROR_IF(
+                (events = poll(pollfd, NUMBEROF(pollfd), 0),
+                 -1 == events));
 
             if (events)
                 break;
@@ -421,19 +420,22 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
                 timeout_ms = INT_MAX;
         }
 
-        switch (poll(pollfd, NUMBEROF(pollfd), timeout_ms))
+        int events;
+        ERROR_IF(
+            (events = poll(pollfd, NUMBEROF(pollfd), timeout_ms),
+             -1 == events && EINTR != errno));
+
+        switch (events)
         {
+        default:
+            break;
+
         case -1:
-            if (EINTR == errno)
-                continue;
-            goto Finally;
+            continue;
 
         case 0:
             pollfd[0].revents = 0;
             continue;
-
-        default:
-            break;
         }
 
         break;
@@ -473,7 +475,9 @@ readFd(int aFd, char *aBuf, size_t aLen)
     {
         ssize_t len;
 
-        len = read(aFd, bufPtr, bufEnd - bufPtr);
+        ERROR_IF(
+            (len = read(aFd, bufPtr, bufEnd - bufPtr),
+             -1 == len && EINTR != errno && bufPtr == aBuf));
 
         if ( ! len)
             break;
@@ -483,10 +487,7 @@ readFd(int aFd, char *aBuf, size_t aLen)
             if (EINTR == errno)
                 continue;
 
-            if (bufPtr != aBuf)
-                break;
-
-            goto Finally;
+            break;
         }
 
         bufPtr += len;
@@ -514,7 +515,9 @@ writeFd(int aFd, const char *aBuf, size_t aLen)
     {
         ssize_t len;
 
-        len = write(aFd, bufPtr, bufEnd - bufPtr);
+        ERROR_IF(
+            (len = write(aFd, bufPtr, bufEnd - bufPtr),
+             -1 == len && EINTR != errno && bufPtr == aBuf));
 
         if ( ! len)
             break;
@@ -524,10 +527,7 @@ writeFd(int aFd, const char *aBuf, size_t aLen)
             if (EINTR == errno)
                 continue;
 
-            if (bufPtr != aBuf)
-                break;
-
-            goto Finally;
+            break;
         }
 
         bufPtr += len;
@@ -560,21 +560,22 @@ readFdFully(int aFd, char **aBuf, size_t aBufSize)
         {
             len =
                 len ? 2 * len :
-                testMode(0) ? 1 :
+                testMode(TestLevelRace) ? 1 :
                 aBufSize ? aBufSize : getpagesize();
 
-            char *ptr = realloc(buf, len);
-            if ( ! ptr)
-                goto Finally;
+            char *ptr;
+            ERROR_UNLESS(
+                (ptr = realloc(buf, len)));
 
             end = ptr + (end - buf);
             buf = ptr;
             continue;
         }
 
-        ssize_t rdlen = readFd(aFd, end, avail);
-        if (-1 == rdlen)
-            goto Finally;
+        ssize_t rdlen;
+        ERROR_IF(
+            (rdlen = readFd(aFd, end, avail),
+             -1 == rdlen));
         if ( ! rdlen)
             break;
         end += rdlen;
@@ -606,14 +607,14 @@ lockFd(int aFd, int aType)
 {
     int rc = -1;
 
-    if (LOCK_EX != aType && LOCK_SH != aType)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        LOCK_EX != aType && LOCK_SH != aType,
+        {
+            errno = EINVAL;
+        });
 
-    if (flock(aFd, aType))
-        goto Finally;
+    ERROR_IF(
+        flock(aFd, aType));
 
     rc = 0;
 
@@ -630,8 +631,8 @@ unlockFd(int aFd)
 {
     int rc = -1;
 
-    if (flock(aFd, LOCK_UN))
-        goto Finally;
+    ERROR_IF(
+        flock(aFd, LOCK_UN));
 
     rc = 0;
 

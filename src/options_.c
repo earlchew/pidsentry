@@ -142,7 +142,7 @@ showUsage_(void)
     const char *arg0 = ownProcessName();
 
     dprintf(STDERR_FILENO, sUsage, arg0, arg0);
-    _exit(EXIT_FAILURE);
+    exitProcess(EXIT_FAILURE);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -178,41 +178,39 @@ processTimeoutOption(const char *aArg)
     struct ParseArgList *argList = 0;
 
     struct ParseArgList argList_;
-    if (createParseArgListCSV(&argList_, aArg))
-        goto Finally;
+    ERROR_IF(
+        createParseArgListCSV(&argList_, aArg));
     argList = &argList_;
 
-    if (1 > argList->mArgc || 4 < argList->mArgc)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        1 > argList->mArgc || 4 < argList->mArgc,
+        {
+            errno = EINVAL;
+        });
 
-    if (parseUInt(argList->mArgv[0], &gOptions.mTimeout.mTether_s))
-        goto Finally;
+    ERROR_IF(
+        parseUInt(argList->mArgv[0], &gOptions.mTimeout.mTether_s));
 
     if (1 < argList->mArgc && *argList->mArgv[1])
     {
-        if (parseUInt(argList->mArgv[1], &gOptions.mTimeout.mUmbilical_s))
-            goto Finally;
+        ERROR_IF(
+            parseUInt(argList->mArgv[1], &gOptions.mTimeout.mUmbilical_s));
     }
 
     if (2 < argList->mArgc && *argList->mArgv[2])
     {
-        if (parseUInt(argList->mArgv[2], &gOptions.mTimeout.mSignal_s))
-            goto Finally;
-        if (0 >= gOptions.mTimeout.mSignal_s)
-        {
-            errno = EINVAL;
-            goto Finally;
-        }
+        ERROR_IF(
+            parseUInt(argList->mArgv[2], &gOptions.mTimeout.mSignal_s));
+        ERROR_IF(
+            0 >= gOptions.mTimeout.mSignal_s,
+            {
+                errno = EINVAL;
+            });
     }
 
     if (3 < argList->mArgc && *argList->mArgv[3])
-    {
-        if (parseUInt(argList->mArgv[3], &gOptions.mTimeout.mDrain_s))
-            goto Finally;
-    }
+        ERROR_IF(
+            parseUInt(argList->mArgv[3], &gOptions.mTimeout.mDrain_s));
 
     rc = 0;
 
@@ -221,10 +219,7 @@ Finally:
     FINALLY
     ({
         if (argList)
-        {
-            if (closeParseArgList(argList))
-                terminate(errno, "Unable to close argument list");
-        }
+            closeParseArgList(argList);
     });
 
     return rc;
@@ -251,7 +246,11 @@ processOptions(int argc, char **argv)
         switch (opt)
         {
         default:
-            terminate(0, "Unrecognised option %d ('%c')", opt, opt);
+            EXIT_IF(
+                true,
+                {
+                    terminate(0, "Unrecognised option %d ('%c')", opt, opt);
+                });
             break;
 
         case '?':
@@ -276,12 +275,13 @@ processOptions(int argc, char **argv)
             }
             else
             {
-                if (parseInt(
+                EXIT_IF(
+                    parseInt(
                         optarg,
-                        &gOptions.mTetherFd) || 0 > gOptions.mTetherFd)
-                {
-                    terminate(0, "Badly formed fd - '%s'", optarg);
-                }
+                        &gOptions.mTetherFd) || 0 > gOptions.mTetherFd,
+                    {
+                        terminate(0, "Badly formed fd - '%s'", optarg);
+                    });
             }
             break;
 
@@ -299,14 +299,23 @@ processOptions(int argc, char **argv)
             pidFileOnly = -1;
             if ( ! strcmp(optarg, "-1"))
                 gOptions.mPid = -1;
-            else if (parsePid(optarg, &gOptions.mPid))
-                terminate(0, "Badly formed pid - '%s'", optarg);
+            else
+            {
+                EXIT_IF(
+                    parsePid(optarg, &gOptions.mPid),
+                    {
+                        terminate(0, "Badly formed pid - '%s'", optarg);
+                    });
+            }
             break;
 
         case 'n':
             pidFileOnly = -1;
-            if ( ! optarg[0])
-                terminate(0, "Empty environment or argument name");
+            EXIT_UNLESS(
+                optarg[0],
+                {
+                    terminate(0, "Empty environment or argument name");
+                });
             gOptions.mName = optarg;
             break;
 
@@ -326,8 +335,11 @@ processOptions(int argc, char **argv)
 
         case 't':
             pidFileOnly = -1;
-            if (processTimeoutOption(optarg))
-                terminate(0, "Badly formed timeout - '%s'", optarg);
+            EXIT_IF(
+                processTimeoutOption(optarg),
+                {
+                    terminate(0, "Badly formed timeout - '%s'", optarg);
+                });
             break;
 
         case 'u':
@@ -339,8 +351,11 @@ processOptions(int argc, char **argv)
 
     if (0 >= pidFileOnly)
     {
-        if (optind >= argc)
-            terminate(0, "Missing command for execution");
+        EXIT_IF(
+            optind >= argc,
+            {
+                terminate(0, "Missing command for execution");
+            });
     }
 
     return optind < argc ? argv + optind : 0;

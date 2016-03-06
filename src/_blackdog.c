@@ -69,7 +69,10 @@
  * Improve FINALLY tracking
  * Use struct Pid for type safety
  * On receiving SIGABRT, trigger gdb
- * Isolate signal delivery to one thread
+ * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
+ * Use ABORT_IF, not ABORT_IF, and clear SIGABRT handler first
+ * --test-error rather than TestLevelFinally
+ * Also print __func__ in messages
  */
 
 /* -------------------------------------------------------------------------- */
@@ -82,16 +85,16 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
         {
             debug(0, "discarding zombie pid file '%s'", aPidFileName);
 
-            if (closePidFile(aPidFile))
-                terminate(
-                    errno,
-                    "Cannot close pid file '%s'", aPidFileName);
+            closePidFile(aPidFile);
         }
 
-        if (createPidFile(aPidFile, aPidFileName))
-            terminate(
-                errno,
-                "Cannot create pid file '%s'", aPidFileName);
+        ABORT_IF(
+            createPidFile(aPidFile, aPidFileName),
+            {
+                terminate(
+                    errno,
+                    "Cannot create pid file '%s'", aPidFileName);
+            });
 
         /* It is not possible to create the pidfile and acquire a flock
          * as an atomic operation. The flock can only be acquired after
@@ -100,34 +103,44 @@ announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
          * another process might have removed it and replaced it with
          * another. */
 
-        if (acquireWriteLockPidFile(aPidFile))
-            terminate(
-                errno,
-                "Cannot acquire write lock on pid file '%s'", aPidFileName);
+        ABORT_IF(
+            acquireWriteLockPidFile(aPidFile),
+            {
+                terminate(
+                    errno,
+                    "Cannot acquire write lock on pid file '%s'", aPidFileName);
+            });
 
-        zombie = detectPidFileZombie(aPidFile);
-
-        if (0 > zombie)
-            terminate(
-                errno,
-                "Unable to obtain status of pid file '%s'", aPidFileName);
+        ABORT_IF(
+            (zombie = detectPidFileZombie(aPidFile), 0 > zombie),
+            {
+                terminate(
+                    errno,
+                    "Unable to obtain status of pid file '%s'", aPidFileName);
+            });
     }
 
     debug(0, "initialised pid file '%s'", aPidFileName);
 
-    if (writePidFile(aPidFile, aPid))
-        terminate(
-            errno,
-            "Cannot write to pid file '%s'", aPidFileName);
+    ABORT_IF(
+        writePidFile(aPidFile, aPid),
+        {
+            terminate(
+                errno,
+                "Cannot write to pid file '%s'", aPidFileName);
+        });
 
     /* The pidfile was locked on creation, and now that it
      * is completely initialised, it is ok to release
      * the flock. */
 
-    if (releaseLockPidFile(aPidFile))
-        terminate(
-            errno,
-            "Cannot unlock pid file '%s'", aPidFileName);
+    ABORT_IF(
+        releaseLockPidFile(aPidFile),
+        {
+            terminate(
+                errno,
+                "Cannot unlock pid file '%s'", aPidFileName);
+        });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -138,43 +151,43 @@ cmdPrintPidFile(const char *aFileName)
 
     struct PidFile pidFile;
 
-    if (openPidFile(&pidFile, aFileName))
-    {
-        if (ENOENT != errno)
+    int err;
+    ABORT_IF(
+        (err = openPidFile(&pidFile, aFileName),
+         err && ENOENT != errno),
+        {
             terminate(
                 errno,
                 "Unable to open pid file '%s'", aFileName);
-        return exitCode;
-    }
+        });
 
-    if (acquireReadLockPidFile(&pidFile))
-        terminate(
-            errno,
-            "Unable to acquire read lock on pid file '%s'", aFileName);
-
-    pid_t pid = readPidFile(&pidFile);
-
-    switch (pid)
+    if ( ! err)
     {
-    default:
-        if (-1 != dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) pid))
-            exitCode.mStatus = 0;
-        break;
-    case 0:
-        break;
-    case -1:
-        terminate(
-            errno,
-            "Unable to read pid file '%s'", aFileName);
-    }
+        ABORT_IF(
+            acquireReadLockPidFile(&pidFile),
+            {
+                terminate(
+                    errno,
+                    "Unable to acquire read lock on pid file '%s'", aFileName);
+            });
 
-    FINALLY
-    ({
-        if (closePidFile(&pidFile))
-            terminate(
-                errno,
-                "Unable to close pid file '%s'", aFileName);
-    });
+        pid_t pid;
+        ABORT_IF(
+            (pid = readPidFile(&pidFile), -1 == pid),
+            {
+                terminate(
+                    errno,
+                    "Unable to read pid file '%s'", aFileName);
+            });
+
+        if (pid)
+        {
+            if (-1 != dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) pid))
+                exitCode.mStatus = 0;
+        }
+
+        closePidFile(&pidFile);
+    }
 
     return exitCode;
 }
@@ -197,7 +210,7 @@ reapFamily_(void *self_)
 
     ensure(familyType_ == self->mType);
 
-    reapChild(self->mChildProcess, self->mUmbilicalPid);
+    superviseChildProcess(self->mChildProcess, self->mUmbilicalPid);
 }
 
 static void
@@ -219,10 +232,14 @@ raiseFamilySigStop_(void *self_)
 
     pauseChildProcessGroup(self->mChildProcess);
 
-    if (raise(SIGSTOP))
-        terminate(
-            errno,
-            "Unable to stop process");
+    ABORT_IF(
+        raise(SIGSTOP),
+        {
+            terminate(
+                errno,
+                "Unable to stop process pid %jd",
+                (intmax_t) getpid());
+        });
 
     resumeChildProcessGroup(self->mChildProcess);
 }
@@ -247,10 +264,13 @@ cmdRunCommand(char **aCmd)
           (intmax_t) getpid(),
           (intmax_t) getpgid(0));
 
-    if (ignoreProcessSigPipe())
-        terminate(
-            errno,
-            "Unable to ignore SIGPIPE");
+    ABORT_IF(
+        ignoreProcessSigPipe(),
+        {
+            terminate(
+                errno,
+                "Unable to ignore SIGPIPE");
+        });
 
     /* The instance of the StdFdFiller guarantees that any further file
      * descriptors that are opened will not be mistaken for stdin,
@@ -258,19 +278,31 @@ cmdRunCommand(char **aCmd)
 
     struct StdFdFiller stdFdFiller;
 
-    if (createStdFdFiller(&stdFdFiller))
-        terminate(
-            errno,
-            "Unable to create stdin, stdout, stderr filler");
+    ABORT_IF(
+        createStdFdFiller(&stdFdFiller),
+        {
+            terminate(
+                errno,
+                "Unable to create stdin, stdout, stderr filler");
+        });
 
     struct SocketPair umbilicalSocket;
-    if (createSocketPair(&umbilicalSocket, O_NONBLOCK | O_CLOEXEC))
-        terminate(
-            errno,
-            "Unable to create umbilical socket");
+    ABORT_IF(
+        createSocketPair(&umbilicalSocket, O_NONBLOCK | O_CLOEXEC),
+        {
+            terminate(
+                errno,
+                "Unable to create umbilical socket");
+        });
 
     struct ChildProcess childProcess;
-    createChild(&childProcess);
+    ABORT_IF(
+        createChild(&childProcess),
+        {
+            terminate(
+                errno,
+                "Unable to create child process");
+        });
 
     struct Family family =
     {
@@ -279,42 +311,60 @@ cmdRunCommand(char **aCmd)
         .mUmbilicalPid = 0
     };
 
-    if (watchProcessChildren(VoidMethod(reapFamily_, &family)))
-        terminate(
-            errno,
-            "Unable to add watch on process termination");
+    ABORT_IF(
+        watchProcessChildren(VoidMethod(reapFamily_, &family)),
+        {
+            terminate(
+                errno,
+                "Unable to add watch on process termination");
+        });
 
     struct SocketPair syncSocket;
-    if (createSocketPair(&syncSocket, 0))
-        terminate(
-            errno,
-            "Unable to create sync socket");
+    ABORT_IF(
+        createSocketPair(&syncSocket, 0),
+        {
+            terminate(
+                errno,
+                "Unable to create sync socket");
+        });
 
-    if (forkChild(
-            &childProcess, aCmd, &stdFdFiller, &syncSocket, &umbilicalSocket))
-        terminate(
-            errno,
-            "Unable to fork child");
+    ABORT_IF(
+        forkChild(
+            &childProcess, aCmd, &stdFdFiller, &syncSocket, &umbilicalSocket),
+        {
+            terminate(
+                errno,
+                "Unable to fork child process");
+        });
 
     /* Be prepared to deliver signals to the child process only after
      * the child exists. Before this point, these signals will cause
      * the watchdog to terminate, and the new child process will
      * notice via its synchronisation pipe. */
 
-    if (watchProcessSignals(VoidIntMethod(raiseFamilySignal_, &family)))
-        terminate(
-            errno,
-            "Unable to add watch on signals");
+    ABORT_IF(
+        watchProcessSignals(VoidIntMethod(raiseFamilySignal_, &family)),
+        {
+            terminate(
+                errno,
+                "Unable to add watch on signals");
+        });
 
-    if (watchProcessSigStop(VoidMethod(raiseFamilySigStop_, &family)))
-        terminate(
-            errno,
-            "Unable to add watch on process stop");
+    ABORT_IF(
+        watchProcessSigStop(VoidMethod(raiseFamilySigStop_, &family)),
+        {
+            terminate(
+                errno,
+                "Unable to add watch on process stop");
+        });
 
-    if (watchProcessSigCont(VoidMethod(raiseFamilySigCont_, &family)))
-        terminate(
-            errno,
-            "Unable to add watch on process continuation");
+    ABORT_IF(
+        watchProcessSigCont(VoidMethod(raiseFamilySigCont_, &family)),
+        {
+            terminate(
+                errno,
+                "Unable to add watch on process continuation");
+        });
 
     /* Only identify the watchdog process after all the signal handlers
      * have been installed. The functional tests can use this as an
@@ -352,21 +402,21 @@ cmdRunCommand(char **aCmd)
      * so that stdin, stdout and stderr become available for manipulation
      * and will not be closed multiple times. */
 
-    if (closeStdFdFiller(&stdFdFiller))
-        terminate(
-            errno,
-            "Unable to close stdin, stdout and stderr fillers");
+    closeStdFdFiller(&stdFdFiller);
 
     /* Discard the original stdin file descriptor, and instead attach
      * the reading end of the tether as stdin. This means that the
      * watchdog does not contribute any more references to the
      * original stdin file table entry. */
 
-    if (STDIN_FILENO != dup2(
-            childProcess.mTetherPipe->mRdFile->mFd, STDIN_FILENO))
-        terminate(
-            errno,
-            "Unable to dup tether pipe to stdin");
+    ABORT_IF(
+        STDIN_FILENO != dup2(
+            childProcess.mTetherPipe->mRdFile->mFd, STDIN_FILENO),
+        {
+            terminate(
+                errno,
+                "Unable to dup tether pipe to stdin");
+        });
 
     /* Now that the tether has been duplicated onto stdin and stdout
      * as required, it is important to close the tether to ensure that
@@ -375,10 +425,13 @@ cmdRunCommand(char **aCmd)
 
     closeChildTether(&childProcess);
 
-    if (purgeProcessOrphanedFds())
-        terminate(
-            errno,
-            "Unable to purge orphaned files");
+    ABORT_IF(
+        purgeProcessOrphanedFds(),
+        {
+            terminate(
+                errno,
+                "Unable to purge orphaned files");
+        });
 
     /* Monitor the umbilical using another process so that a failure
      * of this process can be detected independently. Only create the
@@ -387,33 +440,38 @@ cmdRunCommand(char **aCmd)
      * descriptors that should only be held by the child. */
 
     struct UmbilicalProcess umbilicalProcess;
-    if (createUmbilicalProcess(&umbilicalProcess,
+    ABORT_IF(
+        createUmbilicalProcess(&umbilicalProcess,
                                &childProcess,
                                &umbilicalSocket,
                                &syncSocket,
-                               pidFile))
-        terminate(
-            errno,
-            "Unable to create umbilical process");
+                               pidFile),
+        {
+            terminate(
+                errno,
+                "Unable to create umbilical process");
+        });
 
     family.mUmbilicalPid = umbilicalProcess.mPid;
 
-    if (closeSocketPairChild(&umbilicalSocket))
-        terminate(
-            errno,
-            "Unable to close umbilical child socket");
+    closeSocketPairChild(&umbilicalSocket);
 
     if (gOptions.mIdentify)
-        RACE
+    {
+        TEST_RACE
         ({
-            if (-1 == dprintf(STDOUT_FILENO,
+            ABORT_IF(
+                -1 == dprintf(STDOUT_FILENO,
                               "%jd %jd\n",
                               (intmax_t) getpid(),
-                              (intmax_t) umbilicalProcess.mPid))
-                terminate(
-                    errno,
-                    "Unable to print parent and umbilical pid");
+                              (intmax_t) umbilicalProcess.mPid),
+                {
+                    terminate(
+                        errno,
+                        "Unable to print parent and umbilical pid");
+                });
         });
+    }
 
     /* With the child process announced, and the umbilical monitor
      * prepared, allow the child process to run the target program.
@@ -421,57 +479,55 @@ cmdRunCommand(char **aCmd)
      * Wait until the child process acknowledges to avoid racing with
      * the child process initialisation. */
 
-    if (closeSocketPairChild(&syncSocket))
-        terminate(
-            errno,
-            "Unable to close child sync socket");
+    closeSocketPairChild(&syncSocket);
 
-    RACE
+    TEST_RACE
     ({
         /* Be aware that the supervisor might have sent a signal to the
          * watchdog which will have propagated it to the child, causing
          * the child to terminate. */
 
-        if (shutdownFileSocketWriter(syncSocket.mParentFile))
-            terminate(
-                errno,
-                "Unable to activate child process");
+        char buf[1] = { 0 };
 
-        char buf[1];
+        ssize_t wrlen;
+        ABORT_IF(
+            (wrlen = writeFile(syncSocket.mParentFile, buf, 1),
+             -1 == wrlen
+             ? EPIPE != errno
+             : (errno = 0, 1 != wrlen)),
+            {
+                terminate(
+                    errno,
+                    "Unable to activate child process");
+            });
 
-        switch (readFile(syncSocket.mParentFile, buf, 1))
-        {
-        default:
-            errno = 0;
-            /* Fall through */
-
-        case -1:
-            if (ECONNRESET != errno)
+        ssize_t rdlen;
+        ABORT_IF(
+            (rdlen = readFile(syncSocket.mParentFile, buf, 1),
+             -1 == rdlen
+             ? ECONNRESET != errno
+             : (errno = 0, rdlen)),
+            {
                 terminate(
                     errno,
                     "Unable synchronise child process");
-            break;
-
-        case 0:
-            break;
-
-        }
+            });
     });
 
-    if (closeSocketPair(&syncSocket))
-        terminate(
-            errno,
-            "Unable to close sync socket");
+    closeSocketPair(&syncSocket);
 
     if (gOptions.mIdentify)
     {
-        RACE
+        TEST_RACE
         ({
-            if (-1 == dprintf(STDOUT_FILENO,
-                              "%jd\n", (intmax_t) childProcess.mPid))
-                terminate(
-                    errno,
-                    "Unable to print child pid");
+            ABORT_IF(
+                -1 == dprintf(STDOUT_FILENO,
+                              "%jd\n", (intmax_t) childProcess.mPid),
+                {
+                    terminate(
+                        errno,
+                        "Unable to print child pid");
+                });
         });
     }
 
@@ -487,73 +543,90 @@ cmdRunCommand(char **aCmd)
         discardStdout = true;
     else
     {
-        switch (ownFdValid(STDOUT_FILENO))
-        {
-        default:
-            break;
-
-        case -1:
-            terminate(
-                errno,
-                "Unable to check validity of stdout");
-
-        case 0:
+        int valid;
+        ABORT_IF(
+            (valid = ownFdValid(STDOUT_FILENO), -1 == valid),
+            {
+                terminate(
+                    errno,
+                    "Unable to check validity of stdout");
+            });
+        if ( ! valid)
             discardStdout = true;
-            break;
-        }
     }
 
     if (discardStdout)
     {
-        if (nullifyFd(STDOUT_FILENO))
-            terminate(
-                errno,
-                "Unable to nullify stdout");
+        ABORT_IF(
+            nullifyFd(STDOUT_FILENO),
+            {
+                terminate(
+                    errno,
+                    "Unable to nullify stdout");
+            });
     }
 
-    if (testMode(1))
+    if (testMode(TestLevelSync))
     {
-        if (raise(SIGSTOP))
-            terminate(
-                errno,
-                "Unable to stop process");
+        ABORT_IF(
+            raise(SIGSTOP),
+            {
+                 terminate(
+                     errno,
+                     "Unable to stop process pid %jd",
+                     (intmax_t) getpid());
+             });
     }
 
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    monitorChild(&childProcess,
-                 &umbilicalProcess,
-                 umbilicalSocket.mParentFile);
+    ABORT_IF(
+        monitorChild(&childProcess,
+                     &umbilicalProcess,
+                     umbilicalSocket.mParentFile),
+        {
+            terminate(
+                errno,
+                "Unable to monitor child process");
+        });
 
-    if (unwatchProcessSigCont())
-        terminate(
-            errno,
-            "Unable to remove watch from process continuation");
+    ABORT_IF(
+        unwatchProcessSigCont(),
+        {
+            terminate(
+                errno,
+                "Unable to remove watch from process continuation");
+        });
 
-    if (unwatchProcessSignals())
-        terminate(
-            errno,
-            "Unable to remove watch from signals");
+    ABORT_IF(
+        unwatchProcessSignals(),
+        {
+            terminate(
+                errno,
+                "Unable to remove watch from signals");
+        });
 
-    if (unwatchProcessChildren())
-        terminate(
-            errno,
-            "Unable to remove watch on child process termination");
+    ABORT_IF(
+        unwatchProcessChildren(),
+        {
+            terminate(
+                errno,
+                "Unable to remove watch on child process termination");
+        });
 
     if (pidFile)
     {
-        if (acquireWriteLockPidFile(pidFile))
-            terminate(
-                errno,
-                "Cannot lock pid file '%s'", pidFile->mPathName.mFileName);
+        ABORT_IF(
+            acquireWriteLockPidFile(pidFile),
+            {
+                terminate(
+                    errno,
+                    "Cannot lock pid file '%s'", pidFile->mPathName.mFileName);
+            });
 
-        if (closePidFile(pidFile))
-            terminate(
-                errno,
-                "Cannot close pid file '%s'", pidFile->mPathName.mFileName);
-
+        closePidFile(pidFile);
         pidFile = 0;
     }
 
@@ -563,9 +636,16 @@ cmdRunCommand(char **aCmd)
 
     debug(0, "stopping umbilical pid %jd", (intmax_t) umbilicalProcess.mPid);
 
-    int umbilicalerr = stopUmbilicalProcess(&umbilicalProcess);
-    if (umbilicalerr)
-        warn(errno, "Unable to stop umbilical process cleanly");
+    int notStopped;
+    ABORT_IF(
+        (notStopped = stopUmbilicalProcess(&umbilicalProcess),
+         notStopped && ETIMEDOUT != errno),
+        {
+            terminate(errno, "Unable to stop umbilical process");
+        });
+
+    if (notStopped)
+        warn(0, "Umable to stop umbilical process cleanly");
 
     /* The child process group is cleaned up from both the umbilical process
      * and the watchdog with the expectation that at least one of them
@@ -583,47 +663,54 @@ cmdRunCommand(char **aCmd)
 
     pid_t childPid = childProcess.mPid;
 
-    int status = closeChild(&childProcess);
+    int childStatus;
+    ABORT_IF(
+        reapChild(&childProcess, &childStatus),
+        {
+            terminate(
+                errno,
+                "Unable to reap child pid %jd", (intmax_t) childProcess.mPid);
+        });
 
-    debug(0, "reaped child pid %jd status %d", (intmax_t) childPid, status);
+    closeChild(&childProcess);
 
-    if (closeSocketPair(&umbilicalSocket))
-        terminate(
-            errno,
-            "Unable to close umbilical socket");
+    debug(0,
+          "reaped child pid %jd status %d",
+          (intmax_t) childPid,
+          childStatus);
 
-    if (resetProcessSigPipe())
-        terminate(
-            errno,
-            "Unable to reset SIGPIPE");
+    closeSocketPair(&umbilicalSocket);
 
-    /* Ensure that the overall exit status indicates success if both
-     * the child process and the umbilical process completed
-     * successfully. */
+    ABORT_IF(
+        resetProcessSigPipe(),
+        {
+            terminate(
+                errno,
+                "Unable to reset SIGPIPE");
+        });
 
-    struct ExitCode exitcode = extractProcessExitStatus(status, childPid);
-    if ( ! exitcode.mStatus)
-    {
-        if (umbilicalerr)
-            exitcode.mStatus = 255;
-    }
-
-    return exitcode;
+    return extractProcessExitStatus(childStatus, childPid);
 }
 
 /* -------------------------------------------------------------------------- */
 int
 main(int argc, char **argv)
 {
-    if (Timekeeping_init())
-        terminate(
-            0,
-            "Unable to initialise timekeeping module");
+    ABORT_IF(
+        Timekeeping_init(),
+        {
+            terminate(
+                0,
+                "Unable to initialise timekeeping module");
+        });
 
-    if (Process_init(argv[0]))
-        terminate(
-            errno,
-            "Unable to initialise process state");
+    ABORT_IF(
+        Process_init(argv[0]),
+        {
+            terminate(
+                errno,
+                "Unable to initialise process state");
+        });
 
     struct ExitCode exitCode;
 
@@ -636,15 +723,8 @@ main(int argc, char **argv)
             exitCode = cmdRunCommand(cmd);
     }
 
-    if (Process_exit())
-        terminate(
-            errno,
-            "Unable to finalise process state");
-
-    if (Timekeeping_exit())
-        terminate(
-            0,
-            "Unable to finalise timekeeping module");
+    Process_exit();
+    Timekeeping_exit();
 
     return exitCode.mStatus;
 }

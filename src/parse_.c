@@ -90,15 +90,15 @@ parseInt(const char *aArg, int *aValue)
     int rc = -1;
 
     long long value;
-    if (parseLongLong_(aArg, &value))
-        goto Finally;
+    ERROR_IF(
+        parseLongLong_(aArg, &value));
     *aValue = value;
 
-    if (*aValue - value)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        *aValue - value,
+        {
+            errno = EINVAL;
+        });
 
     rc = 0;
 
@@ -116,15 +116,15 @@ parseUInt(const char *aArg, unsigned *aValue)
     int rc = -1;
 
     unsigned long long value;
-    if (parseUnsignedLongLong_(aArg, &value))
-        goto Finally;
+    ERROR_IF(
+        parseUnsignedLongLong_(aArg, &value));
     *aValue = value;
 
-    if (*aValue - value)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        *aValue - value,
+        {
+            errno = EINVAL;
+        });
 
     rc = 0;
 
@@ -142,15 +142,15 @@ parseUInt64(const char *aArg, uint64_t *aValue)
     int rc = -1;
 
     unsigned long long value;
-    if (parseUnsignedLongLong_(aArg, &value))
-        goto Finally;
+    ERROR_IF(
+        parseUnsignedLongLong_(aArg, &value));
     *aValue = value;
 
-    if (*aValue - value)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        *aValue - value,
+        {
+            errno = EINVAL;
+        });
 
     rc = 0;
 
@@ -168,15 +168,15 @@ parsePid(const char *aArg, pid_t *aValue)
     int rc = -1;
 
     unsigned long long value;
-    if (parseUnsignedLongLong_(aArg, &value))
-        goto Finally;
+    ERROR_IF(
+        parseUnsignedLongLong_(aArg, &value));
     *aValue = value;
 
-    if (*aValue - value || 0 > *aValue)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        *aValue - value || 0 > *aValue,
+        {
+            errno = EINVAL;
+        });
 
     rc = 0;
 
@@ -210,13 +210,11 @@ createParseArgListCSV(struct ParseArgList *self, const char *aArg)
                 ++wordcount;
         }
 
-        self->mArgs = strdup(aArg);
-        if ( ! self->mArgs)
-            goto Finally;
+        ERROR_UNLESS(
+            (self->mArgs = strdup(aArg)));
 
-        self->mArgv = malloc(sizeof(*self->mArgv) * (wordcount + 1));
-        if ( ! self->mArgv)
-            goto Finally;
+        ERROR_UNLESS(
+            (self->mArgv = malloc(sizeof(*self->mArgv) * (wordcount + 1))));
 
         for (char *chptr = self->mArgs; ; )
         {
@@ -283,13 +281,11 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeParseArgList(struct ParseArgList *self)
 {
     free(self->mArgs);
     free(self->mArgv);
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

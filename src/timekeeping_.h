@@ -123,7 +123,7 @@ deadlineTimeExpired(
 int
 Timekeeping_init(void);
 
-int
+void
 Timekeeping_exit(void);
 
 /* -------------------------------------------------------------------------- */

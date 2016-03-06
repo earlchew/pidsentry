@@ -62,7 +62,11 @@ testFinallyIfOk()
 {
     int rc = -1;
 
-    FINALLY_IF(ok(), errno = 0);
+    ERROR_IF(
+        ok(),
+        {
+            errno = 0;
+        });
 
     rc = 0;
 
@@ -85,7 +89,11 @@ testFinallyIfFail_1()
 {
     int rc = -1;
 
-    FINALLY_IF(fail(), errno = -1);
+    ERROR_IF(
+        fail(),
+        {
+            errno = -1;
+        });
 
     rc = 0;
 
@@ -93,7 +101,8 @@ Finally:
 
     FINALLY
     ({
-        testFinallyIfFail_0();
+        ABORT_UNLESS(
+            testFinallyIfFail_0());
     });
 
     return rc;
@@ -104,7 +113,11 @@ testFinallyIfFail_2()
 {
     int rc = -1;
 
-    FINALLY_IF(testFinallyIfFail_1(), errno = -2);
+    ERROR_IF(
+        testFinallyIfFail_1(),
+        {
+            errno = -2;
+        });
 
     rc = 0;
 
@@ -112,7 +125,8 @@ Finally:
 
     FINALLY
     ({
-        testFinallyIfFail_1();
+        ABORT_UNLESS(
+            testFinallyIfFail_1());
     });
 
     return rc;
@@ -125,16 +139,16 @@ TEST(ErrorTest, FinallyIf)
 
     EXPECT_EQ(0, testFinallyIfOk());
     EXPECT_EQ(0u, ownErrorFrameLevel());
-    resetErrorFrameLevel();
+    restartErrorFrameSequence();
 
     EXPECT_EQ(-1, testFinallyIfFail_1());
     errCode = errno;
     EXPECT_EQ(1u, ownErrorFrameLevel());
     EXPECT_EQ(-1, ownErrorFrame(ErrorFrameStackThread, 0)->mErrno);
     EXPECT_EQ(0,  ownErrorFrame(ErrorFrameStackThread, 1));
-    logErrorFrameWarning();
+    logErrorFrameSequence();
     Error_warn_(errCode, "One level error frame test");
-    resetErrorFrameLevel();
+    restartErrorFrameSequence();
 
     EXPECT_EQ(-1, testFinallyIfFail_2());
     errCode = errno;
@@ -142,9 +156,9 @@ TEST(ErrorTest, FinallyIf)
     EXPECT_EQ(-1, ownErrorFrame(ErrorFrameStackThread, 0)->mErrno);
     EXPECT_EQ(-2, ownErrorFrame(ErrorFrameStackThread, 1)->mErrno);
     EXPECT_EQ(0,  ownErrorFrame(ErrorFrameStackThread, 2));
-    logErrorFrameWarning();
+    logErrorFrameSequence();
     Error_warn_(errCode, "Two level error frame test");
-    resetErrorFrameLevel();
+    restartErrorFrameSequence();
 
     EXPECT_EQ(-1, testFinallyIfFail_2());
     errCode = errno;
@@ -158,9 +172,9 @@ TEST(ErrorTest, FinallyIf)
     EXPECT_EQ(1u, ownErrorFrameLevel());
     EXPECT_EQ(-1, ownErrorFrame(ErrorFrameStackThread, 0)->mErrno);
     EXPECT_EQ(0,  ownErrorFrame(ErrorFrameStackThread, 1));
-    logErrorFrameWarning();
+    logErrorFrameSequence();
     Error_warn_(sigErrCode, "Signal stack one level error frame test");
-    resetErrorFrameLevel();
+    restartErrorFrameSequence();
 
     stackKind = switchErrorFrameStack(stackKind);
     EXPECT_EQ(ErrorFrameStackSignal, stackKind);
@@ -169,9 +183,9 @@ TEST(ErrorTest, FinallyIf)
     EXPECT_EQ(-1, ownErrorFrame(ErrorFrameStackThread, 0)->mErrno);
     EXPECT_EQ(-2, ownErrorFrame(ErrorFrameStackThread, 1)->mErrno);
     EXPECT_EQ(0,  ownErrorFrame(ErrorFrameStackThread, 2));
-    logErrorFrameWarning();
+    logErrorFrameSequence();
     Error_warn_(errCode, "Two level error frame test");
-    resetErrorFrameLevel();
+    restartErrorFrameSequence();
 }
 
 #include "../googletest/src/gtest_main.cc"

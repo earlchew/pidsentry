@@ -62,7 +62,7 @@ connectUnixSocket(struct UnixSocket *self,
                  const char         *aName,
                  size_t              aNameLen);
 
-int
+void
 closeUnixSocket(struct UnixSocket *self);
 
 bool

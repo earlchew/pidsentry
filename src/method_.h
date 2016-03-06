@@ -35,15 +35,38 @@
 extern "C" {
 #endif
 
+#ifndef __cplusplus
+#define METHOD_CTOR_(Struct_)
+#else
+#define METHOD_CTOR_(Struct_)                     \
+    Struct_(Struct_ ## T_ aMethod, void *aObject) \
+    { *this = Struct_ ## _(aMethod, aObject); }
+#endif
+
+void
+failMethodCtor_(void);
+
 /* -------------------------------------------------------------------------- */
-struct VoidMethod
-{
-    void  *mObject;
-    void (*mMethod)(void *self);
-};
+typedef void (*VoidMethodT_)(void *self);
 
 struct VoidMethod
-VoidMethod(void (*aMethod)(void *), void *aObject);
+VoidMethod_(VoidMethodT_ aMethod, void *aObject);
+
+struct VoidMethod
+{
+    METHOD_CTOR_(VoidMethod)
+
+    void        *mObject;
+    VoidMethodT_ mMethod;
+};
+
+#ifndef __cplusplus
+static inline struct VoidMethod
+VoidMethod(VoidMethodT_ aMethod, void *aObject)
+{
+    return VoidMethod_(aMethod, aObject);
+}
+#endif
 
 void
 callVoidMethod(struct VoidMethod self);
@@ -52,14 +75,26 @@ bool
 ownVoidMethodNil(struct VoidMethod self);
 
 /* -------------------------------------------------------------------------- */
-struct VoidIntMethod
-{
-    void  *mObject;
-    void (*mMethod)(void *self, int aArg);
-};
+typedef void (*VoidIntMethodT_)(void *self, int aArg);
 
 struct VoidIntMethod
-VoidIntMethod(void (*aMethod)(void *, int), void *aObject);
+VoidIntMethod_(VoidIntMethodT_ aMethod, void *aObject);
+
+struct VoidIntMethod
+{
+    METHOD_CTOR_(VoidIntMethod)
+
+    void           *mObject;
+    VoidIntMethodT_ mMethod;
+};
+
+#ifndef __cplusplus
+static inline struct VoidIntMethod
+VoidIntMethod(VoidIntMethodT_ aMethod, void *aObject)
+{
+    return VoidIntMethod_(aMethod, aObject);
+}
+#endif
 
 void
 callVoidIntMethod(struct VoidIntMethod self, int aArg);

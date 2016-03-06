@@ -62,8 +62,12 @@ createFile(struct File *self, int aFd)
      * errno so that the caller can rely on interpreting errno to
      * discover why the file descriptor is invalid. */
 
-    if (-1 == aFd)
-        goto Finally;
+    int err = errno;
+    ERROR_IF(
+        (-1 == aFd),
+        {
+            errno = err;
+        });
 
     self->mNext =  sFileList.mNext;
     self->mPrev = &sFileList;
@@ -78,11 +82,7 @@ Finally:
     FINALLY
     ({
         if (rc && -1 != self->mFd)
-        {
-            if (closeFd(&self->mFd))
-                terminate(
-                    errno, "Unable to close file descriptor %d", self->mFd);
-        }
+            closeFd(&self->mFd);
     });
 
     return rc;
@@ -98,8 +98,8 @@ detachFile(struct File *self)
 
     if (self)
     {
-        if (-1 == self->mFd)
-            goto Finally;
+        ERROR_IF(
+            -1 == self->mFd);
 
         self->mPrev->mNext = self->mNext;
         self->mNext->mPrev = self->mPrev;
@@ -119,23 +119,14 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeFile(struct File *self)
 {
     ensure(self != &sFileList);
 
-    int rc = -1;
-
-    if (self)
+    if (self && -1 != self->mFd)
     {
-        if (-1 == self->mFd)
-        {
-            errno = EBADF;
-            goto Finally;
-        }
-
-        if (closeFd(&self->mFd))
-            goto Finally;
+        closeFd(&self->mFd);
 
         self->mPrev->mNext = self->mNext;
         self->mNext->mPrev = self->mPrev;
@@ -144,14 +135,6 @@ closeFile(struct File *self)
         self->mNext = 0;
         self->mFd   = -1;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -184,8 +167,8 @@ dupFile(struct File *self, const struct File *aOther)
 {
     int rc = -1;
 
-    if (createFile(self, dup(aOther->mFd)))
-        goto Finally;
+    ERROR_IF(
+        createFile(self, dup(aOther->mFd)));
 
     rc = 0;
 
@@ -194,43 +177,27 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            if (closeFile(self))
-                terminate(
-                    errno, "Unable to close file descriptor %d", self->mFd);
-        }
+            closeFile(self);
     });
 
     return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeFilePair(struct File **aFile1, struct File **aFile2)
 {
-    int rc = -1;
-
     if (*aFile1)
     {
-        if (closeFile(*aFile1))
-            goto Finally;
+        closeFile(*aFile1);
         *aFile1 = 0;
     }
 
     if (*aFile2)
     {
-        if (closeFile(*aFile2))
-            goto Finally;
+        closeFile(*aFile2);
         *aFile2 = 0;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -315,6 +282,7 @@ int
 acceptFileSocket(struct File *self, unsigned aFlags)
 {
     int rc    = -1;
+    int fd    = -1;
     int flags = 0;
 
     struct ProcessAppLock *applock = 0;
@@ -322,8 +290,11 @@ acceptFileSocket(struct File *self, unsigned aFlags)
     switch (aFlags)
     {
     default:
-        errno = EINVAL;
-        goto Finally;
+        ERROR_IF(
+            true,
+            {
+                errno = EINVAL;
+            });
 
     case 0:                                                            break;
     case O_NONBLOCK | O_CLOEXEC: flags = SOCK_NONBLOCK | SOCK_CLOEXEC; break;
@@ -332,32 +303,34 @@ acceptFileSocket(struct File *self, unsigned aFlags)
     }
 
     if ( ! RUNNING_ON_VALGRIND)
-        rc = accept4(self->mFd, 0, 0, flags);
+        ERROR_IF(
+            (fd = accept4(self->mFd, 0, 0, flags),
+             -1 == fd));
     else
     {
         applock = createProcessAppLock();
 
-        rc = accept(self->mFd, 0, 0);
-        if (-1 == rc)
-            goto Finally;
+        ERROR_IF(
+            (fd = accept(self->mFd, 0, 0),
+             -1 == fd));
 
-        if (aFlags & O_NONBLOCK)
-        {
-            if (nonblockingFd(rc))
-                goto Finally;
-        }
+        if (flags & SOCK_CLOEXEC)
+            ERROR_IF(
+                closeFdOnExec(fd, O_CLOEXEC));
 
-        if (aFlags & O_CLOEXEC)
-        {
-            if (closeFdOnExec(rc, O_CLOEXEC))
-                goto Finally;
-        }
+        if (flags & SOCK_NONBLOCK)
+            ERROR_IF(
+                nonblockingFd(fd));
     }
+
+    rc = fd;
 
 Finally:
 
     FINALLY
     ({
+        if (-1 == rc)
+            closeFd(&fd);
         destroyProcessAppLock(applock);
     });
 
@@ -395,14 +368,14 @@ ownFileSocketError(const struct File *self, int *aError)
 
     socklen_t len = sizeof(*aError);
 
-    if (getsockopt(self->mFd, SOL_SOCKET, SO_ERROR, aError, &len))
-        goto Finally;
+    ERROR_IF(
+        getsockopt(self->mFd, SOL_SOCKET, SO_ERROR, aError, &len));
 
-    if (sizeof(*aError) != len)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        sizeof(*aError) != len,
+        {
+            errno = EINVAL;
+        });
 
     rc = 0;
 
@@ -421,14 +394,14 @@ ownFileSocketPeerCred(const struct File *self, struct ucred *aCred)
 
     socklen_t len = sizeof(*aCred);
 
-    if (getsockopt(self->mFd, SOL_SOCKET, SO_PEERCRED, aCred, &len))
-        goto Finally;
+    ERROR_IF(
+        getsockopt(self->mFd, SOL_SOCKET, SO_PEERCRED, aCred, &len));
 
-    if (sizeof(*aCred) != len)
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        sizeof(*aCred) != len,
+        {
+            errno = EINVAL;
+        });
 
     rc = 0;
 

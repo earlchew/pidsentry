@@ -51,30 +51,21 @@ createPathName(struct PathName *self, const char *aFileName)
     self->mDirName   = 0;
     self->mDirFile   = 0;
 
-    self->mFileName = strdup(aFileName);
-    if ( ! self->mFileName)
-        goto Finally;
+    ERROR_UNLESS(
+        (self->mFileName = strdup(aFileName)));
+    ERROR_UNLESS(
+        (self->mDirName_ = strdup(self->mFileName)));
+    ERROR_UNLESS(
+        (self->mBaseName_ = strdup(self->mFileName)));
+    ERROR_UNLESS(
+        (self->mDirName  = strdup(dirname(self->mDirName_))));
+    ERROR_UNLESS(
+        (self->mBaseName = strdup(basename(self->mBaseName_))));
 
-    self->mDirName_ = strdup(self->mFileName);
-    if ( ! self->mDirName_)
-        goto Finally;
-
-    self->mBaseName_ = strdup(self->mFileName);
-    if ( ! self->mBaseName_)
-        goto Finally;
-
-    self->mDirName  = strdup(dirname(self->mDirName_));
-    if ( ! self->mDirName)
-        goto Finally;
-
-    self->mBaseName = strdup(basename(self->mBaseName_));
-    if ( ! self->mBaseName)
-        goto Finally;
-
-    if (createFile(
+    ERROR_IF(
+        createFile(
             &self->mDirFile_,
-            open(self->mDirName, O_RDONLY | O_CLOEXEC)))
-        goto Finally;
+            open(self->mDirName, O_RDONLY | O_CLOEXEC)));
     self->mDirFile = &self->mDirFile_;
 
     rc = 0;
@@ -91,11 +82,7 @@ Finally:
             free(self->mDirName_);
             free(self->mDirName);
 
-            if (closeFile(self->mDirFile))
-                terminate(
-                    errno,
-                    "Unable to close directory file descriptor %d",
-                    self->mDirFile->mFd);
+            closeFile(self->mDirFile);
         }
     });
 
@@ -103,15 +90,12 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closePathName(struct PathName *self)
 {
-    int rc = -1;
-
     if (self)
     {
-        if (closeFile(self->mDirFile))
-            goto Finally;
+        closeFile(self->mDirFile);
 
         free(self->mFileName);
         free(self->mBaseName_);
@@ -126,14 +110,6 @@ closePathName(struct PathName *self)
         self->mDirName   = 0;
         self->mDirFile   = 0;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

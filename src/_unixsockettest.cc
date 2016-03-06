@@ -105,9 +105,9 @@ TEST(UnixSocketTest, AbstractServer)
     EXPECT_EQ(1, recvUnixSocket(&clientsock, buf, sizeof(buf)));
     EXPECT_EQ('Z', buf[0]);
 
-    EXPECT_EQ(0, closeUnixSocket(&clientsock));
-    EXPECT_EQ(0, closeUnixSocket(&peersock));
-    EXPECT_EQ(0, closeUnixSocket(&serversock));
+    closeUnixSocket(&clientsock);
+    closeUnixSocket(&peersock);
+    closeUnixSocket(&serversock);
 }
 
 #include "../googletest/src/gtest_main.cc"

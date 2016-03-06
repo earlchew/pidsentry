@@ -45,31 +45,34 @@ createPipe(struct Pipe *self, unsigned aFlags)
     self->mRdFile = 0;
     self->mWrFile = 0;
 
-    if (aFlags & ~ (O_CLOEXEC | O_NONBLOCK))
-    {
-        errno = EINVAL;
-        goto Finally;
-    }
+    ERROR_IF(
+        aFlags & ~ (O_CLOEXEC | O_NONBLOCK),
+        {
+            errno = EINVAL;
+        });
 
     int fd[2];
 
-    if (pipe2(fd, aFlags))
-        goto Finally;
+    ERROR_IF(
+        pipe2(fd, aFlags));
 
-    if (-1 == fd[0] || -1 == fd[1])
-        goto Finally;
+    ERROR_IF(
+        -1 == fd[0] || -1 == fd[1],
+        {
+            errno = EINVAL;
+        });
 
     ensure( ! stdFd(fd[0]));
     ensure( ! stdFd(fd[1]));
 
-    if (createFile(&self->mRdFile_, fd[0]))
-        goto Finally;
+    ERROR_IF(
+        createFile(&self->mRdFile_, fd[0]));
     self->mRdFile = &self->mRdFile_;
 
     fd[0] = -1;
 
-    if (createFile(&self->mWrFile_, fd[1]))
-        goto Finally;
+    ERROR_IF(
+        createFile(&self->mWrFile_, fd[1]));
     self->mWrFile = &self->mWrFile_;
 
     fd[1] = -1;
@@ -80,23 +83,13 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&fd[0]))
-            terminate(errno, "Unable to close file descriptor %d", fd[0]);
-        if (closeFd(&fd[1]))
-            terminate(errno, "Unable to close file descriptor %d", fd[1]);
+        closeFd(&fd[0]);
+        closeFd(&fd[1]);
 
         if (rc)
         {
-            if (closeFile(self->mRdFile))
-                terminate(
-                    errno,
-                    "Unable to close file descriptor %d",
-                    self->mRdFile->mFd);
-            if (closeFile(self->mWrFile))
-                terminate(
-                    errno,
-                    "Unable to close file descriptor %d",
-                    self->mWrFile->mFd);
+            closeFile(self->mRdFile);
+            closeFile(self->mWrFile);
         }
     });
 
@@ -109,8 +102,8 @@ detachPipeReader(struct Pipe *self)
 {
     int rc = -1;
 
-    if (detachFile(self->mRdFile))
-        goto Finally;
+    ERROR_IF(
+        detachFile(self->mRdFile));
 
     self->mRdFile = 0;
 
@@ -129,8 +122,8 @@ detachPipeWriter(struct Pipe *self)
 {
     int rc = -1;
 
-    if (detachFile(self->mWrFile))
-        goto Finally;
+    ERROR_IF(
+        detachFile(self->mWrFile));
 
     self->mWrFile = 0;
 
@@ -144,41 +137,19 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closePipeReader(struct Pipe *self)
 {
-    int rc = -1;
-
-    if (closeFile(self->mRdFile))
-        goto Finally;
+    closeFile(self->mRdFile);
     self->mRdFile = 0;
-
-    rc = 0;
-
- Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closePipeWriter(struct Pipe *self)
 {
-    int rc = -1;
-
-    if (closeFile(self->mWrFile))
-        goto Finally;
+    closeFile(self->mWrFile);
     self->mWrFile = 0;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -187,11 +158,10 @@ closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec)
 {
     int rc = -1;
 
-    if (closeFileOnExec(self->mRdFile, aCloseOnExec) ||
-        closeFileOnExec(self->mWrFile, aCloseOnExec))
-    {
-        goto Finally;
-    }
+    ERROR_IF(
+        closeFileOnExec(self->mRdFile, aCloseOnExec));
+    ERROR_IF(
+        closeFileOnExec(self->mWrFile, aCloseOnExec));
 
     rc = 0;
 
@@ -208,11 +178,10 @@ nonblockingPipe(struct Pipe *self)
 {
     int rc = -1;
 
-    if (nonblockingFile(self->mRdFile) ||
-        nonblockingFile(self->mWrFile))
-    {
-        goto Finally;
-    }
+    ERROR_IF(
+        nonblockingFile(self->mRdFile));
+    ERROR_IF(
+        nonblockingFile(self->mWrFile));
 
     rc = 0;
 
@@ -224,24 +193,11 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closePipe(struct Pipe *self)
 {
-    int rc = -1;
-
     if (self)
-    {
-        if (closeFilePair(&self->mRdFile, &self->mWrFile))
-            goto Finally;
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+        closeFilePair(&self->mRdFile, &self->mWrFile);
 }
 
 /* -------------------------------------------------------------------------- */

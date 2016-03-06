@@ -42,10 +42,13 @@ createThread(pthread_t      *self,
              void           *aThread(void *),
              void           *aContext)
 {
-    if (errno = pthread_create(self, aAttr, aThread, aContext))
-        terminate(
-            errno,
-            "Unable to create thread");
+    ABORT_IF(
+        (errno = pthread_create(self, aAttr, aThread, aContext)),
+        {
+            terminate(
+                errno,
+                "Unable to create thread");
+        });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -54,10 +57,13 @@ joinThread(pthread_t *self)
 {
     void *rc = 0;
 
-    if (errno = pthread_join(*self, &rc))
-        terminate(
-            errno,
-            "Unable to join thread");
+    ABORT_IF(
+        (errno = pthread_join(*self, &rc)),
+        {
+            terminate(
+                errno,
+                "Unable to join thread");
+        });
 
     return rc;
 }
@@ -66,40 +72,53 @@ joinThread(pthread_t *self)
 void
 createThreadAttr(pthread_attr_t *self)
 {
-    if (errno = pthread_attr_init(self))
-        terminate(
-            errno,
-            "Unable to create thread attribute");
+    ABORT_IF(
+        (errno = pthread_attr_init(self)),
+        {
+            terminate(
+                errno,
+                "Unable to create thread attribute");
+        });
 }
 
 /* -------------------------------------------------------------------------- */
 void
 setThreadAttrDetachState(pthread_attr_t *self, int aState)
 {
-    if (errno = pthread_attr_setdetachstate(self, aState))
-        terminate(
-            errno,
-            "Unable to configure thread attribute detached state %d", aState);
+    ABORT_IF(
+        (errno = pthread_attr_setdetachstate(self, aState)),
+        {
+            terminate(
+                errno,
+                "Unable to configure thread attribute detached state %d",
+                aState);
+        });
 }
 
 /* -------------------------------------------------------------------------- */
 void
 destroyThreadAttr(pthread_attr_t *self)
 {
-    if (errno = pthread_attr_destroy(self))
-        terminate(
-            errno,
-            "Unable to destroy thread attribute");
+    ABORT_IF(
+        (errno = pthread_attr_destroy(self)),
+        {
+            terminate(
+                errno,
+                "Unable to destroy thread attribute");
+        });
 }
 
 /* -------------------------------------------------------------------------- */
 pthread_mutex_t *
 createMutex(pthread_mutex_t *self)
 {
-    if (errno = pthread_mutex_init(self, 0))
-        terminate(
-            errno,
-            "Unable to create mutex");
+    ABORT_IF(
+        (errno = pthread_mutex_init(self, 0)),
+        {
+            terminate(
+                errno,
+                "Unable to create mutex");
+        });
 
     return self;
 }
@@ -110,26 +129,38 @@ createSharedMutex(pthread_mutex_t *self)
 {
     pthread_mutexattr_t mutexattr;
 
-    if (errno = pthread_mutexattr_init(&mutexattr))
-        terminate(
-            errno,
-            "Unable to allocate mutex attribute");
+    ABORT_IF(
+        (errno = pthread_mutexattr_init(&mutexattr)),
+        {
+            terminate(
+                errno,
+                "Unable to allocate mutex attribute");
+        });
 
-    if (errno = pthread_mutexattr_setpshared(&mutexattr,
-                                             PTHREAD_PROCESS_SHARED))
-        terminate(
-            errno,
-            "Unable to set mutex attribute PTHREAD_PROCESS_SHARED");
+    ABORT_IF(
+        (errno = pthread_mutexattr_setpshared(&mutexattr,
+                                              PTHREAD_PROCESS_SHARED)),
+        {
+            terminate(
+                errno,
+                "Unable to set mutex attribute PTHREAD_PROCESS_SHARED");
+        });
 
-    if (errno = pthread_mutex_init(self, &mutexattr))
-        terminate(
-            errno,
-            "Unable to create shared mutex");
+    ABORT_IF(
+        (errno = pthread_mutex_init(self, &mutexattr)),
+        {
+            terminate(
+                errno,
+                "Unable to create shared mutex");
+        });
 
-    if (errno = pthread_mutexattr_destroy(&mutexattr))
-        terminate(
-            errno,
-            "Unable to destroy mutex attribute");
+    ABORT_IF(
+        (errno = pthread_mutexattr_destroy(&mutexattr)),
+        {
+            terminate(
+                errno,
+                "Unable to destroy mutex attribute");
+        });
 
     return self;
 }
@@ -140,10 +171,13 @@ destroyMutex(pthread_mutex_t *self)
 {
     if (self)
     {
-        if (errno = pthread_mutex_destroy(self))
-            terminate(
-                errno,
-                "Unable to destroy mutex");
+        ABORT_IF(
+            (errno = pthread_mutex_destroy(self)),
+            {
+                terminate(
+                    errno,
+                    "Unable to destroy mutex");
+            });
     }
 
     return 0;
@@ -155,10 +189,17 @@ lockMutex_(pthread_mutex_t *self)
 {
     struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
 
-    while (errno = pthread_mutex_trylock(self))
+    while (1)
     {
-        if (EBUSY != errno)
-            terminate(errno, "Unable to lock mutex");
+        ABORT_IF(
+            (errno = pthread_mutex_trylock(self),
+             errno && EBUSY != errno),
+            {
+                terminate(errno, "Unable to lock mutex");
+            });
+
+        if ( ! errno)
+            break;
 
         /* There is no way to configure the mutex to use a monotonic
          * clock to compute the deadline. Since the timeout is only
@@ -174,20 +215,20 @@ lockMutex_(pthread_mutex_t *self)
                 NanoSeconds(
                     tm.wallclock.ns + NSECS(Seconds(timeout_s * 60)).ns));
 
-        if (errno = pthread_mutex_timedlock(self, &deadline))
-        {
-            int err = errno;
-
-            if (ETIMEDOUT == err)
+        ABORT_IF(
+            (errno = pthread_mutex_timedlock(self, &deadline),
+             errno && ETIMEDOUT != errno),
             {
-                /* Try again if the attempt to lock the mutex timed out
-                 * but the process was stopped for some part of that time. */
+                terminate(errno, "Unable to lock mutex after %us", timeout_s);
+            });
 
-                if (checkProcessSigContTracker(&sigContTracker))
-                    continue;
-            }
+        if (errno)
+        {
+            /* Try again if the attempt to lock the mutex timed out
+             * but the process was stopped for some part of that time. */
 
-            terminate(err, "Unable to lock mutex after %us", timeout_s);
+            if (checkProcessSigContTracker(&sigContTracker))
+                continue;
         }
 
         break;
@@ -210,8 +251,11 @@ unlockMutex_(pthread_mutex_t *self)
 {
     if (self)
     {
-        if (errno = pthread_mutex_unlock(self))
-            terminate(errno, "Unable to unlock mutex");
+        ABORT_IF(
+            (errno = pthread_mutex_unlock(self)),
+            {
+                terminate(errno, "Unable to unlock mutex");
+            });
     }
 
     return 0;
@@ -231,15 +275,21 @@ unlockMutexSignal_(pthread_mutex_t *self, pthread_cond_t *aCond)
 {
     if (self)
     {
-        if (errno = pthread_cond_signal(aCond))
-            terminate(
-                errno,
-                "Unable to signal to condition variable");
+        ABORT_IF(
+            (errno = pthread_cond_signal(aCond)),
+            {
+                terminate(
+                    errno,
+                    "Unable to signal to condition variable");
+            });
 
-        if (errno = pthread_mutex_unlock(self))
-            terminate(
-                errno,
-                "Unable to lock mutex");
+        ABORT_IF(
+            (errno = pthread_mutex_unlock(self)),
+            {
+                terminate(
+                    errno,
+                    "Unable to lock mutex");
+            });
     }
 
     return 0;
@@ -259,15 +309,21 @@ unlockMutexBroadcast_(pthread_mutex_t *self, pthread_cond_t *aCond)
 {
     if (self)
     {
-        if (errno = pthread_cond_broadcast(aCond))
-            terminate(
-                errno,
-                "Unable to broadcast to condition variable");
+        ABORT_IF(
+            (errno = pthread_cond_broadcast(aCond)),
+            {
+                terminate(
+                    errno,
+                    "Unable to broadcast to condition variable");
+            });
 
-        if (errno = pthread_mutex_unlock(self))
-            terminate(
-                errno,
-                "Unable to lock mutex");
+        ABORT_IF(
+            (errno = pthread_mutex_unlock(self)),
+            {
+                terminate(
+                    errno,
+                    "Unable to lock mutex");
+            });
     }
 
     return 0;
@@ -285,10 +341,13 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 pthread_cond_t *
 createCond(pthread_cond_t *self)
 {
-    if (errno = pthread_cond_init(self, 0))
-        terminate(
-            errno,
-            "Unable to create condition variable");
+    ABORT_IF(
+        (errno = pthread_cond_init(self, 0)),
+        {
+            terminate(
+                errno,
+                "Unable to create condition variable");
+        });
 
     return self;
 }
@@ -299,26 +358,38 @@ createSharedCond(pthread_cond_t *self)
 {
     pthread_condattr_t condattr;
 
-    if (errno = pthread_condattr_init(&condattr))
-        terminate(
-            errno,
-            "Unable to allocate condition variable attribute");
+    ABORT_IF(
+        (errno = pthread_condattr_init(&condattr)),
+        {
+            terminate(
+                errno,
+                "Unable to allocate condition variable attribute");
+        });
 
-    if (errno = pthread_condattr_setpshared(&condattr,
-                                            PTHREAD_PROCESS_SHARED))
-        terminate(
-            errno,
-            "Unable to set cond attribute PTHREAD_PROCESS_SHARED");
+    ABORT_IF(
+        (errno = pthread_condattr_setpshared(&condattr,
+                                             PTHREAD_PROCESS_SHARED)),
+        {
+            terminate(
+                errno,
+                "Unable to set cond attribute PTHREAD_PROCESS_SHARED");
+        });
 
-    if (errno = pthread_cond_init(self, &condattr))
-        terminate(
-            errno,
-            "Unable to create shared condition variable");
+    ABORT_IF(
+        (errno = pthread_cond_init(self, &condattr)),
+        {
+            terminate(
+                errno,
+                "Unable to create shared condition variable");
+        });
 
-    if (errno = pthread_condattr_destroy(&condattr))
-        terminate(
-            errno,
-            "Unable to destroy condition variable attribute");
+    ABORT_IF(
+        (errno = pthread_condattr_destroy(&condattr)),
+        {
+            terminate(
+                errno,
+                "Unable to destroy condition variable attribute");
+        });
 
     return self;
 }
@@ -329,10 +400,13 @@ destroyCond(pthread_cond_t *self)
 {
     if (self)
     {
-        if (errno = pthread_cond_destroy(self))
-            terminate(
-                errno,
-                "Unable to destroy condition variable");
+        ABORT_IF(
+            (errno = pthread_cond_destroy(self)),
+            {
+                terminate(
+                    errno,
+                    "Unable to destroy condition variable");
+            });
     }
 
     return 0;
@@ -342,10 +416,13 @@ destroyCond(pthread_cond_t *self)
 static void
 waitCond_(pthread_cond_t *self, pthread_mutex_t *aMutex)
 {
-    if (errno = pthread_cond_wait(self, aMutex))
-        terminate(
-            errno,
-            "Unable to wait for condition variable");
+    ABORT_IF(
+        (errno = pthread_cond_wait(self, aMutex)),
+        {
+            terminate(
+                errno,
+                "Unable to wait for condition variable");
+        });
 }
 
 void
@@ -357,70 +434,50 @@ waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex)
 }
 
 /* -------------------------------------------------------------------------- */
-int
+struct ThreadSigMask *
 pushThreadSigMask(
     struct ThreadSigMask     *self,
     enum ThreadSigMaskAction  aAction,
     const int                *aSigList)
 {
-    int rc = -1;
-
     int maskAction;
     switch (aAction)
     {
-    default: errno = EINVAL; goto Finally;
+    default:
+        ABORT_IF(
+            true,
+            {
+                errno = EINVAL;
+            });
     case ThreadSigMaskUnblock: maskAction = SIG_UNBLOCK; break;
     case ThreadSigMaskSet:     maskAction = SIG_SETMASK; break;
     case ThreadSigMaskBlock:   maskAction = SIG_BLOCK;   break;
     }
 
-    sigset_t sigset;
+    sigset_t sigSet;
 
     if ( ! aSigList)
-    {
-        if (sigfillset(&sigset))
-            goto Finally;
-    }
+        ABORT_IF(sigfillset(&sigSet));
     else
     {
-        if (sigemptyset(&sigset))
-            goto Finally;
+        ABORT_IF(sigemptyset(&sigSet));
         for (size_t ix = 0; aSigList[ix]; ++ix)
-        {
-            if (sigaddset(&sigset, aSigList[ix]))
-                goto Finally;
-        }
+            ABORT_IF(sigaddset(&sigSet, aSigList[ix]));
     }
 
-    if (pthread_sigmask(maskAction, &sigset, &self->mSigSet))
-        goto Finally;
+    ABORT_IF(pthread_sigmask(maskAction, &sigSet, &self->mSigSet));
 
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
-int
+struct ThreadSigMask *
 popThreadSigMask(struct ThreadSigMask *self)
 {
-    int rc = -1;
-
     if (self)
-    {
-        if (pthread_sigmask(SIG_SETMASK, &self->mSigSet, 0))
-            goto Finally;
-    }
+        ABORT_IF(pthread_sigmask(SIG_SETMASK, &self->mSigSet, 0));
 
-    rc = 0;
-
-Finally:
-
-    return rc;
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -459,11 +516,7 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
      * to prevent other threads accessing the resource. */
 
     struct ThreadSigMask threadSigMask;
-
-    if (pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0))
-        terminate(
-            errno,
-            "Unable to push thread signal mask");
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
     lockMutex_(&self->mMutex);
 
@@ -485,10 +538,8 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
     ensure(self->mLocked);
     ensure(pthread_equal(self->mOwner, pthread_self()));
 
-    if (1 != self->mLocked && popThreadSigMask(&threadSigMask))
-        terminate(
-            errno,
-            "Unable to pop thread signal mask");
+    if (1 != self->mLocked)
+        popThreadSigMask(&threadSigMask);
 
     return self;
 }
@@ -513,10 +564,7 @@ unlockThreadSigMutex(struct ThreadSigMutex *self)
         {
             unlockMutexSignal_(&self->mMutex, &self->mCond);
 
-            if (popThreadSigMask(&threadSigMask))
-                terminate(
-                    errno,
-                    "Unable to pop thread signal mask");
+            popThreadSigMask(&threadSigMask);
         }
     }
 

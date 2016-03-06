@@ -46,36 +46,35 @@ createStdFdFiller(struct StdFdFiller *self)
 
     int fd[2];
 
-    if (pipe(fd))
-        goto Finally;
+    ERROR_IF(
+        pipe(fd));
 
-    if (-1 == fd[0] || -1 == fd[1])
-    {
-        errno = EBADF;
-        goto Finally;
-    }
+    ERROR_IF(
+        -1 == fd[0] || -1 == fd[1],
+        {
+            errno = EBADF;
+        });
 
     /* Close the writing end of the pipe, leaving only the reading
      * end of the pipe. Any attempt to write will fail, and any
      * attempt to read will yield EOF. */
 
-    if (closeFd(&fd[1]))
-        goto Finally;
+    closeFd(&fd[1]);
 
     fd[1] = -1;
 
-    if (createFile(&self->mFile_[0], fd[0]))
-        goto Finally;
+    ERROR_IF(
+        createFile(&self->mFile_[0], fd[0]));
     self->mFile[0] = &self->mFile_[0];
 
     fd[0] = -1;
 
-    if (dupFile(&self->mFile_[1], &self->mFile_[0]))
-        goto Finally;
+    ERROR_IF(
+        dupFile(&self->mFile_[1], &self->mFile_[0]));
     self->mFile[1] = &self->mFile_[1];
 
-    if (dupFile(&self->mFile_[2], &self->mFile_[0]))
-        goto Finally;
+    ERROR_IF(
+        dupFile(&self->mFile_[2], &self->mFile_[0]));
     self->mFile[2] = &self->mFile_[2];
 
     rc = 0;
@@ -84,20 +83,14 @@ Finally:
 
     FINALLY
     ({
-        if (closeFd(&fd[0]))
-            terminate(errno, "Unable to close file descriptor %d", fd[0]);
-        if (closeFd(&fd[1]))
-            terminate(errno, "Unable to close file descriptor %d", fd[1]);
+        closeFd(&fd[0]);
+        closeFd(&fd[1]);
 
         if (rc)
         {
             for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
             {
-                if (closeFile(self->mFile[ix]))
-                    terminate(
-                        errno,
-                        "Unable to close file descriptor %d",
-                        self->mFile[ix]->mFd);
+                closeFile(self->mFile[ix]);
                 self->mFile[ix] = 0;
             }
         }
@@ -107,25 +100,14 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeStdFdFiller(struct StdFdFiller *self)
 {
-    int rc = -1;
-
     for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
     {
-        if (closeFile(self->mFile[ix]))
-            goto Finally;
+        closeFile(self->mFile[ix]);
         self->mFile[ix] = 0;
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

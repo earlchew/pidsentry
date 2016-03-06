@@ -29,6 +29,8 @@
 
 #include "test_.h"
 #include "options_.h"
+#include "error_.h"
+#include "macros_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -37,24 +39,24 @@
 
 /* -------------------------------------------------------------------------- */
 bool
-testMode(unsigned aLevel)
+testMode(enum TestLevel aLevel)
 {
-    return aLevel < gOptions.mTest;
+    return aLevel == gOptions.mTest;
 }
 
 /* -------------------------------------------------------------------------- */
 bool
-testAction(unsigned aLevel)
+testAction(enum TestLevel aLevel)
 {
     /* If test mode has been enabled, choose to activate a test action
      * a small percentage of the time. */
 
-    return aLevel < gOptions.mTest && 3 > random() % 10;
+    return aLevel == gOptions.mTest && 3 > random() % 10;
 }
 
 /* -------------------------------------------------------------------------- */
 bool
-testSleep(unsigned aLevel)
+testSleep(enum TestLevel aLevel)
 {
     bool slept = false;
 
@@ -73,6 +75,40 @@ testSleep(unsigned aLevel)
     }
 
     return slept;
+}
+
+/* -------------------------------------------------------------------------- */
+bool
+testFinally(const struct ErrorFrame *aFrame)
+{
+    bool inject = false;
+
+    if (testMode(TestLevelFinally) && 2 > random() % 10000)
+    {
+        static const struct
+        {
+            int         mCode;
+            const char *mText;
+        }  errTable[] =
+        {
+            { EINTR,  "EINTR" },
+            { EINVAL, "EINVAL" },
+        };
+
+        unsigned choice = random() % NUMBEROF(errTable);
+
+        debug(0,
+              "inject %s into %s %s %u",
+              errTable[choice].mText,
+              aFrame->mName,
+              aFrame->mFile,
+              aFrame->mLine);
+
+        errno = errTable[choice].mCode;
+        inject = true;
+    }
+
+    return inject;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -48,7 +48,7 @@ struct ParseArgList
 int
 createParseArgListCSV(struct ParseArgList *self, const char *aArg);
 
-int
+void
 closeParseArgList(struct ParseArgList *self);
 
 /* -------------------------------------------------------------------------- */

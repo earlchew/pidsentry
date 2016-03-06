@@ -45,8 +45,8 @@ createEventPipe(struct EventPipe *self, unsigned aFlags)
     self->mSignalled = false;
     self->mMutex     = createThreadSigMutex(&self->mMutex_);
 
-    if (createPipe(&self->mPipe_, aFlags))
-        goto Finally;
+    ERROR_IF(
+        createPipe(&self->mPipe_, aFlags));
     self->mPipe = &self->mPipe_;
 
     rc = 0;
@@ -57,10 +57,7 @@ Finally:
     ({
         if (rc)
         {
-            if (closePipe(self->mPipe))
-                terminate(
-                    errno,
-                    "Unable to close pipe");
+            closePipe(self->mPipe);
 
             self->mMutex = destroyThreadSigMutex(self->mMutex);
         }
@@ -70,26 +67,15 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 closeEventPipe(struct EventPipe *self)
 {
-    int rc = -1;
-
     if (self)
     {
-        if (closePipe(self->mPipe))
-            goto Finally;
+        closePipe(self->mPipe);
 
         self->mMutex = destroyThreadSigMutex(self->mMutex);
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -106,18 +92,13 @@ setEventPipe(struct EventPipe *self)
     {
         char buf[1] = { 0 };
 
-        switch (writeFile(self->mPipe->mWrFile, buf, 1))
-        {
-        default:
-            errno = EIO;
-            /* Fall through */
-
-        case -1:
-            goto Finally;
-
-        case 1:
-            break;
-        }
+        ssize_t rv = 0;
+        ERROR_IF(
+            (rv = writeFile(self->mPipe->mWrFile, buf, 1),
+             1 != rv),
+            {
+                errno = -1 == rv ? errno : EIO;
+            });
 
         self->mSignalled = true;
         signalled        = 1;
@@ -149,18 +130,13 @@ resetEventPipe(struct EventPipe *self)
     {
         char buf[1];
 
-        switch (readFile(self->mPipe->mRdFile, buf, 1))
-        {
-        default:
-            errno = EIO;
-            /* Fall through */
-
-        case -1:
-            goto Finally;
-
-        case 1:
-            break;
-        }
+        ssize_t rv = 0;
+        ERROR_IF(
+            (rv = readFile(self->mPipe->mRdFile, buf, 1),
+             1 != rv),
+            {
+                errno = -1 == rv ? errno : EIO;
+            });
 
         ensure( ! buf[0]);
 

@@ -56,7 +56,7 @@ TEST(EventLatchTest, SetReset)
 
     EXPECT_EQ(0, resetEventLatch(&eventLatch));
     EXPECT_EQ(0, ownEventLatchSetting(&eventLatch));
-    EXPECT_EQ(0, closeEventLatch(&eventLatch));
+    closeEventLatch(&eventLatch);
 }
 
 TEST(EventLatchTest, DisableSetReset)
@@ -80,7 +80,7 @@ TEST(EventLatchTest, DisableSetReset)
     errno = 0;
     EXPECT_EQ(-1, resetEventLatch(&eventLatch));
     EXPECT_EQ(ERANGE, errno);
-    EXPECT_EQ(0, closeEventLatch(&eventLatch));
+    closeEventLatch(&eventLatch);
 }
 
 TEST(EventLatchTest, SetDisableSetReset)
@@ -107,7 +107,7 @@ TEST(EventLatchTest, SetDisableSetReset)
     errno = 0;
     EXPECT_EQ(-1, resetEventLatch(&eventLatch));
     EXPECT_EQ(ERANGE, errno);
-    EXPECT_EQ(0, closeEventLatch(&eventLatch));
+    closeEventLatch(&eventLatch);
 }
 
 TEST(EventLatchTest, PipeBindUnbind)
@@ -141,8 +141,8 @@ TEST(EventLatchTest, PipeBindUnbind)
     EXPECT_EQ(0, bindEventLatchPipe(&eventLatch, 0));
     EXPECT_EQ(0, resetEventPipe(&eventPipe));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
-    EXPECT_EQ(0, closeEventLatch(&eventLatch));
+    closeEventPipe(&eventPipe);
+    closeEventLatch(&eventLatch);
 }
 
 TEST(EventLatchTest, Pipe)
@@ -176,8 +176,8 @@ TEST(EventLatchTest, Pipe)
     EXPECT_EQ(0, resetEventLatch(&eventLatch));
     EXPECT_EQ(0, resetEventPipe(&eventPipe));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
-    EXPECT_EQ(0, closeEventLatch(&eventLatch));
+    closeEventPipe(&eventPipe);
+    closeEventLatch(&eventLatch);
 }
 
 #include "../googletest/src/gtest_main.cc"

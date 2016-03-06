@@ -87,7 +87,15 @@ enum ProcessStatus
 
 /* -------------------------------------------------------------------------- */
 struct ProcessSigContTracker
+ProcessSigContTracker_(void);
+
+struct ProcessSigContTracker
 {
+#ifdef __cplusplus
+    ProcessSigContTracker()
+    { *this = ProcessSigContTracker_(); }
+#endif
+
     unsigned mCount;
 };
 
@@ -162,8 +170,13 @@ int
 unwatchProcessClock(void);
 
 /* -------------------------------------------------------------------------- */
-struct ProcessSigContTracker
-ProcessSigContTracker(void);
+#ifndef __cplusplus
+static inline struct ProcessSigContTracker
+ProcessSigContTracker(void)
+{
+    return ProcessSigContTracker_();
+}
+#endif
 
 bool
 checkProcessSigContTracker(struct ProcessSigContTracker *self);
@@ -181,8 +194,17 @@ monitorProcess(pid_t aPid);
 struct ExitCode
 extractProcessExitStatus(int aStatus, pid_t aPid);
 
-void
+int
 execProcess(const char *aCmd, char **aArgv);
+
+void
+exitProcess(int aStatus) __attribute__((__noreturn__));
+
+void
+quitProcess(int aStatus) __attribute__((__noreturn__));
+
+void
+abortProcess(void) __attribute__((__noreturn__));
 
 /* -------------------------------------------------------------------------- */
 int
@@ -221,7 +243,7 @@ fetchProcessState(pid_t aPid);
 int
 Process_init(const char *aArg0);
 
-int
+void
 Process_exit(void);
 
 /* -------------------------------------------------------------------------- */

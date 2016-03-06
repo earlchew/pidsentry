@@ -44,7 +44,7 @@ TEST(EventPipeTest, ResetOnce)
 
     EXPECT_EQ(0, waitFileReadReady(eventPipe.mPipe->mRdFile, &zeroTimeout));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
+    closeEventPipe(&eventPipe);
 }
 
 TEST(EventPipeTest, SetOnce)
@@ -64,7 +64,7 @@ TEST(EventPipeTest, SetOnce)
 
     EXPECT_EQ(0, waitFileReadReady(eventPipe.mPipe->mRdFile, &zeroTimeout));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
+    closeEventPipe(&eventPipe);
 }
 
 TEST(EventPipeTest, SetTwice)
@@ -85,7 +85,7 @@ TEST(EventPipeTest, SetTwice)
 
     EXPECT_EQ(0, waitFileReadReady(eventPipe.mPipe->mRdFile, &zeroTimeout));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
+    closeEventPipe(&eventPipe);
 }
 
 TEST(EventPipeTest, SetOnceResetOnce)
@@ -103,7 +103,7 @@ TEST(EventPipeTest, SetOnceResetOnce)
 
     EXPECT_EQ(0, resetEventPipe(&eventPipe));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
+    closeEventPipe(&eventPipe);
 }
 
 TEST(EventPipeTest, SetOnceResetTwice)
@@ -122,7 +122,7 @@ TEST(EventPipeTest, SetOnceResetTwice)
 
     EXPECT_EQ(0, resetEventPipe(&eventPipe));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
+    closeEventPipe(&eventPipe);
 }
 
 TEST(EventPipeTest, SetOnceResetOnceSetOnce)
@@ -144,7 +144,7 @@ TEST(EventPipeTest, SetOnceResetOnceSetOnce)
 
     EXPECT_EQ(0, waitFileReadReady(eventPipe.mPipe->mRdFile, &zeroTimeout));
 
-    EXPECT_EQ(0, closeEventPipe(&eventPipe));
+    closeEventPipe(&eventPipe);
 }
 
 #include "../googletest/src/gtest_main.cc"

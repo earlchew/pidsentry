@@ -35,15 +35,37 @@
 extern "C" {
 #endif
 
+struct ErrorFrame;
+
+/* -------------------------------------------------------------------------- */
+#define TEST_RACE(...)                          \
+    do                                          \
+    {                                           \
+        testSleep(TestLevelRace);               \
+        __VA_ARGS__;                            \
+        testSleep(TestLevelRace);               \
+    } while (0)
+
+/* -------------------------------------------------------------------------- */
+enum TestLevel
+{
+    TestLevelRace    = 1,
+    TestLevelSync    = 2,
+    TestLevelFinally = 3
+};
+
 /* -------------------------------------------------------------------------- */
 bool
-testSleep(unsigned aLevel);
+testSleep(enum TestLevel aLevel);
 
 bool
-testAction(unsigned aLevel);
+testAction(enum TestLevel aLevel);
 
 bool
-testMode(unsigned aLevel);
+testMode(enum TestLevel aLevel);
+
+bool
+testFinally(const struct ErrorFrame *aFrame);
 
 /* -------------------------------------------------------------------------- */
 

@@ -134,13 +134,13 @@ void
 waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);
 
 /* -------------------------------------------------------------------------- */
-int
+struct ThreadSigMask *
 pushThreadSigMask(
     struct ThreadSigMask    *self,
     enum ThreadSigMaskAction aAction,
     const int               *aSigList);
 
-int
+struct ThreadSigMask *
 popThreadSigMask(struct ThreadSigMask *self);
 
 /* -------------------------------------------------------------------------- */
