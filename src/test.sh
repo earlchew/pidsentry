@@ -640,12 +640,12 @@ done
 
 testCase 'Error handling'
 testOutput 128 != '$(
-    {
-        RANGE=$(k9 -d --test -- dd if=/dev/zero bs=64K count=4 2>&1 | tail -1)
-        TRIGGER=$(( $(random) % ((RANGE + 999) / 1000 * 1000) ))
-        export BLACKDOG_TEST_ERROR="$TRIGGER"
-        k9 -d --test -- dd if=/dev/zero bs=64K count=4
-    } > /dev/null
+    RANGE=$(
+        k9 -d --test -- dd if=/dev/zero bs=64K count=4 2>&1 >/dev/null |
+        tail -1)
+    TRIGGER=$(( $(random) % ((RANGE + 999) / 1000 * 1000) ))
+    export BLACKDOG_TEST_ERROR="$TRIGGER"
+    k9 -d --test -- dd if=/dev/zero bs=64K count=4 >/dev/null
     /bin/echo $?
 )'
 
