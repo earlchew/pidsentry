@@ -31,11 +31,24 @@
 #include "options_.h"
 #include "error_.h"
 #include "macros_.h"
+#include "env_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <sys/mman.h>
+
 #include <valgrind/valgrind.h>
+
+/* -------------------------------------------------------------------------- */
+struct TestState
+{
+    uint64_t mError;
+    uint64_t mTrigger;
+};
+
+static struct TestState *sState_;
+static unsigned          sInit_;
 
 /* -------------------------------------------------------------------------- */
 bool
@@ -78,37 +91,111 @@ testSleep(enum TestLevel aLevel)
 }
 
 /* -------------------------------------------------------------------------- */
+uint64_t
+testErrorLevel(void)
+{
+    return sState_ ? sState_->mError : 0;
+}
+
+/* -------------------------------------------------------------------------- */
 bool
 testFinally(const struct ErrorFrame *aFrame)
 {
     bool inject = false;
 
-    if (testMode(TestLevelFinally) && 2 > random() % 10000)
+    if (sState_)
     {
-        static const struct
+        uint64_t errorLevel = __sync_add_and_fetch(&sState_->mError, 1);
+
+        if (sState_->mTrigger && errorLevel == sState_->mTrigger)
         {
-            int         mCode;
-            const char *mText;
-        }  errTable[] =
-        {
-            { EINTR,  "EINTR" },
-            { EINVAL, "EINVAL" },
-        };
+            static const struct
+            {
+                int         mCode;
+                const char *mText;
+            }  errTable[] =
+                   {
+                       { EINTR,  "EINTR" },
+                       { EINVAL, "EINVAL" },
+                   };
 
-        unsigned choice = random() % NUMBEROF(errTable);
+            unsigned choice = random() % NUMBEROF(errTable);
 
-        debug(0,
-              "inject %s into %s %s %u",
-              errTable[choice].mText,
-              aFrame->mName,
-              aFrame->mFile,
-              aFrame->mLine);
+            debug(0,
+                  "inject %s into %s %s %u",
+                  errTable[choice].mText,
+                  aFrame->mName,
+                  aFrame->mFile,
+                  aFrame->mLine);
 
-        errno = errTable[choice].mCode;
-        inject = true;
+            errno  = errTable[choice].mCode;
+            inject = true;
+        }
     }
 
     return inject;
+}
+
+/* -------------------------------------------------------------------------- */
+#include <stdio.h>
+
+int
+Test_init(const char *aErrorEnv)
+{
+    int rc = -1;
+
+    struct TestState *state = MAP_FAILED;
+
+    if (1 == ++sInit_)
+    {
+        uint64_t errorTrigger = 0;
+
+        if (aErrorEnv)
+        {
+            ERROR_IF(
+                getEnvUInt64(aErrorEnv, &errorTrigger) && ENOENT != errno);
+        }
+
+        ERROR_IF(
+            (state = mmap(0,
+                          sizeof(*sState_),
+                          PROT_READ | PROT_WRITE,
+                          MAP_ANONYMOUS | MAP_SHARED, -1, 0),
+             MAP_FAILED == state));
+
+        sState_ = state;
+        state   = MAP_FAILED;
+
+        sState_->mError   = 1;
+        sState_->mTrigger = errorTrigger;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (MAP_FAILED != state)
+            ABORT_IF(
+                munmap(state, sizeof(*state)));
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+Test_exit(void)
+{
+    struct TestState *state = sState_;
+
+    if (state)
+    {
+        sState_ = 0;
+        ABORT_IF(
+            munmap(state, sizeof(*state)));
+    }
 }
 
 /* -------------------------------------------------------------------------- */

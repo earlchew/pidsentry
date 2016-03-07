@@ -120,18 +120,18 @@ enum OptionKind
 
 static struct option sLongOptions[] =
 {
-    { "cordless",   0, 0, 'c' },
-    { "debug",      0, 0, 'd' },
-    { "fd",         1, 0, 'f' },
-    { "identify",   0, 0, 'i' },
-    { "name",       1, 0, 'n' },
-    { "orphaned",   0, 0, 'o' },
-    { "pid",        1, 0, 'P' },
-    { "pidfile",    1, 0, 'p' },
-    { "quiet",      0, 0, 'q' },
-    { "test",       0, 0,  OptionTest },
-    { "timeout",    1, 0, 't' },
-    { "untethered", 0, 0, 'u' },
+    { "cordless",   no_argument,       0, 'c' },
+    { "debug",      no_argument,       0, 'd' },
+    { "fd",         required_argument, 0, 'f' },
+    { "identify",   no_argument,       0, 'i' },
+    { "name",       required_argument, 0, 'n' },
+    { "orphaned",   no_argument,       0, 'o' },
+    { "pid",        required_argument, 0, 'P' },
+    { "pidfile",    required_argument, 0, 'p' },
+    { "quiet",      no_argument,       0, 'q' },
+    { "test",       no_argument,       0, OptionTest },
+    { "timeout",    required_argument, 0, 't' },
+    { "untethered", no_argument,       0, 'u' },
     { 0 },
 };
 

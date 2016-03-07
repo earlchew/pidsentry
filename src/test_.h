@@ -29,6 +29,7 @@
 #ifndef TEST_H
 #define TEST_H
 
+#include <inttypes.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -49,6 +50,7 @@ struct ErrorFrame;
 /* -------------------------------------------------------------------------- */
 enum TestLevel
 {
+    TestLevelNone    = 0,
     TestLevelRace    = 1,
     TestLevelSync    = 2,
     TestLevelFinally = 3
@@ -66,6 +68,16 @@ testMode(enum TestLevel aLevel);
 
 bool
 testFinally(const struct ErrorFrame *aFrame);
+
+uint64_t
+testErrorLevel(void);
+
+/* -------------------------------------------------------------------------- */
+int
+Test_init(const char *aErrorEnv);
+
+void
+Test_exit(void);
 
 /* -------------------------------------------------------------------------- */
 

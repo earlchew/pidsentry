@@ -70,9 +70,7 @@
  * Use struct Pid for type safety
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
- * Use ABORT_IF, not ABORT_IF, and clear SIGABRT handler first
- * --test-error rather than TestLevelFinally
- * Also print __func__ in messages
+ * Reset error stack when creating a new thread
  */
 
 /* -------------------------------------------------------------------------- */
@@ -697,6 +695,14 @@ int
 main(int argc, char **argv)
 {
     ABORT_IF(
+        Test_init("BLACKDOG_TEST_ERROR"),
+        {
+            terminate(
+                0,
+                "Unable to initialise test module");
+        });
+
+    ABORT_IF(
         Timekeeping_init(),
         {
             terminate(
@@ -725,6 +731,10 @@ main(int argc, char **argv)
 
     Process_exit();
     Timekeeping_exit();
+
+    if (TestLevelNone != gOptions.mTest)
+        dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());
+    Test_exit();
 
     return exitCode.mStatus;
 }
