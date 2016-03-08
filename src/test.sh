@@ -128,25 +128,25 @@ runTests()
     [ x"$REPLY" = x"test" ]
 
     testCase 'Simple command in test mode'
-    REPLY=$(k9 -dd --test /bin/echo test)
+    REPLY=$(k9 -dd --test=1 /bin/echo test)
     [ x"$REPLY" = x"test" ]
 
     testCase 'Empty pid file'
     rm -f $PIDFILE
     : > $PIDFILE
-    testExit 0 k9 --test -p $PIDFILE -- true
+    testExit 0 k9 --test=1 -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Invalid content in pid file'
     rm -f $PIDFILE
     dd if=/dev/zero bs=1K count=1 > $PIDFILE
-    testExit 0 k9 --test -p $PIDFILE -- true
+    testExit 0 k9 --test=1 -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Dead process in pid file'
     rm -f $PIDFILE
     sh -c '/bin/echo $$' > $PIDFILE
-    testExit 0 k9 --test -d -p $PIDFILE -- true
+    testExit 0 k9 --test=1 -d -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Aliased process in pid file'
@@ -166,26 +166,26 @@ runTests()
     TIMESTAMP=$(date -d @$(( $(stat -c %Y $PIDFILE) - 3600 )) +%Y%m%d%H%M)
     touch -t $TIMESTAMP $PIDFILE
     stat -c %y $PIDFILE
-    k9 --test -d -p $PIDFILE -- true
+    k9 --test=1 -d -p $PIDFILE -- true
     wait
     [ ! -f $PIDFILE ]
 
     testCase 'Read non-existent pid file'
     rm -f $PIDFILE
-    testExit 1 k9 --test -p $PIDFILE
+    testExit 1 k9 --test=1 -p $PIDFILE
     [ ! -f $PIDFILE ]
 
     testCase 'Read malformed pid file'
     rm -f $PIDFILE
     date > $PIDFILE
-    testExit 1 k9 --test -p $PIDFILE
+    testExit 1 k9 --test=1 -p $PIDFILE
     [ -f $PIDFILE ]
 
     testCase 'Identify processes'
     for REPLY in $(
       exec sh -c '
         /bin/echo $$
-        set -- '"$VALGRIND"' ./k9 --test -i -- sh -c '\''/bin/echo $$'\'
+        set -- '"$VALGRIND"' ./k9 --test=1 -i -- sh -c '\''/bin/echo $$'\'
         exec libtool --mode=execute "$@"
       {
         read REALPARENT
@@ -219,10 +219,10 @@ runTests()
         k9 -- sh -c '\''date ; printenv'\'' | grep "^K9_" | wc -l)"'
 
     testCase 'Exit code propagation'
-    testExit 2 k9 --test -- sh -c 'exit 2'
+    testExit 2 k9 --test=1 -- sh -c 'exit 2'
 
     testCase 'Signal exit code propagation'
-    testExit $((128 + 9)) k9 --test -- sh -c '
+    testExit $((128 + 9)) k9 --test=1 -- sh -c '
         /bin/echo Killing $$ ; kill -9 $$'
 
     testCase 'Child process group'
@@ -248,7 +248,7 @@ runTests()
 
     testCase 'Umbilical process file descriptors'
     [ -n "$VALGRIND" ] || testOutput "3" = '$(
-        k9 --test --test -i -- sh -c "while : ; do sleep 1 ; done" |
+        k9 --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
             read CHILD
@@ -268,7 +268,7 @@ runTests()
 
     testCase 'Watchdog process file descriptors'
     [ -n "$VALGRIND" ] || testOutput "4" = '$(
-        k9 --test --test -i -- sh -c "while : ; do sleep 1 ; done" |
+        k9 --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
             read CHILD
@@ -288,7 +288,7 @@ runTests()
 
     testCase 'Untethered watchdog process file descriptors'
     [ -n "$VALGRIND" ] || testOutput "4" = '$(
-        k9 --test --test -i -u -- sh -c "while : ; do sleep 1 ; done" |
+        k9 --test=3 -i -u -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
             read CHILD
@@ -309,73 +309,74 @@ runTests()
     testCase 'Untethered child process'
     testOutput '$(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
-      k9 --test -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 --test=1 -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Untethered child process with 8M data'
     testOutput 8192000 = '$(
-      k9 --test -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      k9 --test=1 -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether with new file descriptor'
     testOutput '$(( 1 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      k9 --test -f - -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 --test=1 -f - -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using stdout'
     testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      k9 --test -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 --test=1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using named stdout'
     testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      k9 --test -f 1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      k9 --test=1 -f 1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using stdout with 8M data'
     testOutput 8192000 = '$(
-      k9 --test -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      k9 --test=1 -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether quietly using stdout with 8M data'
     testOutput 0 = '$(
-      k9 --test -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      k9 --test=1 -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether named in environment'
     testOutput "TETHER=1" = '$(
-      k9 --test -n TETHER -- printenv | grep TETHER)'
+      k9 --test=1 -n TETHER -- printenv | grep TETHER)'
 
     testCase 'Tether named alone in argument'
     testOutput "1" = '$(
-      k9 --test -n @tether@ -- /bin/echo @tether@ | grep "1")'
+      k9 --test=1 -n @tether@ -- /bin/echo @tether@ | grep "1")'
 
     testCase 'Tether named as suffix in argument'
     testOutput "x1" = '$(
-      k9 --test -n @tether@ -- /bin/echo x@tether@ | grep "1")'
+      k9 --test=1 -n @tether@ -- /bin/echo x@tether@ | grep "1")'
 
     testCase 'Tether named as prefix argument'
     testOutput "1x" = '$(
-      k9 --test -n @tether@ -- /bin/echo @tether@x | grep "1")'
+      k9 --test=1 -n @tether@ -- /bin/echo @tether@x | grep "1")'
 
     testCase 'Tether named as infix argument'
     testOutput "x1x" = '$(
-      k9 --test -n @tether@ -- /bin/echo x@tether@x | grep "1")'
+      k9 --test=1 -n @tether@ -- /bin/echo x@tether@x | grep "1")'
 
     testCase 'Early parent death'
-    k9 -i --test -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
+    k9 -i --test=1 -dd sh -cx 'while : blackdog ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
         kill -9 $PARENT
         sleep 3
-        ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+        ! ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
     }
 
     testCase 'Early umbilical death'
     ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
-    k9 -i --test -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
+    k9 -i --test=1 -dd sh -cx 'while : blackdog ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
         kill -9 $UMBILICAL
         SLEPT=0
         while : ; do
-            ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9 || break
+            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep k9 ||
+                break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
         done
@@ -383,14 +384,15 @@ runTests()
 
     testCase 'Early child death'
     ! ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
-    k9 -i --test -dd sh -cx 'while : k9 ; do sleep 1 ; done' | {
+    k9 -i --test=1 -dd sh -cx 'while : blackdog ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         read CHILD
         randomsleep 1
         kill -9 $CHILD
         SLEPT=0
         while : ; do
-            ps -C 'k9 sh' -o user=,ppid=,pid=,pgid=,args= | grep k9 || break
+            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep k9 ||
+                break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
         done
@@ -400,7 +402,7 @@ runTests()
     REPLY=$(
       exec 3>&1
       {
-        if k9 --test -d -i -- sh -c '
+        if k9 --test=1 -d -i -- sh -c '
             while : ; do : ; done ; exit 0' 3>&- ; then
           /bin/echo 0 >&3
         else
@@ -415,7 +417,7 @@ runTests()
     [ x"$REPLY" = x$((128 + 9)) ]
 
     testCase 'Stopped child'
-    testOutput OK = '"$(k9 --test -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
+    testOutput OK = '"$(k9 --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
         read PARENT UMBILICAL
         read CHILD
         sleep 8
@@ -424,7 +426,7 @@ runTests()
     })"'
 
     testCase 'Stopped parent'
-    testOutput OK = '"$(k9 --test -i -d -t 8,2 -- sleep 4 | {
+    testOutput OK = '"$(k9 --test=1 -i -d -t 8,2 -- sleep 4 | {
         read PARENT UMBILCAL
         read CHILD
         kill -STOP $PARENT
@@ -486,7 +488,7 @@ runTests()
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      k9 --test -i -dd -- sh -c "
+      k9 --test=1 -i -dd -- sh -c "
             trap 'exit 1' $SIGNALS
             while : ; do sleep 1 ; done" |
       {
@@ -509,7 +511,7 @@ runTests()
     testCase 'Slow signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      k9 -i --test -dd -- sh -c "
+      k9 -i --test=1 -dd -- sh -c "
             trap 'exit 1' $SIGNALS
             while : ; do sleep 1 ; done" |
       {
@@ -532,7 +534,7 @@ runTests()
 
     testCase 'Fixed termination deadline'
     testOutput OK = '$(
-        k9 --test -i -dd -t 3,,4 -- sh -cx "
+        k9 --test=1 -i -dd -t 3,,4 -- sh -cx "
             trap : 15 6
             /bin/echo READY
             while : ; do sleep 1 ; done" |
@@ -556,7 +558,7 @@ runTests()
     testCase 'Test SIGPIPE propagates from child'
     testOutput "X-$((128 + 13))" = '$(
         exec 3>&1
-        if k9 --test -d -d -- sh -cx "
+        if k9 --test=1 -d -d -- sh -cx "
             while : ; do /bin/echo X || exit \$?; sleep 1 ; done " ; then
             /bin/echo "X-$?" >&3
         else
@@ -616,7 +618,7 @@ runTests()
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
         START=$(date +%s)
-        k9 --test -t 4 -- sh -c 'trap : 6 ; sleep 6'
+        k9 --test=1 -t 4 -- sh -c 'trap : 6 ; sleep 6'
         STOP=$(date +%s)
         /bin/echo $(( STOP - START))
     )
@@ -629,7 +631,7 @@ mkdir -p scratch
 PIDFILE=scratch/pidfile
 
 testCase 'No running watchdogs'
-testOutput "" = '$(ps -C k9 -o user=,ppid=,pid=,pgid=,command=)'
+testOutput "" = '$(ps -C blackdog -o user=,ppid=,pid=,pgid=,command=)'
 
 for TEST in runTest runTests ; do
     VALGRIND=
@@ -640,17 +642,18 @@ done
 
 testCase 'Error handling'
 testOutput 128 != '$(
+    set -x
     RANGE=$(
-        k9 -d --test -- dd if=/dev/zero bs=64K count=4 2>&1 >/dev/null |
+        k9 -d --test=2 -- dd if=/dev/zero bs=64K count=4 2>&1 >/dev/null |
         tail -1)
     TRIGGER=$(( $(random) % ((RANGE + 999) / 1000 * 1000) ))
     export BLACKDOG_TEST_ERROR="$TRIGGER"
-    k9 -d --test -- dd if=/dev/zero bs=64K count=4 >/dev/null
+    k9 -d --test=2 -- dd if=/dev/zero bs=64K count=4 >/dev/null
     /bin/echo $?
 )'
 
 testCase 'No lost watchdogs'
-testOutput "" = '$(ps -C k9 -o user=,ppid=,pid=,pgid=,command=)'
+testOutput "" = '$(ps -C blackdog -o user=,ppid=,pid=,pgid=,command=)'
 
 testCase 'Valgrind run over unit tests'
 testOutput "" != "/bin/echo $VALGRIND"

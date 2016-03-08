@@ -88,9 +88,8 @@ static const char sUsage[] =
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
-"  --test\n"
-"      Run in test mode. Specify the option multiple times to increase\n"
-"      the test level.\n"
+"  --test N\n"
+"      Run in test mode using a non-zero test level. [Default: No test]\n"
 "  --timeout L | -t L\n"
 "      Specify the timeout list L. The list L comprises up to four\n"
 "      comma separated values: T, U, V and W. Each of the values is either\n"
@@ -129,7 +128,7 @@ static struct option sLongOptions[] =
     { "pid",        required_argument, 0, 'P' },
     { "pidfile",    required_argument, 0, 'p' },
     { "quiet",      no_argument,       0, 'q' },
-    { "test",       no_argument,       0, OptionTest },
+    { "test",       required_argument, 0, OptionTest },
     { "timeout",    required_argument, 0, 't' },
     { "untethered", no_argument,       0, 'u' },
     { 0 },
@@ -330,7 +329,16 @@ processOptions(int argc, char **argv)
             break;
 
         case OptionTest:
-            ++gOptions.mTest;
+            EXIT_IF(
+                parseUInt(optarg, &gOptions.mTest),
+                {
+                    terminate(0, "Badly formed test level - '%s'", optarg);
+                });
+            EXIT_UNLESS(
+                gOptions.mTest,
+                {
+                    terminate(0, "Test level must be non-zero");
+                });
             break;
 
         case 't':

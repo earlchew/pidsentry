@@ -50,10 +50,10 @@ struct ErrorFrame;
 /* -------------------------------------------------------------------------- */
 enum TestLevel
 {
-    TestLevelNone    = 0,
-    TestLevelRace    = 1,
-    TestLevelSync    = 2,
-    TestLevelFinally = 3
+    TestLevelNone  = 0,
+    TestLevelRace  = 1,
+    TestLevelError = 2,
+    TestLevelSync  = 3
 };
 
 /* -------------------------------------------------------------------------- */

@@ -174,7 +174,7 @@ struct ErrorFrameSequence
 
 enum ErrorFrameStackKind
 {
-    ErrorFrameStackThread,
+    ErrorFrameStackThread = 0,
     ErrorFrameStackSignal,
     ErrorFrameStackKinds,
 };

@@ -47,6 +47,11 @@ static unsigned sInit_;
 
 static struct
 {
+    /* Carefully crafted so that new threads will see an initialised
+     * instance that can be used immediately. In particular, note that
+     * threads cannot be created from signal context, so ErrorFrameStackThread
+     * must be zero. */
+
     struct
     {
         unsigned          mLevel;
@@ -55,6 +60,15 @@ static struct
     } mStack_[ErrorFrameStackKinds], *mStack;
 
 } __thread sErrorStack_;
+
+static void
+initErrorFrame_(void)
+{
+    ensure(0 == ErrorFrameStackThread);
+
+    if ( ! sErrorStack_.mStack)
+        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+}
 
 /* -------------------------------------------------------------------------- */
 static pid_t
@@ -67,8 +81,7 @@ gettid_(void)
 void
 addErrorFrame(const struct ErrorFrame *aFrame, int aErrno)
 {
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    initErrorFrame_();
 
     unsigned level = sErrorStack_.mStack->mLevel++;
 
@@ -83,8 +96,7 @@ addErrorFrame(const struct ErrorFrame *aFrame, int aErrno)
 void
 restartErrorFrameSequence(void)
 {
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    initErrorFrame_();
 
     sErrorStack_.mStack->mLevel = sErrorStack_.mStack->mSequence;
 }
@@ -93,8 +105,7 @@ restartErrorFrameSequence(void)
 struct ErrorFrameSequence
 pushErrorFrameSequence(void)
 {
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    initErrorFrame_();
 
     unsigned sequence = sErrorStack_.mStack->mSequence;
 
@@ -119,8 +130,7 @@ popErrorFrameSequence(struct ErrorFrameSequence aSequence)
 enum ErrorFrameStackKind
 switchErrorFrameStack(enum ErrorFrameStackKind aStack)
 {
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    initErrorFrame_();
 
     enum ErrorFrameStackKind stackKind =
         sErrorStack_.mStack - &sErrorStack_.mStack_[0];
@@ -134,8 +144,7 @@ switchErrorFrameStack(enum ErrorFrameStackKind aStack)
 unsigned
 ownErrorFrameLevel(void)
 {
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    initErrorFrame_();
 
     return sErrorStack_.mStack->mLevel;
 }
@@ -144,8 +153,7 @@ ownErrorFrameLevel(void)
 const struct ErrorFrame *
 ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
 {
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    initErrorFrame_();
 
     return
         (aLevel >= sErrorStack_.mStack->mLevel)
@@ -157,8 +165,7 @@ ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
 void
 logErrorFrameSequence(void)
 {
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    initErrorFrame_();
 
     unsigned seqLen =
         sErrorStack_.mStack->mLevel - sErrorStack_.mStack->mSequence;

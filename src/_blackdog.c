@@ -732,7 +732,7 @@ main(int argc, char **argv)
     Process_exit();
     Timekeeping_exit();
 
-    if (TestLevelNone != gOptions.mTest)
+    if (testMode(TestLevelError))
         dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());
     Test_exit();
 

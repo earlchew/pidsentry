@@ -54,7 +54,7 @@ static unsigned          sInit_;
 bool
 testMode(enum TestLevel aLevel)
 {
-    return aLevel == gOptions.mTest;
+    return aLevel <= gOptions.mTest;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -64,7 +64,7 @@ testAction(enum TestLevel aLevel)
     /* If test mode has been enabled, choose to activate a test action
      * a small percentage of the time. */
 
-    return aLevel == gOptions.mTest && 3 > random() % 10;
+    return aLevel <= gOptions.mTest && 3 > random() % 10;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -137,8 +137,6 @@ testFinally(const struct ErrorFrame *aFrame)
 }
 
 /* -------------------------------------------------------------------------- */
-#include <stdio.h>
-
 int
 Test_init(const char *aErrorEnv)
 {
