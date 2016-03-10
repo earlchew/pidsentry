@@ -52,10 +52,13 @@ static const char sDevNullPath[] = DEVNULLPATH;
 void
 closeFd(int *aFd)
 {
-    if (-1 != *aFd)
+    int fd = *aFd;
+
+    if (-1 != fd)
     {
-        ABORT_IF(close(*aFd));
         *aFd = -1;
+        ABORT_IF(
+            close(fd));
     }
 }
 
