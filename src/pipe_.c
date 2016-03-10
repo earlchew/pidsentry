@@ -42,6 +42,8 @@ createPipe(struct Pipe *self, unsigned aFlags)
 {
     int rc = -1;
 
+    int fd[2] = { -1, -1 };
+
     self->mRdFile = 0;
     self->mWrFile = 0;
 
@@ -51,10 +53,12 @@ createPipe(struct Pipe *self, unsigned aFlags)
             errno = EINVAL;
         });
 
-    int fd[2];
-
     ERROR_IF(
-        pipe2(fd, aFlags));
+        pipe2(fd, aFlags),
+        {
+            fd[0] = -1;
+            fd[1] = -1;
+        });
 
     ERROR_IF(
         -1 == fd[0] || -1 == fd[1],
