@@ -163,12 +163,15 @@ walkFileList(void *aOther,
 
 /* -------------------------------------------------------------------------- */
 int
-dupFile(struct File *self, const struct File *aOther)
+dupFile(struct File *self_, const struct File *aOther)
 {
     int rc = -1;
 
+    struct File *self = 0;
+
     ERROR_IF(
-        createFile(self, dup(aOther->mFd)));
+        createFile(self_, dup(aOther->mFd)));
+    self = self_;
 
     rc = 0;
 
