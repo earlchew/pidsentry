@@ -65,8 +65,8 @@ extern struct Options gOptions;
 void
 initOptions(void);
 
-char **
-processOptions(int argc, char **argv);
+int
+processOptions(int argc, char **argv, char ***args);
 
 /* -------------------------------------------------------------------------- */
 

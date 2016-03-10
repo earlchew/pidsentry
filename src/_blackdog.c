@@ -59,18 +59,15 @@
 
 /* TODO
  *
- * cmdRunCommand() is too big, break it up
  * Add test case for SIGKILL of watchdog and child not watching tether
  * Fix vgcore being dropped everywhere
  * Implement process lock in child process
  * When announcing child, ensure pid is active first
  * Use struct Type for other poll loops
  * Propagate signal termination from child to parent
- * Improve FINALLY tracking
  * Use struct Pid for type safety
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
- * Reset error stack when creating a new thread
  */
 
 /* -------------------------------------------------------------------------- */
@@ -718,16 +715,25 @@ main(int argc, char **argv)
                 "Unable to initialise process state");
         });
 
-    struct ExitCode exitCode;
+    struct ExitCode exitCode = { EXIT_FAILURE };
 
     {
-        char **cmd = processOptions(argc, argv);
+        char **args;
+        ERROR_IF(
+            processOptions(argc, argv, &args),
+            {
+                if (EINVAL != errno)
+                    message(errno,
+                            "Unable to parse command line");
+            });
 
-        if ( ! cmd && gOptions.mPidFile)
+        if ( ! args && gOptions.mPidFile)
             exitCode = cmdPrintPidFile(gOptions.mPidFile);
         else
-            exitCode = cmdRunCommand(cmd);
+            exitCode = cmdRunCommand(args);
     }
+
+Finally:
 
     Process_exit();
     Timekeeping_exit();

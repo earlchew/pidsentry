@@ -141,7 +141,6 @@ showUsage_(void)
     const char *arg0 = ownProcessName();
 
     dprintf(STDERR_FILENO, sUsage, arg0, arg0);
-    exitProcess(EXIT_FAILURE);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -225,9 +224,11 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-char **
-processOptions(int argc, char **argv)
+int
+processOptions(int argc, char **argv, char ***args)
 {
+    int rc = -1;
+
     int pidFileOnly = 0;
 
     initOptions();
@@ -236,8 +237,15 @@ processOptions(int argc, char **argv)
     {
         int longOptIndex = 0;
 
-        int opt = getopt_long(
-                argc, argv, sShortOptions, sLongOptions, &longOptIndex);
+        int opt;
+        ERROR_IF(
+            (opt = getopt_long(
+                argc, argv, sShortOptions, sLongOptions, &longOptIndex),
+             '?' == opt),
+            {
+                showUsage_();
+                errno = EINVAL;
+            });
 
         if (-1 == opt)
             break;
@@ -245,15 +253,12 @@ processOptions(int argc, char **argv)
         switch (opt)
         {
         default:
-            EXIT_IF(
+            ERROR_IF(
                 true,
                 {
-                    terminate(0, "Unrecognised option %d ('%c')", opt, opt);
+                    errno = EINVAL;
+                    message(0, "Unrecognised option %d ('%c')", opt, opt);
                 });
-            break;
-
-        case '?':
-            showUsage_();
             break;
 
         case 'c':
@@ -274,12 +279,13 @@ processOptions(int argc, char **argv)
             }
             else
             {
-                EXIT_IF(
+                ERROR_IF(
                     parseInt(
                         optarg,
                         &gOptions.mTetherFd) || 0 > gOptions.mTetherFd,
                     {
-                        terminate(0, "Badly formed fd - '%s'", optarg);
+                        errno = EINVAL;
+                        message(0, "Badly formed fd - '%s'", optarg);
                     });
             }
             break;
@@ -300,20 +306,22 @@ processOptions(int argc, char **argv)
                 gOptions.mPid = -1;
             else
             {
-                EXIT_IF(
+                ERROR_IF(
                     parsePid(optarg, &gOptions.mPid),
                     {
-                        terminate(0, "Badly formed pid - '%s'", optarg);
+                        errno = EINVAL;
+                        message(0, "Badly formed pid - '%s'", optarg);
                     });
             }
             break;
 
         case 'n':
             pidFileOnly = -1;
-            EXIT_UNLESS(
+            ERROR_UNLESS(
                 optarg[0],
                 {
-                    terminate(0, "Empty environment or argument name");
+                    errno = EINVAL;
+                    message(0, "Empty environment or argument name");
                 });
             gOptions.mName = optarg;
             break;
@@ -329,24 +337,27 @@ processOptions(int argc, char **argv)
             break;
 
         case OptionTest:
-            EXIT_IF(
+            ERROR_IF(
                 parseUInt(optarg, &gOptions.mTest),
                 {
-                    terminate(0, "Badly formed test level - '%s'", optarg);
+                    errno = EINVAL;
+                    message(0, "Badly formed test level - '%s'", optarg);
                 });
-            EXIT_UNLESS(
+            ERROR_UNLESS(
                 gOptions.mTest,
                 {
-                    terminate(0, "Test level must be non-zero");
+                    errno = EINVAL;
+                    message(0, "Test level must be non-zero");
                 });
             break;
 
         case 't':
             pidFileOnly = -1;
-            EXIT_IF(
+            ERROR_IF(
                 processTimeoutOption(optarg),
                 {
-                    terminate(0, "Badly formed timeout - '%s'", optarg);
+                    errno = EINVAL;
+                    message(0, "Badly formed timeout - '%s'", optarg);
                 });
             break;
 
@@ -359,14 +370,23 @@ processOptions(int argc, char **argv)
 
     if (0 >= pidFileOnly)
     {
-        EXIT_IF(
+        ERROR_IF(
             optind >= argc,
             {
-                terminate(0, "Missing command for execution");
+                errno = EINVAL;
+                message(0, "Missing command for execution");
             });
     }
 
-    return optind < argc ? argv + optind : 0;
+    *args = optind < argc ? argv + optind : 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
