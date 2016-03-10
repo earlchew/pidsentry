@@ -41,6 +41,11 @@ createSocketPair(struct SocketPair *self, unsigned aFlags)
 {
     int rc = -1;
 
+    int fd[2] = { -1, -1 };
+
+    self->mParentFile = 0;
+    self->mChildFile  = 0;
+
     ERROR_IF(
         aFlags & ~ (O_CLOEXEC | O_NONBLOCK),
         {
@@ -55,13 +60,12 @@ createSocketPair(struct SocketPair *self, unsigned aFlags)
     if (aFlags & O_CLOEXEC)
         sockFlags |= SOCK_CLOEXEC;
 
-    self->mParentFile = 0;
-    self->mChildFile  = 0;
-
-    int fd[2];
-
     ERROR_IF(
-        socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd));
+        socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd),
+        {
+            fd[0] = -1;
+            fd[1] = -1;
+        });
 
     ERROR_IF(
         -1 == fd[0] || -1 == fd[1]);
