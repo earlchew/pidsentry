@@ -47,7 +47,11 @@ createStdFdFiller(struct StdFdFiller *self)
     int fd[2];
 
     ERROR_IF(
-        pipe(fd));
+        pipe(fd),
+        {
+            fd[0] = -1;
+            fd[1] = -1;
+        });
 
     ERROR_IF(
         -1 == fd[0] || -1 == fd[1],
