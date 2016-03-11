@@ -230,12 +230,21 @@ ownProcessBaseTime(void);
 const char*
 ownProcessName(void);
 
+struct Pid
+ownProcessId(void);
+
+struct Pgid
+ownProcessGroupId(void);
+
 /* -------------------------------------------------------------------------- */
 int
 fetchProcessSignature(struct Pid aPid, char **aSignature);
 
 enum ProcessState
 fetchProcessState(struct Pid aPid);
+
+struct Pgid
+fetchProcessGroupId(struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
 int

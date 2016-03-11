@@ -93,7 +93,9 @@ createUnixSocket(
      * programs that themselves use the PRNG from the library. */
 
     uint32_t rnd =
-        aNameLen ? aNameLen : getpid() ^ MSECS(monotonicTime().monotonic).ms;
+        aNameLen
+        ? aNameLen
+        : ownProcessId().mPid ^ MSECS(monotonicTime().monotonic).ms;
 
     while (1)
     {

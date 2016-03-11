@@ -45,6 +45,7 @@
 #include "fd_.h"
 #include "dl_.h"
 #include "type_.h"
+#include "process_.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -236,8 +237,8 @@ raiseFamilySigStop_(void *self_)
         {
             terminate(
                 errno,
-                "Unable to stop process pid %jd",
-                (intmax_t) getpid());
+                "Unable to stop process pid %" PRId_Pid,
+                FMTd_Pid(ownProcessId()));
         });
 
     resumeChildProcessGroup(self->mChildProcess);
@@ -259,9 +260,9 @@ cmdRunCommand(char **aCmd)
     ensure(aCmd);
 
     debug(0,
-          "watchdog process pid %jd pgid %jd",
-          (intmax_t) getpid(),
-          (intmax_t) getpgid(0));
+          "watchdog process pid %" PRId_Pid " pgid %" PRId_Pgid,
+          FMTd_Pid(ownProcessId()),
+          FMTd_Pgid(ownProcessGroupId()));
 
     ABORT_IF(
         ignoreProcessSigPipe(),
@@ -387,7 +388,7 @@ cmdRunCommand(char **aCmd)
         default:
             break;
         case -1:
-            pid = Pid(getpid()); break;
+            pid = ownProcessId(); break;
         case 0:
             pid = childProcess.mPid; break;
         }
@@ -463,7 +464,7 @@ cmdRunCommand(char **aCmd)
                 -1 == dprintf(STDOUT_FILENO,
                               "%" PRId_Pid " "
                               "%" PRId_Pid "\n",
-                              FMTd_Pid(Pid(getpid())),
+                              FMTd_Pid(ownProcessId()),
                               FMTd_Pid(umbilicalProcess.mPid)),
                 {
                     terminate(
@@ -574,8 +575,8 @@ cmdRunCommand(char **aCmd)
             {
                  terminate(
                      errno,
-                     "Unable to stop process pid %jd",
-                     (intmax_t) getpid());
+                     "Unable to stop process pid %" PRId_Pid,
+                     FMTd_Pid(ownProcessId()));
              });
     }
 

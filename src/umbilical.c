@@ -333,10 +333,10 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     debug(0,
           "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
-          FMTd_Pid(Pid(getpid())),
-          FMTd_Pgid(Pgid(getpgid(0))));
+          FMTd_Pid(ownProcessId()),
+          FMTd_Pgid(ownProcessGroupId()));
 
-    ensure(aChildProcess->mPgid.mPgid == getpgid(0));
+    ensure(aChildProcess->mPgid.mPgid == ownProcessGroupId().mPgid);
 
     ABORT_IF(
         STDIN_FILENO !=
@@ -389,9 +389,9 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     monitorChildUmbilical(aChildProcess, aWatchdogPid);
 
-    pid_t pgid = getpgid(0);
-
-    warn(0, "Umbilical failed to clean process group %jd", (intmax_t) pgid);
+    warn(0,
+         "Umbilical failed to clean process group %" PRId_Pgid,
+         FMTd_Pgid(ownProcessGroupId()));
 
     quitProcess(EXIT_FAILURE);
 }
@@ -420,7 +420,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     ensure( ! pthread_kill(pthread_self(), SIGHUP));
 
-    struct Pid watchdogPid = Pid(getpid());
+    struct Pid watchdogPid = ownProcessId();
 
     struct Pid umbilicalPid;
     ERROR_IF(
@@ -434,7 +434,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     }
     else
     {
-        self->mPid = Pid(getpid());
+        self->mPid = ownProcessId();
 
         runUmbilicalProcess_(self,
                              watchdogPid,

@@ -32,8 +32,19 @@
 #include "timekeeping_.h"
 #include "macros_.h"
 #include "process_.h"
+#include "pid_.h"
 
 #include <errno.h>
+#include <unistd.h>
+
+#include <sys/syscall.h>
+
+/* -------------------------------------------------------------------------- */
+struct Tid
+ownThreadId(void)
+{
+    return Tid(syscall(SYS_gettid));
+}
 
 /* -------------------------------------------------------------------------- */
 void

@@ -35,35 +35,45 @@
 extern "C" {
 #endif
 
+/* -------------------------------------------------------------------------- */
+struct Tid
+Tid_(pid_t aTid);
+
+#define PRId_Tid "jd"
+#define FMTd_Tid(Tid) ((intmax_t) (Tid).mTid)
+struct Tid
+{
+#ifdef __cplusplus
+    Tid(pid_t aTid)
+    { *this = Tid_(aTid); }
+#endif
+
+    pid_t mTid;
+};
+
+#ifndef __cplusplus
+static inline struct Tid
+Tid(pid_t aTid)
+{
+    return Tid_(aTid);
+}
+#endif
+
+/* -------------------------------------------------------------------------- */
+struct Pid
+Pid_(pid_t aPid);
+
 #define PRId_Pid "jd"
 #define FMTd_Pid(Pid) ((intmax_t) (Pid).mPid)
 struct Pid
 {
 #ifdef __cplusplus
     Pid(pid_t aPid)
-    : mPid(aPid)
-    { }
+    { *this = Pid_(aPid); }
 #endif
 
     pid_t mPid;
 };
-
-#define PRId_Pgid "jd"
-#define FMTd_Pgid(Pgid) ((intmax_t) (Pgid).mPgid)
-struct Pgid
-{
-#ifdef __cplusplus
-    Pgid(pid_t aPgid)
-    : mPgid(aPgid)
-    { }
-#endif
-
-    pid_t mPgid;
-};
-
-/* -------------------------------------------------------------------------- */
-struct Pid
-Pid_(pid_t aPid);
 
 #ifndef __cplusplus
 static inline struct Pid
@@ -76,6 +86,18 @@ Pid(pid_t aPid)
 /* -------------------------------------------------------------------------- */
 struct Pgid
 Pgid_(pid_t aPgid);
+
+#define PRId_Pgid "jd"
+#define FMTd_Pgid(Pgid) ((intmax_t) (Pgid).mPgid)
+struct Pgid
+{
+#ifdef __cplusplus
+    Pgid(pid_t aPgid)
+    { *this = Pgid_(aPgid); }
+#endif
+
+    pid_t mPgid;
+};
 
 #ifndef __cplusplus
 static inline struct Pgid

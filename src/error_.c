@@ -32,6 +32,7 @@
 #include "timekeeping_.h"
 #include "fd_.h"
 #include "test_.h"
+#include "thread_.h"
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -39,8 +40,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-
-#include <sys/syscall.h>
 
 /* -------------------------------------------------------------------------- */
 static unsigned sInit_;
@@ -68,13 +67,6 @@ initErrorFrame_(void)
 
     if ( ! sErrorStack_.mStack)
         sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
-}
-
-/* -------------------------------------------------------------------------- */
-static pid_t
-gettid_(void)
-{
-    return syscall(SYS_gettid);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -249,8 +241,8 @@ dprint_(
     int                    aLockErr,
     int                    aErrCode,
     const char            *aErrText,
-    intmax_t               aPid,
-    intmax_t               aTid,
+    struct Pid             aPid,
+    struct Tid             aTid,
     const struct Duration *aElapsed,
     uint64_t               aElapsed_h,
     uint64_t               aElapsed_m,
@@ -266,23 +258,23 @@ dprint_(
         dprintf(STDERR_FILENO, "%s: ", ownProcessName());
     else
     {
-        if (aPid == aTid)
+        if (aPid.mPid == aTid.mTid)
         {
             if (aElapsed->duration.ns)
                 dprintf(
                     STDERR_FILENO,
                     "%s: [%04" PRIu64 ":%02" PRIu64
                     ":%02" PRIu64
-                    ".%03" PRIu64 " %jd %s %s:%u] ",
+                    ".%03" PRIu64 " %" PRId_Pid " %s %s:%u] ",
                     ownProcessName(),
                     aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
-                    aPid, aFunction, aFile, aLine);
+                    FMTd_Pid(aPid), aFunction, aFile, aLine);
             else
                 dprintf(
                     STDERR_FILENO,
-                    "%s: [%jd %s %s:%u] ",
+                    "%s: [%" PRId_Pid " %s %s:%u] ",
                     ownProcessName(),
-                    aPid, aFunction, aFile, aLine);
+                    FMTd_Pid(aPid), aFunction, aFile, aLine);
         }
         else
         {
@@ -291,16 +283,16 @@ dprint_(
                     STDERR_FILENO,
                     "%s: [%04" PRIu64 ":%02" PRIu64
                     ":%02" PRIu64
-                    ".%03" PRIu64 " %jd:%jd %s %s:%u] ",
+                    ".%03" PRIu64 " %" PRId_Pid ":%" PRId_Tid " %s %s:%u] ",
                     ownProcessName(),
                     aElapsed_h, aElapsed_m, aElapsed_s, aElapsed_ms,
-                    aPid, aTid, aFunction, aFile, aLine);
+                    FMTd_Pid(aPid), FMTd_Tid(aTid), aFunction, aFile, aLine);
             else
                 dprintf(
                     STDERR_FILENO,
-                    "%s: [%jd:%jd %s %s:%u] ",
+                    "%s: [%" PRId_Pid ":%" PRId_Tid " %s %s:%u] ",
                     ownProcessName(),
-                    aPid, aTid, aFunction, aFile, aLine);
+                    FMTd_Pid(aPid), FMTd_Tid(aTid), aFunction, aFile, aLine);
         }
 
         if (EWOULDBLOCK != aLockErr)
@@ -320,8 +312,8 @@ static void
 dprintf_(
     int                    aErrCode,
     const char            *aErrText,
-    intmax_t               aPid,
-    intmax_t               aTid,
+    struct Pid             aPid,
+    struct Tid             aTid,
     const struct Duration *aElapsed,
     uint64_t               aElapsed_h,
     uint64_t               aElapsed_m,
@@ -358,8 +350,8 @@ print_(
 {
     FINALLY
     ({
-        intmax_t pid = getpid();
-        intmax_t tid = gettid_();
+        struct Pid pid = ownProcessId();
+        struct Tid tid = ownThreadId();
 
         /* The availability of buffered IO might be lost while a message
          * is being processed since this code might run in a thread
@@ -441,23 +433,23 @@ print_(
                 fprintf(sPrintBuf.mFile, "%s: ", ownProcessName());
             else
             {
-                if (pid == tid)
+                if (pid.mPid == tid.mTid)
                 {
                     if (elapsed.duration.ns)
                         fprintf(
                             sPrintBuf.mFile,
                             "%s: [%04" PRIu64 ":%02" PRIu64
                             ":%02" PRIu64
-                            ".%03" PRIu64 " %jd %s %s:%u] ",
+                            ".%03" PRIu64 " %" PRId_Pid " %s %s:%u] ",
                             ownProcessName(),
                             elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                            pid, aFunction, aFile, aLine);
+                            FMTd_Pid(pid), aFunction, aFile, aLine);
                     else
                         fprintf(
                             sPrintBuf.mFile,
-                            "%s: [%jd %s %s:%u] ",
+                            "%s: [%" PRId_Pid " %s %s:%u] ",
                             ownProcessName(),
-                            pid, aFunction, aFile, aLine);
+                            FMTd_Pid(pid), aFunction, aFile, aLine);
                 }
                 else
                 {
@@ -466,16 +458,19 @@ print_(
                             sPrintBuf.mFile,
                             "%s: [%04" PRIu64 ":%02" PRIu64
                             ":%02" PRIu64
-                            ".%03" PRIu64 " %jd:%jd %s %s:%u] ",
+                            ".%03" PRIu64 " %" PRId_Pid ":%" PRId_Tid " "
+                            "%s %s:%u] ",
                             ownProcessName(),
                             elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
-                            pid, tid, aFunction, aFile, aLine);
+                            FMTd_Pid(pid), FMTd_Tid(tid),
+                            aFunction, aFile, aLine);
                     else
                         fprintf(
                             sPrintBuf.mFile,
-                            "%s: [%jd:%jd %s %s:%u] ",
+                            "%s: [%" PRId_Pid ":%" PRId_Tid " %s %s:%u] ",
                             ownProcessName(),
-                            pid, tid, aFunction, aFile, aLine);
+                            FMTd_Pid(pid), FMTd_Tid(tid),
+                            aFunction, aFile, aLine);
                 }
             }
 

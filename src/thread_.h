@@ -37,6 +37,8 @@
 extern "C" {
 #endif
 
+struct Tid;
+
 struct ThreadSigMask
 {
     sigset_t mSigSet;
@@ -61,6 +63,10 @@ struct ThreadSigMutex
 #define THREAD_SIG_MUTEX_INITIALIZER {   \
     .mMutex = PTHREAD_MUTEX_INITIALIZER, \
     .mCond  = PTHREAD_COND_INITIALIZER, }
+
+/* -------------------------------------------------------------------------- */
+struct Tid
+ownThreadId(void);
 
 /* -------------------------------------------------------------------------- */
 void

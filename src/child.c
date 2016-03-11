@@ -372,7 +372,7 @@ forkChild(
 
     if ( ! childPid.mPid)
     {
-        childPid = Pid(getpid());
+        childPid = ownProcessId();
 
         debug(0,
               "starting child process pid %" PRId_Pid,
@@ -546,7 +546,7 @@ forkChild(
      * so it is safe to query it to determine its process group. */
 
     self->mPid  = childPid;
-    self->mPgid = Pgid(getpgid(self->mPid.mPid));
+    self->mPgid = fetchProcessGroupId(self->mPid);
 
     debug(0,
           "running child pid %" PRId_Pid " in pgid %" PRId_Pgid,

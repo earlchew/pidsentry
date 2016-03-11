@@ -1112,12 +1112,12 @@ createProcessLock_(struct ProcessLock *self)
     self->mLock     = LOCK_UN;
     self->mFileName = 0;
 
-    static const char pathFmt[] = "/proc/%jd/.";
+    static const char pathFmt[] = "/proc/%" PRId_Pid "/.";
 
     char path[sizeof(pathFmt) + sizeof(pid_t) * CHAR_BIT];
 
     ERROR_IF(
-        0 > sprintf(path, pathFmt, (intmax_t) getpid()));
+        0 > sprintf(path, pathFmt, FMTd_Pid(ownProcessId())));
 
     ERROR_UNLESS(
         (self->mFileName = strdup(path)));
@@ -1240,7 +1240,7 @@ Process_init(const char *aArg0)
         sProgramName = strrchr(sArg0, '/');
         sProgramName = sProgramName ? sProgramName + 1 : sArg0;
 
-        srandom(getpid());
+        srandom(ownProcessId().mPid);
 
         ERROR_IF(
             createProcessLock_(&sProcessLock_[sActiveProcessLock]));
@@ -1563,7 +1563,7 @@ forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
          * behaviour of the parent. This is primarily useful for
          * testing. */
 
-        srandom(getpid());
+        srandom(ownProcessId().mPid);
 
         /* Switch the process lock first in case the child process
          * needs to emit diagnostic messages so that the messages
@@ -1777,6 +1777,29 @@ ownProcessName(void)
     extern const char *__progname;
 
     return sProgramName ? sProgramName : __progname;
+}
+
+/* -------------------------------------------------------------------------- */
+struct Pid
+ownProcessId(void)
+{
+    return Pid(getpid());
+}
+
+/* -------------------------------------------------------------------------- */
+struct Pgid
+ownProcessGroupId(void)
+{
+    return Pgid(getpgid(0));
+}
+
+/* -------------------------------------------------------------------------- */
+struct Pgid
+fetchProcessGroupId(struct Pid aPid)
+{
+    ensure(aPid.mPid);
+
+    return Pgid(getpgid(aPid.mPid));
 }
 
 /* -------------------------------------------------------------------------- */
