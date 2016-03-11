@@ -1,0 +1,15 @@
+{
+   <Thread local storage>
+   Memcheck:Leak
+   fun:calloc
+   fun:calloc
+   fun:_dl_allocate_tls
+   fun:pthread_create@@GLIBC_2.1
+}
+{
+   <open_memstream>
+   Memcheck:Leak
+   fun:malloc
+   fun:malloc
+   fun:open_memstream
+}

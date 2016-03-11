@@ -49,6 +49,8 @@
 #include <sys/file.h>
 #include <sys/wait.h>
 
+#include <valgrind/valgrind.h>
+
 struct ProcessLock
 {
     char        *mFileName;
@@ -1665,6 +1667,14 @@ quitProcess(int aStatus)
 void
 abortProcess(void)
 {
+    /* When running under valgrind, do not abort() because it causes the
+     * program to behave as if it received SIGKILL. Instead, exit the
+     * program immediately and allow valgrind to survey the program for
+     * for leaks. */
+
+    if (RUNNING_ON_VALGRIND)
+        _exit(128 + SIGABRT);
+
     /* Other threads might be attaching or have attached a handler for SIGABRT,
      * and the SIGABRT signal might be blocked.
      *

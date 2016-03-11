@@ -35,6 +35,7 @@
 #undef warn
 #undef debug
 #undef breadcrumb
+#undef message
 
 #include "gtest/gtest.h"
 

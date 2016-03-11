@@ -87,12 +87,6 @@ extern "C" {
     ERROR_IF_(!, Predicate_, ##  __VA_ARGS__)
 
 /* -------------------------------------------------------------------------- */
-#define EXIT_IF(Predicate_, ...)                                \
-    TERMINATE_IF_(exit_, /*!!*/, Predicate_, ## __VA_ARGS__)
-
-#define EXIT_UNLESS(Predicate_, ...)                            \
-    TERMINATE_IF_(exit_, !, Predicate_, ## __VA_ARGS__)
-
 #define ABORT_IF(Predicate_, ...)                               \
     TERMINATE_IF_(terminate_, /*!!*/, Predicate_, ## __VA_ARGS__)
 
@@ -248,6 +242,18 @@ warn_(
     __attribute__ ((__format__(__printf__, 5, 6)));
 
 /* -------------------------------------------------------------------------- */
+#define message Error_message_
+#define Error_message_(aErrCode, ...) \
+    message_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
+
+void
+message_(
+    int aErrCode,
+    const char *aFunction, const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
+    __attribute__ ((__format__(__printf__, 5, 6)));
+
+/* -------------------------------------------------------------------------- */
 #define terminate(aErrCode, ...) \
     terminate(aErrCode, __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
@@ -256,14 +262,6 @@ warn_(
 
 void
 terminate_(
-    int aErrCode,
-    const char *aFunction, const char *aFile, unsigned aLine,
-    const char *aFmt, ...)
-    __attribute__ ((__format__(__printf__, 5, 6), __noreturn__));
-
-/* -------------------------------------------------------------------------- */
-void
-exit_(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)

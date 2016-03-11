@@ -175,7 +175,7 @@ superviseChildProcess_(const char *aRole, pid_t aPid, struct EventLatch *aLatch)
         debug(1, "%s pid %jd running", aRole, (intmax_t) aPid);
 
         ABORT_IF(
-            -1 == setEventLatch(aLatch),
+            EventLatchSettingError == setEventLatch(aLatch),
             {
                 terminate(
                     errno,
@@ -193,7 +193,7 @@ superviseChildProcess_(const char *aRole, pid_t aPid, struct EventLatch *aLatch)
         debug(1, "%s pid %jd terminated", aRole, (intmax_t) aPid);
 
         ABORT_IF(
-            -1 == disableEventLatch(aLatch) && ERANGE != errno,
+            EventLatchSettingError == disableEventLatch(aLatch),
             {
                 terminate(
                     errno,
@@ -1152,7 +1152,7 @@ static void
 raiseFdContEvent_(struct ChildMonitor *self)
 {
     ABORT_IF(
-        -1 == setEventLatch(self->mContLatch),
+        EventLatchSettingError == setEventLatch(self->mContLatch),
         {
             terminate(
                 errno,
@@ -1419,17 +1419,23 @@ pollFdEventLatch_(struct EventLatch **aLatch, const char *aRole)
 
     if (*aLatch)
     {
+        enum EventLatchSetting setting;
         ABORT_IF(
-            (signalled = resetEventLatch(*aLatch),
-             -1 == signalled && ERANGE != errno),
+            (setting = resetEventLatch(*aLatch),
+             EventLatchSettingError == setting),
             {
                 terminate(
                     errno,
                     "Unable to reset %s event latch", aRole);
             });
 
-        if (-1 == signalled)
+        if (EventLatchSettingOn == setting)
+            signalled = 1;
+        else if (EventLatchSettingDisabled == setting)
+        {
+            signalled = -1;
             *aLatch = 0;
+        }
     }
 
     return signalled;
@@ -1533,10 +1539,6 @@ monitorChild(struct ChildProcess     *self,
     struct EventPipe  eventPipe_;
     struct EventPipe *eventPipe = 0;
 
-    bool boundChildLatch     = false;
-    bool boundUmbilicalLatch = false;
-    bool boundChildMonitor   = false;
-
     struct PollFd  pollfd_;
     struct PollFd *pollfd = 0;
 
@@ -1566,17 +1568,15 @@ monitorChild(struct ChildProcess     *self,
     eventPipe = &eventPipe_;
 
     ERROR_IF(
-        -1 == bindEventLatchPipe(
-            self->mChildLatch, eventPipe) && ERANGE != errno);
-    boundChildLatch = true;
+        EventLatchSettingError == bindEventLatchPipe(
+            self->mChildLatch, eventPipe));
 
     ERROR_IF(
-        -1 == bindEventLatchPipe(
-            self->mUmbilicalLatch, eventPipe) && ERANGE != errno);
-    boundUmbilicalLatch = true;
+        EventLatchSettingError == bindEventLatchPipe(
+            self->mUmbilicalLatch, eventPipe));
 
     ERROR_IF(
-        -1 == bindEventLatchPipe(contLatch, eventPipe) && ERANGE != errno);
+        EventLatchSettingError == bindEventLatchPipe(contLatch, eventPipe));
 
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
@@ -1789,7 +1789,6 @@ monitorChild(struct ChildProcess     *self,
     pollfd = &pollfd_;
 
     updateChildMonitor_(self, &childmonitor);
-    boundChildMonitor = true;
 
     ERROR_IF(
         runPollFdLoop(pollfd));
@@ -1800,20 +1799,21 @@ Finally:
 
     FINALLY
     ({
-        if (boundChildMonitor)
-            updateChildMonitor_(self, 0);
+        updateChildMonitor_(self, 0);
 
         closePollFd(pollfd);
 
-        if (boundUmbilicalLatch)
-            ABORT_IF(
-                bindEventLatchPipe(
-                    self->mUmbilicalLatch, 0) && ERANGE != errno);
+        ABORT_IF(
+            EventLatchSettingError == bindEventLatchPipe(
+                contLatch, 0));
 
-        if (boundChildLatch)
-            ABORT_IF(
-                -1 == bindEventLatchPipe(
-                    self->mChildLatch, 0) && ERANGE != errno);
+        ABORT_IF(
+            EventLatchSettingError == bindEventLatchPipe(
+                self->mUmbilicalLatch, 0));
+
+        ABORT_IF(
+            EventLatchSettingError == bindEventLatchPipe(
+                self->mChildLatch, 0));
 
         closeEventPipe(eventPipe);
         closeEventLatch(contLatch);

@@ -45,6 +45,14 @@ struct EventLatch
     struct EventPipe      *mPipe;
 };
 
+enum EventLatchSetting
+{
+    EventLatchSettingError    = -1,
+    EventLatchSettingDisabled =  0,
+    EventLatchSettingOff      =  1,
+    EventLatchSettingOn       =  2,
+};
+
 /* -------------------------------------------------------------------------- */
 int
 createEventLatch(struct EventLatch *self);
@@ -52,19 +60,19 @@ createEventLatch(struct EventLatch *self);
 void
 closeEventLatch(struct EventLatch *self);
 
-int
+enum EventLatchSetting
 bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe);
 
-int
+enum EventLatchSetting
 disableEventLatch(struct EventLatch *self);
 
-int
+enum EventLatchSetting
 setEventLatch(struct EventLatch *self);
 
-int
+enum EventLatchSetting
 resetEventLatch(struct EventLatch *self);
 
-int
+enum EventLatchSetting
 ownEventLatchSetting(const struct EventLatch *self);
 
 /* -------------------------------------------------------------------------- */

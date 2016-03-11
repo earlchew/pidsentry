@@ -61,35 +61,34 @@ closeEventLatch(struct EventLatch *self)
 }
 
 /* -------------------------------------------------------------------------- */
-int
+enum EventLatchSetting
 bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
 {
-    int rc = -1;
+    enum EventLatchSetting rc = EventLatchSettingError;
 
     lockThreadSigMutex(self->mMutex);
 
-    int signalled = 0;
+    enum EventLatchSetting setting;
+
+    unsigned event = self->mEvent;
+
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        setting = EventLatchSettingDisabled;
+    else
+        setting = (event & EVENTLATCH_DATA_MASK_)
+            ? EventLatchSettingOn
+            : EventLatchSettingOff;
 
     if (aPipe)
     {
-        if (self->mEvent)
-        {
+        if (EventLatchSettingOff != setting)
             ERROR_IF(
                 -1 == setEventPipe(aPipe));
-
-            ERROR_IF(
-                self->mEvent & EVENTLATCH_DISABLE_MASK_,
-                {
-                    errno = ERANGE;
-                });
-
-            signalled = 1;
-        }
     }
 
     self->mPipe = aPipe;
 
-    rc = signalled;
+    rc = setting;
 
 Finally:
 
@@ -102,65 +101,33 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+enum EventLatchSetting
 disableEventLatch(struct EventLatch *self)
 {
-    int rc = -1;
+    enum EventLatchSetting rc = EventLatchSettingError;
 
     lockThreadSigMutex(self->mMutex);
 
-    unsigned event = self->mEvent;
-    ERROR_IF(
-        event & EVENTLATCH_DISABLE_MASK_,
-        {
-            errno = ERANGE;
-        });
-
-    self->mEvent |= EVENTLATCH_DISABLE_MASK_;
-
-    if (self->mPipe)
-        ERROR_IF(
-            -1 == setEventPipe(self->mPipe));
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        unlockThreadSigMutex(self->mMutex);
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-int
-setEventLatch(struct EventLatch *self)
-{
-    int rc = -1;
-
-    lockThreadSigMutex(self->mMutex);
+    enum EventLatchSetting setting;
 
     unsigned event = self->mEvent;
-    ERROR_IF(
-        event & EVENTLATCH_DISABLE_MASK_,
-        {
-            errno = ERANGE;
-        });
 
-    if (event & EVENTLATCH_DATA_MASK_)
-        rc = 0;
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        setting = EventLatchSettingDisabled;
     else
     {
-        self->mEvent ^= EVENTLATCH_DATA_MASK_;
+        setting = (event & EVENTLATCH_DATA_MASK_)
+            ? EventLatchSettingOn
+            : EventLatchSettingOff;
 
         if (self->mPipe)
             ERROR_IF(
                 -1 == setEventPipe(self->mPipe));
 
-        rc = 1;
+        self->mEvent = event ^ EVENTLATCH_DISABLE_MASK_;
     }
+
+    rc = setting;
 
 Finally:
 
@@ -173,28 +140,36 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
-resetEventLatch(struct EventLatch *self)
+enum EventLatchSetting
+setEventLatch(struct EventLatch *self)
 {
-    int rc = -1;
+    enum EventLatchSetting rc = EventLatchSettingError;
 
     lockThreadSigMutex(self->mMutex);
 
-    unsigned event = self->mEvent;
-    ERROR_IF(
-        event & EVENTLATCH_DISABLE_MASK_,
-        {
-            errno = ERANGE;
-        });
+    enum EventLatchSetting setting;
 
-    if ( ! (event & EVENTLATCH_DATA_MASK_))
-        rc = 0;
+    unsigned event = self->mEvent;
+
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        setting = EventLatchSettingDisabled;
+    else if (event & EVENTLATCH_DATA_MASK_)
+        setting = EventLatchSettingOn;
     else
     {
-        self->mEvent ^= EVENTLATCH_DATA_MASK_;
+        setting = (event & EVENTLATCH_DATA_MASK_)
+            ? EventLatchSettingOn
+            : EventLatchSettingOff;
+        setting = EventLatchSettingOff;
 
-        rc = 1;
+        if (self->mPipe)
+            ERROR_IF(
+                -1 == setEventPipe(self->mPipe));
+
+        self->mEvent = event ^ EVENTLATCH_DATA_MASK_;
     }
+
+    rc = setting;
 
 Finally:
 
@@ -207,23 +182,62 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+enum EventLatchSetting
+resetEventLatch(struct EventLatch *self)
+{
+    enum EventLatchSetting rc = EventLatchSettingError;
+
+    lockThreadSigMutex(self->mMutex);
+
+    enum EventLatchSetting setting;
+
+    unsigned event = self->mEvent;
+
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        setting = EventLatchSettingDisabled;
+    else if ( ! (event & EVENTLATCH_DATA_MASK_))
+        setting = EventLatchSettingOff;
+    else
+    {
+        setting = EventLatchSettingOn;
+
+        self->mEvent = event ^ EVENTLATCH_DATA_MASK_;
+    }
+
+    rc = setting;
+
+Finally:
+
+    FINALLY
+    ({
+        unlockThreadSigMutex(self->mMutex);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+enum EventLatchSetting
 ownEventLatchSetting(const struct EventLatch *self_)
 {
-    int rc = -1;
+    enum EventLatchSetting rc = EventLatchSettingError;
 
     struct EventLatch *self = (struct EventLatch *) self_;
 
     lockThreadSigMutex(self->mMutex);
 
-    unsigned event = self->mEvent;
-    ERROR_IF(
-        event & EVENTLATCH_DISABLE_MASK_,
-        {
-            errno = ERANGE;
-        });
+    enum EventLatchSetting setting;
 
-    rc = (event & EVENTLATCH_DATA_MASK_) ? 1 : 0;
+    unsigned event = self->mEvent;
+
+    if (event & EVENTLATCH_DISABLE_MASK_)
+        setting = EventLatchSettingDisabled;
+    else
+        setting = (event & EVENTLATCH_DATA_MASK_)
+            ? EventLatchSettingOn
+            : EventLatchSettingOff;
+
+    rc = setting;
 
 Finally:
 

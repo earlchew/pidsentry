@@ -8,12 +8,13 @@ set -eu
 
 blackdogexec()
 {
+    unset BLACKDOG_TEST_ERROR
     exec libtool --mode=execute $VALGRIND ./blackdog "$@"
 }
 
 blackdog()
 {
-    if [ $# -eq 0 -o x"$1" != x"exec" ] ; then
+    if [ $# -eq 0 -o x"${1:-}" != x"exec" ] ; then
         ( blackdogexec "$@" )
     else
         shift
@@ -323,7 +324,9 @@ runTests()
     testCase 'Tether with new file descriptor'
     testOutput '$(( 1 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      blackdog --test=1 -f - -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      blackdog --test=1 -f - -- ls -l /proc/self/fd |
+          grep "[0-9]-[0-9]" |
+          wc -l)'
 
     testCase 'Tether using stdout'
     testOutput '$(( 0 + $(
@@ -333,7 +336,9 @@ runTests()
     testCase 'Tether using named stdout'
     testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      blackdog --test=1 -f 1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      blackdog --test=1 -f 1 -- ls -l /proc/self/fd |
+          grep "[0-9]-[0-9]" |
+          wc -l)'
 
     testCase 'Tether using stdout with 8M data'
     testOutput 8192000 = '$(
@@ -380,7 +385,8 @@ runTests()
         kill -9 $UMBILICAL
         SLEPT=0
         while : ; do
-            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep blackdog ||
+            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= |
+                grep blackdog ||
                 break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
@@ -396,7 +402,8 @@ runTests()
         kill -9 $CHILD
         SLEPT=0
         while : ; do
-            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep blackdog ||
+            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= |
+                grep blackdog ||
                 break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
@@ -422,13 +429,14 @@ runTests()
     [ x"$REPLY" = x$((128 + 9)) ]
 
     testCase 'Stopped child'
-    testOutput OK = '"$(blackdog --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
-        read PARENT UMBILICAL
-        read CHILD
-        sleep 8
-        kill -CONT $CHILD || { echo NOTOK ; exit 1 ; }
-        echo OK
-    })"'
+    testOutput OK = '"$(
+        blackdog --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
+            read PARENT UMBILICAL
+            read CHILD
+            sleep 8
+            kill -CONT $CHILD || { echo NOTOK ; exit 1 ; }
+            echo OK
+        })"'
 
     testCase 'Stopped parent'
     testOutput OK = '"$(blackdog --test=1 -i -d -t 8,2 -- sleep 4 | {
@@ -630,6 +638,20 @@ runTests()
     [ "$REPLY" -ge 6 ]
 }
 
+unset TEST_MODE_EXTENDED
+if [ -n "${TEST_MODE++}" ] ; then
+    case "${TEST_MODE:-}" in
+    extended)
+        TEST_MODE_EXTENDED=
+        ;;
+    *)
+        printf "Unrecognised test mode: %s\n" "$TEST_MODE"
+        exit 1
+        ;;
+    esac
+fi
+unset TEST_MODE
+
 trap 'rm -rf scratch/*' 0
 mkdir -p scratch
 
@@ -645,17 +667,6 @@ for TEST in runTest runTests ; do
     $TEST
 done
 
-testCase 'Error handling'
-testOutput 128 != '$(
-    RANGE=$(
-        blackdog -d --test=2 -- dd if=/dev/zero bs=64K count=4 2>&1 >/dev/null |
-        tail -1)
-    TRIGGER=$(( $(random) % ((RANGE + 999) / 1000 * 1000) ))
-    export BLACKDOG_TEST_ERROR="$TRIGGER"
-    blackdog -d --test=2 -- dd if=/dev/zero bs=64K count=4 >/dev/null
-    /bin/echo $?
-)'
-
 testCase 'No lost watchdogs'
 testOutput "" = '$(ps -C blackdog -o user=,ppid=,pid=,pgid=,command=)'
 
@@ -665,3 +676,12 @@ testOutput "" != "/bin/echo $VALGRIND"
 TESTS=$(/bin/echo $(ls -1 _* | grep -v -F .) )
 TESTS_ENVIRONMENT="${TESTS_ENVIRONMENT+$TESTS_ENVIRONMENT }$VALGRIND"
 make check TESTS_ENVIRONMENT="$TESTS_ENVIRONMENT" TESTS="$TESTS"
+
+# The error handling test takes a very long time to run, so run a quick
+# version of the test, unless TEST_MODE is configured.
+
+testCase 'Error handling'
+(
+    [ -n "${TEST_MODE_EXTENDED++}" ] || export BLACKDOG_TEST_ERROR=once
+    ./errortest.sh
+)

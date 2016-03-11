@@ -570,7 +570,7 @@ warn_(
 
 /* -------------------------------------------------------------------------- */
 void
-terminate_(
+message_(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
@@ -582,6 +582,30 @@ terminate_(
         struct ErrorFrameSequence frameSequence =
             pushErrorFrameSequence();
 
+        va_start(args, aFmt);
+        print_(aErrCode, 0, 0, 0, aFmt, args);
+        va_end(args);
+
+        popErrorFrameSequence(frameSequence);
+    });
+}
+
+/* -------------------------------------------------------------------------- */
+void
+terminate_(
+    int aErrCode,
+    const char *aFunction, const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
+{
+    FINALLY
+    ({
+        logErrorFrameSequence();
+
+        struct ErrorFrameSequence frameSequence =
+            pushErrorFrameSequence();
+
+        va_list args;
+
         if (gOptions.mDebug)
         {
             va_start(args, aFmt);
@@ -591,46 +615,11 @@ terminate_(
 
         popErrorFrameSequence(frameSequence);
 
-        logErrorFrameSequence();
-
         va_start(args, aFmt);
         print_(aErrCode, 0, 0, 0, aFmt, args);
         va_end(args);
 
         abortProcess();
-    });
-}
-
-/* -------------------------------------------------------------------------- */
-void
-exit_(
-    int aErrCode,
-    const char *aFunction, const char *aFile, unsigned aLine,
-    const char *aFmt, ...)
-{
-    FINALLY
-    ({
-        va_list args;
-
-        if (gOptions.mDebug)
-        {
-            struct ErrorFrameSequence frameSequence =
-                pushErrorFrameSequence();
-
-            va_start(args, aFmt);
-            print_(aErrCode, aFunction, aFile, aLine, aFmt, args);
-            va_end(args);
-
-            popErrorFrameSequence(frameSequence);
-
-            logErrorFrameSequence();
-        }
-
-        va_start(args, aFmt);
-        print_(aErrCode, 0, 0, 0, aFmt, args);
-        va_end(args);
-
-        exitProcess(EXIT_FAILURE);
     });
 }
 
