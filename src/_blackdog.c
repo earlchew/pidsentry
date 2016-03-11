@@ -60,14 +60,11 @@
 
 /* TODO
  *
- * Add test case for SIGKILL of watchdog and child not watching tether
- * Fix vgcore being dropped everywhere
- * Implement process lock in child process
- * When announcing child, ensure pid is active first
  * Use struct Type for other poll loops
- * Propagate signal termination from child to parent
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
+ * Provide a secure way for a client to signal the child via the watchdog
+ *   without fear that the watchdog or the child has been aliased
  */
 
 /* -------------------------------------------------------------------------- */
