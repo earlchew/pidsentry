@@ -250,7 +250,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-getEnvPid(const char *aName, pid_t *aValue)
+getEnvPid(const char *aName, struct Pid *aValue)
 {
     int rc = -1;
 
@@ -273,14 +273,14 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 const char *
-setEnvPid(const char *aName, pid_t aValue)
+setEnvPid(const char *aName, struct Pid aValue)
 {
     const char *rc = 0;
 
     char value[sizeof("-") + sizeof(aValue) * CHAR_BIT];
 
     ERROR_IF(
-        0 > sprintf(value, "%jd", (intmax_t) aValue));
+        0 > sprintf(value, "%" PRId_Pid, FMTd_Pid(aValue)));
 
     const char *env = 0;
 

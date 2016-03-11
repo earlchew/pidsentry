@@ -26,50 +26,21 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef PARSE_H
-#define PARSE_H
 
-#include <inttypes.h>
+#include "pid_.h"
 
-#include <sys/types.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-struct Pid;
-
-struct ParseArgList
+/* -------------------------------------------------------------------------- */
+struct Pid
+Pid_(pid_t aPid)
 {
-    unsigned mArgc;
-    char   **mArgv;
-    char    *mArgs;
-};
-
-/* -------------------------------------------------------------------------- */
-int
-createParseArgListCSV(struct ParseArgList *self, const char *aArg);
-
-void
-closeParseArgList(struct ParseArgList *self);
-
-/* -------------------------------------------------------------------------- */
-int
-parseInt(const char *aArg, int *aValue);
-
-int
-parseUInt(const char *aArg, unsigned *aValue);
-
-int
-parseUInt64(const char *aArg, uint64_t *aValue);
-
-int
-parsePid(const char *aArg, struct Pid *aValue);
-
-/* -------------------------------------------------------------------------- */
-
-#ifdef __cplusplus
+    return (struct Pid) { .mPid = aPid };
 }
-#endif
 
-#endif /* PARSE_H */
+/* -------------------------------------------------------------------------- */
+struct Pgid
+Pgid_(pid_t aPgid)
+{
+    return (struct Pgid) { .mPgid = aPgid };
+}
+
+/* -------------------------------------------------------------------------- */

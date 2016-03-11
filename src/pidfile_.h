@@ -30,6 +30,7 @@
 #define PIDFILE_H
 
 #include "pathname_.h"
+#include "pid_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,7 +57,7 @@ detectPidFileZombie(const struct PidFile *self);
 void
 closePidFile(struct PidFile *self);
 
-pid_t
+struct Pid
 readPidFile(const struct PidFile *self);
 
 int
@@ -69,7 +70,7 @@ int
 acquireReadLockPidFile(struct PidFile *self);
 
 int
-writePidFile(struct PidFile *self, pid_t aPid);
+writePidFile(struct PidFile *self, struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
 

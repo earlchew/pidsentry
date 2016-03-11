@@ -163,17 +163,17 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-parsePid(const char *aArg, pid_t *aValue)
+parsePid(const char *aArg, struct Pid *aValue)
 {
     int rc = -1;
 
     unsigned long long value;
     ERROR_IF(
         parseUnsignedLongLong_(aArg, &value));
-    *aValue = value;
+    *aValue = Pid(value);
 
     ERROR_IF(
-        *aValue - value || 0 > *aValue,
+        aValue->mPid - value || 0 > aValue->mPid,
         {
             errno = EINVAL;
         });

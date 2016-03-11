@@ -26,10 +26,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef PARSE_H
-#define PARSE_H
-
-#include <inttypes.h>
+#ifndef PID_H
+#define PID_H
 
 #include <sys/types.h>
 
@@ -37,34 +35,55 @@
 extern "C" {
 #endif
 
-struct Pid;
-
-struct ParseArgList
+#define PRId_Pid "jd"
+#define FMTd_Pid(Pid) ((intmax_t) (Pid).mPid)
+struct Pid
 {
-    unsigned mArgc;
-    char   **mArgv;
-    char    *mArgs;
+#ifdef __cplusplus
+    Pid(pid_t aPid)
+    : mPid(aPid)
+    { }
+#endif
+
+    pid_t mPid;
+};
+
+#define PRId_Pgid "jd"
+#define FMTd_Pgid(Pgid) ((intmax_t) (Pgid).mPgid)
+struct Pgid
+{
+#ifdef __cplusplus
+    Pgid(pid_t aPgid)
+    : mPgid(aPgid)
+    { }
+#endif
+
+    pid_t mPgid;
 };
 
 /* -------------------------------------------------------------------------- */
-int
-createParseArgListCSV(struct ParseArgList *self, const char *aArg);
+struct Pid
+Pid_(pid_t aPid);
 
-void
-closeParseArgList(struct ParseArgList *self);
+#ifndef __cplusplus
+static inline struct Pid
+Pid(pid_t aPid)
+{
+    return Pid_(aPid);
+}
+#endif
 
 /* -------------------------------------------------------------------------- */
-int
-parseInt(const char *aArg, int *aValue);
+struct Pgid
+Pgid_(pid_t aPgid);
 
-int
-parseUInt(const char *aArg, unsigned *aValue);
-
-int
-parseUInt64(const char *aArg, uint64_t *aValue);
-
-int
-parsePid(const char *aArg, struct Pid *aValue);
+#ifndef __cplusplus
+static inline struct Pgid
+Pgid(pid_t aPgid)
+{
+    return Pgid_(aPgid);
+}
+#endif
 
 /* -------------------------------------------------------------------------- */
 
@@ -72,4 +91,4 @@ parsePid(const char *aArg, struct Pid *aValue);
 }
 #endif
 
-#endif /* PARSE_H */
+#endif /* PID_H */

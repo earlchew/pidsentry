@@ -303,7 +303,7 @@ processOptions(int argc, char **argv, char ***args)
         case 'P':
             pidFileOnly = -1;
             if ( ! strcmp(optarg, "-1"))
-                gOptions.mPid = -1;
+                gOptions.mPid = Pid(-1);
             else
             {
                 ERROR_IF(

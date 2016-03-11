@@ -29,6 +29,8 @@
 #ifndef ENV_H
 #define ENV_H
 
+#include "pid_.h"
+
 #include <inttypes.h>
 
 #include <sys/types.h>
@@ -66,10 +68,10 @@ int
 getEnvString(const char *aName, const char **aValue);
 
 const char *
-setEnvPid(const char *aName, pid_t aValue);
+setEnvPid(const char *aName, struct Pid aValue);
 
 int
-getEnvPid(const char *aName, pid_t *aValue);
+getEnvPid(const char *aName, struct Pid *aValue);
 
 /* -------------------------------------------------------------------------- */
 

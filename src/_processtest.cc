@@ -97,19 +97,19 @@ TEST(ProcessTest, ProcessSignature)
         free(altSignature);
     }
 
-    pid_t firstChild = forkProcess(ForkProcessShareProcessGroup, 0);
-    EXPECT_NE(-1, firstChild);
+    struct Pid firstChild = forkProcess(ForkProcessShareProcessGroup, 0);
+    EXPECT_NE(-1, firstChild.mPid);
 
-    if ( ! firstChild)
+    if ( ! firstChild.mPid)
     {
         execlp("sh", "sh", "-c", "exit 0", 0);
         _exit(EXIT_SUCCESS);
     }
 
-    pid_t secondChild = forkProcess(ForkProcessShareProcessGroup, 0);
-    EXPECT_NE(-1, secondChild);
+    struct Pid secondChild = forkProcess(ForkProcessShareProcessGroup, 0);
+    EXPECT_NE(-1, secondChild.mPid);
 
-    if ( ! secondChild)
+    if ( ! secondChild.mPid)
     {
         execlp("sh", "sh", "-c", "exit 0", 0);
         _exit(EXIT_SUCCESS);

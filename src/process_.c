@@ -1007,9 +1007,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-initProcessDirName(struct ProcessDirName *self, pid_t aPid)
+initProcessDirName(struct ProcessDirName *self, struct Pid aPid)
 {
-    sprintf(self->mDirName, PROCESS_DIRNAME_FMT_, (intmax_t) aPid);
+    sprintf(self->mDirName, PROCESS_DIRNAME_FMT_, FMTd_Pid(aPid));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1032,7 +1032,7 @@ formatProcessSignalName(struct ProcessSignalName *self, int aSigNum)
 
 /* -------------------------------------------------------------------------- */
 enum ProcessState
-fetchProcessState(pid_t aPid)
+fetchProcessState(struct Pid aPid)
 {
     enum ProcessState rc = ProcessStateError;
 
@@ -1396,12 +1396,12 @@ ownProcessLockPath(void)
 
 /* -------------------------------------------------------------------------- */
 int
-reapProcess(pid_t aPid, int *aStatus)
+reapProcess(struct Pid aPid, int *aStatus)
 {
     int rc = -1;
 
     ERROR_IF(
-        -1 == aPid || ! aPid,
+        -1 == aPid.mPid || ! aPid.mPid,
         {
             errno = EINVAL;
         });
@@ -1411,9 +1411,9 @@ reapProcess(pid_t aPid, int *aStatus)
     do
     {
         ERROR_IF(
-            (pid = waitpid(aPid, aStatus, __WALL),
+            (pid = waitpid(aPid.mPid, aStatus, __WALL),
              -1 == pid && EINTR != errno));
-    } while (pid != aPid);
+    } while (pid != aPid.mPid);
 
     rc = 0;
 
@@ -1426,7 +1426,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 enum ProcessStatus
-monitorProcess(pid_t aPid)
+monitorProcess(struct Pid aPid)
 {
     enum ProcessStatus rc = ProcessStatusError;
 
@@ -1434,10 +1434,10 @@ monitorProcess(pid_t aPid)
 
     siginfo.si_pid = 0;
     ERROR_IF(
-        waitid(P_PID, aPid, &siginfo,
+        waitid(P_PID, aPid.mPid, &siginfo,
                WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT));
 
-    if (siginfo.si_pid != aPid)
+    if (siginfo.si_pid != aPid.mPid)
         rc = ProcessStatusRunning;
     else
     {
@@ -1467,8 +1467,8 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-pid_t
-forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
+struct Pid
+forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
 {
     pid_t rc = -1;
 
@@ -1482,6 +1482,10 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
     ensure(NUMBEROF(sProcessLock_) > inactiveProcessLock);
 
     ensure( ! sProcessLock[inactiveProcessLock]);
+
+    pid_t pgid = aPgid.mPgid;
+
+    ensure(ForkProcessSetProcessGroup == aOption || ! pgid);
 
 #ifdef __linux__
     long clocktick;
@@ -1535,7 +1539,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
 
         if (ForkProcessSetProcessGroup == aOption)
             ERROR_IF(
-                setpgid(childPid, aPgid ? aPgid : childPid));
+                setpgid(childPid, pgid ? pgid : childPid));
 
         /* On Linux, fetchProcessSignature() uses the process start
          * time from /proc/pid/stat, but that start time is measured
@@ -1571,7 +1575,7 @@ forkProcess(enum ForkProcessOption aOption, pid_t aPgid)
         if (ForkProcessSetProcessGroup == aOption)
         {
             ERROR_IF(
-                setpgid(0, aPgid),
+                setpgid(0, pgid),
                 {
                     err = "Unable to set process group";
                 });
@@ -1615,7 +1619,7 @@ Finally:
             });
     });
 
-    return rc;
+    return Pid(rc);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1777,7 +1781,7 @@ ownProcessName(void)
 
 /* -------------------------------------------------------------------------- */
 struct ExitCode
-extractProcessExitStatus(int aStatus, pid_t aPid)
+extractProcessExitStatus(int aStatus, struct Pid aPid)
 {
     /* Taking guidance from OpenGroup:
      *
@@ -1793,8 +1797,8 @@ extractProcessExitStatus(int aStatus, pid_t aPid)
     {
         debug(
             0,
-            "process pid %jd exited %d",
-            (intmax_t) aPid,
+            "process pid %" PRId_Pid " exited %d",
+            FMTd_Pid(aPid),
             WEXITSTATUS(aStatus));
 
         exitCode.mStatus = WEXITSTATUS(aStatus);
@@ -1805,8 +1809,8 @@ extractProcessExitStatus(int aStatus, pid_t aPid)
 
         debug(
             0,
-            "process pid %jd terminated by %s",
-            (intmax_t) aPid,
+            "process pid %" PRId_Pid " terminated by %s",
+            FMTd_Pid(aPid),
             formatProcessSignalName(&sigName, WTERMSIG(aStatus)));
 
         exitCode.mStatus = 128 + WTERMSIG(aStatus);
@@ -1814,7 +1818,10 @@ extractProcessExitStatus(int aStatus, pid_t aPid)
             exitCode.mStatus = 255;
     }
 
-    debug(0, "process pid %jd exit code %d", (intmax_t) aPid, exitCode.mStatus);
+    debug(0,
+          "process pid %" PRId_Pid " exit code %d",
+          FMTd_Pid(aPid),
+          exitCode.mStatus);
 
     return exitCode;
 }
@@ -1840,7 +1847,7 @@ ownProcessBaseTime(void)
 
 /* -------------------------------------------------------------------------- */
 int
-fetchProcessSignature(pid_t aPid, char **aSignature)
+fetchProcessSignature(struct Pid aPid, char **aSignature)
 {
     int rc = -1;
     int fd = -1;

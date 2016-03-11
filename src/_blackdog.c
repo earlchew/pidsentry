@@ -65,14 +65,15 @@
  * When announcing child, ensure pid is active first
  * Use struct Type for other poll loops
  * Propagate signal termination from child to parent
- * Use struct Pid for type safety
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
  */
 
 /* -------------------------------------------------------------------------- */
 static void
-announceChild(pid_t aPid, struct PidFile *aPidFile, const char *aPidFileName)
+announceChild(struct Pid      aPid,
+              struct PidFile *aPidFile,
+              const char     *aPidFileName)
 {
     for (int zombie = -1; zombie; )
     {
@@ -166,18 +167,21 @@ cmdPrintPidFile(const char *aFileName)
                     "Unable to acquire read lock on pid file '%s'", aFileName);
             });
 
-        pid_t pid;
+        struct Pid pid;
         ABORT_IF(
-            (pid = readPidFile(&pidFile), -1 == pid),
+            (pid = readPidFile(&pidFile),
+             -1 == pid.mPid),
             {
                 terminate(
                     errno,
                     "Unable to read pid file '%s'", aFileName);
             });
 
-        if (pid)
+        if (pid.mPid)
         {
-            if (-1 != dprintf(STDOUT_FILENO, "%jd\n", (intmax_t) pid))
+            if (-1 != dprintf(STDOUT_FILENO,
+                              "%" PRId_Pid "\n",
+                              FMTd_Pid(pid)))
                 exitCode.mStatus = 0;
         }
 
@@ -195,7 +199,7 @@ struct Family
     const struct Type *mType;
 
     struct ChildProcess *mChildProcess;
-    pid_t                mUmbilicalPid;
+    struct Pid           mUmbilicalPid;
 };
 
 static void
@@ -303,7 +307,7 @@ cmdRunCommand(char **aCmd)
     {
         .mType         = familyType_,
         .mChildProcess = &childProcess,
-        .mUmbilicalPid = 0
+        .mUmbilicalPid = Pid(0)
     };
 
     ABORT_IF(
@@ -376,14 +380,14 @@ cmdRunCommand(char **aCmd)
     {
         const char *pidFileName = gOptions.mPidFile;
 
-        pid_t pid = gOptions.mPid;
+        struct Pid pid = gOptions.mPid;
 
-        switch (pid)
+        switch (pid.mPid)
         {
         default:
             break;
         case -1:
-            pid = getpid(); break;
+            pid = Pid(getpid()); break;
         case 0:
             pid = childProcess.mPid; break;
         }
@@ -457,9 +461,10 @@ cmdRunCommand(char **aCmd)
         ({
             ABORT_IF(
                 -1 == dprintf(STDOUT_FILENO,
-                              "%jd %jd\n",
-                              (intmax_t) getpid(),
-                              (intmax_t) umbilicalProcess.mPid),
+                              "%" PRId_Pid " "
+                              "%" PRId_Pid "\n",
+                              FMTd_Pid(Pid(getpid())),
+                              FMTd_Pid(umbilicalProcess.mPid)),
                 {
                     terminate(
                         errno,
@@ -517,7 +522,8 @@ cmdRunCommand(char **aCmd)
         ({
             ABORT_IF(
                 -1 == dprintf(STDOUT_FILENO,
-                              "%jd\n", (intmax_t) childProcess.mPid),
+                              "%" PRId_Pid "\n",
+                              FMTd_Pid(childProcess.mPid)),
                 {
                     terminate(
                         errno,
@@ -629,7 +635,9 @@ cmdRunCommand(char **aCmd)
      * can exit in an orderly fashion with the exit status of the child
      * process as the last line emitted. */
 
-    debug(0, "stopping umbilical pid %jd", (intmax_t) umbilicalProcess.mPid);
+    debug(0,
+          "stopping umbilical pid %" PRId_Pid,
+          FMTd_Pid(umbilicalProcess.mPid));
 
     int notStopped;
     ABORT_IF(
@@ -654,9 +662,11 @@ cmdRunCommand(char **aCmd)
      * that any competing reader that manages to sucessfully lock and
      * read the pid file will see the terminated process. */
 
-    debug(0, "reaping child pid %jd", (intmax_t) childProcess.mPid);
+    debug(0,
+          "reaping child pid %" PRId_Pid,
+          FMTd_Pid(childProcess.mPid));
 
-    pid_t childPid = childProcess.mPid;
+    struct Pid childPid = childProcess.mPid;
 
     int childStatus;
     ABORT_IF(
@@ -664,14 +674,15 @@ cmdRunCommand(char **aCmd)
         {
             terminate(
                 errno,
-                "Unable to reap child pid %jd", (intmax_t) childProcess.mPid);
+                "Unable to reap child pid %" PRId_Pid,
+                FMTd_Pid(childProcess.mPid));
         });
 
     closeChild(&childProcess);
 
     debug(0,
-          "reaped child pid %jd status %d",
-          (intmax_t) childPid,
+          "reaped child pid %" PRId_Pid " status %d",
+          FMTd_Pid(childPid),
           childStatus);
 
     closeSocketPair(&umbilicalSocket);

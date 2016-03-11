@@ -30,6 +30,7 @@
 #define UMBILICAL_H
 
 #include "pollfd_.h"
+#include "pid_.h"
 
 #include <poll.h>
 #include <stdbool.h>
@@ -48,8 +49,8 @@ struct ChildProcess;
 /* -------------------------------------------------------------------------- */
 struct UmbilicalProcess
 {
-    pid_t              mPid;
-    pid_t              mPgid;
+    struct Pid         mPid;
+    struct Pgid        mPgid;
     struct SocketPair *mSocket;
 };
 
@@ -76,7 +77,7 @@ struct UmbilicalMonitor
     struct PollFdTimerAction  mPollFdTimerActions[POLL_FD_MONITOR_TIMER_KINDS];
     unsigned                  mCycleCount;
     unsigned                  mCycleLimit;
-    pid_t                     mParentPid;
+    struct Pid                mParentPid;
     bool                      mClosed;
 };
 
@@ -85,7 +86,7 @@ int
 createUmbilicalMonitor(
     struct UmbilicalMonitor *self,
     int                      aStdinFd,
-    pid_t                    aParentPid);
+    struct Pid               aParentPid);
 
 
 int

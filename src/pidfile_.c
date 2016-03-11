@@ -113,43 +113,46 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static pid_t
+static struct Pid
 readPidFile_(char *aBuf)
 {
-    int    rc           = -1;
-    pid_t  err          = 0;
-    pid_t  pid          = 0;
-    char  *pidsignature = 0;
-    char  *signature    = 0;
+    int rc = -1;
+
+    struct Pid pid = Pid(0);
+
+    char *pidsignature = 0;
+    char *signature    = 0;
 
     char *endptr = strchr(aBuf, 0);
     char *nlptr  = strchr(aBuf, '\n');
 
-    ERROR_IF(
-        endptr == aBuf      ||
-        ! nlptr             ||
-        nlptr + 1 == endptr ||
-        '\n' != endptr[-1],
-        {
-            errno = ENOENT;
-        });
-
-    *nlptr     = 0;
-    endptr[-1] = 0;
-
-    ERROR_IF(
-        parsePid(aBuf, &pid));
-
-    ERROR_UNLESS(
-        pid,
-        {
-            errno = ENOENT;
-        });
-
     do
     {
+        if (endptr == aBuf)
+            break;
+
+        if ( ! nlptr)
+            break;
+
+        if (nlptr + 1 == endptr)
+            break;
+
+        if ('\n' != endptr[-1])
+            break;
+
+        *nlptr     = 0;
+        endptr[-1] = 0;
+
+        struct Pid parsedPid;
+        if (parsePid(aBuf, &parsedPid))
+            break;
+
+        if ( ! parsedPid.mPid)
+            break;
+
+        int err = 0;
         ERROR_IF(
-            (err = fetchProcessSignature(pid, &signature),
+            (err = fetchProcessSignature(parsedPid, &signature),
              err && ENOENT != errno));
 
         if ( ! err)
@@ -157,13 +160,14 @@ readPidFile_(char *aBuf)
             debug(0, "pidfile signature %s vs %s", pidsignature, signature);
 
             if ( ! strcmp(pidsignature, signature))
+            {
+                pid = parsedPid;
                 break;
+            }
         }
 
         /* The process either does not exist, or if it does exist the two
          * process signatures do not match. */
-
-        pid = 0;
 
     } while (0);
 
@@ -177,17 +181,17 @@ Finally:
         free(signature);
     });
 
-    return rc ? err : pid;
+    return rc ? Pid(-1) : pid;
 }
 
-pid_t
+struct Pid
 readPidFile(const struct PidFile *self)
 {
-    int    rc           = -1;
-    pid_t  pid          = 0;
-    int    pidfd        = -1;
-    char  *pidsignature = 0;
-    char  *signature    = 0;
+    int        rc           = -1;
+    struct Pid pid          = Pid(0);
+    int        pidfd        = -1;
+    char      *pidsignature = 0;
+    char      *signature    = 0;
 
     ensure(LOCK_UN != self->mLock);
 
@@ -212,12 +216,12 @@ readPidFile(const struct PidFile *self)
                 buf[buflen] = 0;
                 ERROR_IF(
                     (pid = readPidFile_(buf),
-                     -1 == pid));
+                     -1 == pid.mPid));
                 break;
             }
         }
 
-        pid = 0;
+        pid = Pid(0);
 
     } while (0);
 
@@ -233,7 +237,7 @@ Finally:
         free(signature);
     });
 
-    return rc ? -1 : pid;
+    return rc ? Pid(-1) : pid;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -310,13 +314,13 @@ createPidFile(struct PidFile *self, const char *aFileName)
          * it means that the pidfile is already owned. Otherwise,
          * the pidfile is not owned, and can be deleted. */
 
-        pid_t pid;
+        struct Pid pid;
         ERROR_IF(
             (pid = readPidFile(self),
-             -1 == pid));
+             -1 == pid.mPid));
 
         ERROR_IF(
-            pid,
+            pid.mPid,
             {
                 errno = EEXIST;
             });
@@ -501,12 +505,12 @@ closePidFile(struct PidFile *self)
 
 /* -------------------------------------------------------------------------- */
 int
-writePidFile(struct PidFile *self, pid_t aPid)
+writePidFile(struct PidFile *self, struct Pid aPid)
 {
     int   rc        = -1;
     char *signature = 0;
 
-    ensure(0 < aPid);
+    ensure(0 < aPid.mPid);
 
     ERROR_IF(
         fetchProcessSignature(aPid, &signature));
@@ -514,7 +518,8 @@ writePidFile(struct PidFile *self, pid_t aPid)
     char buf[PIDFILE_SIZE_+1];
 
     int buflen =
-        snprintf(buf, sizeof(buf), "%jd\n%s\n", (intmax_t) aPid, signature);
+        snprintf(
+            buf, sizeof(buf), "%" PRId_Pid "\n%s\n", FMTd_Pid(aPid), signature);
 
     ERROR_IF(
         0 > buflen,

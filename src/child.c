@@ -93,8 +93,8 @@ createChild(struct ChildProcess *self)
 {
     int rc = - 1;
 
-    self->mPid  = 0;
-    self->mPgid = 0;
+    self->mPid  = Pid(0);
+    self->mPgid = Pgid(0);
 
     self->mTetherPipe     = 0;
     self->mChildLatch     = 0;
@@ -149,7 +149,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static void
-superviseChildProcess_(const char *aRole, pid_t aPid, struct EventLatch *aLatch)
+superviseChildProcess_(const char        *aRole,
+                       struct Pid         aPid,
+                       struct EventLatch *aLatch)
 {
     /* Check that the process being monitored is the one
      * is the subject of the signal. Here is a way for a parent
@@ -162,17 +164,22 @@ superviseChildProcess_(const char *aRole, pid_t aPid, struct EventLatch *aLatch)
 
     enum ProcessStatus status;
     ABORT_IF(
-        (status = monitorProcess(aPid), ProcessStatusError == status),
+        (status = monitorProcess(aPid),
+         ProcessStatusError == status),
         {
             terminate(
                 errno,
-                "Unable to determine status of %s pid %jd",
-                aRole, (intmax_t) aPid);
+                "Unable to determine status of %s pid %" PRId_Pid,
+                aRole,
+                FMTd_Pid(aPid));
         });
 
     if (ProcessStatusRunning == status)
     {
-        debug(1, "%s pid %jd running", aRole, (intmax_t) aPid);
+        debug(1,
+              "%s pid %" PRId_Pid " running",
+              aRole,
+              FMTd_Pid(aPid));
 
         ABORT_IF(
             EventLatchSettingError == setEventLatch(aLatch),
@@ -186,11 +193,18 @@ superviseChildProcess_(const char *aRole, pid_t aPid, struct EventLatch *aLatch)
              ProcessStatusKilled != status &&
              ProcessStatusDumped != status)
     {
-        debug(1, "%s pid %jd status %c", aRole, (intmax_t) aPid, status);
+        debug(1,
+              "%s pid %" PRId_Pid " status %c",
+              aRole,
+              FMTd_Pid(aPid),
+              status);
     }
     else
     {
-        debug(1, "%s pid %jd terminated", aRole, (intmax_t) aPid);
+        debug(1,
+              "%s pid %" PRId_Pid " terminated",
+              aRole,
+              FMTd_Pid(aPid));
 
         ABORT_IF(
             EventLatchSettingError == disableEventLatch(aLatch),
@@ -203,9 +217,9 @@ superviseChildProcess_(const char *aRole, pid_t aPid, struct EventLatch *aLatch)
 }
 
 void
-superviseChildProcess(struct ChildProcess *self, pid_t aUmbilicalPid)
+superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid)
 {
-    if (aUmbilicalPid)
+    if (aUmbilicalPid.mPid)
         superviseChildProcess_(
             "umbilical", aUmbilicalPid, self->mUmbilicalLatch);
 
@@ -220,7 +234,7 @@ killChild(struct ChildProcess *self, int aSigNum)
     struct ProcessSignalName sigName;
 
     ABORT_UNLESS(
-        self->mPid,
+        self->mPid.mPid,
         {
             terminate(
                 0,
@@ -229,18 +243,18 @@ killChild(struct ChildProcess *self, int aSigNum)
         });
 
     debug(0,
-          "sending %s to child pid %jd",
+          "sending %s to child pid %" PRId_Pid,
           formatProcessSignalName(&sigName, aSigNum),
-          (intmax_t) self->mPid);
+          FMTd_Pid(self->mPid));
 
     ABORT_IF(
-        kill(self->mPid, aSigNum),
+        kill(self->mPid.mPid, aSigNum),
         {
             terminate(
                 errno,
-                "Unable to deliver %s to child pid %jd",
+                "Unable to deliver %s to child pid %" PRId_Pid,
                 formatProcessSignalName(&sigName, aSigNum),
-                (intmax_t) self->mPid);
+                FMTd_Pid(self->mPid));
         });
 }
 
@@ -253,7 +267,7 @@ killChildProcessGroup(struct ChildProcess *self)
     struct ProcessSignalName sigName;
 
     ABORT_UNLESS(
-        self->mPgid,
+        self->mPgid.mPgid,
         {
             terminate(
                 0,
@@ -262,18 +276,18 @@ killChildProcessGroup(struct ChildProcess *self)
         });
 
     debug(0,
-          "sending %s to child pgid %jd",
+          "sending %s to child pgid %" PRId_Pgid,
           formatProcessSignalName(&sigName, sigKill),
-          (intmax_t) self->mPgid);
+          FMTd_Pgid(self->mPgid));
 
     ABORT_IF(
-        killpg(self->mPgid, sigKill),
+        killpg(self->mPgid.mPgid, sigKill),
         {
             terminate(
                 errno,
-                "Unable to deliver %s to child pgid %jd",
+                "Unable to deliver %s to child pgid %" PRId_Pgid,
                 formatProcessSignalName(&sigName, sigKill),
-                (intmax_t) self->mPgid);
+                FMTd_Pgid(self->mPgid));
         });
 }
 
@@ -282,7 +296,7 @@ void
 pauseChildProcessGroup(struct ChildProcess *self)
 {
     ABORT_UNLESS(
-        self->mPgid,
+        self->mPgid.mPgid,
         {
             terminate(
                 0,
@@ -290,12 +304,12 @@ pauseChildProcessGroup(struct ChildProcess *self)
         });
 
     ABORT_IF(
-        killpg(self->mPgid, SIGSTOP),
+        killpg(self->mPgid.mPgid, SIGSTOP),
         {
             terminate(
                 errno,
-                "Unable to stop child process group %jd",
-                (intmax_t) self->mPgid);
+                "Unable to stop child process group %" PRId_Pgid,
+                FMTd_Pgid(self->mPgid));
         });
 }
 
@@ -304,7 +318,7 @@ void
 resumeChildProcessGroup(struct ChildProcess *self)
 {
     ABORT_UNLESS(
-        self->mPgid,
+        self->mPgid.mPgid,
         {
             terminate(
                 0,
@@ -312,12 +326,12 @@ resumeChildProcessGroup(struct ChildProcess *self)
         });
 
     ABORT_IF(
-        killpg(self->mPgid, SIGCONT),
+        killpg(self->mPgid.mPgid, SIGCONT),
         {
             terminate(
                 errno,
-                "Unable to continue child process group %jd",
-                (intmax_t) self->mPgid);
+                "Unable to continue child process group %" PRId_Pgid,
+                FMTd_Pgid(self->mPgid));
         });
 }
 
@@ -339,10 +353,10 @@ forkChild(
      * This is safe because that would cause one of end the synchronisation
      * pipe to close, and the other end will eventually notice. */
 
-    pid_t childPid;
+    struct Pid childPid;
     ERROR_IF(
-        (childPid = forkProcess(ForkProcessSetProcessGroup, 0),
-         -1 == childPid));
+        (childPid = forkProcess(ForkProcessSetProcessGroup, Pgid(0)),
+         -1 == childPid.mPid));
 
     /* Do not try to place the watchdog in the process group of the child.
      * This allows the parent to supervise the watchdog, and the watchdog
@@ -356,11 +370,13 @@ forkChild(
      *    kill(pgid > 0 ? -pgid : pid, signal);
      */
 
-    if ( ! childPid)
+    if ( ! childPid.mPid)
     {
-        childPid = getpid();
+        childPid = Pid(getpid());
 
-        debug(0, "starting child process pid %jd", (intmax_t) childPid);
+        debug(0,
+              "starting child process pid %" PRId_Pid,
+              FMTd_Pid(childPid));
 
         /* The forked child has all its signal handlers reset, but
          * note that the parent will wait for the child to synchronise
@@ -530,14 +546,14 @@ forkChild(
      * so it is safe to query it to determine its process group. */
 
     self->mPid  = childPid;
-    self->mPgid = getpgid(self->mPid);
+    self->mPgid = Pgid(getpgid(self->mPid.mPid));
 
     debug(0,
-          "running child pid %jd in pgid %jd",
-          (intmax_t) self->mPid,
-          (intmax_t) self->mPgid);
+          "running child pid %" PRId_Pid " in pgid %" PRId_Pgid,
+          FMTd_Pid(self->mPid),
+          FMTd_Pgid(self->mPgid));
 
-    ensure(self->mPid == self->mPgid);
+    ensure(self->mPid.mPid == self->mPgid.mPgid);
 
     rc = 0;
 
@@ -599,7 +615,7 @@ closeChild(struct ChildProcess *self)
 
 /* -------------------------------------------------------------------------- */
 void
-monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
+monitorChildUmbilical(struct ChildProcess *self, struct Pid aParentPid)
 {
     /* This function is called in the context of the umbilical process
      * to monitor the umbilical, and if the umbilical fails, to kill
@@ -650,8 +666,8 @@ monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid)
 
     if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
         warn(0,
-             "Killing child pgid %jd from umbilical",
-             (intmax_t) self->mPgid);
+             "Killing child pgid %" PRId_Pgid " from umbilical",
+             FMTd_Pgid(self->mPgid));
 
     killChildProcessGroup(self);
 }
@@ -674,15 +690,15 @@ enum ChildTerminationAction
 
 struct ChildSignalPlan
 {
-    pid_t mPid;
-    int   mSig;
+    struct Pid mPid;
+    int        mSig;
 };
 
 struct ChildMonitor
 {
     const struct Type *mType;
 
-    pid_t mChildPid;
+    struct Pid mChildPid;
 
     struct Pipe         *mNullPipe;
     struct TetherThread *mTetherThread;
@@ -699,7 +715,7 @@ struct ChildMonitor
     struct
     {
         struct File *mFile;
-        pid_t        mPid;
+        struct Pid   mPid;
         bool         mPreempt;
         unsigned     mCycleCount;    /* Current number of cycles */
         unsigned     mCycleLimit;    /* Cycles before triggering */
@@ -777,8 +793,8 @@ pollFdTimerTermination_(void                        *self_,
      * correctly because the child process will remain as a zombie
      * and signals will be delivered successfully, but without effect. */
 
-    pid_t pidNum = self->mTermination.mSignalPlan->mPid;
-    int   sigNum = self->mTermination.mSignalPlan->mSig;
+    struct Pid pidNum = self->mTermination.mSignalPlan->mPid;
+    int        sigNum = self->mTermination.mSignalPlan->mSig;
 
     if (self->mTermination.mSignalPlan[1].mSig)
         ++self->mTermination.mSignalPlan;
@@ -787,17 +803,17 @@ pollFdTimerTermination_(void                        *self_,
 
     warn(
         0,
-        "Killing child pid %jd with %s",
-        (intmax_t) pidNum,
+        "Killing child pid %" PRId_Pid " with %s",
+        FMTd_Pid(pidNum),
         formatProcessSignalName(&sigName, sigNum));
 
     ABORT_IF(
-        kill(pidNum, sigNum),
+        kill(pidNum.mPid, sigNum),
         {
             terminate(
                 errno,
-                "Unable to kill child pid %jd with %s",
-                (intmax_t) pidNum,
+                "Unable to kill child pid %" PRId_Pid " with %s",
+                FMTd_Pid(pidNum),
                 formatProcessSignalName(&sigName, sigNum));
         });
 }
@@ -992,8 +1008,8 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
          * is not mistaken for a failure. */
 
         debug(0,
-              "umbilical pid %jd is running",
-              (intmax_t) self->mUmbilical.mPid);
+              "umbilical pid %" PRId_Pid " is running",
+              FMTd_Pid(self->mUmbilical.mPid));
 
         restartFdTimerUmbilical_(self, aPollTime);
     }
@@ -1003,8 +1019,8 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
          * any need to monitor for SIGCHLD. */
 
         debug(0,
-              "umbilical pid %jd has terminated",
-              (intmax_t) self->mUmbilical.mPid);
+              "umbilical pid %" PRId_Pid " has terminated",
+              FMTd_Pid(self->mUmbilical.mPid));
     }
 }
 
@@ -1067,8 +1083,8 @@ pollFdTimerUmbilical_(void                        *self_,
             {
                 terminate(
                     errno,
-                    "Unable to check for status of umbilical pid %jd",
-                    (intmax_t) self->mUmbilical.mPid);
+                    "Unable to check for status of umbilical pid %" PRId_Pid,
+                    FMTd_Pid(self->mUmbilical.mPid));
             });
 
         /* Beware that the umbilical process might no longer be active.
@@ -1236,8 +1252,8 @@ pollFdTimerTether_(void                        *self_,
             {
                 terminate(
                     errno,
-                    "Unable to check for status of child pid %jd",
-                    (intmax_t) self->mChildPid);
+                    "Unable to check for status of child pid %" PRId_Pid,
+                    FMTd_Pid(self->mChildPid));
             });
 
         /* Be aware if the child process is no longer active, it makes
@@ -1361,8 +1377,8 @@ pollFdReapChildEvent_(struct ChildMonitor         *self,
          * is not mistaken for a failure. */
 
         debug(0,
-              "child pid %jd is running",
-              (intmax_t) self->mChildPid);
+              "child pid %" PRId_Pid " is running",
+              FMTd_Pid(self->mChildPid));
 
         restartFdTimerTether_(self, aPollTime);
     }
@@ -1372,8 +1388,8 @@ pollFdReapChildEvent_(struct ChildMonitor         *self,
          * any need to monitor for SIGCHLD. */
 
         debug(0,
-              "child pid %jd has terminated",
-              (intmax_t) self->mChildPid);
+              "child pid %" PRId_Pid " has terminated",
+              FMTd_Pid(self->mChildPid));
 
         /* Record when the child has terminated, but do not exit
          * the event loop until all the IO has been flushed. With the
@@ -1619,7 +1635,7 @@ monitorChild(struct ChildProcess     *self,
                 {
                     { self->mPid, SIGTERM },
                     { self->mPid, SIGKILL },
-                    { 0 }
+                    { Pid(0) }
                 },
 
                 /* Choose to send SIGABRT in the case that the tether
@@ -1632,7 +1648,7 @@ monitorChild(struct ChildProcess     *self,
                 {
                     { self->mPid, SIGABRT },
                     { self->mPid, SIGKILL },
-                    { 0 }
+                    { Pid(0) }
                 },
             },
         },

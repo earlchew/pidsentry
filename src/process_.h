@@ -31,6 +31,7 @@
 
 #include "timescale_.h"
 #include "method_.h"
+#include "pid_.h"
 
 #include <limits.h>
 
@@ -46,11 +47,8 @@ struct BootClockTime;
 struct Pipe;
 struct ProcessAppLock;
 
-struct Pid
-{
-    pid_t mPid;
-};
-
+#define PRId_ExitCode "d"
+#define FMTd_ExitCode(ExitCode) ((ExitCode).mStatus)
 struct ExitCode
 {
     int mStatus;
@@ -115,7 +113,7 @@ const char *
 formatProcessSignalName(struct ProcessSignalName *self, int aSigNum);
 
 /* -------------------------------------------------------------------------- */
-#define PROCESS_DIRNAME_FMT_  "/proc/%jd"
+#define PROCESS_DIRNAME_FMT_  "/proc/%" PRId_Pid
 
 struct ProcessDirName
 {
@@ -123,7 +121,7 @@ struct ProcessDirName
 };
 
 void
-initProcessDirName(struct ProcessDirName *self, pid_t aPid);
+initProcessDirName(struct ProcessDirName *self, struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
 int
@@ -182,17 +180,17 @@ bool
 checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
-pid_t
-forkProcess(enum ForkProcessOption aOption, pid_t aPgid);
+struct Pid
+forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid);
 
 int
-reapProcess(pid_t aPid, int *aStatus);
+reapProcess(struct Pid aPid, int *aStatus);
 
 enum ProcessStatus
-monitorProcess(pid_t aPid);
+monitorProcess(struct Pid aPid);
 
 struct ExitCode
-extractProcessExitStatus(int aStatus, pid_t aPid);
+extractProcessExitStatus(int aStatus, struct Pid aPid);
 
 int
 execProcess(const char *aCmd, char **aArgv);
@@ -234,10 +232,10 @@ ownProcessName(void);
 
 /* -------------------------------------------------------------------------- */
 int
-fetchProcessSignature(pid_t aPid, char **aSignature);
+fetchProcessSignature(struct Pid aPid, char **aSignature);
 
 enum ProcessState
-fetchProcessState(pid_t aPid);
+fetchProcessState(struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
 int

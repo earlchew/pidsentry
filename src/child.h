@@ -29,6 +29,7 @@
 #ifndef CHILD_H
 #define CHILD_H
 
+#include "pid_.h"
 #include "pipe_.h"
 #include "thread_.h"
 #include "eventlatch_.h"
@@ -47,8 +48,8 @@ struct UmbilicalProcess;
 /* -------------------------------------------------------------------------- */
 struct ChildProcess
 {
-    pid_t mPid;
-    pid_t mPgid;
+    struct Pid  mPid;
+    struct Pgid mPgid;
 
     struct EventLatch  mChildLatch_;
     struct EventLatch *mChildLatch;
@@ -71,7 +72,7 @@ int
 createChild(struct ChildProcess *self);
 
 void
-superviseChildProcess(struct ChildProcess *self, pid_t aUmbilicalPid);
+superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
 
 int
 forkChild(
@@ -88,7 +89,7 @@ void
 closeChildTether(struct ChildProcess *self);
 
 void
-monitorChildUmbilical(struct ChildProcess *self, pid_t aParentPid);
+monitorChildUmbilical(struct ChildProcess *self, struct Pid aParentPid);
 
 int
 monitorChild(struct ChildProcess     *self,

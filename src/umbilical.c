@@ -213,7 +213,7 @@ int
 createUmbilicalMonitor(
     struct UmbilicalMonitor *self,
     int                      aStdinFd,
-    pid_t                    aParentPid)
+    struct Pid               aParentPid)
 {
     int rc = -1;
 
@@ -323,7 +323,7 @@ ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 /* -------------------------------------------------------------------------- */
 static void
 runUmbilicalProcess_(struct UmbilicalProcess *self,
-                     pid_t                    aWatchdogPid,
+                     struct Pid               aWatchdogPid,
                      struct ChildProcess     *aChildProcess,
                      struct SocketPair       *aUmbilicalSocket,
                      struct SocketPair       *aSyncSocket,
@@ -331,11 +331,12 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 {
     struct PidFile *pidFile = aPidFile;
 
-    debug(0, "umbilical process pid %jd pgid %jd",
-          (intmax_t) getpid(),
-          (intmax_t) getpgid(0));
+    debug(0,
+          "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
+          FMTd_Pid(Pid(getpid())),
+          FMTd_Pgid(Pgid(getpgid(0))));
 
-    ensure(aChildProcess->mPgid == getpgid(0));
+    ensure(aChildProcess->mPgid.mPgid == getpgid(0));
 
     ABORT_IF(
         STDIN_FILENO !=
@@ -405,7 +406,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 {
     int rc = -1;
 
-    self->mPid    = 0;
+    self->mPid    = Pid(0);
     self->mPgid   = aChildProcess->mPgid;
     self->mSocket = aUmbilicalSocket;
 
@@ -419,21 +420,21 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     ensure( ! pthread_kill(pthread_self(), SIGHUP));
 
-    pid_t watchdogPid  = getpid();
+    struct Pid watchdogPid = Pid(getpid());
 
-    pid_t umbilicalPid;
+    struct Pid umbilicalPid;
     ERROR_IF(
         (umbilicalPid = forkProcess(
             ForkProcessSetProcessGroup, self->mPgid),
-         -1 == umbilicalPid));
+         -1 == umbilicalPid.mPid));
 
-    if (umbilicalPid)
+    if (umbilicalPid.mPid)
     {
         self->mPid = umbilicalPid;
     }
     else
     {
-        self->mPid = getpid();
+        self->mPid = Pid(getpid());
 
         runUmbilicalProcess_(self,
                              watchdogPid,
@@ -534,8 +535,9 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
                 {
                     terminate(
                         0,
-                        "Umbilical pid %jd terminated for unknown reason",
-                        (intmax_t) self->mPid);
+                        "Umbilical pid %" PRId_Pid " "
+                        "terminated for unknown reason",
+                        FMTd_Pid(self->mPid));
                 });
 
             ERROR_IF(

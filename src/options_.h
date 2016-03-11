@@ -29,6 +29,8 @@
 #ifndef OPTIONS_H
 #define OPTIONS_H
 
+#include "pid_.h"
+
 #include <sys/types.h>
 #include <stdbool.h>
 
@@ -40,7 +42,7 @@ extern "C" {
 struct Options
 {
     const char *mName;
-    pid_t       mPid;
+    struct Pid  mPid;
     const char *mPidFile;
     int         mTetherFd;
     const int  *mTether;
