@@ -1819,9 +1819,9 @@ extractProcessExitStatus(int aStatus, struct Pid aPid)
     }
 
     debug(0,
-          "process pid %" PRId_Pid " exit code %d",
+          "process pid %" PRId_Pid " exit code %" PRId_ExitCode,
           FMTd_Pid(aPid),
-          exitCode.mStatus);
+          FMTd_ExitCode(exitCode));
 
     return exitCode;
 }
