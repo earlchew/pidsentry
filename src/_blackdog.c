@@ -376,23 +376,8 @@ cmdRunCommand(char **aCmd)
 
     if (gOptions.mPidFile)
     {
-        const char *pidFileName = gOptions.mPidFile;
-
-        struct Pid pid = gOptions.mPid;
-
-        switch (pid.mPid)
-        {
-        default:
-            break;
-        case -1:
-            pid = ownProcessId(); break;
-        case 0:
-            pid = childProcess.mPid; break;
-        }
-
         pidFile = &pidFile_;
-
-        announceChild(pid, pidFile, pidFileName);
+        announceChild(childProcess.mPid, pidFile, gOptions.mPidFile);
     }
 
     /* With the child process launched, close the instance of StdFdFiller

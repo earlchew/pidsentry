@@ -78,10 +78,6 @@ static const char sUsage[] =
 "      If this process ever becomes a child of init(8), terminate the\n"
 "      child process. This option is only useful if the parent of this\n"
 "      process is not init(8). [Default: Allow this process to be orphaned]\n"
-"  --pid N | -P N\n"
-"      Specify value to write to pidfile. Set N to 0 to use pid of child,\n"
-"      set N to -1 to use the pid of the watchdog, otherwise use N as the\n"
-"      pid of the child. [Default: Use the pid of child]\n"
 "  --pidfile file | -p file\n"
 "      Write the pid of the child to the specified file, and remove the\n"
 "      file when the child terminates. [Default: No pidfile]\n"
@@ -110,7 +106,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "+cD:df:iL::n:oP:p:qTt:u";
+    "+cD:df:iL::n:op:qTt:u";
 
 enum OptionKind
 {
@@ -125,7 +121,6 @@ static struct option sLongOptions[] =
     { "identify",   no_argument,       0, 'i' },
     { "name",       required_argument, 0, 'n' },
     { "orphaned",   no_argument,       0, 'o' },
-    { "pid",        required_argument, 0, 'P' },
     { "pidfile",    required_argument, 0, 'p' },
     { "quiet",      no_argument,       0, 'q' },
     { "test",       required_argument, 0, OptionTest },
@@ -298,21 +293,6 @@ processOptions(int argc, char **argv, char ***args)
         case 'o':
             pidFileOnly = -1;
             gOptions.mOrphaned = true;
-            break;
-
-        case 'P':
-            pidFileOnly = -1;
-            if ( ! strcmp(optarg, "-1"))
-                gOptions.mPid = Pid(-1);
-            else
-            {
-                ERROR_IF(
-                    parsePid(optarg, &gOptions.mPid),
-                    {
-                        errno = EINVAL;
-                        message(0, "Badly formed pid - '%s'", optarg);
-                    });
-            }
             break;
 
         case 'n':

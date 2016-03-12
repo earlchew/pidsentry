@@ -101,17 +101,6 @@ runTests()
     testCase 'Usage'
     testExit 1 blackdog -? -- true
 
-    testCase 'Missing -P option value'
-    testExit 1 blackdog -P
-
-    testCase 'Illegal negative -P option value'
-    testExit 1 blackdog -P -2 -- true
-
-    testCase 'Valid -P option values'
-    testExit 0 blackdog -dd -P -1 -- true
-    testExit 0 blackdog -dd -P 0 -- true
-    testExit 0 blackdog -dd -P 1 -- true
-
     testCase 'Long --pid option'
     testExit 0 blackdog --pid 1 -- true
 

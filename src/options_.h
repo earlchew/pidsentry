@@ -42,7 +42,6 @@ extern "C" {
 struct Options
 {
     const char *mName;
-    struct Pid  mPid;
     const char *mPidFile;
     int         mTetherFd;
     const int  *mTether;
