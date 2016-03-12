@@ -354,7 +354,7 @@ createPidFile(struct PidFile *self, const char *aFileName)
                 &self->mFile_,
                 openPathName(&self->mPathName,
                              O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-                             S_IRUSR | S_IRGRP | S_IROTH)));
+                             S_IRUSR)));
     });
     self->mFile = &self->mFile_;
 
