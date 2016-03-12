@@ -120,8 +120,7 @@ readPidFile_(char *aBuf)
 
     struct Pid pid = Pid(0);
 
-    char *pidsignature = 0;
-    char *signature    = 0;
+    char *signature = 0;
 
     char *endptr = strchr(aBuf, 0);
     char *nlptr  = strchr(aBuf, '\n');
@@ -143,6 +142,8 @@ readPidFile_(char *aBuf)
         *nlptr     = 0;
         endptr[-1] = 0;
 
+        const char *pidSignature = nlptr + 1;
+
         struct Pid parsedPid;
         if (parsePid(aBuf, &parsedPid))
             break;
@@ -157,9 +158,9 @@ readPidFile_(char *aBuf)
 
         if ( ! err)
         {
-            debug(0, "pidfile signature %s vs %s", pidsignature, signature);
+            debug(0, "pidfile signature %s vs %s", pidSignature, signature);
 
-            if ( ! strcmp(pidsignature, signature))
+            if ( ! strcmp(pidSignature, signature))
             {
                 pid = parsedPid;
                 break;
@@ -177,7 +178,6 @@ Finally:
 
     FINALLY
     ({
-        free(pidsignature);
         free(signature);
     });
 
@@ -206,10 +206,14 @@ readPidFile(const struct PidFile *self)
 
         if (sizeof(buf) > buflen)
         {
+            /* Try to read a little more from the file to be sure that
+             * the entire content of the file has been scanned. */
+
             ssize_t lastlen;
             ERROR_IF(
                 (lastlen = readFile(
-                    self->mFile, buf + buflen, 1), -1 == lastlen));
+                    self->mFile, buf + buflen, 1),
+                 -1 == lastlen));
 
             if ( ! lastlen)
             {
