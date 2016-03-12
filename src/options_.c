@@ -144,17 +144,6 @@ initOptions()
 
     gOptions.mTetherFd = STDOUT_FILENO;
     gOptions.mTether   = &gOptions.mTetherFd;
-
-    if (getEnvUInt("K9_DEBUG", &gOptions.mDebug))
-    {
-        gOptions.mDebug = 0;
-
-        if (ENOENT != errno)
-            warn(
-                errno,
-                "Unable to configure debug setting %s",
-                getenv("K9_DEBUG"));
-    }
 }
 
 /* -------------------------------------------------------------------------- */
