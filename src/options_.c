@@ -57,10 +57,6 @@ static const char sUsage[] =
 "  --debug | -d\n"
 "      Print debug information. Specify the option multiple times to\n"
 "      increase the debug level.\n"
-"  --cordless | -c\n"
-"      When running with a tether, do not run the child with an umbilical\n"
-"      connection. An umbilical cord allows the child terminate immediately\n"
-"      the watchdog is absent. [Default: Use an umbilical cord]\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
@@ -106,7 +102,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "+cD:df:iL::n:op:qTt:u";
+    "+D:df:iL::n:op:qTt:u";
 
 enum OptionKind
 {
@@ -115,7 +111,6 @@ enum OptionKind
 
 static struct option sLongOptions[] =
 {
-    { "cordless",   no_argument,       0, 'c' },
     { "debug",      no_argument,       0, 'd' },
     { "fd",         required_argument, 0, 'f' },
     { "identify",   no_argument,       0, 'i' },
@@ -254,11 +249,6 @@ processOptions(int argc, char **argv, char ***args)
                     errno = EINVAL;
                     message(0, "Unrecognised option %d ('%c')", opt, opt);
                 });
-            break;
-
-        case 'c':
-            pidFileOnly = -1;
-            gOptions.mCordless = true;
             break;
 
         case 'd':
