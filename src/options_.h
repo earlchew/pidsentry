@@ -47,6 +47,7 @@ struct Options
     const int  *mTether;
     unsigned    mDebug;
     unsigned    mTest;
+    bool        mCommand;
     bool        mIdentify;
     bool        mQuiet;
     bool        mOrphaned;

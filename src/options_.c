@@ -50,13 +50,21 @@ struct Options gOptions;
 
 /* -------------------------------------------------------------------------- */
 static const char sUsage[] =
-"usage : %s [ options ] cmd ...\n"
-"        %s { --pidfile file | -p file }\n"
+"usage : %s [ monitoring-options | general-options ] cmd ...\n"
+"        %s -c { --pidfile file | -p file } [ general-options ] cmd ...\n"
 "\n"
-"options:\n"
+"mode:\n"
+" --command | -c\n"
+"      Execute a command against a running child process. This option\n"
+"      requires --pidfile to also be specified. [Default: No command]\n"
+"general options:\n"
 "  --debug | -d\n"
 "      Print debug information. Specify the option multiple times to\n"
 "      increase the debug level.\n"
+"  --pidfile file | -p file\n"
+"      The pid of the child is stored in the specified file, and the files\n"
+"      is removed when the child terminates. [Default: No pidfile]\n"
+"monitoring options:\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
@@ -74,9 +82,6 @@ static const char sUsage[] =
 "      If this process ever becomes a child of init(8), terminate the\n"
 "      child process. This option is only useful if the parent of this\n"
 "      process is not init(8). [Default: Allow this process to be orphaned]\n"
-"  --pidfile file | -p file\n"
-"      Write the pid of the child to the specified file, and remove the\n"
-"      file when the child terminates. [Default: No pidfile]\n"
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
@@ -102,7 +107,7 @@ static const char sUsage[] =
 "";
 
 static const char sShortOptions[] =
-    "+D:df:iL::n:op:qTt:u";
+    "+cD:df:iL::n:op:qTt:u";
 
 enum OptionKind
 {
@@ -111,6 +116,7 @@ enum OptionKind
 
 static struct option sLongOptions[] =
 {
+    { "command",    no_argument,       0, 'c' },
     { "debug",      no_argument,       0, 'd' },
     { "fd",         required_argument, 0, 'f' },
     { "identify",   no_argument,       0, 'i' },
@@ -123,6 +129,40 @@ static struct option sLongOptions[] =
     { "untethered", no_argument,       0, 'u' },
     { 0 },
 };
+
+/* -------------------------------------------------------------------------- */
+enum OptionMode
+{
+    OptionModeError   = -1,
+    OptionModeUnknown = 0,
+
+    OptionModeMonitorChild,
+    OptionModeRunCommand
+};
+
+static enum OptionMode
+setOptionMode(enum OptionMode  self,
+              enum OptionMode  aMode,
+              const char      *aLongOpt,
+              char             aShortOpt)
+{
+    enum OptionMode rc = OptionModeError;
+
+    if (OptionModeError != self)
+    {
+        if (OptionModeUnknown == self || aMode == self)
+            rc = aMode;
+        else
+        {
+            if (aLongOpt)
+                message(0, "Incompatible option --%s", aLongOpt);
+            else
+                message(0, "Incompatible option -%c", aShortOpt);
+        }
+    }
+
+    return rc;
+}
 
 /* -------------------------------------------------------------------------- */
 static void
@@ -208,13 +248,15 @@ processOptions(int argc, char **argv, char ***args)
 {
     int rc = -1;
 
-    int pidFileOnly = 0;
-
     initOptions();
+
+    enum OptionMode mode = OptionModeUnknown;
 
     while (1)
     {
-        int longOptIndex = 0;
+        ERROR_IF(OptionModeError == mode);
+
+        int longOptIndex = NUMBEROF(sLongOptions) - 1;
 
         int opt;
         ERROR_IF(
@@ -225,6 +267,8 @@ processOptions(int argc, char **argv, char ***args)
                 showUsage_();
                 errno = EINVAL;
             });
+
+        const char *longOptName = sLongOptions[longOptIndex].name;
 
         if (-1 == opt)
             break;
@@ -240,12 +284,19 @@ processOptions(int argc, char **argv, char ***args)
                 });
             break;
 
+        case 'c':
+            mode = setOptionMode(
+                mode, OptionModeRunCommand, longOptName, opt);
+            gOptions.mCommand = true;
+            break;
+
         case 'd':
             ++gOptions.mDebug;
             break;
 
         case 'f':
-            pidFileOnly = -1;
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mTether = &gOptions.mTetherFd;
             if ( ! strcmp(optarg, "-"))
             {
@@ -265,17 +316,20 @@ processOptions(int argc, char **argv, char ***args)
             break;
 
         case 'i':
-            pidFileOnly = -1;
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mIdentify = true;
             break;
 
         case 'o':
-            pidFileOnly = -1;
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mOrphaned = true;
             break;
 
         case 'n':
-            pidFileOnly = -1;
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
             ERROR_UNLESS(
                 optarg[0],
                 {
@@ -286,12 +340,12 @@ processOptions(int argc, char **argv, char ***args)
             break;
 
         case 'p':
-            pidFileOnly = pidFileOnly ? pidFileOnly : 1;
             gOptions.mPidFile = optarg;
             break;
 
         case 'q':
-            pidFileOnly = -1;
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mQuiet = true;
             break;
 
@@ -311,7 +365,8 @@ processOptions(int argc, char **argv, char ***args)
             break;
 
         case 't':
-            pidFileOnly = -1;
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
             ERROR_IF(
                 processTimeoutOption(optarg),
                 {
@@ -321,20 +376,33 @@ processOptions(int argc, char **argv, char ***args)
             break;
 
         case 'u':
-            pidFileOnly = -1;
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mTether = 0;
             break;
         }
     }
 
-    if (0 >= pidFileOnly)
+    /* If no option has been detected that specifically sets the mode
+     * of operation, force the default mode of operation. */
+
+    if (OptionModeUnknown == mode)
+        mode = OptionModeMonitorChild;
+
+    switch (mode)
     {
+    default:
+        break;
+
+    case OptionModeRunCommand:
+    case OptionModeMonitorChild:
         ERROR_IF(
             optind >= argc,
             {
                 errno = EINVAL;
                 message(0, "Missing command for execution");
             });
+        break;
     }
 
     *args = optind < argc ? argv + optind : 0;

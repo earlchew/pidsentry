@@ -167,13 +167,13 @@ runTests()
 
     testCase 'Read non-existent pid file'
     rm -f $PIDFILE
-    testExit 1 blackdog --test=1 -p $PIDFILE
+    testExit 1 blackdog --test=1 -p $PIDFILE -c -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Read malformed pid file'
     rm -f $PIDFILE
     date > $PIDFILE
-    testExit 1 blackdog --test=1 -p $PIDFILE
+    testExit 1 blackdog --test=1 -p $PIDFILE -c -- true
     [ -f $PIDFILE ]
 
     testCase 'Identify processes'

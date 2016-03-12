@@ -139,7 +139,7 @@ announceChild(struct Pid      aPid,
 
 /* -------------------------------------------------------------------------- */
 static struct ExitCode
-cmdPrintPidFile(const char *aFileName)
+cmdRunCommand(const char *aFileName, char **aCmd)
 {
     struct ExitCode exitCode = { 1 };
 
@@ -252,7 +252,7 @@ raiseFamilySigCont_(void *self_)
 }
 
 static struct ExitCode
-cmdRunCommand(char **aCmd)
+cmdMonitorChild(char **aCmd)
 {
     ensure(aCmd);
 
@@ -721,10 +721,10 @@ main(int argc, char **argv)
                             "Unable to parse command line");
             });
 
-        if ( ! args && gOptions.mPidFile)
-            exitCode = cmdPrintPidFile(gOptions.mPidFile);
+        if (gOptions.mCommand)
+            exitCode = cmdRunCommand(gOptions.mPidFile, args);
         else
-            exitCode = cmdRunCommand(args);
+            exitCode = cmdMonitorChild(args);
     }
 
 Finally:
