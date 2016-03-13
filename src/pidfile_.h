@@ -46,10 +46,10 @@ struct PidFile
 
 /* -------------------------------------------------------------------------- */
 int
-createPidFile(struct PidFile *self, const char *aFileName);
+createPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags);
 
 int
-openPidFile(struct PidFile *self, const char *aFileName);
+openPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags);
 
 int
 detectPidFileZombie(const struct PidFile *self);

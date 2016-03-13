@@ -287,24 +287,31 @@ acquireReadLockPidFile(struct PidFile *self)
 
 /* -------------------------------------------------------------------------- */
 int
-createPidFile(struct PidFile *self, const char *aFileName)
+createPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags)
 {
     int rc = -1;
 
     struct PidFile *pidFile = 0;
+
+    ERROR_IF(
+        aFlags & ~ O_CLOEXEC,
+        {
+            errno = EINVAL;
+        });
+
     ERROR_IF(
         openPidFile_(self, aFileName));
     pidFile = self;
 
     /* Check if the pidfile already exists, and if the process that
-     * it names is still running.
-     */
+     * it names is still running. */
 
     int err;
     ERROR_IF(
         (err = createFile(
             &self->mFile_,
-            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)),
+            openPathName(&self->mPathName,
+                         O_RDONLY | O_NOFOLLOW | aFlags, 0)),
          err && ENOENT != errno));
 
     if ( ! err)
@@ -356,9 +363,10 @@ createPidFile(struct PidFile *self, const char *aFileName)
         ERROR_IF(
             createFile(
                 &self->mFile_,
-                openPathName(&self->mPathName,
-                             O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-                             S_IRUSR)));
+                openPathName(
+                    &self->mPathName,
+                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | aFlags,
+                    S_IRUSR)));
     });
     self->mFile = &self->mFile_;
 
@@ -379,17 +387,27 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-openPidFile(struct PidFile *self, const char *aFileName)
+openPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags)
 {
     int rc = -1;
 
+    struct PidFile *pidFile = 0;
+
+    ERROR_IF(
+        aFlags & ~ O_CLOEXEC,
+        {
+            errno = EINVAL;
+        });
+
     ERROR_IF(
         openPidFile_(self, aFileName));
+    pidFile = self;
 
     ERROR_IF(
         createFile(
             &self->mFile_,
-            openPathName(&self->mPathName, O_RDONLY | O_NOFOLLOW, 0)));
+            openPathName(&self->mPathName,
+                         O_RDONLY | O_NOFOLLOW | aFlags, 0)));
 
     self->mFile = &self->mFile_;
 
@@ -400,7 +418,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closePidFile_(self);
+            closePidFile_(pidFile);
     });
 
     return rc;
