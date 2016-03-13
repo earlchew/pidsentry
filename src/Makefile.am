@@ -75,7 +75,7 @@ lib_LTLIBRARIES     =
 blackdog_CFLAGS    = $(COMMON_CFLAGS)
 blackdog_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,blackdog.map -Wl,-cref
 blackdog_LDADD     = libblackdog_.la -lrt -lpthread
-blackdog_SOURCES   = _blackdog.c umbilical.c tether.c child.c
+blackdog_SOURCES   = _blackdog.c umbilical.c tether.c child.c command.c
 
 _splicetest_SOURCES = _splicetest.c
 

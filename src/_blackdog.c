@@ -31,6 +31,7 @@
 
 #include "child.h"
 #include "umbilical.h"
+#include "command.h"
 
 #include "env_.h"
 #include "macros_.h"
@@ -65,6 +66,9 @@
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
  * Provide a secure way for a client to signal the child via the watchdog
  *   without fear that the watchdog or the child has been aliased
+ * -c command test:
+ *    Check for obsolete pidfile
+ *    Check for file descriptors in command process
  */
 
 /* -------------------------------------------------------------------------- */
@@ -83,7 +87,7 @@ announceChild(struct Pid      aPid,
         }
 
         ABORT_IF(
-            createPidFile(aPidFile, aPidFileName),
+            createPidFile(aPidFile, aPidFileName, O_CLOEXEC),
             {
                 terminate(
                     errno,
@@ -139,52 +143,28 @@ announceChild(struct Pid      aPid,
 
 /* -------------------------------------------------------------------------- */
 static struct ExitCode
-cmdRunCommand(const char *aFileName, char **aCmd)
+cmdRunCommand(const char *aPidFileName, char **aCmd)
 {
     struct ExitCode exitCode = { 1 };
 
-    struct PidFile pidFile;
+    struct Command  command_;
+    struct Command *command = 0;
+    ERROR_IF(
+        createCommand(&command_, aPidFileName));
+    command = &command_;
 
-    int err;
-    ABORT_IF(
-        (err = openPidFile(&pidFile, aFileName),
-         err && ENOENT != errno),
-        {
-            terminate(
-                errno,
-                "Unable to open pid file '%s'", aFileName);
-        });
+    ERROR_IF(
+        runCommand(command, aCmd));
 
-    if ( ! err)
-    {
-        ABORT_IF(
-            acquireReadLockPidFile(&pidFile),
-            {
-                terminate(
-                    errno,
-                    "Unable to acquire read lock on pid file '%s'", aFileName);
-            });
+    ERROR_IF(
+        reapCommand(command, &exitCode));
 
-        struct Pid pid;
-        ABORT_IF(
-            (pid = readPidFile(&pidFile),
-             -1 == pid.mPid),
-            {
-                terminate(
-                    errno,
-                    "Unable to read pid file '%s'", aFileName);
-            });
+Finally:
 
-        if (pid.mPid)
-        {
-            if (-1 != dprintf(STDOUT_FILENO,
-                              "%" PRId_Pid "\n",
-                              FMTd_Pid(pid)))
-                exitCode.mStatus = 0;
-        }
-
-        closePidFile(&pidFile);
-    }
+    FINALLY
+    ({
+        closeCommand(command);
+    });
 
     return exitCode;
 }
