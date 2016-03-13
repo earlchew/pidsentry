@@ -65,6 +65,9 @@ ownFdValid(int aFd);
 int
 closeFdOnExec(int aFd, unsigned aCloseOnExec);
 
+int
+ownFdCloseOnExec(int aFd);
+
 ssize_t
 spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 

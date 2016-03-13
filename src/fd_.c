@@ -173,7 +173,7 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
         closeOnExec = FD_CLOEXEC;
     }
 
-    long flags;
+    int flags;
     ERROR_IF(
         (flags = fcntl(aFd, F_GETFD),
          -1 == flags));
@@ -271,6 +271,26 @@ ownFdNonBlocking(int aFd)
          -1 == flags));
 
     rc = flags & O_NONBLOCK ? 1 : 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFdCloseOnExec(int aFd)
+{
+    int rc = -1;
+
+    int flags;
+    ERROR_IF(
+        (flags = fcntl(aFd, F_GETFD),
+         -1 == flags));
+
+    rc = flags & FD_CLOEXEC ? 1 : 0;
 
 Finally:
 
