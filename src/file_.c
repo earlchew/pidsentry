@@ -446,6 +446,20 @@ recvFileSocket(struct File *self, char *aBuf, size_t aLen)
 }
 
 /* -------------------------------------------------------------------------- */
+ssize_t
+sendFileSocketMsg(struct File *self, const struct msghdr *aMsg, int aFlags)
+{
+    return sendmsg(self->mFd, aMsg, aFlags);
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+recvFileSocketMsg(struct File *self, struct msghdr *aMsg, int aFlags)
+{
+    return recvmsg(self->mFd, aMsg, aFlags);
+}
+
+/* -------------------------------------------------------------------------- */
 int
 shutdownFileSocketReader(struct File *self)
 {

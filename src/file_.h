@@ -123,6 +123,12 @@ sendFileSocket(struct File *self, const char *aBuf, size_t aLen);
 ssize_t
 recvFileSocket(struct File *self, char *aBuf, size_t aLen);
 
+ssize_t
+sendFileSocketMsg(struct File *self, const struct msghdr *aMsg, int aFlags);
+
+ssize_t
+recvFileSocketMsg(struct File *self, struct msghdr *aMsg, int aFlags);
+
 int
 shutdownFileSocketReader(struct File *self);
 

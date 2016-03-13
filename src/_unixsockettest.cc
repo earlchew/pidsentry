@@ -28,9 +28,11 @@
 */
 
 #include "unixsocket_.h"
+#include "pipe_.h"
 #include "fd_.h"
 #include "timekeeping_.h"
 
+#include <fcntl.h>
 #include <sys/un.h>
 
 #include "gtest/gtest.h"
@@ -97,14 +99,38 @@ TEST(UnixSocketTest, AbstractServer)
 
     buf[0] = 'X';
     EXPECT_EQ(1, sendUnixSocket(&clientsock, buf, sizeof(buf)));
+    EXPECT_EQ(1, waitUnixSocketReadReady(&peersock, 0));
     EXPECT_EQ(1, recvUnixSocket(&peersock, buf, sizeof(buf)));
     EXPECT_EQ('X', buf[0]);
 
     buf[0] = 'Z';
     EXPECT_EQ(1, sendUnixSocket(&peersock, buf, sizeof(buf)));
+    EXPECT_EQ(1, waitUnixSocketReadReady(&clientsock, 0));
     EXPECT_EQ(1, recvUnixSocket(&clientsock, buf, sizeof(buf)));
     EXPECT_EQ('Z', buf[0]);
 
+    /* Create a pipe and send the reading file descriptor over the
+     * socket. Close the reading file descriptor, and ensure that the
+     * duplicate can be used to read data written into the pipe. */
+
+    struct Pipe pipe;
+    EXPECT_EQ(0, createPipe(&pipe, 0));
+    EXPECT_EQ(0, sendUnixSocketFd(&peersock, pipe.mRdFile->mFd));
+    EXPECT_EQ(1, waitUnixSocketReadReady(&clientsock, 0));
+    int fd = recvUnixSocketFd(&clientsock, O_CLOEXEC);
+    EXPECT_LE(0, fd);
+    EXPECT_EQ(1, ownFdCloseOnExec(fd));
+
+    closePipeReader(&pipe);
+    buf[0] = 'A';
+    EXPECT_EQ(1, writeFile(pipe.mWrFile, buf, sizeof(buf)));
+    buf[0] = 0;
+    EXPECT_EQ(1, waitFdReadReady(fd, 0));
+    EXPECT_EQ(1, readFd(fd, buf, sizeof(buf)));
+    EXPECT_EQ('A', buf[0]);
+
+    closeFd(&fd);
+    closePipe(&pipe);
     closeUnixSocket(&clientsock);
     closeUnixSocket(&peersock);
     closeUnixSocket(&serversock);

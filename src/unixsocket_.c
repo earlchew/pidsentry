@@ -30,12 +30,15 @@
 #include "unixsocket_.h"
 #include "timekeeping_.h"
 #include "error_.h"
+#include "macros_.h"
+#include "fd_.h"
 
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <sys/socket.h>
 #include <sys/file.h>
 #include <sys/un.h>
 
@@ -267,6 +270,207 @@ closeUnixSocket(struct UnixSocket *self)
         closeFile(self->mFile);
         self->mFile = 0;
     }
+}
+
+/* -------------------------------------------------------------------------- */
+int
+sendUnixSocketFd(struct UnixSocket *self, int aFd)
+{
+    int rc = -1;
+
+    struct msghdr msg;
+
+    char cmsgbuf[CMSG_SPACE(sizeof aFd)];
+
+    char buf[1] = { 0 };
+
+    struct iovec iov[1];
+
+    iov[0].iov_base = buf;
+    iov[0].iov_len  = sizeof(buf);
+
+    msg.msg_name       = 0;
+    msg.msg_namelen    = 0;
+    msg.msg_iov        = iov;
+    msg.msg_iovlen     = NUMBEROF(iov);
+    msg.msg_flags      = 0;
+    msg.msg_control    = cmsgbuf;
+    msg.msg_controllen = CMSG_LEN(sizeof(aFd));
+
+    memset(cmsgbuf, 0, sizeof(cmsgbuf));
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type  = SCM_RIGHTS;
+    cmsg->cmsg_len   = CMSG_LEN(sizeof(aFd));
+
+    ensure(msg.msg_controllen >= cmsg->cmsg_len);
+
+    int *bufPtr = (void *) CMSG_DATA(cmsg);
+
+    bufPtr[0] = aFd;
+
+    ERROR_IF(
+        sizeof(buf) != sendFileSocketMsg(self->mFile, &msg, 0));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+recvUnixSocketFd_(struct UnixSocket *self, struct msghdr *aMsg)
+{
+    int rc = -1;
+
+    int    *fdPtr = 0;
+    size_t  fdLen = 0;
+
+    int fd = -1;
+
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(aMsg);
+         cmsg;
+         cmsg = CMSG_NXTHDR(aMsg, cmsg))
+    {
+        if (SOL_SOCKET == cmsg->cmsg_level &&
+            SCM_RIGHTS == cmsg->cmsg_type &&
+            CMSG_LEN(sizeof(fd)) == cmsg->cmsg_len)
+        {
+            ++fdLen;
+        }
+    }
+
+    int fdBuf_[fdLen ? fdLen : 1];
+
+    if (fdLen)
+    {
+        size_t ix;
+
+        for (ix = 0; fdLen > ix; ++ix)
+            fdBuf_[ix] = -1;
+        fdPtr = fdBuf_;
+
+        ix = 0;
+        for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(aMsg);
+             cmsg;
+             cmsg = CMSG_NXTHDR(aMsg, cmsg))
+        {
+            if (SOL_SOCKET == cmsg->cmsg_level &&
+                SCM_RIGHTS == cmsg->cmsg_type &&
+                CMSG_LEN(sizeof(fd)) == cmsg->cmsg_len)
+            {
+                const int *bufPtr = (const void *) CMSG_DATA(cmsg);
+
+                fdPtr[ix++] = *bufPtr;
+            }
+        }
+
+        ensure(fdLen == ix);
+    }
+
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(aMsg);
+         cmsg;
+         cmsg = CMSG_NXTHDR(aMsg, cmsg))
+    {
+        ERROR_IF(
+            cmsg->cmsg_level != SOL_SOCKET ||
+            cmsg->cmsg_type  != SCM_RIGHTS ||
+            CMSG_LEN(sizeof(fd)) != cmsg->cmsg_len);
+    }
+
+    ERROR_UNLESS(
+        1 == fdLen && 0 <= fdPtr[0]);
+
+    fd       = fdPtr[0];
+    fdPtr[0] = -1;
+
+    rc = fd;
+
+Finally:
+
+    FINALLY
+    ({
+        if (-1 != rc)
+        {
+            if (fdPtr)
+            {
+                for (size_t ix = 0; fdLen > ix; ++ix)
+                    closeFd(&fdPtr[ix]);
+            }
+        }
+    });
+
+    return rc;
+}
+
+int
+recvUnixSocketFd(struct UnixSocket *self, unsigned aFlags)
+{
+    int rc = -1;
+    int fd = -1;
+
+    char cmsgbuf[CMSG_SPACE(sizeof(fd))];
+
+    ERROR_IF(
+        aFlags & ~ O_CLOEXEC);
+
+    unsigned flags = 0;
+
+    if (aFlags & O_CLOEXEC)
+        flags |= MSG_CMSG_CLOEXEC;
+
+    char buf[1];
+
+    struct iovec iov[1];
+
+    iov[0].iov_base = buf;
+    iov[0].iov_len  = sizeof(buf);
+
+    struct msghdr msg;
+
+    msg.msg_name    = 0;
+    msg.msg_namelen = 0;
+    msg.msg_iov     = iov;
+    msg.msg_iovlen  = NUMBEROF(iov);
+    msg.msg_flags   = 0;
+
+    msg.msg_control    = cmsgbuf;
+    msg.msg_controllen = sizeof(cmsgbuf);
+
+    ssize_t rdlen;
+    ERROR_IF(
+        (rdlen = recvFileSocketMsg(self->mFile, &msg, flags),
+         -1 == rdlen || (errno = EIO, sizeof(buf) != rdlen) || buf[0]));
+
+    ERROR_UNLESS(
+        msg.msg_controllen);
+
+    ERROR_IF(
+        (fd = recvUnixSocketFd_(self, &msg),
+         -1 == fd));
+
+    ERROR_IF(
+        MSG_CTRUNC & msg.msg_flags,
+        {
+            errno = EIO;
+        });
+
+    rc = fd;
+    fd = -1;
+
+Finally:
+
+    FINALLY
+    ({
+        closeFd(&fd);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

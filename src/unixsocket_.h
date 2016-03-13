@@ -65,6 +65,12 @@ connectUnixSocket(struct UnixSocket *self,
 void
 closeUnixSocket(struct UnixSocket *self);
 
+int
+sendUnixSocketFd(struct UnixSocket *self, int aFd);
+
+int
+recvUnixSocketFd(struct UnixSocket *self, unsigned aFlags);
+
 bool
 ownUnixSocketValid(const struct UnixSocket *self);
 
