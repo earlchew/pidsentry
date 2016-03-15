@@ -45,6 +45,7 @@ struct timespec;
 
 struct BootClockTime;
 struct Pipe;
+struct File;
 struct ProcessAppLock;
 
 #define PRId_ExitCode "d"
@@ -183,6 +184,9 @@ checkProcessSigContTracker(struct ProcessSigContTracker *self);
 struct Pid
 forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid);
 
+struct Pid
+forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid);
+
 int
 reapProcess(struct Pid aPid, int *aStatus);
 
@@ -220,6 +224,9 @@ destroyProcessAppLock(struct ProcessAppLock *self);
 /* -------------------------------------------------------------------------- */
 const char *
 ownProcessLockPath(void);
+
+const struct File *
+ownProcessLockFile(void);
 
 struct Duration
 ownProcessElapsedTime(void);

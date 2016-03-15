@@ -29,7 +29,8 @@
 #ifndef COMMAND_H
 #define COMMAND_H
 
-#include "pidfile_.h"
+#include "unixsocket_.h"
+#include "pid_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,12 +41,11 @@ struct ExitCode;
 /* -------------------------------------------------------------------------- */
 struct Command
 {
-    struct Pid  mChildPid;
-    struct Pid  mPid;
-    struct Pgid mPgid;
+    struct Pid mChildPid;
+    struct Pid mPid;
 
-    struct PidFile  mPidFile_;
-    struct PidFile *mPidFile;
+    struct UnixSocket  mKeeperTether_;
+    struct UnixSocket *mKeeperTether;
 };
 
 /* -------------------------------------------------------------------------- */

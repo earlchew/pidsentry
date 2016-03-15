@@ -31,12 +31,14 @@
 
 #include "child.h"
 #include "umbilical.h"
+#include "keeper.h"
 #include "command.h"
 
 #include "env_.h"
 #include "macros_.h"
 #include "pipe_.h"
 #include "socketpair_.h"
+#include "unixsocket_.h"
 #include "stdfdfiller_.h"
 #include "pidfile_.h"
 #include "thread_.h"
@@ -69,13 +71,16 @@
  * -c command test:
  *    Check for obsolete pidfile
  *    Check for file descriptors in command process
+ * pidsentry ?
+ * Write unit test for forkProcessDaemon()
  */
 
 /* -------------------------------------------------------------------------- */
-static void
-announceChild(struct Pid      aPid,
-              struct PidFile *aPidFile,
-              const char     *aPidFileName)
+static struct PidFile *
+announceChild(struct PidFile           *aPidFile,
+              const char               *aPidFileName,
+              struct Pid                aPid,
+              const struct sockaddr_un *aPidKeeperAddr)
 {
     for (int zombie = -1; zombie; )
     {
@@ -121,7 +126,7 @@ announceChild(struct Pid      aPid,
     debug(0, "initialised pid file '%s'", aPidFileName);
 
     ABORT_IF(
-        writePidFile(aPidFile, aPid),
+        writePidFile(aPidFile, aPid, aPidKeeperAddr),
         {
             terminate(
                 errno,
@@ -139,13 +144,15 @@ announceChild(struct Pid      aPid,
                 errno,
                 "Cannot unlock pid file '%s'", aPidFileName);
         });
+
+    return aPidFile;
 }
 
 /* -------------------------------------------------------------------------- */
 static struct ExitCode
 cmdRunCommand(const char *aPidFileName, char **aCmd)
 {
-    struct ExitCode exitCode = { 1 };
+    struct ExitCode exitCode = { EXIT_FAILURE };
 
     struct Command  command_;
     struct Command *command = 0;
@@ -314,6 +321,24 @@ cmdMonitorChild(char **aCmd)
                 "Unable to fork child process");
         });
 
+    /* If not running in test mode, change directory to avoid holding
+     * a reference that prevents a volume being unmounted. Otherwise
+     * do not change directories in case a core file needs to be
+     * generated. */
+
+    if ( ! gOptions.mDebug)
+    {
+        static const char rootDir[] = "/";
+
+        ABORT_IF(
+            chdir("/"),
+            {
+                terminate(
+                    errno,
+                    "Unable to change directory to %s", rootDir);
+            });
+    }
+
     /* Be prepared to deliver signals to the child process only after
      * the child exists. Before this point, these signals will cause
      * the watchdog to terminate, and the new child process will
@@ -343,6 +368,57 @@ cmdMonitorChild(char **aCmd)
                 "Unable to add watch on process continuation");
         });
 
+    /* Before announcing the chld process, prepare the keeper process
+     * that will hold a reference to the child pid, preventing
+     * that pid from being re-used and alised to another process. */
+
+    struct KeeperProcess pidKeeperProcess;
+    ABORT_IF(
+        createKeeperProcess(&pidKeeperProcess, childProcess.mPgid),
+        {
+            terminate(
+                errno,
+                "Unable to create child process keeper");
+        });
+
+    struct SocketPair pidKeeperTether;
+    ABORT_IF(
+        createSocketPair(&pidKeeperTether, O_NONBLOCK | O_CLOEXEC),
+        {
+            terminate(
+                errno,
+                "Unable to create child process keeper tether");
+        });
+
+    struct sockaddr_un pidKeeperAddr;
+    {
+        struct UnixSocket pidKeeperSocket;
+        ABORT_IF(
+            createUnixSocket(&pidKeeperSocket, 0, 0, 0),
+            {
+                terminate(
+                    errno,
+                    "Unable to create process keeper socket");
+            });
+
+        ABORT_IF(
+            ownUnixSocketName(&pidKeeperSocket, &pidKeeperAddr));
+
+        ABORT_IF(
+            pidKeeperAddr.sun_path[0]);
+
+        ABORT_IF(
+            forkKeeperProcess(
+                &pidKeeperProcess, &pidKeeperTether, &pidKeeperSocket),
+            {
+                terminate(
+                    errno,
+                    "Unable to create run process keeper");
+            });
+
+        closeUnixSocket(&pidKeeperSocket);
+    }
+
     /* Only identify the watchdog process after all the signal handlers
      * have been installed. The functional tests can use this as an
      * indicator that the watchdog is ready to run the child process.
@@ -356,8 +432,10 @@ cmdMonitorChild(char **aCmd)
 
     if (gOptions.mPidFile)
     {
-        pidFile = &pidFile_;
-        announceChild(childProcess.mPid, pidFile, gOptions.mPidFile);
+        pidFile = announceChild(&pidFile_,
+                                gOptions.mPidFile,
+                                childProcess.mPid,
+                                &pidKeeperAddr);
     }
 
     /* With the child process launched, close the instance of StdFdFiller
@@ -620,6 +698,13 @@ cmdMonitorChild(char **aCmd)
      * status. */
 
     killChildProcessGroup(&childProcess);
+
+    /* Before reaping the child process, clean up the child process keeper.
+     * The keeper process itself will persist until the last reference
+     * is dropped. */
+
+    closeSocketPair(&pidKeeperTether);
+    closeKeeperProcess(&pidKeeperProcess);
 
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and

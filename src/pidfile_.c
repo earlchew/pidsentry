@@ -41,6 +41,7 @@
 #include <errno.h>
 
 #include <sys/file.h>
+#include <sys/un.h>
 
 /* -------------------------------------------------------------------------- */
 /* Maximum pid file size
@@ -114,7 +115,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static struct Pid
-readPidFile_(char *aBuf)
+readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 {
     int rc = -1;
 
@@ -122,27 +123,37 @@ readPidFile_(char *aBuf)
 
     char *signature = 0;
 
-    char *endptr = strchr(aBuf, 0);
-    char *nlptr  = strchr(aBuf, '\n');
+    char *endPtr  = strchr(aBuf, 0);
+    char *sigPtr  = strchr(aBuf, '\n');
+    char *addrPtr = sigPtr ? strchr(sigPtr+1, '\n') : 0;
 
     do
     {
-        if (endptr == aBuf)
+        if (endPtr == aBuf)
             break;
 
-        if ( ! nlptr)
+        if ( ! sigPtr)
             break;
 
-        if (nlptr + 1 == endptr)
+        if (sigPtr + 1 == endPtr)
             break;
 
-        if ('\n' != endptr[-1])
+        if ( ! addrPtr)
             break;
 
-        *nlptr     = 0;
-        endptr[-1] = 0;
+        if (addrPtr + 1 == endPtr)
+            break;
 
-        const char *pidSignature = nlptr + 1;
+        if ('\n' != endPtr[-1])
+            break;
+
+        *sigPtr   = 0;
+        *addrPtr  = 0;
+        *--endPtr = 0;
+
+        const char *pidSignature     = sigPtr + 1;
+        const char *pidKeeperAddr    = addrPtr + 1;
+        size_t      pidKeeperAddrLen = endPtr - pidKeeperAddr;
 
         struct Pid parsedPid;
         if (parsePid(aBuf, &parsedPid))
@@ -151,6 +162,20 @@ readPidFile_(char *aBuf)
         if ( ! parsedPid.mPid)
             break;
 
+        ERROR_IF(
+            pidKeeperAddrLen + 2 > sizeof(aPidKeeperAddr->sun_path),
+            {
+                errno = EADDRNOTAVAIL;
+            });
+
+        aPidKeeperAddr->sun_path[0] = 0;
+        memcpy(&aPidKeeperAddr->sun_path[1], pidKeeperAddr, pidKeeperAddrLen);
+        memset(aPidKeeperAddr->sun_path + pidKeeperAddrLen + 1,
+               0,
+               sizeof(aPidKeeperAddr->sun_path) - pidKeeperAddrLen - 1);
+
+        debug(0, "pidfile address %s", &aPidKeeperAddr->sun_path[1]);
+
         int err = 0;
         ERROR_IF(
             (err = fetchProcessSignature(parsedPid, &signature),
@@ -158,13 +183,15 @@ readPidFile_(char *aBuf)
 
         if ( ! err)
         {
-            debug(0, "pidfile signature %s vs %s", pidSignature, signature);
-
             if ( ! strcmp(pidSignature, signature))
             {
+                debug(0, "pidfile signature %s", pidSignature);
+
                 pid = parsedPid;
                 break;
             }
+
+            debug(0, "pidfile signature %s vs %s", pidSignature, signature);
         }
 
         /* The process either does not exist, or if it does exist the two
@@ -185,7 +212,8 @@ Finally:
 }
 
 struct Pid
-readPidFile(const struct PidFile *self)
+readPidFile(const struct PidFile *self,
+            struct sockaddr_un   *aPidKeeperAddr)
 {
     int        rc           = -1;
     struct Pid pid          = Pid(0);
@@ -219,7 +247,7 @@ readPidFile(const struct PidFile *self)
             {
                 buf[buflen] = 0;
                 ERROR_IF(
-                    (pid = readPidFile_(buf),
+                    (pid = readPidFile_(buf, aPidKeeperAddr),
                      -1 == pid.mPid));
                 break;
             }
@@ -325,9 +353,10 @@ createPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags)
          * it means that the pidfile is already owned. Otherwise,
          * the pidfile is not owned, and can be deleted. */
 
-        struct Pid pid;
+        struct sockaddr_un pidKeeperAddr;
+        struct Pid         pid;
         ERROR_IF(
-            (pid = readPidFile(self),
+            (pid = readPidFile(self, &pidKeeperAddr),
              -1 == pid.mPid));
 
         ERROR_IF(
@@ -527,12 +556,19 @@ closePidFile(struct PidFile *self)
 
 /* -------------------------------------------------------------------------- */
 int
-writePidFile(struct PidFile *self, struct Pid aPid)
+writePidFile(struct PidFile           *self,
+             struct Pid                aPid,
+             const struct sockaddr_un *aPidKeeperAddr)
 {
     int   rc        = -1;
     char *signature = 0;
 
     ensure(0 < aPid.mPid);
+
+    ensure( ! aPidKeeperAddr->sun_path[0]);
+    ensure( 1 < sizeof(aPidKeeperAddr->sun_path));
+    ensure( ! aPidKeeperAddr->sun_path[sizeof(aPidKeeperAddr->sun_path)-1]);
+    ensure( aPidKeeperAddr->sun_path[1]);
 
     ERROR_IF(
         fetchProcessSignature(aPid, &signature));
@@ -541,7 +577,11 @@ writePidFile(struct PidFile *self, struct Pid aPid)
 
     int buflen =
         snprintf(
-            buf, sizeof(buf), "%" PRId_Pid "\n%s\n", FMTd_Pid(aPid), signature);
+            buf, sizeof(buf),
+            "%" PRId_Pid "\n%s\n%s\n",
+            FMTd_Pid(aPid),
+            signature,
+            &aPidKeeperAddr->sun_path[1]);
 
     ERROR_IF(
         0 > buflen,

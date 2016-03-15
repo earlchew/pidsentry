@@ -32,6 +32,7 @@
 #include "pathname_.h"
 #include "fd_.h"
 #include "pipe_.h"
+#include "socketpair_.h"
 #include "test_.h"
 #include "error_.h"
 #include "timekeeping_.h"
@@ -875,9 +876,6 @@ watchProcessSignals(struct VoidIntMethod aMethod)
 
     sSignalMethod = aMethod;
 
-    /* It is ok to mark the signal pipe non-blocking because this
-     * file descriptor is not shared with any other process. */
-
     for (unsigned ix = 0; NUMBEROF(sWatchedSignals) > ix; ++ix)
     {
         struct SignalWatch *watchedSig = sWatchedSignals + ix;
@@ -1395,6 +1393,15 @@ ownProcessLockPath(void)
 }
 
 /* -------------------------------------------------------------------------- */
+const struct File *
+ownProcessLockFile(void)
+{
+    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+
+    return processLock ? processLock->mFile : 0;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 reapProcess(struct Pid aPid, int *aStatus)
 {
@@ -1617,6 +1624,110 @@ Finally:
             {
                 terminate(errcode, "%s", err);
             });
+    });
+
+    return Pid(rc);
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+forkProcessDaemonSignalHandler_(void *self_, int aSigNum)
+{
+    struct ProcessSignalName sigName;
+    debug(1,
+          "ignoring signal %s",
+          formatProcessSignalName(&sigName, aSigNum));
+}
+
+#include <stdio.h>
+struct Pid
+forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid)
+{
+    pid_t rc = -1;
+
+    struct ThreadSigMask sigMask_;
+    struct ThreadSigMask *sigMask = 0;
+
+    struct SocketPair  syncSocket_;
+    struct SocketPair *syncSocket = 0;
+
+    const int sigList[] = { SIGHUP, 0 };
+    sigMask = pushThreadSigMask(&sigMask_, ThreadSigMaskBlock, sigList);
+
+    ERROR_IF(
+        createSocketPair(&syncSocket_, O_CLOEXEC));
+    syncSocket = &syncSocket_;
+
+    struct Pid serverPid;
+    ERROR_IF(
+        (serverPid = forkProcess(ForkProcessShareProcessGroup, Pgid(0)),
+         -1 == serverPid.mPid));
+
+    struct Pid daemonPid;
+
+    if (serverPid.mPid)
+    {
+        closeSocketPairChild(syncSocket);
+
+        int status;
+        ERROR_IF(
+            reapProcess(serverPid, &status));
+
+        ERROR_UNLESS(
+            WIFEXITED(status) && ! WEXITSTATUS(status));
+
+        ERROR_UNLESS(
+            sizeof(daemonPid.mPid) == readFile(syncSocket->mParentFile,
+                                               (void *) &daemonPid.mPid,
+                                               sizeof(daemonPid.mPid)));
+
+        char buf[1] = { 0 };
+        ERROR_UNLESS(
+            sizeof(buf) == writeFile(
+                syncSocket->mParentFile, buf, sizeof(buf)));
+    }
+    else
+    {
+        closeSocketPairParent(syncSocket);
+
+        ABORT_IF(
+            (daemonPid = forkProcess(aOption, aPgid),
+             -1 == daemonPid.mPid));
+
+        /* Terminate the server to make the child an orphan. The child
+         * will become the daemon, and might also receive a SIGHUP and
+         * SIGCONT when it is adopted by init(8). */
+
+        if (daemonPid.mPid)
+            quitProcess(EXIT_SUCCESS);
+
+        daemonPid = ownProcessId();
+
+        ABORT_IF(
+            watchProcessSignals(
+                VoidIntMethod(&forkProcessDaemonSignalHandler_, 0)));
+
+        ABORT_UNLESS(
+            sizeof(daemonPid.mPid) == writeFile(syncSocket->mChildFile,
+                                                (void *) &daemonPid.mPid,
+                                                sizeof(daemonPid.mPid)));
+
+        char buf[1];
+        ABORT_UNLESS(
+            sizeof(buf) == readFile(syncSocket->mChildFile, buf, sizeof(buf)));
+
+        daemonPid = Pid(0);
+    }
+
+    rc = daemonPid.mPid;
+
+Finally:
+
+    FINALLY
+    ({
+        closeSocketPair(syncSocket);
+
+        sigMask = popThreadSigMask(sigMask);
     });
 
     return Pid(rc);

@@ -26,55 +26,42 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef PIDFILE_H
-#define PIDFILE_H
+#ifndef KEEPER_H
+#define KEEPER_H
 
-#include "pathname_.h"
 #include "pid_.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct sockaddr_un;
+struct UnixSocket;
+struct SocketPair;
 
-struct PidFile
+/* -------------------------------------------------------------------------- */
+struct KeeperProcess
 {
-    struct PathName  mPathName;
-    struct File      mFile_;
-    struct File     *mFile;
-    int              mLock;
+    struct Pid  mPid;
+    struct Pgid mPgid;
+
+    struct SocketPair *mKeeperTether;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags);
+createKeeperProcess(
+    struct KeeperProcess *self,
+    struct Pgid           aPgid);
 
 int
-openPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags);
-
-int
-detectPidFileZombie(const struct PidFile *self);
+forkKeeperProcess(
+    struct KeeperProcess *self,
+    struct SocketPair    *aKeeperTether,
+    struct UnixSocket    *aServerSocket);
 
 void
-closePidFile(struct PidFile *self);
-
-struct Pid
-readPidFile(const struct PidFile *self, struct sockaddr_un *aPidKeeperAddr);
-
-int
-releaseLockPidFile(struct PidFile *self);
-
-int
-acquireWriteLockPidFile(struct PidFile *self);
-
-int
-acquireReadLockPidFile(struct PidFile *self);
-
-int
-writePidFile(struct PidFile           *self,
-             struct Pid                aPid,
-             const struct sockaddr_un *aPidKeeperAddr);
+closeKeeperProcess(
+    struct KeeperProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
@@ -82,4 +69,4 @@ writePidFile(struct PidFile           *self,
 }
 #endif
 
-#endif /* PIDFILE_H */
+#endif /* KEEPER_H */

@@ -32,10 +32,14 @@
 #include "error_.h"
 #include "pipe_.h"
 #include "env_.h"
+#include "pidfile_.h"
+#include "timescale_.h"
 
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
+
+#include <sys/un.h>
 
 /* -------------------------------------------------------------------------- */
 int
@@ -44,56 +48,101 @@ createCommand(struct Command *self,
 {
     int rc = -1;
 
-    self->mChildPid = Pid(0);
-    self->mPid      = Pid(0);
-    self->mPgid     = Pgid(0);
-    self->mPidFile  = 0;
+    self->mPid          = Pid(0);
+    self->mKeeperTether = 0;
+
+    struct PidFile  pidFile_;
+    struct PidFile *pidFile = 0;
 
     int err;
     ERROR_IF(
-        (err = openPidFile(&self->mPidFile_, aPidFileName, O_CLOEXEC),
+        (err = openPidFile(&pidFile_, aPidFileName, O_CLOEXEC),
          err && ENOENT != errno),
         {
             warn(errno,
                 "Unable to open pid file '%s'", aPidFileName);
         });
-    self->mPidFile = &self->mPidFile_;
 
-    if ( ! err)
-    {
-        ERROR_IF(
-            acquireReadLockPidFile(self->mPidFile),
-            {
-                warn(errno,
-                     "Unable to acquire read lock on pid file '%s'",
-                     aPidFileName);
-            });
-
-        struct Pid pid;
-        ERROR_IF(
-            (pid = readPidFile(self->mPidFile),
-             -1 == pid.mPid),
-            {
-                warn(errno,
-                     "Unable to read pid file '%s'",
-                     aPidFileName);
-            });
-
-        if (pid.mPid)
+    ERROR_IF(
+        err,
         {
-            self->mChildPid = pid;
-            self->mPgid     = Pgid(pid.mPid);
+            errno = ECHILD;
+        });
 
-            rc = 0;
-        }
-    }
+    pidFile = &pidFile_;
 
-    if (rc)
-        errno = ECHILD;
+    ERROR_IF(
+        acquireReadLockPidFile(pidFile),
+        {
+            warn(errno,
+                 "Unable to acquire read lock on pid file '%s'",
+                 aPidFileName);
+        });
+
+    struct sockaddr_un pidKeeperAddr;
+    struct Pid         pid;
+    ERROR_IF(
+        (pid = readPidFile(pidFile, &pidKeeperAddr),
+         -1 == pid.mPid),
+        {
+            warn(errno,
+                 "Unable to read pid file '%s'",
+                 aPidFileName);
+        });
+
+    ERROR_UNLESS(
+        pid.mPid,
+        {
+            errno = ECHILD;
+        });
+
+    /* Obtain a reference to the child process group, and do not proceed
+     * until a positive acknowledgement is received to indicate that
+     * the remote keeper has provided a stable reference. */
+
+    ERROR_IF(
+        (err = connectUnixSocket(&self->mKeeperTether_,
+                                 pidKeeperAddr.sun_path,
+                                 sizeof(pidKeeperAddr.sun_path)),
+         -1 == err && EINPROGRESS != errno));
+    self->mKeeperTether = &self->mKeeperTether_;
+
+    ERROR_IF(
+        (err = waitUnixSocketWriteReady(self->mKeeperTether, 0),
+         -1 == err));
+
+    ERROR_UNLESS(
+        err,
+        {
+            errno = ENOTCONN;
+        });
+
+    ERROR_IF(
+        (err = waitUnixSocketReadReady(self->mKeeperTether, 0),
+         -1 == err));
+
+    char buf[1];
+    ERROR_IF(
+        (err = readFile(self->mKeeperTether->mFile, buf, 1),
+         -1 == err || (errno = EIO, 1 != err)));
+
+    self->mChildPid = pid;
+
+    rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        if (rc)
+            closeUnixSocket(self->mKeeperTether);
+
+        /* There is no further need to hold a lock on the pidfile because
+         * acquisition of a reference to the child process group is the
+         * sole requirement. */
+
+        closePidFile(pidFile);
+    });
 
     return rc;
 }
@@ -116,28 +165,33 @@ runCommand(struct Command *self,
     syncPipe = &syncPipe_;
 
     ERROR_IF(
-        (pid = forkProcess(ForkProcessSetProcessGroup, self->mPgid),
+        (pid = forkProcess(ForkProcessShareProcessGroup, Pgid(0)),
          -1 == pid.mPid));
 
-    if ( ! pid.mPid)
+    if (pid.mPid)
+        self->mPid = pid;
+    else
     {
         self->mPid = ownProcessId();
 
         debug(0,
               "starting command process pid %" PRId_Pid,
-              FMTd_Pid(pid));
+              FMTd_Pid(self->mPid));
 
         /* Populate the environment of the command process to
          * provide the attributes of the monitored process. */
 
+        const char *blackdogChildPid;
         ABORT_UNLESS(
-            setEnvPid("BLACKDOG_CHILD_PID", self->mChildPid),
+            (blackdogChildPid = setEnvPid(
+                "BLACKDOG_CHILD_PID", self->mChildPid)),
             {
                 terminate(
                     errno,
                     "Unable to set BLACKDOG_CHILD_PID %" PRId_Pid,
                     FMTd_Pid(self->mChildPid));
             });
+        debug(0, "BLACKDOG_CHILD_PID=%s", blackdogChildPid);
 
         /* Wait here until the parent process has completed its
          * initialisation, and sends a positive acknowledgement. */
@@ -156,7 +210,14 @@ runCommand(struct Command *self,
                     "Unable to synchronise");
             });
 
+        closePipe(syncPipe);
+        syncPipe = 0;
+
         debug(0, "command process synchronised");
+
+        /* Exit in sympathy if the parent process did not indicate
+         * that it intialised successfully. Otherwise attempt to
+         * execute the specified program. */
 
         if (1 == rdlen)
             ABORT_IF(
@@ -167,19 +228,21 @@ runCommand(struct Command *self,
                         "Unable to execute '%s'", aCmd[0]);
                 });
 
-        quitProcess(EXIT_FAILURE);
+        do
+            quitProcess(EXIT_FAILURE);
+        while (1);
     }
 
     debug(0,
-          "running command pid %" PRId_Pid " in pgid %" PRId_Pgid,
-          FMTd_Pid(self->mPid),
-          FMTd_Pgid(self->mPgid));
+          "running command pid %" PRId_Pid,
+          FMTd_Pid(self->mPid));
 
     ERROR_IF(
         purgeProcessOrphanedFds());
 
     /* Only send a positive acknowledgement to the command process
-     * after initialisation is complete. */
+     * after initialisation is successful. If initialisation fails,
+     * the command process will terminate sympathetically. */
 
     closePipeReader(syncPipe);
 
@@ -217,7 +280,26 @@ reapCommand(struct Command  *self,
     ERROR_IF(
         reapProcess(self->mPid, &status));
 
-    *aExitCode = extractProcessExitStatus(status, self->mPid);
+    struct ExitCode exitCode = extractProcessExitStatus(status, self->mPid);
+
+    if (EXIT_SUCCESS == exitCode.mStatus)
+    {
+        /* Do not allow a positive result to mask the loss of the
+         * reference to the child process group. */
+
+        struct Duration zeroDuration = Duration(NanoSeconds(0));
+
+        int rdReady;
+        ERROR_IF(
+            (rdReady = waitFileReadReady(
+                self->mKeeperTether->mFile, &zeroDuration),
+             -1 == rdReady));
+
+        if (rdReady)
+            exitCode.mStatus = 255;
+    }
+
+    *aExitCode = exitCode;
 
     rc = 0;
 
@@ -234,7 +316,7 @@ closeCommand(struct Command *self)
 {
     if (self)
     {
-        closePidFile(self->mPidFile);
+        closeUnixSocket(self->mKeeperTether);
     }
 }
 

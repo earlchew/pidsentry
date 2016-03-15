@@ -51,7 +51,8 @@ struct Options gOptions;
 /* -------------------------------------------------------------------------- */
 static const char sUsage[] =
 "usage : %s [ monitoring-options | general-options ] cmd ...\n"
-"        %s -c { --pidfile file | -p file } [ general-options ] cmd ...\n"
+"        %s { --pidfile file | -p file } [ general-options ]\n"
+"        %s { --pidfile file | -p file } [ general-options ] -c cmd ... \n"
 "\n"
 "mode:\n"
 " --command | -c\n"
@@ -137,6 +138,7 @@ enum OptionMode
     OptionModeUnknown = 0,
 
     OptionModeMonitorChild,
+    OptionModePrintPid,
     OptionModeRunCommand
 };
 
@@ -170,7 +172,7 @@ showUsage_(void)
 {
     const char *arg0 = ownProcessName();
 
-    dprintf(STDERR_FILENO, sUsage, arg0, arg0);
+    dprintf(STDERR_FILENO, sUsage, arg0, arg0, arg0);
 }
 
 /* -------------------------------------------------------------------------- */
