@@ -37,6 +37,7 @@
 #include "pidfile_.h"
 #include "test_.h"
 #include "error_.h"
+#include "macros_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -375,6 +376,15 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     closeSocketPair(aSyncSocket);
     closeSocketPair(aUmbilicalSocket);
+
+    int whiteList[] =
+    {
+        STDIN_FILENO,
+        STDOUT_FILENO,
+        STDERR_FILENO,
+    };
+
+    closeFdDescriptors(whiteList, NUMBEROF(whiteList));
 
     if (testMode(TestLevelSync))
     {

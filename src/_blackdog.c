@@ -73,6 +73,8 @@
  *    Check for file descriptors in command process
  * pidsentry ?
  * Write unit test for forkProcessDaemon()
+ * Add chdir option for forkProcess() so that child processes do not
+ *   hold references to cwd
  */
 
 /* -------------------------------------------------------------------------- */
@@ -321,24 +323,6 @@ cmdMonitorChild(char **aCmd)
                 "Unable to fork child process");
         });
 
-    /* If not running in test mode, change directory to avoid holding
-     * a reference that prevents a volume being unmounted. Otherwise
-     * do not change directories in case a core file needs to be
-     * generated. */
-
-    if ( ! gOptions.mDebug)
-    {
-        static const char rootDir[] = "/";
-
-        ABORT_IF(
-            chdir("/"),
-            {
-                terminate(
-                    errno,
-                    "Unable to change directory to %s", rootDir);
-            });
-    }
-
     /* Be prepared to deliver signals to the child process only after
      * the child exists. Before this point, these signals will cause
      * the watchdog to terminate, and the new child process will
@@ -372,51 +356,63 @@ cmdMonitorChild(char **aCmd)
      * that will hold a reference to the child pid, preventing
      * that pid from being re-used and alised to another process. */
 
-    struct KeeperProcess pidKeeperProcess;
-    ABORT_IF(
-        createKeeperProcess(&pidKeeperProcess, childProcess.mPgid),
-        {
-            terminate(
-                errno,
-                "Unable to create child process keeper");
-        });
+    struct KeeperProcess  pidKeeperProcess_;
+    struct KeeperProcess *pidKeeperProcess = 0;
 
-    struct SocketPair pidKeeperTether;
-    ABORT_IF(
-        createSocketPair(&pidKeeperTether, O_NONBLOCK | O_CLOEXEC),
-        {
-            terminate(
-                errno,
-                "Unable to create child process keeper tether");
-        });
+    struct SocketPair  pidKeeperTether_;
+    struct SocketPair *pidKeeperTether = 0;
 
     struct sockaddr_un pidKeeperAddr;
+
+    if (gOptions.mPidFile)
     {
-        struct UnixSocket pidKeeperSocket;
         ABORT_IF(
-            createUnixSocket(&pidKeeperSocket, 0, 0, 0),
+            createKeeperProcess(&pidKeeperProcess_, childProcess.mPgid),
             {
                 terminate(
                     errno,
-                    "Unable to create process keeper socket");
+                    "Unable to create child process keeper");
             });
+        pidKeeperProcess = &pidKeeperProcess_;
 
         ABORT_IF(
-            ownUnixSocketName(&pidKeeperSocket, &pidKeeperAddr));
-
-        ABORT_IF(
-            pidKeeperAddr.sun_path[0]);
-
-        ABORT_IF(
-            forkKeeperProcess(
-                &pidKeeperProcess, &pidKeeperTether, &pidKeeperSocket),
+            createSocketPair(&pidKeeperTether_, O_NONBLOCK | O_CLOEXEC),
             {
                 terminate(
                     errno,
-                    "Unable to create run process keeper");
+                    "Unable to create child process keeper tether");
             });
+        pidKeeperTether = &pidKeeperTether_;
 
-        closeUnixSocket(&pidKeeperSocket);
+        {
+            struct UnixSocket pidKeeperSocket;
+            ABORT_IF(
+                createUnixSocket(&pidKeeperSocket, 0, 0, 0),
+                {
+                    terminate(
+                        errno,
+                        "Unable to create process keeper socket");
+                });
+
+            ABORT_IF(
+                ownUnixSocketName(&pidKeeperSocket, &pidKeeperAddr));
+
+            ABORT_IF(
+                pidKeeperAddr.sun_path[0]);
+
+            ABORT_IF(
+                forkKeeperProcess(
+                    pidKeeperProcess, pidKeeperTether, &pidKeeperSocket),
+                {
+                    terminate(
+                        errno,
+                        "Unable to create run process keeper");
+                });
+
+            closeUnixSocket(&pidKeeperSocket);
+        }
+
+        closeSocketPairChild(pidKeeperTether);
     }
 
     /* Only identify the watchdog process after all the signal handlers
@@ -436,6 +432,24 @@ cmdMonitorChild(char **aCmd)
                                 gOptions.mPidFile,
                                 childProcess.mPid,
                                 &pidKeeperAddr);
+    }
+
+    /* If not running in test mode, change directory to avoid holding
+     * a reference that prevents a volume being unmounted. Otherwise
+     * do not change directories in case a core file needs to be
+     * generated. */
+
+    if ( ! gOptions.mDebug)
+    {
+        static const char rootDir[] = "/";
+
+        ABORT_IF(
+            chdir("/"),
+            {
+                terminate(
+                    errno,
+                    "Unable to change directory to %s", rootDir);
+            });
     }
 
     /* With the child process launched, close the instance of StdFdFiller
@@ -703,8 +717,8 @@ cmdMonitorChild(char **aCmd)
      * The keeper process itself will persist until the last reference
      * is dropped. */
 
-    closeSocketPair(&pidKeeperTether);
-    closeKeeperProcess(&pidKeeperProcess);
+    closeSocketPair(pidKeeperTether);
+    closeKeeperProcess(pidKeeperProcess);
 
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and

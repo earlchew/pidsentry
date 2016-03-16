@@ -239,6 +239,9 @@ runTests()
     }
 
     testCase 'Umbilical process file descriptors'
+    # i.   stdin
+    # ii.  stdout
+    # iii. stderr
     [ -n "$VALGRIND" ] || testOutput "3" = '$(
         blackdog --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
@@ -259,6 +262,10 @@ runTests()
     )'
 
     testCase 'Watchdog process file descriptors'
+    # i.   stdin
+    # ii.  stdout
+    # iii. stderr
+    # iv.  Umbilical tether
     [ -n "$VALGRIND" ] || testOutput "4" = '$(
         blackdog --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
@@ -279,6 +286,10 @@ runTests()
     )'
 
     testCase 'Untethered watchdog process file descriptors'
+    # i.   stdin
+    # ii.  stdout
+    # iii. stderr
+    # iv.  Umbilical tether
     [ -n "$VALGRIND" ] || testOutput "4" = '$(
         blackdog --test=3 -i -u -- sh -c "while : ; do sleep 1 ; done" |
         {

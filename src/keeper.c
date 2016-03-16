@@ -496,13 +496,8 @@ runKeeperProcess_(
 
             pollFdCompletion_, &keeperMonitor));
 
-
-    breadcrumb();
-
     /* Now that the keeper process has initialised, allow the watchdog
      * to continue execution. */
-
-    breadcrumb();
 
     char buf[1] = { 0 };
 
@@ -510,8 +505,6 @@ runKeeperProcess_(
     ABORT_IF(
         (err = writeFile(aKeeperTether->mChildFile, buf, 1),
          -1 == err || (errno = EIO, 1 != err)));
-
-    breadcrumb();
 
     ABORT_IF(
         runPollFdLoop(&pollfd));
