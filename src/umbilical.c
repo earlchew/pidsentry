@@ -382,6 +382,7 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
         STDIN_FILENO,
         STDOUT_FILENO,
         STDERR_FILENO,
+        ownProcessLockFile()->mFd,
     };
 
     closeFdDescriptors(whiteList, NUMBEROF(whiteList));
