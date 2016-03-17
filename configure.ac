@@ -27,9 +27,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 AC_PREREQ([2.63])
-AC_INIT([blackdog], [0.1], [earl_chew@yahoo.com])
+AC_INIT([pidsentry], [0.1], [earl_chew@yahoo.com])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_SRCDIR([src/_blackdog.c])
+AC_CONFIG_SRCDIR([src/_pidsentry.c])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([-Wno-portability])
 

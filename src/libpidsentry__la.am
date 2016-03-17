@@ -1,6 +1,6 @@
-libblackdog__la_SOURCES_CKSUM_1_ = 1100872860 554
-libblackdog__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
-libblackdog__la_SOURCES = \
+libpidsentry__la_SOURCES_CKSUM_1_ = 1100872860 554
+libpidsentry__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
+libpidsentry__la_SOURCES = \
   dl_.c \
   dl_.h \
   env_.c \

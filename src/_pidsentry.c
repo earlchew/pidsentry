@@ -27,7 +27,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "_blackdog.h"
+#include "_pidsentry.h"
 
 #include "child.h"
 #include "umbilical.h"
@@ -777,7 +777,7 @@ int
 main(int argc, char **argv)
 {
     ABORT_IF(
-        Test_init("BLACKDOG_TEST_ERROR"),
+        Test_init("PIDSENTRY_TEST_ERROR"),
         {
             terminate(
                 0,

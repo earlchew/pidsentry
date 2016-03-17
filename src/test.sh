@@ -6,19 +6,19 @@ set -eu
 # process from the shell. This is important because SIGPIPE will be
 # delivered to the separate echo process, rather than to the shell.
 
-blackdogexec()
+pidsentryexec()
 {
-    unset BLACKDOG_TEST_ERROR
-    exec libtool --mode=execute $VALGRIND ./blackdog "$@"
+    unset PIDSENTRY_TEST_ERROR
+    exec libtool --mode=execute $VALGRIND ./pidsentry "$@"
 }
 
-blackdog()
+pidsentry()
 {
     if [ $# -eq 0 -o x"${1:-}" != x"exec" ] ; then
-        ( blackdogexec "$@" )
+        ( pidsentryexec "$@" )
     else
         shift
-        blackdogexec "$@"
+        pidsentryexec "$@"
     fi
 }
 
@@ -99,57 +99,57 @@ runTest()
 runTests()
 {
     testCase 'Usage'
-    testExit 1 blackdog -? -- true
+    testExit 1 pidsentry -? -- true
 
     testCase 'Missing -p option value'
-    testExit 1 blackdog -p
+    testExit 1 pidsentry -p
 
     testCase 'Valid -p option value'
-    testExit 0 blackdog -d -p $PIDFILE -- true
+    testExit 0 pidsentry -d -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Long --pidfile option'
-    testExit 0 blackdog --pidfile $PIDFILE -- true
+    testExit 0 pidsentry --pidfile $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Missing command'
-    testExit 1 blackdog
+    testExit 1 pidsentry
 
     testCase 'Simple command'
-    REPLY=$(blackdog -dd /bin/echo test)
+    REPLY=$(pidsentry -dd /bin/echo test)
     [ x"$REPLY" = x"test" ]
 
     testCase 'Simple command in test mode'
-    REPLY=$(blackdog -dd --test=1 /bin/echo test)
+    REPLY=$(pidsentry -dd --test=1 /bin/echo test)
     [ x"$REPLY" = x"test" ]
 
     testCase 'Empty pid file'
     rm -f $PIDFILE
     : > $PIDFILE
-    testExit 0 blackdog --test=1 -p $PIDFILE -- true
+    testExit 0 pidsentry --test=1 -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Invalid content in pid file'
     rm -f $PIDFILE
     dd if=/dev/zero bs=1K count=1 > $PIDFILE
-    testExit 0 blackdog --test=1 -p $PIDFILE -- true
+    testExit 0 pidsentry --test=1 -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Dead process in pid file'
     rm -f $PIDFILE
-    blackdog -i -p $PIDFILE -- sh -c 'kill -9 $PPID' || :
+    pidsentry -i -p $PIDFILE -- sh -c 'kill -9 $PPID' || :
     [ -s $PIDFILE ]
-    testExit 0 blackdog --test=1 -d -p $PIDFILE -- true
+    testExit 0 pidsentry --test=1 -d -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Existing process in pid file'
     rm -f $PIDFILE
     testOutput "OK" = '$(
-        blackdog -i -p $PIDFILE -u -- sh -c "
+        pidsentry -i -p $PIDFILE -u -- sh -c "
             while : ; do sleep 1 ; done" | {
                 read PARENT UMBILICAL
                 read CHILD
-                blackdog -p $PIDFILE -- true || echo OK
+                pidsentry -p $PIDFILE -- true || echo OK
              kill -9 $CHILD
         }
     )'
@@ -172,26 +172,26 @@ runTests()
     TIMESTAMP=$(date -d @$(( $(stat -c %Y $PIDFILE) - 3600 )) +%Y%m%d%H%M)
     touch -t $TIMESTAMP $PIDFILE
     stat -c %y $PIDFILE
-    blackdog --test=1 -d -p $PIDFILE -- true
+    pidsentry --test=1 -d -p $PIDFILE -- true
     wait
     [ ! -f $PIDFILE ]
 
     testCase 'Read non-existent pid file'
     rm -f $PIDFILE
-    testExit 1 blackdog --test=1 -p $PIDFILE -c -- true
+    testExit 1 pidsentry --test=1 -p $PIDFILE -c -- true
     [ ! -f $PIDFILE ]
 
     testCase 'Read malformed pid file'
     rm -f $PIDFILE
     date > $PIDFILE
-    testExit 1 blackdog --test=1 -p $PIDFILE -c -- true
+    testExit 1 pidsentry --test=1 -p $PIDFILE -c -- true
     [ -f $PIDFILE ]
 
     testCase 'Identify processes'
     for REPLY in $(
       exec sh -c '
         /bin/echo $$
-        set -- '"$VALGRIND"' ./blackdog --test=1 -i -- sh -c '\''/bin/echo $$'\'
+        set -- '"$VALGRIND"' ./pidsentry --test=1 -i -- sh -c '\''/bin/echo $$'\'
         exec libtool --mode=execute "$@"
       {
         read REALPARENT
@@ -205,7 +205,7 @@ runTests()
 
     testCase 'Test blocked signals in child'
     testOutput "0000000000000000" = '$(
-        blackdog -- grep SigBlk /proc/self/status |
+        pidsentry -- grep SigBlk /proc/self/status |
         {
             read HEADING SIGNALS
             /bin/echo "$SIGNALS"
@@ -213,7 +213,7 @@ runTests()
     )'
     testCase 'Test ignored signals in child'
     testOutput "0000000000000000" = '$(
-        blackdog -- grep SigIgn /proc/self/status |
+        pidsentry -- grep SigIgn /proc/self/status |
         {
             read HEADING SIGNALS
             /bin/echo "$SIGNALS"
@@ -222,17 +222,17 @@ runTests()
 
     testCase 'Environment propagation'
     testOutput '0' = '"$(
-        blackdog -- sh -c '\''date ; printenv'\'' | grep "^K9_" | wc -l)"'
+        pidsentry -- sh -c '\''date ; printenv'\'' | grep "^K9_" | wc -l)"'
 
     testCase 'Exit code propagation'
-    testExit 2 blackdog --test=1 -- sh -c 'exit 2'
+    testExit 2 pidsentry --test=1 -- sh -c 'exit 2'
 
     testCase 'Signal exit code propagation'
-    testExit $((128 + 9)) blackdog --test=1 -- sh -c '
+    testExit $((128 + 9)) pidsentry --test=1 -- sh -c '
         /bin/echo Killing $$ ; kill -9 $$'
 
     testCase 'Child process group'
-    blackdog -i -- ps -o pid,pgid,cmd | {
+    pidsentry -i -- ps -o pid,pgid,cmd | {
         read PARENT UMBILICAL
         read CHILD
         read HEADING
@@ -257,7 +257,7 @@ runTests()
     # ii.  stdout
     # iii. stderr
     [ -n "$VALGRIND" ] || testOutput "3" = '$(
-        blackdog --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
             read CHILD
@@ -281,7 +281,7 @@ runTests()
     # iii. stderr
     # iv.  Umbilical tether
     [ -n "$VALGRIND" ] || testOutput "4" = '$(
-        blackdog --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
             read CHILD
@@ -305,7 +305,7 @@ runTests()
     # iii. stderr
     # iv.  Umbilical tether
     [ -n "$VALGRIND" ] || testOutput "4" = '$(
-        blackdog --test=3 -i -u -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry --test=3 -i -u -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
             read CHILD
@@ -326,78 +326,78 @@ runTests()
     testCase 'Untethered child process'
     testOutput '$(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
-      blackdog --test=1 -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      pidsentry --test=1 -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Untethered child process with 8M data'
     testOutput 8192000 = '$(
-      blackdog --test=1 -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      pidsentry --test=1 -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether with new file descriptor'
     testOutput '$(( 1 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      blackdog --test=1 -f - -- ls -l /proc/self/fd |
+      pidsentry --test=1 -f - -- ls -l /proc/self/fd |
           grep "[0-9]-[0-9]" |
           wc -l)'
 
     testCase 'Tether using stdout'
     testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      blackdog --test=1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      pidsentry --test=1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
 
     testCase 'Tether using named stdout'
     testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      blackdog --test=1 -f 1 -- ls -l /proc/self/fd |
+      pidsentry --test=1 -f 1 -- ls -l /proc/self/fd |
           grep "[0-9]-[0-9]" |
           wc -l)'
 
     testCase 'Tether using stdout with 8M data'
     testOutput 8192000 = '$(
-      blackdog --test=1 -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      pidsentry --test=1 -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether quietly using stdout with 8M data'
     testOutput 0 = '$(
-      blackdog --test=1 -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      pidsentry --test=1 -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
 
     testCase 'Tether named in environment'
     testOutput "TETHER=1" = '$(
-      blackdog --test=1 -n TETHER -- printenv | grep TETHER)'
+      pidsentry --test=1 -n TETHER -- printenv | grep TETHER)'
 
     testCase 'Tether named alone in argument'
     testOutput "1" = '$(
-      blackdog --test=1 -n @tether@ -- /bin/echo @tether@ | grep "1")'
+      pidsentry --test=1 -n @tether@ -- /bin/echo @tether@ | grep "1")'
 
     testCase 'Tether named as suffix in argument'
     testOutput "x1" = '$(
-      blackdog --test=1 -n @tether@ -- /bin/echo x@tether@ | grep "1")'
+      pidsentry --test=1 -n @tether@ -- /bin/echo x@tether@ | grep "1")'
 
     testCase 'Tether named as prefix argument'
     testOutput "1x" = '$(
-      blackdog --test=1 -n @tether@ -- /bin/echo @tether@x | grep "1")'
+      pidsentry --test=1 -n @tether@ -- /bin/echo @tether@x | grep "1")'
 
     testCase 'Tether named as infix argument'
     testOutput "x1x" = '$(
-      blackdog --test=1 -n @tether@ -- /bin/echo x@tether@x | grep "1")'
+      pidsentry --test=1 -n @tether@ -- /bin/echo x@tether@x | grep "1")'
 
     testCase 'Early parent death'
-    blackdog -i --test=1 -dd sh -cx 'while : blackdog ; do sleep 1 ; done' | {
+    pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
         kill -9 $PARENT
         sleep 3
-        ! ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+        ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
     }
 
     testCase 'Early umbilical death'
-    ! ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
-    blackdog -i --test=1 -dd sh -cx 'while : blackdog ; do sleep 1 ; done' | {
+    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+    pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
         kill -9 $UMBILICAL
         SLEPT=0
         while : ; do
-            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= |
-                grep blackdog ||
+            ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= |
+                grep pidsentry ||
                 break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
@@ -405,16 +405,16 @@ runTests()
     }
 
     testCase 'Early child death'
-    ! ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
-    blackdog -i --test=1 -dd sh -cx 'while : blackdog ; do sleep 1 ; done' | {
+    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+    pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         read CHILD
         randomsleep 1
         kill -9 $CHILD
         SLEPT=0
         while : ; do
-            ps -C 'blackdog sh' -o user=,ppid=,pid=,pgid=,args= |
-                grep blackdog ||
+            ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= |
+                grep pidsentry ||
                 break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
@@ -425,7 +425,7 @@ runTests()
     REPLY=$(
       exec 3>&1
       {
-        if blackdog --test=1 -d -i -- sh -c '
+        if pidsentry --test=1 -d -i -- sh -c '
             while : ; do : ; done ; exit 0' 3>&- ; then
           /bin/echo 0 >&3
         else
@@ -441,7 +441,7 @@ runTests()
 
     testCase 'Stopped child'
     testOutput OK = '"$(
-        blackdog --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
+        pidsentry --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
             read PARENT UMBILICAL
             read CHILD
             sleep 8
@@ -450,7 +450,7 @@ runTests()
         })"'
 
     testCase 'Stopped parent'
-    testOutput OK = '"$(blackdog --test=1 -i -d -t 8,2 -- sleep 4 | {
+    testOutput OK = '"$(pidsentry --test=1 -i -d -t 8,2 -- sleep 4 | {
         read PARENT UMBILCAL
         read CHILD
         kill -STOP $PARENT
@@ -461,7 +461,7 @@ runTests()
 
     testCase 'Randomly stopped parent'
     testOutput 'OK' = '$(
-        { blackdog -i -dd sleep 3 && /bin/echo OK ; } | {
+        { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
             read PARENT UMBILICAL
             read CHILD
             randomsleep 3
@@ -478,7 +478,7 @@ runTests()
 
     testCase 'Randomly stopped process family'
     testOutput 'OK' = '$(
-        { blackdog -i -dd sleep 3 && /bin/echo OK ; } | {
+        { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
             read PARENT UMBILICAL
             read CHILD
             randomsleep 3
@@ -496,7 +496,7 @@ runTests()
     testCase 'Broken umbilical'
     testOutput "OK" = '$(
         exec 3>&1
-        blackdog -dd -i -- sleep 9 | {
+        pidsentry -dd -i -- sleep 9 | {
             read PARENT UMBILICAL
             read CHILD
             sleep 3
@@ -512,7 +512,7 @@ runTests()
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      blackdog --test=1 -i -dd -- sh -c "
+      pidsentry --test=1 -i -dd -- sh -c "
             trap 'exit 1' $SIGNALS
             while : ; do sleep 1 ; done" |
       {
@@ -535,7 +535,7 @@ runTests()
     testCase 'Slow signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      blackdog -i --test=1 -dd -- sh -c "
+      pidsentry -i --test=1 -dd -- sh -c "
             trap 'exit 1' $SIGNALS
             while : ; do sleep 1 ; done" |
       {
@@ -558,7 +558,7 @@ runTests()
 
     testCase 'Fixed termination deadline'
     testOutput OK = '$(
-        blackdog --test=1 -i -dd -t 3,,4 -- sh -cx "
+        pidsentry --test=1 -i -dd -t 3,,4 -- sh -cx "
             trap : 15 6
             /bin/echo READY
             while : ; do sleep 1 ; done" |
@@ -582,7 +582,7 @@ runTests()
     testCase 'Test SIGPIPE propagates from child'
     testOutput "X-$((128 + 13))" = '$(
         exec 3>&1
-        if blackdog --test=1 -d -d -- sh -cx "
+        if pidsentry --test=1 -d -d -- sh -cx "
             while : ; do /bin/echo X || exit \$?; sleep 1 ; done " ; then
             /bin/echo "X-$?" >&3
         else
@@ -593,7 +593,7 @@ runTests()
     testCase 'Test EPIPE propagates to child'
     testOutput "X-2" = '$(
         exec 3>&1
-        if blackdog -dd -- sh -c "
+        if pidsentry -dd -- sh -c "
             sleep 1 ;
             while : ; do
                 /bin/echo X || exit 2
@@ -614,7 +614,7 @@ runTests()
             dd if=/dev/zero bs=$((64 * 1024)) count=1
             ( sleep 2
                 dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
-            blackdog exec -dd -- sh -c "
+            pidsentry exec -dd -- sh -c "
                trap '\''/bin/echo -n AA >&3; exit 2'\'' 15
                sleep 2
                dd if=/dev/zero bs=$((64 * 1024)) count=1 &
@@ -642,7 +642,7 @@ runTests()
     testCase 'Timeout with data that must be flushed after 6s'
     REPLY=$(
         START=$(date +%s)
-        blackdog --test=1 -t 4 -- sh -c 'trap : 6 ; sleep 6'
+        pidsentry --test=1 -t 4 -- sh -c 'trap : 6 ; sleep 6'
         STOP=$(date +%s)
         /bin/echo $(( STOP - START))
     )
@@ -669,7 +669,7 @@ mkdir -p scratch
 PIDFILE=scratch/pidfile
 
 testCase 'No running watchdogs'
-testOutput "" = '$(ps -C blackdog -o user=,ppid=,pid=,pgid=,command=)'
+testOutput "" = '$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)'
 
 for TEST in runTest runTests ; do
     VALGRIND=
@@ -679,7 +679,7 @@ for TEST in runTest runTests ; do
 done
 
 testCase 'No lost watchdogs'
-testOutput "" = '$(ps -C blackdog -o user=,ppid=,pid=,pgid=,command=)'
+testOutput "" = '$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)'
 
 testCase 'Valgrind run over unit tests'
 testOutput "" != "/bin/echo $VALGRIND"
@@ -693,6 +693,6 @@ make check TESTS_ENVIRONMENT="$TESTS_ENVIRONMENT" TESTS="$TESTS"
 
 testCase 'Error handling'
 (
-    [ -n "${TEST_MODE_EXTENDED++}" ] || export BLACKDOG_TEST_ERROR=once
+    [ -n "${TEST_MODE_EXTENDED++}" ] || export PIDSENTRY_TEST_ERROR=once
     ./errortest.sh
 )

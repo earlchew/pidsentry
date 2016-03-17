@@ -26,8 +26,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef K9_H
-#define K9_H
+#ifndef PIDSENTRY_H
+#define PIDSENTRY_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,4 +43,4 @@ main(int, char **);
 }
 #endif
 
-#endif /* K9_H */
+#endif /* PIDSENTRY_H */

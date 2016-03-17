@@ -7,37 +7,37 @@ random()
     printf '%s' $(( 0x$(openssl rand -hex 4) ))
 }
 
-blackdog()
+pidsentry()
 {
-    libtool --mode=execute $VALGRIND $VALGRINDOPT ./blackdog "$@"
+    libtool --mode=execute $VALGRIND $VALGRINDOPT ./pidsentry "$@"
 }
 
-blackdogtest()
+pidsentrytest()
 {
-    blackdog -dd --test=2 -- dd if=/dev/zero bs=64K count=4
+    pidsentry -dd --test=2 -- dd if=/dev/zero bs=64K count=4
 }
 
 TRIGGER=1
-if [ -n "${BLACKDOG_TEST_ERROR++}" ] ; then
-    case "$BLACKDOG_TEST_ERROR" in
+if [ -n "${PIDSENTRY_TEST_ERROR++}" ] ; then
+    case "$PIDSENTRY_TEST_ERROR" in
     [0-9]*)
-            TRIGGER=$((BLACKDOG_TEST_ERROR - 1))
+            TRIGGER=$((PIDSENTRY_TEST_ERROR - 1))
             ;;
     once)
             TRIGGER=once
             ;;
     *)
-            echo "Unrecognised test specification: $BLACKDOG_TEST_ERROR" >&2
+            echo "Unrecognised test specification: $PIDSENTRY_TEST_ERROR" >&2
             exit 1
             ;;
     esac
-    unset BLACKDOG_TEST_ERROR
+    unset PIDSENTRY_TEST_ERROR
 fi
 
 VALGRIND="valgrind"
 VALGRIND="$VALGRIND --error-exitcode=128"
 VALGRIND="$VALGRIND --leak-check=yes"
-VALGRIND="$VALGRIND --suppressions=blackdog.supp"
+VALGRIND="$VALGRIND --suppressions=pidsentry.supp"
 
 VALGRINDOPT="--log-file=errortest.log"
 
@@ -47,7 +47,7 @@ VALGRINDOPT="--log-file=errortest.log"
 
 RANGE=$(
     VALGRINDOPT="--log-file=/dev/null"
-    blackdogtest 2>&1 >/dev/null | tail -1)
+    pidsentrytest 2>&1 >/dev/null | tail -1)
 RANGE=$(( (RANGE + 999) / 500 * 500 ))
 
 if [ x"$TRIGGER" = x"once" ] ; then
@@ -59,13 +59,13 @@ while [ $TRIGGER -lt $RANGE ] ; do
 
     : $(( ++TRIGGER ))
 
-    [ -z "$(ps -C blackdog -o user=,ppid=,pid=,pgid=,command=)" ]
+    [ -z "$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)" ]
 
-    export BLACKDOG_TEST_ERROR="$TRIGGER"
+    export PIDSENTRY_TEST_ERROR="$TRIGGER"
     printf ""
-    printf "%s\n" "BLACKDOG_TEST_ERROR=$BLACKDOG_TEST_ERROR # $RANGE"
+    printf "%s\n" "PIDSENTRY_TEST_ERROR=$PIDSENTRY_TEST_ERROR # $RANGE"
 
-    blackdogtest >/dev/null || {
+    pidsentrytest >/dev/null || {
         RC=$?
         printf "Test exit code %s\n" "$RC"
         [ $RC -eq 1 ]   && continue # EXIT_FAILURE
@@ -75,5 +75,5 @@ while [ $TRIGGER -lt $RANGE ] ; do
         exit 1
     }
 
-    [ -z "$(ps -C blackdog -o user=,ppid=,pid=,pgid=,command=)" ]
+    [ -z "$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)" ]
 done

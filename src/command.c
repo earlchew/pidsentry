@@ -187,17 +187,17 @@ runCommand(struct Command *self,
         /* Populate the environment of the command process to
          * provide the attributes of the monitored process. */
 
-        const char *blackdogChildPid;
+        const char *watchdogChildPid;
         ABORT_UNLESS(
-            (blackdogChildPid = setEnvPid(
-                "BLACKDOG_CHILD_PID", self->mChildPid)),
+            (watchdogChildPid = setEnvPid(
+                "PIDSENTRY_CHILD_PID", self->mChildPid)),
             {
                 terminate(
                     errno,
-                    "Unable to set BLACKDOG_CHILD_PID %" PRId_Pid,
+                    "Unable to set PIDSENTRY_CHILD_PID %" PRId_Pid,
                     FMTd_Pid(self->mChildPid));
             });
-        debug(0, "BLACKDOG_CHILD_PID=%s", blackdogChildPid);
+        debug(0, "PIDSENTRY_CHILD_PID=%s", watchdogChildPid);
 
         /* Wait here until the parent process has completed its
          * initialisation, and sends a positive acknowledgement. */
