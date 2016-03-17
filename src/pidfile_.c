@@ -60,7 +60,7 @@ openPidFile_(struct PidFile *self, const char *aFileName)
     int rc = -1;
 
     self->mFile = 0;
-    self->mLock = LOCK_UN;
+    self->mLock = 0;
 
     ERROR_IF(
         createPathName(&self->mPathName, aFileName));
@@ -79,10 +79,7 @@ static void
 closePidFile_(struct PidFile *self)
 {
     if (self)
-    {
-        closeFile(self->mFile);
         closePathName(&self->mPathName);
-    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -93,6 +90,7 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 
     debug(0, "lock %s '%s'", aLockType, self->mPathName.mFileName);
 
+    ensure(aLock);
     ensure(LOCK_UN != aLock);
     ensure(LOCK_UN == self->mLock);
 
@@ -278,6 +276,7 @@ releaseLockPidFile(struct PidFile *self)
 {
     int rc = -1;
 
+    ensure(self->mLock);
     ensure(LOCK_UN != self->mLock);
 
     ERROR_IF(
@@ -315,89 +314,15 @@ acquireReadLockPidFile(struct PidFile *self)
 
 /* -------------------------------------------------------------------------- */
 int
-createPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags)
+initPidFile(struct PidFile *self_, const char *aFileName)
 {
     int rc = -1;
 
-    struct PidFile *pidFile = 0;
+    struct PidFile *self = 0;
 
     ERROR_IF(
-        aFlags & ~ O_CLOEXEC,
-        {
-            errno = EINVAL;
-        });
-
-    ERROR_IF(
-        openPidFile_(self, aFileName));
-    pidFile = self;
-
-    /* Check if the pidfile already exists, and if the process that
-     * it names is still running. */
-
-    int err;
-    ERROR_IF(
-        (err = createFile(
-            &self->mFile_,
-            openPathName(&self->mPathName,
-                         O_RDONLY | O_NOFOLLOW | aFlags, 0)),
-         err && ENOENT != errno));
-
-    if ( ! err)
-    {
-        self->mFile = &self->mFile_;
-
-        ERROR_IF(
-            acquireWriteLockPidFile(self));
-
-        /* If the pidfile names a valid process then give up since
-         * it means that the pidfile is already owned. Otherwise,
-         * the pidfile is not owned, and can be deleted. */
-
-        struct sockaddr_un pidKeeperAddr;
-        struct Pid         pid;
-        ERROR_IF(
-            (pid = readPidFile(self, &pidKeeperAddr),
-             -1 == pid.mPid));
-
-        ERROR_IF(
-            pid.mPid,
-            {
-                errno = EEXIST;
-            });
-
-        debug(
-            0,
-            "removing existing pidfile '%s'", self->mPathName.mFileName);
-
-        ERROR_IF(
-            unlinkPathName(&self->mPathName, 0) && ENOENT != errno);
-
-        ERROR_IF(
-            releaseLockPidFile(self));
-
-        closeFile(self->mFile);
-
-        self->mFile = 0;
-    }
-
-    /* Open the pidfile using lock file semantics for writing, but
-     * with readonly permissions. Use of lock file semantics ensures
-     * that the watchdog will be the owner of the pid file, and
-     * readonly permissions dissuades other processes from modifying
-     * the content. */
-
-    ensure( ! self->mFile);
-    TEST_RACE
-    ({
-        ERROR_IF(
-            createFile(
-                &self->mFile_,
-                openPathName(
-                    &self->mPathName,
-                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | aFlags,
-                    S_IRUSR)));
-    });
-    self->mFile = &self->mFile_;
+        openPidFile_(self_, aFileName));
+    self = self_;
 
     rc = 0;
 
@@ -406,39 +331,125 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            closePidFile_(pidFile);
-        }
+            closePidFile_(self);
     });
 
     return rc;
 }
 
 /* -------------------------------------------------------------------------- */
+void
+destroyPidFile(struct PidFile *self)
+{
+    if (self)
+    {
+        closePidFile(self);
+        closePathName(&self->mPathName);
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 int
-openPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags)
+openPidFile(struct PidFile *self, unsigned aFlags)
 {
     int rc = -1;
 
-    struct PidFile *pidFile = 0;
+    ERROR_IF(
+        self->mLock,
+        {
+            errno = EALREADY;
+        });
+    self->mLock = LOCK_UN;
 
     ERROR_IF(
-        aFlags & ~ O_CLOEXEC,
+        aFlags & ~ (O_CLOEXEC | O_CREAT),
         {
             errno = EINVAL;
         });
 
-    ERROR_IF(
-        openPidFile_(self, aFileName));
-    pidFile = self;
+    unsigned openFlags = aFlags & O_CLOEXEC;
 
-    ERROR_IF(
-        createFile(
-            &self->mFile_,
-            openPathName(&self->mPathName,
-                         O_RDONLY | O_NOFOLLOW | aFlags, 0)));
+    if ( ! (aFlags & O_CREAT))
+    {
+        ERROR_IF(
+            createFile(
+                &self->mFile_,
+                openPathName(&self->mPathName,
+                             O_RDONLY | O_NOFOLLOW | openFlags, 0)));
+        self->mFile = &self->mFile_;
+    }
+    else
+    {
+        /* Check if the pidfile already exists, and if the process that
+         * it names is still running. */
 
-    self->mFile = &self->mFile_;
+        int err;
+        ERROR_IF(
+            (err = createFile(
+                &self->mFile_,
+                openPathName(&self->mPathName,
+                             O_RDONLY | O_NOFOLLOW | openFlags, 0)),
+             err && ENOENT != errno));
+
+        if ( ! err)
+        {
+            self->mFile = &self->mFile_;
+
+            ERROR_IF(
+                acquireWriteLockPidFile(self));
+
+            /* If the pidfile names a valid process then give up since
+             * it means that the pidfile is already owned. Otherwise,
+             * the pidfile is not owned, and can be deleted. */
+
+            struct sockaddr_un pidKeeperAddr;
+            struct Pid         pid;
+            ERROR_IF(
+                (pid = readPidFile(self, &pidKeeperAddr),
+                 -1 == pid.mPid));
+
+            ERROR_IF(
+                pid.mPid,
+                {
+                    errno = EEXIST;
+                });
+
+            debug(
+                0,
+                "removing existing pidfile '%s'", self->mPathName.mFileName);
+
+            ERROR_IF(
+                unlinkPathName(&self->mPathName, 0) && ENOENT != errno);
+
+            ERROR_IF(
+                releaseLockPidFile(self));
+
+            closeFile(self->mFile);
+
+            self->mFile = 0;
+        }
+
+        /* Open the pidfile using lock file semantics for writing, but
+         * with readonly permissions. Use of lock file semantics ensures
+         * that the watchdog will be the owner of the pid file, and
+         * readonly permissions dissuades other processes from modifying
+         * the content. */
+
+        ensure( ! self->mFile);
+        TEST_RACE
+        ({
+            ERROR_IF(
+                createFile(
+                    &self->mFile_,
+                    openPathName(
+                        &self->mPathName,
+                        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | openFlags,
+                        S_IRUSR)));
+        });
+        self->mFile = &self->mFile_;
+    }
+
+    ensure(self->mFile == &self->mFile_);
 
     rc = 0;
 
@@ -447,7 +458,11 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closePidFile_(pidFile);
+        {
+            closeFile(self->mFile);
+            self->mFile = 0;
+            self->mLock = 0;
+        }
     });
 
     return rc;
@@ -499,7 +514,7 @@ Finally:
 void
 closePidFile(struct PidFile *self)
 {
-    if (self)
+    if (self && self->mFile)
     {
         ensure(LOCK_UN != self->mLock);
 
@@ -547,10 +562,9 @@ closePidFile(struct PidFile *self)
         }
 
         closeFile(self->mFile);
-        closePathName(&self->mPathName);
 
         self->mFile = 0;
-        self->mLock = LOCK_UN;
+        self->mLock = 0;
     }
 }
 

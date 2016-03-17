@@ -370,7 +370,7 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
                     pidFile->mPathName.mFileName);
             });
 
-        closePidFile(pidFile);
+        destroyPidFile(pidFile);
         pidFile = 0;
     }
 

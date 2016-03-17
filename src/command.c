@@ -54,9 +54,11 @@ createCommand(struct Command *self,
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
 
+    ABORT_IF(
+        initPidFile(&pidFile_, aPidFileName));
     int err;
     ERROR_IF(
-        (err = openPidFile(&pidFile_, aPidFileName, O_CLOEXEC),
+        (err = openPidFile(&pidFile_, O_CLOEXEC),
          err && ENOENT != errno),
         {
             warn(errno,
@@ -141,7 +143,7 @@ Finally:
          * acquisition of a reference to the child process group is the
          * sole requirement. */
 
-        closePidFile(pidFile);
+        destroyPidFile(pidFile);
     });
 
     return rc;

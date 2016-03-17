@@ -48,16 +48,20 @@ struct PidFile
 
 /* -------------------------------------------------------------------------- */
 int
-createPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags);
+initPidFile(struct PidFile *self, const char *aFileName);
 
-int
-openPidFile(struct PidFile *self, const char *aFileName, unsigned aFlags);
+void
+destroyPidFile(struct PidFile *self);
 
+/* -------------------------------------------------------------------------- */
 int
-detectPidFileZombie(const struct PidFile *self);
+openPidFile(struct PidFile *self, unsigned aFlags);
 
 void
 closePidFile(struct PidFile *self);
+
+int
+detectPidFileZombie(const struct PidFile *self);
 
 struct Pid
 readPidFile(const struct PidFile *self, struct sockaddr_un *aPidKeeperAddr);
