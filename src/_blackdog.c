@@ -73,11 +73,6 @@
  *    Check for file descriptors in command process
  * pidsentry ?
  * Write unit test for forkProcessDaemon()
- * Add chdir option for forkProcess() so that child processes do not
- *   hold references to cwd
- * Fix problem where a second program tries to acquire and write to pidfile
- *  and blocks rather than terminating
- * Separate calls to initPidFile from openPidFile
  */
 
 /* -------------------------------------------------------------------------- */
