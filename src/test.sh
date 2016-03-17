@@ -137,8 +137,22 @@ runTests()
 
     testCase 'Dead process in pid file'
     rm -f $PIDFILE
-    sh -c '/bin/echo $$' > $PIDFILE
+    blackdog -i -p $PIDFILE -- sh -c 'kill -9 $PPID' || :
+    [ -s $PIDFILE ]
     testExit 0 blackdog --test=1 -d -p $PIDFILE -- true
+    [ ! -f $PIDFILE ]
+
+    testCase 'Existing process in pid file'
+    rm -f $PIDFILE
+    testOutput "OK" = '$(
+        blackdog -i -p $PIDFILE -u -- sh -c "
+            while : ; do sleep 1 ; done" | {
+                read PARENT UMBILICAL
+                read CHILD
+                blackdog -p $PIDFILE -- true || echo OK
+             kill -9 $CHILD
+        }
+    )'
     [ ! -f $PIDFILE ]
 
     testCase 'Aliased process in pid file'

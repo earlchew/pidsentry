@@ -103,8 +103,7 @@ int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
                        struct SocketPair       *aUmbilicalSocket,
-                       struct SocketPair       *aSyncSocket,
-                       struct PidFile          *aPidFile);
+                       struct SocketPair       *aSyncSocket);
 
 int
 stopUmbilicalProcess(struct UmbilicalProcess *self);

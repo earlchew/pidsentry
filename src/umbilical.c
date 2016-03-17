@@ -327,10 +327,8 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
                      struct Pid               aWatchdogPid,
                      struct ChildProcess     *aChildProcess,
                      struct SocketPair       *aUmbilicalSocket,
-                     struct SocketPair       *aSyncSocket,
-                     struct PidFile          *aPidFile)
+                     struct SocketPair       *aSyncSocket)
 {
-    struct PidFile *pidFile = aPidFile;
 
     debug(0,
           "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
@@ -358,21 +356,6 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
                 "Unable to dup %d to stdout",
                 aUmbilicalSocket->mChildFile->mFd);
         });
-
-    if (pidFile)
-    {
-        ABORT_IF(
-            acquireReadLockPidFile(pidFile),
-            {
-                terminate(
-                    errno,
-                    "Unable to acquire read lock on pid file '%s'",
-                    pidFile->mPathName.mFileName);
-            });
-
-        destroyPidFile(pidFile);
-        pidFile = 0;
-    }
 
     closeSocketPair(aSyncSocket);
     closeSocketPair(aUmbilicalSocket);
@@ -412,8 +395,7 @@ int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
                        struct SocketPair       *aUmbilicalSocket,
-                       struct SocketPair       *aSyncSocket,
-                       struct PidFile          *aPidFile)
+                       struct SocketPair       *aSyncSocket)
 {
     int rc = -1;
 
@@ -451,8 +433,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
                              watchdogPid,
                              aChildProcess,
                              aUmbilicalSocket,
-                             aSyncSocket,
-                             aPidFile);
+                             aSyncSocket);
     }
 
     rc = 0;

@@ -406,6 +406,9 @@ forkChild(
                 (rdlen = readFile(aSyncSocket->mChildFile, buf, 1),
                  -1 == rdlen || (errno = 0, 1 != rdlen)),
                 {
+                    if ( ! rdlen)
+                        quitProcess(EXIT_FAILURE);
+
                     terminate(
                         errno,
                         "Unable to synchronise child");

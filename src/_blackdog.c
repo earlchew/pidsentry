@@ -83,7 +83,6 @@
 /* -------------------------------------------------------------------------- */
 static struct PidFile *
 announceChild(struct PidFile           *aPidFile,
-              const char               *aPidFileName,
               struct Pid                aPid,
               const struct sockaddr_un *aPidKeeperAddr)
 {
@@ -91,19 +90,20 @@ announceChild(struct PidFile           *aPidFile,
     {
         if (0 < zombie)
         {
-            debug(0, "discarding zombie pid file '%s'", aPidFileName);
+            debug(0,
+                  "discarding zombie pid file '%s'",
+                  aPidFile->mPathName.mFileName);
 
-            destroyPidFile(aPidFile);
+            closePidFile(aPidFile);
         }
 
-        ABORT_IF(
-            initPidFile(aPidFile, aPidFileName));
         ABORT_IF(
             openPidFile(aPidFile, O_CLOEXEC | O_CREAT),
             {
                 terminate(
                     errno,
-                    "Cannot create pid file '%s'", aPidFileName);
+                    "Cannot create pid file '%s'",
+                    aPidFile->mPathName.mFileName);
             });
 
         /* It is not possible to create the pidfile and acquire a flock
@@ -118,7 +118,8 @@ announceChild(struct PidFile           *aPidFile,
             {
                 terminate(
                     errno,
-                    "Cannot acquire write lock on pid file '%s'", aPidFileName);
+                    "Cannot acquire write lock on pid file '%s'",
+                    aPidFile->mPathName.mFileName);
             });
 
         ABORT_IF(
@@ -126,18 +127,19 @@ announceChild(struct PidFile           *aPidFile,
             {
                 terminate(
                     errno,
-                    "Unable to obtain status of pid file '%s'", aPidFileName);
+                    "Unable to obtain status of pid file '%s'",
+                    aPidFile->mPathName.mFileName);
             });
     }
 
-    debug(0, "initialised pid file '%s'", aPidFileName);
+    debug(0, "initialised pid file '%s'", aPidFile->mPathName.mFileName);
 
     ABORT_IF(
         writePidFile(aPidFile, aPid, aPidKeeperAddr),
         {
             terminate(
                 errno,
-                "Cannot write to pid file '%s'", aPidFileName);
+                "Cannot write to pid file '%s'", aPidFile->mPathName.mFileName);
         });
 
     /* The pidfile was locked on creation, and now that it
@@ -149,7 +151,7 @@ announceChild(struct PidFile           *aPidFile,
         {
             terminate(
                 errno,
-                "Cannot unlock pid file '%s'", aPidFileName);
+                "Cannot unlock pid file '%s'", aPidFile->mPathName.mFileName);
         });
 
     return aPidFile;
@@ -357,6 +359,44 @@ cmdMonitorChild(char **aCmd)
                 "Unable to add watch on process continuation");
         });
 
+    /* If a pidfile is required, create it now so that it can
+     * be anchored to its directory before changing the current
+     * working directory. Note that the pidfile might reside in
+     * the current directory. */
+
+    struct PidFile  pidFile_;
+    struct PidFile *pidFile = 0;
+
+    if (gOptions.mPidFile)
+    {
+        ABORT_IF(
+            initPidFile(&pidFile_, gOptions.mPidFile),
+            {
+                terminate(
+                    errno,
+                    "Cannot initialise pid file '%s'", gOptions.mPidFile);
+            });
+        pidFile = &pidFile_;
+    }
+
+    /* If not running in test mode, change directory to avoid holding
+     * a reference that prevents a volume being unmounted. Otherwise
+     * do not change directories in case a core file needs to be
+     * generated. */
+
+    if ( ! gOptions.mDebug)
+    {
+        static const char rootDir[] = "/";
+
+        ABORT_IF(
+            chdir("/"),
+            {
+                terminate(
+                    errno,
+                    "Unable to change directory to %s", rootDir);
+            });
+    }
+
     /* Before announcing the chld process, prepare the keeper process
      * that will hold a reference to the child pid, preventing
      * that pid from being re-used and alised to another process. */
@@ -369,7 +409,7 @@ cmdMonitorChild(char **aCmd)
 
     struct sockaddr_un pidKeeperAddr;
 
-    if (gOptions.mPidFile)
+    if (pidFile)
     {
         ABORT_IF(
             createKeeperProcess(&pidKeeperProcess_, childProcess.mPgid),
@@ -418,43 +458,16 @@ cmdMonitorChild(char **aCmd)
         }
 
         closeSocketPairChild(pidKeeperTether);
-    }
 
-    /* Only identify the watchdog process after all the signal handlers
-     * have been installed. The functional tests can use this as an
-     * indicator that the watchdog is ready to run the child process.
-     *
-     * Although the watchdog process can be announed at this point,
-     * the announcement is deferred so that it and the umbilical can
-     * be announced in a single line at one point. */
+        /* Only identify the watchdog process after all the signal handlers
+         * have been installed. The functional tests can use this as an
+         * indicator that the watchdog is ready to run the child process.
+         *
+         * Although the watchdog process can be announed at this point,
+         * the announcement is deferred so that it and the umbilical can
+         * be announced in a single line at one point. */
 
-    struct PidFile  pidFile_;
-    struct PidFile *pidFile = 0;
-
-    if (gOptions.mPidFile)
-    {
-        pidFile = announceChild(&pidFile_,
-                                gOptions.mPidFile,
-                                childProcess.mPid,
-                                &pidKeeperAddr);
-    }
-
-    /* If not running in test mode, change directory to avoid holding
-     * a reference that prevents a volume being unmounted. Otherwise
-     * do not change directories in case a core file needs to be
-     * generated. */
-
-    if ( ! gOptions.mDebug)
-    {
-        static const char rootDir[] = "/";
-
-        ABORT_IF(
-            chdir("/"),
-            {
-                terminate(
-                    errno,
-                    "Unable to change directory to %s", rootDir);
-            });
+        announceChild(pidFile, childProcess.mPid, &pidKeeperAddr);
     }
 
     /* With the child process launched, close the instance of StdFdFiller
@@ -503,8 +516,7 @@ cmdMonitorChild(char **aCmd)
         createUmbilicalProcess(&umbilicalProcess,
                                &childProcess,
                                &umbilicalSocket,
-                               &syncSocket,
-                               pidFile),
+                               &syncSocket),
         {
             terminate(
                 errno,

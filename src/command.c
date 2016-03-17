@@ -54,8 +54,14 @@ createCommand(struct Command *self,
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
 
-    ABORT_IF(
-        initPidFile(&pidFile_, aPidFileName));
+    ERROR_IF(
+        initPidFile(&pidFile_, aPidFileName),
+        {
+            warn(errno,
+                 "Unable to find pid file '%s'", aPidFileName);
+        });
+    pidFile = &pidFile_;
+
     int err;
     ERROR_IF(
         (err = openPidFile(&pidFile_, O_CLOEXEC),
@@ -70,8 +76,6 @@ createCommand(struct Command *self,
         {
             errno = ECHILD;
         });
-
-    pidFile = &pidFile_;
 
     ERROR_IF(
         acquireReadLockPidFile(pidFile),

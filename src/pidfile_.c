@@ -299,10 +299,35 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+acquireWriteLockPidFile_(struct PidFile *self)
+{
+    return lockPidFile_(self, LOCK_EX, "exclusive");
+}
+
 int
 acquireWriteLockPidFile(struct PidFile *self)
 {
-    return lockPidFile_(self, LOCK_EX, "exclusive");
+    int rc = -1;
+
+    int flags;
+    ERROR_IF(
+        (flags = fcntlFileGetFlags(self->mFile),
+         -1 == flags));
+
+    ERROR_UNLESS(
+        O_RDONLY != (flags & O_ACCMODE));
+
+    ERROR_IF(
+        acquireWriteLockPidFile_(self));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -396,7 +421,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             self->mFile = &self->mFile_;
 
             ERROR_IF(
-                acquireWriteLockPidFile(self));
+                acquireWriteLockPidFile_(self));
 
             /* If the pidfile names a valid process then give up since
              * it means that the pidfile is already owned. Otherwise,
@@ -516,19 +541,9 @@ closePidFile(struct PidFile *self)
 {
     if (self && self->mFile)
     {
-        ensure(LOCK_UN != self->mLock);
+        ensure(self->mLock);
 
-        int flags;
-        ABORT_IF(
-            (flags = fcntlFileGetFlags(self->mFile), -1 == flags),
-            {
-                terminate(
-                    errno,
-                    "Unable to get flags for pid file '%s'",
-                    self->mPathName.mFileName);
-            });
-
-        if (O_RDONLY != (flags & O_ACCMODE) && LOCK_EX == self->mLock)
+        if (LOCK_EX == self->mLock)
         {
             /* The pidfile is still locked at this point. If writable,
              * remove the content from the pidfile first so that any
