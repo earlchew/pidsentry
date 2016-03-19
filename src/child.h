@@ -42,6 +42,7 @@ extern "C" {
 
 struct StdFdFiller;
 struct SocketPair;
+struct BellSocketPair;
 struct ChildMonitor;
 struct UmbilicalProcess;
 
@@ -76,11 +77,11 @@ superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
 
 int
 forkChild(
-    struct ChildProcess  *self,
-    char                **aCmd,
-    struct StdFdFiller   *aStdFdFiller,
-    struct SocketPair    *aSyncSocket,
-    struct SocketPair    *aUmbilicalSocket);
+    struct ChildProcess   *self,
+    char                 **aCmd,
+    struct StdFdFiller    *aStdFdFiller,
+    struct BellSocketPair *aSyncSocket,
+    struct SocketPair     *aUmbilicalSocket);
 
 void
 killChild(struct ChildProcess *self, int aSigNum);

@@ -102,7 +102,9 @@ ringBellSocketPair_(struct File *aFile)
          1 != err),
         {
             if ( ! err)
-                errno = 0;
+                errno = ENOENT;
+            else if (ECONNRESET == errno)
+                errno = EPIPE;
         });
 
     rc = 0;
@@ -151,7 +153,9 @@ waitBellSocketPair_(struct File *aFile)
          1 != err),
         {
             if ( ! err)
-                errno = 0;
+                errno = ENOENT;
+            else if (ECONNRESET == errno)
+                errno = EPIPE;
         });
 
     rc = 0;

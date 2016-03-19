@@ -39,6 +39,7 @@
 #include "macros_.h"
 #include "test_.h"
 #include "socketpair_.h"
+#include "bellsocketpair_.h"
 #include "stdfdfiller_.h"
 #include "eventpipe_.h"
 
@@ -338,11 +339,11 @@ resumeChildProcessGroup(struct ChildProcess *self)
 /* -------------------------------------------------------------------------- */
 int
 forkChild(
-    struct ChildProcess  *self,
-    char                **aCmd,
-    struct StdFdFiller   *aStdFdFiller,
-    struct SocketPair    *aSyncSocket,
-    struct SocketPair    *aUmbilicalSocket)
+    struct ChildProcess   *self,
+    char                 **aCmd,
+    struct StdFdFiller    *aStdFdFiller,
+    struct BellSocketPair *aSyncSocket,
+    struct SocketPair     *aUmbilicalSocket)
 {
     int rc = -1;
 
@@ -395,18 +396,14 @@ forkChild(
 
         debug(0, "synchronising child process");
 
-        closeSocketPairParent(aSyncSocket);
+        closeBellSocketPairParent(aSyncSocket);
 
         TEST_RACE
         ({
-            char buf[1];
-
-            ssize_t rdlen;
             ABORT_IF(
-                (rdlen = readFile(aSyncSocket->mChildFile, buf, 1),
-                 -1 == rdlen || (errno = 0, 1 != rdlen)),
+                waitBellSocketPairChild(aSyncSocket),
                 {
-                    if ( ! rdlen)
+                    if (EPIPE == errno)
                         quitProcess(EXIT_FAILURE);
 
                     terminate(
@@ -414,12 +411,10 @@ forkChild(
                         "Unable to synchronise child");
                 });
 
-            ssize_t wrlen;
             ABORT_IF(
-                (wrlen = writeFile(aSyncSocket->mChildFile, buf, 1),
-                 -1 == wrlen || (errno = 0, 1 != wrlen)),
+                ringBellSocketPairChild(aSyncSocket),
                 {
-                    if (-1 == wrlen && EPIPE == errno)
+                    if (EPIPE == errno)
                         quitProcess(EXIT_FAILURE);
 
                     terminate(
@@ -435,20 +430,19 @@ forkChild(
 
         TEST_RACE
         ({
-            char buf[1];
+            int err;
 
-            ssize_t rdlen;
             ABORT_IF(
-                (rdlen = readFile(aSyncSocket->mChildFile, buf, 1),
-                 -1 == rdlen || (errno = 0, rdlen)),
+                (err = waitBellSocketPairChild(aSyncSocket),
+                 ! err || ENOENT != errno),
                 {
                     terminate(
-                        errno,
+                        err ? errno : 0,
                         "Unable to synchronise child");
                 });
         });
 
-        closeSocketPair(aSyncSocket);
+        closeBellSocketPair(aSyncSocket);
 
         do
         {

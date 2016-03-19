@@ -38,6 +38,7 @@
 #include "macros_.h"
 #include "pipe_.h"
 #include "socketpair_.h"
+#include "bellsocketpair_.h"
 #include "unixsocket_.h"
 #include "stdfdfiller_.h"
 #include "pidfile_.h"
@@ -320,9 +321,9 @@ cmdMonitorChild(char **aCmd)
                 "Unable to add watch on process termination");
         });
 
-    struct SocketPair syncSocket;
+    struct BellSocketPair syncSocket;
     ABORT_IF(
-        createSocketPair(&syncSocket, 0),
+        createBellSocketPair(&syncSocket, 0),
         {
             terminate(
                 errno,
@@ -555,11 +556,10 @@ cmdMonitorChild(char **aCmd)
     /* With the child process announced, and the umbilical monitor
      * prepared, allow the child process to run the target program. */
 
-    closeSocketPairChild(&syncSocket);
+    closeBellSocketPairChild(&syncSocket);
 
     TEST_RACE
     ({
-
         /* The child process is waiting so that the chlid program will
          * run only after the pidfile has been created.
          *
@@ -567,14 +567,8 @@ cmdMonitorChild(char **aCmd)
          * watchdog which will have propagated it to the child, causing
          * the child to terminate. */
 
-        char buf[1] = { 0 };
-
-        ssize_t wrlen;
         ABORT_IF(
-            (wrlen = writeFile(syncSocket.mParentFile, buf, 1),
-             -1 == wrlen
-             ? EPIPE != errno
-             : (errno = 0, 1 != wrlen)),
+            ringBellSocketPairParent(&syncSocket) && EPIPE != errno,
             {
                 terminate(
                     errno,
@@ -584,12 +578,8 @@ cmdMonitorChild(char **aCmd)
         /* Now wait for the child to respond to know that it has
          * received the indication that it can start running. */
 
-        ssize_t rdlen;
         ABORT_IF(
-            (rdlen = readFile(syncSocket.mParentFile, buf, 1),
-             -1 == rdlen
-             ? ECONNRESET != errno
-             : (errno = 0, 1 != rdlen)),
+            waitBellSocketPairParent(&syncSocket) && EPIPE != errno,
             {
                 terminate(
                     errno,
@@ -619,7 +609,7 @@ cmdMonitorChild(char **aCmd)
         });
     }
 
-    closeSocketPair(&syncSocket);
+    closeBellSocketPair(&syncSocket);
 
     /* Avoid closing the original stdout file descriptor only if
      * there is a need to copy the contents of the tether to it.
