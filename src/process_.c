@@ -73,26 +73,26 @@ struct ProcessSignalThread
     bool            mStopping;
 };
 
-static struct ProcessAppLock  sProcessAppLock;
-static struct ThreadSigMutex  sProcessSigMutex = THREAD_SIG_MUTEX_INITIALIZER;
-static struct ProcessLock     sProcessLock_[2];
-static struct ProcessLock    *sProcessLock[2];
-static unsigned               sActiveProcessLock;
-static unsigned               sProcessAbort;
+static struct ProcessAppLock  processAppLock_;
+static struct ThreadSigMutex  processSigMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
+static struct ProcessLock     processLock_[2];
+static struct ProcessLock    *processLockPtr_[2];
+static unsigned               activeProcessLock_;
+static unsigned               processAbort_;
 
-static struct ProcessSignalThread sProcessSignalThread =
+static struct ProcessSignalThread processSignalThread_ =
 {
     .mMutex = PTHREAD_MUTEX_INITIALIZER,
     .mCond  = PTHREAD_COND_INITIALIZER,
 };
 
-static unsigned              sInit;
-static struct ThreadSigMask  sSigMask;
-static const char           *sArg0;
-static const char           *sProgramName;
-static struct MonotonicTime  sTimeBase;
+static unsigned              moduleInit_;
+static struct ThreadSigMask  processSigMask_;
+static const char           *processArg0_;
+static const char           *programName_;
+static struct MonotonicTime  processTimeBase_;
 
-static const char *sSignalNames[NSIG] =
+static const char *signalNames_[NSIG] =
 {
     [SIGHUP]    = "SIGHUP",
     [SIGABRT]   = "SIGABRT",
@@ -126,19 +126,19 @@ static const char *sSignalNames[NSIG] =
 };
 
 /* -------------------------------------------------------------------------- */
-static unsigned __thread sProcessSignalContext;
+static unsigned __thread processSignalContext_;
 
 static struct ProcessSignalVector
 {
     struct sigaction mAction;
     pthread_mutex_t  mMutex_;
     pthread_mutex_t *mMutex;
-} sSignalVectors[NSIG];
+} processSignalVectors_[NSIG];
 
 static void
 dispatchSigAbort_(void)
 {
-    if (sProcessAbort)
+    if (processAbort_)
     {
         /* A handler for SIGABRT is established, but abortProcess() was
          * invoked. Abort the process from here. */
@@ -152,7 +152,7 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
 {
     FINALLY
     ({
-        struct ProcessSignalVector *sv = &sSignalVectors[aSigNum];
+        struct ProcessSignalVector *sv = &processSignalVectors_[aSigNum];
 
         struct ProcessSignalName sigName;
         debug(1,
@@ -167,7 +167,7 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
             if (SIG_DFL != sv->mAction.sa_handler &&
                 SIG_IGN != sv->mAction.sa_handler)
             {
-                ++sProcessSignalContext;
+                ++processSignalContext_;
 
                 enum ErrorFrameStackKind stackKind =
                     switchErrorFrameStack(ErrorFrameStackSignal);
@@ -181,7 +181,7 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
 
                 switchErrorFrameStack(stackKind);
 
-                --sProcessSignalContext;
+                --processSignalContext_;
             }
         }
         unlockMutex(sv->mMutex);
@@ -193,7 +193,7 @@ dispatchSigHandler_(int aSigNum)
 {
     FINALLY
     ({
-        struct ProcessSignalVector *sv = &sSignalVectors[aSigNum];
+        struct ProcessSignalVector *sv = &processSignalVectors_[aSigNum];
 
         struct ProcessSignalName sigName;
         debug(1,
@@ -208,7 +208,7 @@ dispatchSigHandler_(int aSigNum)
             if (SIG_DFL != sv->mAction.sa_handler &&
                 SIG_IGN != sv->mAction.sa_handler)
             {
-                ++sProcessSignalContext;
+                ++processSignalContext_;
 
                 enum ErrorFrameStackKind stackKind =
                     switchErrorFrameStack(ErrorFrameStackSignal);
@@ -222,7 +222,7 @@ dispatchSigHandler_(int aSigNum)
 
                 switchErrorFrameStack(stackKind);
 
-                --sProcessSignalContext;
+                --processSignalContext_;
             }
         }
         unlockMutex(sv->mMutex);
@@ -236,7 +236,7 @@ changeSigAction_(unsigned          aSigNum,
 {
     int rc = -1;
 
-    ensure(NUMBEROF(sSignalVectors) > aSigNum);
+    ensure(NUMBEROF(processSignalVectors_) > aSigNum);
 
     struct ThreadSigMask  threadSigMask_;
     struct ThreadSigMask *threadSigMask = 0;
@@ -263,11 +263,11 @@ changeSigAction_(unsigned          aSigNum,
         nextAction.sa_flags &= ~ SA_NODEFER;
     }
 
-    lockThreadSigMutex(&sProcessSigMutex);
-    if ( ! sSignalVectors[aSigNum].mMutex)
-        sSignalVectors[aSigNum].mMutex =
-            createMutex(&sSignalVectors[aSigNum].mMutex_);
-    unlockThreadSigMutex(&sProcessSigMutex);
+    lockThreadSigMutex(&processSigMutex_);
+    if ( ! processSignalVectors_[aSigNum].mMutex)
+        processSignalVectors_[aSigNum].mMutex =
+            createMutex(&processSignalVectors_[aSigNum].mMutex_);
+    unlockThreadSigMutex(&processSigMutex_);
 
     int sigList[] = { aSigNum, 0 };
 
@@ -275,7 +275,7 @@ changeSigAction_(unsigned          aSigNum,
 
     threadSigMask = &threadSigMask_;
 
-    lock = lockMutex(sSignalVectors[aSigNum].mMutex);
+    lock = lockMutex(processSignalVectors_[aSigNum].mMutex);
 
     struct sigaction prevAction;
     ERROR_IF(
@@ -287,7 +287,7 @@ changeSigAction_(unsigned          aSigNum,
     if (aOldAction)
         *aOldAction = prevAction;
 
-    sSignalVectors[aSigNum].mAction = aNewAction;
+    processSignalVectors_[aSigNum].mAction = aNewAction;
 
     rc = 0;
 
@@ -306,11 +306,11 @@ Finally:
 unsigned
 ownProcessSignalContext(void)
 {
-    return sProcessSignalContext;
+    return processSignalContext_;
 }
 
 /* -------------------------------------------------------------------------- */
-static struct sigaction sSigPipeAction =
+static struct sigaction processSigPipeAction_ =
 {
     .sa_handler = SIG_ERR,
 };
@@ -324,7 +324,7 @@ ignoreProcessSigPipe(void)
         changeSigAction_(
             SIGPIPE,
             (struct sigaction) { .sa_handler = SIG_IGN },
-            &sSigPipeAction));
+            &processSigPipeAction_));
 
     rc = 0;
 
@@ -340,14 +340,14 @@ resetProcessSigPipe_(void)
 {
     int rc = -1;
 
-    if (SIG_ERR != sSigPipeAction.sa_handler ||
-        (sSigPipeAction.sa_flags & SA_SIGINFO))
+    if (SIG_ERR != processSigPipeAction_.sa_handler ||
+        (processSigPipeAction_.sa_flags & SA_SIGINFO))
     {
         ERROR_IF(
-            changeSigAction_(SIGPIPE, sSigPipeAction, 0));
+            changeSigAction_(SIGPIPE, processSigPipeAction_, 0));
 
-        sSigPipeAction.sa_handler = SIG_ERR;
-        sSigPipeAction.sa_flags   = 0;
+        processSigPipeAction_.sa_handler = SIG_ERR;
+        processSigPipeAction_.sa_flags   = 0;
     }
 
     rc = 0;
@@ -371,7 +371,7 @@ static struct
     struct ThreadSigMutex mSigMutex;
     unsigned              mCount;
     struct VoidMethod     mMethod;
-} sSigCont =
+} processSigCont_ =
 {
     .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER,
 };
@@ -383,19 +383,19 @@ sigCont_(int aSigNum)
      * the motivation for using a lock free update here. Other solutions
      * are possible, but a lock free approach is the most straightforward. */
 
-    __sync_add_and_fetch(&sSigCont.mCount, 2);
+    __sync_add_and_fetch(&processSigCont_.mCount, 2);
 
-    lockThreadSigMutex(&sSigCont.mSigMutex);
+    lockThreadSigMutex(&processSigCont_.mSigMutex);
 
-    if (ownVoidMethodNil(sSigCont.mMethod))
+    if (ownVoidMethodNil(processSigCont_.mMethod))
         debug(1, "detected SIGCONT");
     else
     {
         debug(1, "observed SIGCONT");
-        callVoidMethod(sSigCont.mMethod);
+        callVoidMethod(processSigCont_.mMethod);
     }
 
-    unlockThreadSigMutex(&sSigCont.mSigMutex);
+    unlockThreadSigMutex(&processSigCont_.mSigMutex);
 }
 
 static int
@@ -440,9 +440,9 @@ Finally:
 static int
 updateProcessSigContMethod_(struct VoidMethod aMethod)
 {
-    lockThreadSigMutex(&sSigCont.mSigMutex);
-    sSigCont.mMethod = aMethod;
-    unlockThreadSigMutex(&sSigCont.mSigMutex);
+    lockThreadSigMutex(&processSigCont_.mSigMutex);
+    processSigCont_.mMethod = aMethod;
+    unlockThreadSigMutex(&processSigCont_.mSigMutex);
 
     return 0;
 }
@@ -495,7 +495,7 @@ fetchProcessSigContTracker_(void)
      * do not use or cause lockMutex() to be used here to avoid introducing
      * the chance of infinite recursion. */
 
-    return 1 | sSigCont.mCount;
+    return 1 | processSigCont_.mCount;
 }
 
 struct ProcessSigContTracker
@@ -525,7 +525,7 @@ static struct
 {
     struct ThreadSigMutex mSigMutex;
     struct VoidMethod     mMethod;
-} sSigStop =
+} processSigStop_ =
 {
     .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER,
 };
@@ -533,9 +533,9 @@ static struct
 static void
 sigStop_(int aSigNum)
 {
-    lockThreadSigMutex(&sSigStop.mSigMutex);
+    lockThreadSigMutex(&processSigStop_.mSigMutex);
 
-    if (ownVoidMethodNil(sSigStop.mMethod))
+    if (ownVoidMethodNil(processSigStop_.mMethod))
     {
         debug(1, "detected SIGTSTP");
 
@@ -548,10 +548,10 @@ sigStop_(int aSigNum)
     else
     {
         debug(1, "observed SIGTSTP");
-        callVoidMethod(sSigStop.mMethod);
+        callVoidMethod(processSigStop_.mMethod);
     }
 
-    unlockThreadSigMutex(&sSigStop.mSigMutex);
+    unlockThreadSigMutex(&processSigStop_.mSigMutex);
 }
 
 static int
@@ -597,9 +597,9 @@ Finally:
 static int
 updateProcessSigStopMethod_(struct VoidMethod aMethod)
 {
-    lockThreadSigMutex(&sSigStop.mSigMutex);
-    sSigStop.mMethod = aMethod;
-    unlockThreadSigMutex(&sSigStop.mSigMutex);
+    lockThreadSigMutex(&processSigStop_.mSigMutex);
+    processSigStop_.mMethod = aMethod;
+    unlockThreadSigMutex(&processSigStop_.mSigMutex);
 
     return 0;
 }
@@ -645,15 +645,15 @@ unwatchProcessSigStop(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct VoidMethod sSigChldMethod;
+static struct VoidMethod processSigChldMethod_;
 
 static void
 sigChld_(int aSigNum)
 {
-    if ( ! ownVoidMethodNil(sSigChldMethod))
+    if ( ! ownVoidMethodNil(processSigChldMethod_))
     {
         debug(1, "observed SIGCHLD");
-        callVoidMethod(sSigChldMethod);
+        callVoidMethod(processSigChldMethod_);
     }
 }
 
@@ -668,7 +668,7 @@ resetProcessChildrenWatch_(void)
             (struct sigaction) { .sa_handler = SIG_DFL },
             0));
 
-    sSigChldMethod = VoidMethod(0, 0);
+    processSigChldMethod_ = VoidMethod(0, 0);
 
     rc = 0;
 
@@ -684,9 +684,9 @@ watchProcessChildren(struct VoidMethod aMethod)
 {
     int rc = -1;
 
-    struct VoidMethod sigChldMethod = sSigChldMethod;
+    struct VoidMethod sigChldMethod = processSigChldMethod_;
 
-    sSigChldMethod = aMethod;
+    processSigChldMethod_ = aMethod;
 
     ERROR_IF(
         changeSigAction_(
@@ -701,7 +701,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            sSigChldMethod = sigChldMethod;
+            processSigChldMethod_ = sigChldMethod;
     });
 
     return rc;
@@ -714,9 +714,9 @@ unwatchProcessChildren(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct Duration   sClockTickPeriod;
-static struct VoidMethod sClockMethod;
-static struct sigaction  sClockTickSigAction =
+static struct Duration   processClockTickPeriod_;
+static struct VoidMethod processClockMethod_;
+static struct sigaction  processClockTickSigAction_ =
 {
     .sa_handler = SIG_ERR,
 };
@@ -724,12 +724,12 @@ static struct sigaction  sClockTickSigAction =
 static void
 clockTick_(int aSigNum)
 {
-    if (ownVoidMethodNil(sClockMethod))
+    if (ownVoidMethodNil(processClockMethod_))
         debug(1, "received clock tick");
     else
     {
         debug(1, "observed clock tick");
-        callVoidMethod(sClockMethod);
+        callVoidMethod(processClockMethod_);
     }
 }
 
@@ -738,8 +738,8 @@ resetProcessClockWatch_(void)
 {
     int rc = -1;
 
-    if (SIG_ERR != sClockTickSigAction.sa_handler ||
-        (sClockTickSigAction.sa_flags & SA_SIGINFO))
+    if (SIG_ERR != processClockTickSigAction_.sa_handler ||
+        (processClockTickSigAction_.sa_flags & SA_SIGINFO))
     {
         struct itimerval disableClock =
         {
@@ -751,14 +751,14 @@ resetProcessClockWatch_(void)
             setitimer(ITIMER_REAL, &disableClock, 0));
 
         ERROR_IF(
-            changeSigAction_(SIGALRM, sClockTickSigAction, 0));
+            changeSigAction_(SIGALRM, processClockTickSigAction_, 0));
 
-        sClockMethod = VoidMethod(0, 0);
+        processClockMethod_ = VoidMethod(0, 0);
 
-        sClockTickSigAction.sa_handler = SIG_ERR;
-        sClockTickSigAction.sa_flags = 0;
+        processClockTickSigAction_.sa_handler = SIG_ERR;
+        processClockTickSigAction_.sa_flags = 0;
 
-        sClockTickPeriod = Duration(NanoSeconds(0));
+        processClockTickPeriod_ = Duration(NanoSeconds(0));
     }
 
     rc = 0;
@@ -776,9 +776,9 @@ watchProcessClock(struct VoidMethod aMethod,
 {
     int rc = -1;
 
-    struct VoidMethod clockMethod = sClockMethod;
+    struct VoidMethod clockMethod = processClockMethod_;
 
-    sClockMethod = aMethod;
+    processClockMethod_ = aMethod;
 
     struct sigaction  prevAction_;
     struct sigaction *prevAction = 0;
@@ -804,14 +804,15 @@ watchProcessClock(struct VoidMethod aMethod,
             errno = EPERM;
         });
 
-    clockTimer.it_value    = timeValFromNanoSeconds(sClockTickPeriod.duration);
     clockTimer.it_interval = clockTimer.it_value;
+    clockTimer.it_value    = timeValFromNanoSeconds(
+        processClockTickPeriod_.duration);
 
     ERROR_IF(
         setitimer(ITIMER_REAL, &clockTimer, 0));
 
-    sClockTickSigAction = *prevAction;
-    sClockTickPeriod    = aClockPeriod;
+    processClockTickSigAction_ = *prevAction;
+    processClockTickPeriod_    = aClockPeriod;
 
     rc = 0;
 
@@ -828,7 +829,7 @@ Finally:
                         terminate(errno, "Unable to revert SIGALRM handler");
                     });
 
-            sClockMethod = clockMethod;
+            processClockMethod_ = clockMethod;
         }
     });
 
@@ -842,13 +843,13 @@ unwatchProcessClock(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct VoidIntMethod sSignalMethod;
+static struct VoidIntMethod processWatchedSignalMethod_;
 
 static struct SignalWatch {
     int              mSigNum;
     struct sigaction mSigAction;
     bool             mWatched;
-} sWatchedSignals[] =
+} processWatchedSignals_[] =
 {
     { SIGHUP },
     { SIGINT },
@@ -859,13 +860,13 @@ static struct SignalWatch {
 static void
 caughtSignal_(int aSigNum)
 {
-    if ( ! ownVoidIntMethodNil(sSignalMethod))
+    if ( ! ownVoidIntMethodNil(processWatchedSignalMethod_))
     {
         struct ProcessSignalName sigName;
 
         debug(1, "observed %s", formatProcessSignalName(&sigName, aSigNum));
 
-        callVoidIntMethod(sSignalMethod, aSigNum);
+        callVoidIntMethod(processWatchedSignalMethod_, aSigNum);
     }
 }
 
@@ -874,11 +875,11 @@ watchProcessSignals(struct VoidIntMethod aMethod)
 {
     int rc = -1;
 
-    sSignalMethod = aMethod;
+    processWatchedSignalMethod_ = aMethod;
 
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals) > ix; ++ix)
+    for (unsigned ix = 0; NUMBEROF(processWatchedSignals_) > ix; ++ix)
     {
-        struct SignalWatch *watchedSig = sWatchedSignals + ix;
+        struct SignalWatch *watchedSig = processWatchedSignals_ + ix;
 
         ERROR_IF(
             changeSigAction_(
@@ -897,9 +898,9 @@ Finally:
     ({
         if (rc)
         {
-            for (unsigned ix = 0; NUMBEROF(sWatchedSignals) > ix; ++ix)
+            for (unsigned ix = 0; NUMBEROF(processWatchedSignals_) > ix; ++ix)
             {
-                struct SignalWatch *watchedSig = sWatchedSignals + ix;
+                struct SignalWatch *watchedSig = processWatchedSignals_ + ix;
 
                 if (watchedSig->mWatched)
                 {
@@ -920,7 +921,7 @@ Finally:
                 }
             }
 
-            sSignalMethod = VoidIntMethod(0, 0);
+            processWatchedSignalMethod_ = VoidIntMethod(0, 0);
         }
     });
 
@@ -933,9 +934,9 @@ resetProcessSignalsWatch_(void)
     int rc  = 0;
     int err = 0;
 
-    for (unsigned ix = 0; NUMBEROF(sWatchedSignals) > ix; ++ix)
+    for (unsigned ix = 0; NUMBEROF(processWatchedSignals_) > ix; ++ix)
     {
-        struct SignalWatch *watchedSig = sWatchedSignals + ix;
+        struct SignalWatch *watchedSig = processWatchedSignals_ + ix;
 
         if (watchedSig->mWatched)
         {
@@ -953,7 +954,7 @@ resetProcessSignalsWatch_(void)
         }
     }
 
-    sSignalMethod = VoidIntMethod(0, 0);
+    processWatchedSignalMethod_ = VoidIntMethod(0, 0);
 
     if (rc)
         errno = err;
@@ -1016,8 +1017,8 @@ formatProcessSignalName(struct ProcessSignalName *self, int aSigNum)
 {
     self->mSignalName = 0;
 
-    if (0 <= aSigNum && NUMBEROF(sSignalNames) > aSigNum)
-        self->mSignalName = sSignalNames[aSigNum];
+    if (0 <= aSigNum && NUMBEROF(signalNames_) > aSigNum)
+        self->mSignalName = signalNames_[aSigNum];
 
     if ( ! self->mSignalName)
     {
@@ -1041,13 +1042,13 @@ fetchProcessState(struct Pid aPid)
 
     initProcessDirName(&processDirName, aPid);
 
-    static const char sProcessStatFileNameFmt[] = "%s/stat";
+    static const char processStatFileNameFmt_[] = "%s/stat";
 
     char processStatFileName[strlen(processDirName.mDirName) +
-                             sizeof(sProcessStatFileNameFmt)];
+                             sizeof(processStatFileNameFmt_)];
 
     sprintf(processStatFileName,
-            sProcessStatFileNameFmt, processDirName.mDirName);
+            processStatFileNameFmt_, processDirName.mDirName);
 
     ERROR_IF(
         (statfd = open(processStatFileName, O_RDONLY),
@@ -1204,7 +1205,7 @@ signalThread_(void *self_)
      * in which signals can be delivered in the case that all other
      * threads are unable accept signals. */
 
-    popThreadSigMask(&sSigMask);
+    popThreadSigMask(&processSigMask_);
 
     lockMutex(&self->mMutex);
     while ( ! self->mStopping)
@@ -1219,39 +1220,39 @@ Process_init(const char *aArg0)
 {
     int rc = -1;
 
-    if (1 == ++sInit)
+    if (1 == ++moduleInit_)
     {
-        ensure( ! sProcessLock[sActiveProcessLock]);
+        ensure( ! processLockPtr_[activeProcessLock_]);
 
-        sArg0 = aArg0;
+        processArg0_ = aArg0;
 
         /* Ensure that the recorded time base is non-zero to allow it
          * to be distinguished from the case that it was not recorded
          * at all, and also ensure that the measured elapsed process
          * time is always non-zero. */
 
-        sTimeBase = monotonicTime();
+        processTimeBase_ = monotonicTime();
         do
-            --sTimeBase.monotonic.ns;
-        while ( ! sTimeBase.monotonic.ns);
+            --processTimeBase_.monotonic.ns;
+        while ( ! processTimeBase_.monotonic.ns);
 
-        sProgramName = strrchr(sArg0, '/');
-        sProgramName = sProgramName ? sProgramName + 1 : sArg0;
+        programName_ = strrchr(processArg0_, '/');
+        programName_ = programName_ ? programName_ + 1 : processArg0_;
 
         srandom(ownProcessId().mPid);
 
         ERROR_IF(
-            createProcessLock_(&sProcessLock_[sActiveProcessLock]));
-        sProcessLock[sActiveProcessLock] = &sProcessLock_[sActiveProcessLock];
+            createProcessLock_(&processLock_[activeProcessLock_]));
+        processLockPtr_[activeProcessLock_] = &processLock_[activeProcessLock_];
 
         ERROR_IF(
             Error_init());
 
-        pushThreadSigMask(&sSigMask, ThreadSigMaskBlock, 0);
+        pushThreadSigMask(&processSigMask_, ThreadSigMaskBlock, 0);
 
         createThread(
-            &sProcessSignalThread.mThread, 0,
-            signalThread_, &sProcessSignalThread);
+            &processSignalThread_.mThread, 0,
+            signalThread_, &processSignalThread_);
 
         hookProcessSigCont_();
         hookProcessSigStop_();
@@ -1270,26 +1271,26 @@ Finally:
 void
 Process_exit(void)
 {
-    if (0 == --sInit)
+    if (0 == --moduleInit_)
     {
-        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
         ensure(processLock);
 
         unhookProcessSigStop_();
         unhookProcessSigCont_();
 
-        lockMutex(&sProcessSignalThread.mMutex);
-        sProcessSignalThread.mStopping = true;
-        unlockMutexSignal(&sProcessSignalThread.mMutex,
-                          &sProcessSignalThread.mCond);
+        lockMutex(&processSignalThread_.mMutex);
+        processSignalThread_.mStopping = true;
+        unlockMutexSignal(&processSignalThread_.mMutex,
+                          &processSignalThread_.mCond);
 
-        joinThread(&sProcessSignalThread.mThread);
+        joinThread(&processSignalThread_.mThread);
 
         Error_exit();
 
         closeProcessLock_(processLock);
-        sProcessLock[sActiveProcessLock] = 0;
+        processLockPtr_[activeProcessLock_] = 0;
     }
 }
 
@@ -1301,11 +1302,11 @@ acquireProcessAppLock(void)
 
     struct ThreadSigMutex *lock = 0;
 
-    lock = lockThreadSigMutex(&sProcessSigMutex);
+    lock = lockThreadSigMutex(&processSigMutex_);
 
-    if (1 == ownThreadSigMutexLocked(&sProcessSigMutex))
+    if (1 == ownThreadSigMutexLocked(&processSigMutex_))
     {
-        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
         ERROR_IF(
             processLock && lockProcessLock_(processLock));
@@ -1330,11 +1331,11 @@ releaseProcessAppLock(void)
 {
     int rc = -1;
 
-    struct ThreadSigMutex *lock = &sProcessSigMutex;
+    struct ThreadSigMutex *lock = &processSigMutex_;
 
     if (1 == ownThreadSigMutexLocked(lock))
     {
-        struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
         if (processLock)
             unlockProcessLock_(processLock);
@@ -1356,7 +1357,7 @@ Finally:
 struct ProcessAppLock *
 createProcessAppLock(void)
 {
-    struct ProcessAppLock *self = &sProcessAppLock;
+    struct ProcessAppLock *self = &processAppLock_;
 
     ABORT_IF(
         acquireProcessAppLock(),
@@ -1373,7 +1374,7 @@ destroyProcessAppLock(struct ProcessAppLock *self)
 {
     if (self)
     {
-        ensure(&sProcessAppLock == self);
+        ensure(&processAppLock_ == self);
 
         ABORT_IF(
             releaseProcessAppLock(),
@@ -1387,7 +1388,7 @@ destroyProcessAppLock(struct ProcessAppLock *self)
 const char *
 ownProcessLockPath(void)
 {
-    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+    struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
     return processLock ? processLock->mFileName : 0;
 }
@@ -1396,7 +1397,7 @@ ownProcessLockPath(void)
 const struct File *
 ownProcessLockFile(void)
 {
-    struct ProcessLock *processLock = sProcessLock[sActiveProcessLock];
+    struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
     return processLock ? processLock->mFile : 0;
 }
@@ -1482,13 +1483,13 @@ forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
     const char            *err  = 0;
     struct ThreadSigMutex *lock = 0;
 
-    unsigned activeProcessLock   = 0 + sActiveProcessLock;
+    unsigned activeProcessLock   = 0 + activeProcessLock_;
     unsigned inactiveProcessLock = 1 - activeProcessLock;
 
-    ensure(NUMBEROF(sProcessLock_) > activeProcessLock);
-    ensure(NUMBEROF(sProcessLock_) > inactiveProcessLock);
+    ensure(NUMBEROF(processLock_) > activeProcessLock);
+    ensure(NUMBEROF(processLock_) > inactiveProcessLock);
 
-    ensure( ! sProcessLock[inactiveProcessLock]);
+    ensure( ! processLockPtr_[inactiveProcessLock]);
 
     pid_t pgid = aPgid.mPgid;
 
@@ -1506,7 +1507,7 @@ forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
      * handlers will not run in this process when the process mutex
      * is held. */
 
-    lock = lockThreadSigMutex(&sProcessSigMutex);
+    lock = lockThreadSigMutex(&processSigMutex_);
 
     /* The child process needs separate process lock. It cannot share
      * the process lock with the parent because flock(2) distinguishes
@@ -1514,15 +1515,16 @@ forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
      * in the parent first so that the child process is guaranteed to
      * be able to synchronise its messages. */
 
-    if (sProcessLock[sActiveProcessLock])
+    if (processLockPtr_[activeProcessLock_])
     {
         ensure(
-            sProcessLock[activeProcessLock] ==
-            &sProcessLock_[activeProcessLock]);
+            processLockPtr_[activeProcessLock] ==
+            &processLock_[activeProcessLock]);
 
         ERROR_IF(
-            createProcessLock_(&sProcessLock_[inactiveProcessLock]));
-        sProcessLock[inactiveProcessLock] = &sProcessLock_[inactiveProcessLock];
+            createProcessLock_(&processLock_[inactiveProcessLock]));
+        processLockPtr_[inactiveProcessLock] =
+            &processLock_[inactiveProcessLock];
     }
 
     /* Note that the fork() will complete and launch the child process
@@ -1576,7 +1578,7 @@ forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
          * needs to emit diagnostic messages so that the messages
          * will not be garbled. */
 
-        sActiveProcessLock  = inactiveProcessLock;
+        activeProcessLock_  = inactiveProcessLock;
         inactiveProcessLock = activeProcessLock;
 
         if (ForkProcessSetProcessGroup == aOption)
@@ -1614,8 +1616,8 @@ Finally:
     ({
         int errcode = errno;
 
-        closeProcessLock_(sProcessLock[inactiveProcessLock]);
-        sProcessLock[inactiveProcessLock] = 0;
+        closeProcessLock_(processLockPtr_[inactiveProcessLock]);
+        processLockPtr_[inactiveProcessLock] = 0;
 
         lock = unlockThreadSigMutex(lock);
 
@@ -1645,7 +1647,7 @@ forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid)
 {
     pid_t rc = -1;
 
-    struct ThreadSigMask sigMask_;
+    struct ThreadSigMask  sigMask_;
     struct ThreadSigMask *sigMask = 0;
 
     struct SocketPair  syncSocket_;
@@ -1739,7 +1741,7 @@ execProcess(const char *aCmd, char **aArgv)
 {
     int rc = -1;
 
-    popThreadSigMask(&sSigMask);
+    popThreadSigMask(&processSigMask_);
 
     /* Call resetProcessSigPipe_() here to ensure that SIGPIPE will be
      * delivered to the new program. Note that it is possible that there
@@ -1795,7 +1797,7 @@ abortProcess(void)
      *
      * Also, multiple threads might call this function at the same time.
      *
-     * Try to raise SIGABRT in this thread, but also mark sProcessAbort
+     * Try to raise SIGABRT in this thread, but also mark processAbort_
      * which will be noticed if a handler is already attached.
      *
      * Do not call back into any application libraries to avoid the risk
@@ -1805,7 +1807,7 @@ abortProcess(void)
      * Do not call abort(3) because that will try to flush IO streams
      * and perform other activity that might fail. */
 
-    __sync_or_and_fetch(&sProcessAbort, 1);
+    __sync_or_and_fetch(&processAbort_, 1);
 
     do
     {
@@ -1887,7 +1889,7 @@ ownProcessName(void)
 {
     extern const char *__progname;
 
-    return sProgramName ? sProgramName : __progname;
+    return programName_ ? programName_ : __progname;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1967,8 +1969,8 @@ ownProcessElapsedTime(void)
     return
         Duration(
             NanoSeconds(
-                sTimeBase.monotonic.ns
-                ? monotonicTime().monotonic.ns - sTimeBase.monotonic.ns
+                processTimeBase_.monotonic.ns
+                ? monotonicTime().monotonic.ns - processTimeBase_.monotonic.ns
                 : 0));
 }
 
@@ -1976,7 +1978,7 @@ ownProcessElapsedTime(void)
 struct MonotonicTime
 ownProcessBaseTime(void)
 {
-    return sTimeBase;
+    return processTimeBase_;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2006,13 +2008,13 @@ fetchProcessSignature(struct Pid aPid, char **aSignature)
 
         initProcessDirName(&processDirName, aPid);
 
-        static const char sProcessStatFileNameFmt[] = "%s/stat";
+        static const char processStatFileNameFmt_[] = "%s/stat";
 
         char processStatFileName[strlen(processDirName.mDirName) +
-                                 sizeof(sProcessStatFileNameFmt)];
+                                 sizeof(processStatFileNameFmt_)];
 
         sprintf(processStatFileName,
-                sProcessStatFileNameFmt, processDirName.mDirName);
+                processStatFileNameFmt_, processDirName.mDirName);
 
         ERROR_IF(
             (fd = open(processStatFileName, O_RDONLY),

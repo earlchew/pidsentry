@@ -47,8 +47,8 @@ struct TestState
     uint64_t mTrigger;
 };
 
-static struct TestState *sState_;
-static unsigned          sInit_;
+static struct TestState *testState_;
+static unsigned          moduleInit_;
 
 /* -------------------------------------------------------------------------- */
 bool
@@ -94,7 +94,7 @@ testSleep(enum TestLevel aLevel)
 uint64_t
 testErrorLevel(void)
 {
-    return sState_ ? sState_->mError : 0;
+    return testState_ ? testState_->mError : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -103,11 +103,11 @@ testFinally(const struct ErrorFrame *aFrame)
 {
     bool inject = false;
 
-    if (sState_)
+    if (testState_)
     {
-        uint64_t errorLevel = __sync_add_and_fetch(&sState_->mError, 1);
+        uint64_t errorLevel = __sync_add_and_fetch(&testState_->mError, 1);
 
-        if (sState_->mTrigger && errorLevel == sState_->mTrigger)
+        if (testState_->mTrigger && errorLevel == testState_->mTrigger)
         {
             static const struct
             {
@@ -144,7 +144,7 @@ Test_init(const char *aErrorEnv)
 
     struct TestState *state = MAP_FAILED;
 
-    if (1 == ++sInit_)
+    if (1 == ++moduleInit_)
     {
         uint64_t errorTrigger = 0;
 
@@ -156,16 +156,16 @@ Test_init(const char *aErrorEnv)
 
         ERROR_IF(
             (state = mmap(0,
-                          sizeof(*sState_),
+                          sizeof(*testState_),
                           PROT_READ | PROT_WRITE,
                           MAP_ANONYMOUS | MAP_SHARED, -1, 0),
              MAP_FAILED == state));
 
-        sState_ = state;
+        testState_ = state;
         state   = MAP_FAILED;
 
-        sState_->mError   = 1;
-        sState_->mTrigger = errorTrigger;
+        testState_->mError   = 1;
+        testState_->mTrigger = errorTrigger;
     }
 
     rc = 0;
@@ -186,11 +186,11 @@ Finally:
 void
 Test_exit(void)
 {
-    struct TestState *state = sState_;
+    struct TestState *state = testState_;
 
     if (state)
     {
-        sState_ = 0;
+        testState_ = 0;
         ABORT_IF(
             munmap(state, sizeof(*state)));
     }

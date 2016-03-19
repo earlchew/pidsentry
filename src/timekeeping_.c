@@ -45,8 +45,8 @@
 #endif
 
 /* -------------------------------------------------------------------------- */
-static unsigned             sInit;
-static struct MonotonicTime sEventClockTimeBase;
+static unsigned             moduleInit_;
+static struct MonotonicTime eventClockTimeBase_;
 
 /* -------------------------------------------------------------------------- */
 struct MonotonicTime
@@ -237,7 +237,7 @@ eventclockTime_init_(void)
     /* Initialise the time base for the event clock, and ensure that
      * the event clock will subsequently always return a non-zero result. */
 
-    sEventClockTimeBase = (struct MonotonicTime) {
+    eventClockTimeBase_ = (struct MonotonicTime) {
         .monotonic = NanoSeconds(monotonicTime().monotonic.ns - 1) };
 }
 
@@ -246,7 +246,7 @@ eventclockTime(void)
 {
     struct EventClockTime tm = {
         .eventclock = NanoSeconds(
-            monotonicTime().monotonic.ns - sEventClockTimeBase.monotonic.ns) };
+            monotonicTime().monotonic.ns - eventClockTimeBase_.monotonic.ns) };
 
     ensure(tm.eventclock.ns);
 
@@ -421,7 +421,7 @@ monotonicSleep(struct Duration aPeriod)
 int
 Timekeeping_init(void)
 {
-    if (++sInit == 1)
+    if (++moduleInit_ == 1)
         eventclockTime_init_();
 
     return 0;
@@ -431,7 +431,7 @@ Timekeeping_init(void)
 void
 Timekeeping_exit(void)
 {
-    --sInit;
+    --moduleInit_;
 }
 
 /* -------------------------------------------------------------------------- */

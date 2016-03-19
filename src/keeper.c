@@ -55,7 +55,7 @@ enum PollFdKeeperKind
     POLL_FD_KEEPER_KINDS
 };
 
-static const char *sPollFdNames[POLL_FD_KEEPER_KINDS] =
+static const char *pollFdNames_[POLL_FD_KEEPER_KINDS] =
 {
     [POLL_FD_KEEPER_TETHER] = "keeper tether",
     [POLL_FD_KEEPER_SERVER] = "keeper server",
@@ -68,7 +68,7 @@ enum PollFdKeeperTimerKind
     POLL_FD_KEEPER_TIMER_KINDS
 };
 
-static const char *sPollFdTimerNames[POLL_FD_KEEPER_TIMER_KINDS] =
+static const char *pollFdTimerNames_[POLL_FD_KEEPER_TIMER_KINDS] =
 {
     [POLL_FD_KEEPER_TIMER_JANITOR] = "keeper janitor",
 };
@@ -489,10 +489,10 @@ runKeeperProcess_(
 
             keeperMonitor.mPollFds,
             keeperMonitor.mPollFdActions,
-            sPollFdNames, POLL_FD_KEEPER_KINDS,
+            pollFdNames_, POLL_FD_KEEPER_KINDS,
 
             keeperMonitor.mPollFdTimerActions,
-            sPollFdTimerNames, POLL_FD_KEEPER_TIMER_KINDS,
+            pollFdTimerNames_, POLL_FD_KEEPER_TIMER_KINDS,
 
             pollFdCompletion_, &keeperMonitor));
 

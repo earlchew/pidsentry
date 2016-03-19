@@ -49,7 +49,7 @@ struct Options gOptions;
 #define DEFAULT_DRAIN_TIMEOUT_S     30
 
 /* -------------------------------------------------------------------------- */
-static const char sUsage[] =
+static const char programUsage_[] =
 "usage : %s [ monitoring-options | general-options ] cmd ...\n"
 "        %s { --pidfile file | -p file } [ general-options ]\n"
 "        %s { --pidfile file | -p file } [ general-options ] -c cmd ... \n"
@@ -107,7 +107,7 @@ static const char sUsage[] =
 "      [Default: Tether child process]\n"
 "";
 
-static const char sShortOptions[] =
+static const char shortOptions_[] =
     "+cD:df:iL::n:op:qTt:u";
 
 enum OptionKind
@@ -115,7 +115,7 @@ enum OptionKind
     OptionTest = CHAR_MAX + 1,
 };
 
-static struct option sLongOptions[] =
+static struct option longOptions_[] =
 {
     { "command",    no_argument,       0, 'c' },
     { "debug",      no_argument,       0, 'd' },
@@ -172,7 +172,7 @@ showUsage_(void)
 {
     const char *arg0 = ownProcessName();
 
-    dprintf(STDERR_FILENO, sUsage, arg0, arg0, arg0);
+    dprintf(STDERR_FILENO, programUsage_, arg0, arg0, arg0);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -258,19 +258,19 @@ processOptions(int argc, char **argv, char ***args)
     {
         ERROR_IF(OptionModeError == mode);
 
-        int longOptIndex = NUMBEROF(sLongOptions) - 1;
+        int longOptIndex = NUMBEROF(longOptions_) - 1;
 
         int opt;
         ERROR_IF(
             (opt = getopt_long(
-                argc, argv, sShortOptions, sLongOptions, &longOptIndex),
+                argc, argv, shortOptions_, longOptions_, &longOptIndex),
              '?' == opt),
             {
                 showUsage_();
                 errno = EINVAL;
             });
 
-        const char *longOptName = sLongOptions[longOptIndex].name;
+        const char *longOptName = longOptions_[longOptIndex].name;
 
         if (-1 == opt)
             break;

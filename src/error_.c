@@ -42,7 +42,7 @@
 #include <string.h>
 
 /* -------------------------------------------------------------------------- */
-static unsigned sInit_;
+static unsigned moduleInit_;
 
 static struct
 {
@@ -58,15 +58,15 @@ static struct
         struct ErrorFrame mFrame[64];
     } mStack_[ErrorFrameStackKinds], *mStack;
 
-} __thread sErrorStack_;
+} __thread errorStack_;
 
 static void
 initErrorFrame_(void)
 {
     ensure(0 == ErrorFrameStackThread);
 
-    if ( ! sErrorStack_.mStack)
-        sErrorStack_.mStack = &sErrorStack_.mStack_[ErrorFrameStackThread];
+    if ( ! errorStack_.mStack)
+        errorStack_.mStack = &errorStack_.mStack_[ErrorFrameStackThread];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -75,13 +75,13 @@ addErrorFrame(const struct ErrorFrame *aFrame, int aErrno)
 {
     initErrorFrame_();
 
-    unsigned level = sErrorStack_.mStack->mLevel++;
+    unsigned level = errorStack_.mStack->mLevel++;
 
-    if (NUMBEROF(sErrorStack_.mStack->mFrame) <= level)
+    if (NUMBEROF(errorStack_.mStack->mFrame) <= level)
         abort();
 
-    sErrorStack_.mStack->mFrame[level]        = *aFrame;
-    sErrorStack_.mStack->mFrame[level].mErrno = aErrno;
+    errorStack_.mStack->mFrame[level]        = *aFrame;
+    errorStack_.mStack->mFrame[level].mErrno = aErrno;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -90,7 +90,7 @@ restartErrorFrameSequence(void)
 {
     initErrorFrame_();
 
-    sErrorStack_.mStack->mLevel = sErrorStack_.mStack->mSequence;
+    errorStack_.mStack->mLevel = errorStack_.mStack->mSequence;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -99,9 +99,9 @@ pushErrorFrameSequence(void)
 {
     initErrorFrame_();
 
-    unsigned sequence = sErrorStack_.mStack->mSequence;
+    unsigned sequence = errorStack_.mStack->mSequence;
 
-    sErrorStack_.mStack->mSequence = sErrorStack_.mStack->mLevel;
+    errorStack_.mStack->mSequence = errorStack_.mStack->mLevel;
 
     return (struct ErrorFrameSequence)
     {
@@ -115,7 +115,7 @@ popErrorFrameSequence(struct ErrorFrameSequence aSequence)
 {
     restartErrorFrameSequence();
 
-    sErrorStack_.mStack->mSequence = aSequence.mSequence;
+    errorStack_.mStack->mSequence = aSequence.mSequence;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -125,9 +125,9 @@ switchErrorFrameStack(enum ErrorFrameStackKind aStack)
     initErrorFrame_();
 
     enum ErrorFrameStackKind stackKind =
-        sErrorStack_.mStack - &sErrorStack_.mStack_[0];
+        errorStack_.mStack - &errorStack_.mStack_[0];
 
-    sErrorStack_.mStack = &sErrorStack_.mStack_[aStack];
+    errorStack_.mStack = &errorStack_.mStack_[aStack];
 
     return stackKind;
 }
@@ -138,7 +138,7 @@ ownErrorFrameLevel(void)
 {
     initErrorFrame_();
 
-    return sErrorStack_.mStack->mLevel;
+    return errorStack_.mStack->mLevel;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -148,9 +148,9 @@ ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
     initErrorFrame_();
 
     return
-        (aLevel >= sErrorStack_.mStack->mLevel)
+        (aLevel >= errorStack_.mStack->mLevel)
         ? 0
-        : &sErrorStack_.mStack->mFrame[aLevel];
+        : &errorStack_.mStack->mFrame[aLevel];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -160,20 +160,20 @@ logErrorFrameSequence(void)
     initErrorFrame_();
 
     unsigned seqLen =
-        sErrorStack_.mStack->mLevel - sErrorStack_.mStack->mSequence;
+        errorStack_.mStack->mLevel - errorStack_.mStack->mSequence;
 
     for (unsigned ix = 0; ix < seqLen; ++ix)
     {
-        unsigned frame = sErrorStack_.mStack->mSequence + ix;
+        unsigned frame = errorStack_.mStack->mSequence + ix;
 
         warn_(
-            sErrorStack_.mStack->mFrame[frame].mErrno,
-            sErrorStack_.mStack->mFrame[frame].mName,
-            sErrorStack_.mStack->mFrame[frame].mFile,
-            sErrorStack_.mStack->mFrame[frame].mLine,
+            errorStack_.mStack->mFrame[frame].mErrno,
+            errorStack_.mStack->mFrame[frame].mName,
+            errorStack_.mStack->mFrame[frame].mFile,
+            errorStack_.mStack->mFrame[frame].mLine,
             "Error frame %u - %s",
             seqLen - ix - 1,
-            sErrorStack_.mStack->mFrame[frame].mText);
+            errorStack_.mStack->mFrame[frame].mText);
     }
 }
 
@@ -340,7 +340,7 @@ static struct {
     char  *mBuf;
     size_t mSize;
     FILE  *mFile;
-} sPrintBuf;
+} printBuf_;
 
 static void
 print_(
@@ -371,7 +371,7 @@ print_(
         {
             lockerr  = EWOULDBLOCK;
             locked   = true;
-            buffered = !! sPrintBuf.mFile;
+            buffered = !! printBuf_.mFile;
         }
 
         struct Duration elapsed = ownProcessElapsedTime();
@@ -427,17 +427,17 @@ print_(
         }
         else
         {
-            rewind(sPrintBuf.mFile);
+            rewind(printBuf_.mFile);
 
             if ( ! aFile)
-                fprintf(sPrintBuf.mFile, "%s: ", ownProcessName());
+                fprintf(printBuf_.mFile, "%s: ", ownProcessName());
             else
             {
                 if (pid.mPid == tid.mTid)
                 {
                     if (elapsed.duration.ns)
                         fprintf(
-                            sPrintBuf.mFile,
+                            printBuf_.mFile,
                             "%s: [%04" PRIu64 ":%02" PRIu64
                             ":%02" PRIu64
                             ".%03" PRIu64 " %" PRId_Pid " %s %s:%u] ",
@@ -446,7 +446,7 @@ print_(
                             FMTd_Pid(pid), aFunction, aFile, aLine);
                     else
                         fprintf(
-                            sPrintBuf.mFile,
+                            printBuf_.mFile,
                             "%s: [%" PRId_Pid " %s %s:%u] ",
                             ownProcessName(),
                             FMTd_Pid(pid), aFunction, aFile, aLine);
@@ -455,7 +455,7 @@ print_(
                 {
                     if (elapsed.duration.ns)
                         fprintf(
-                            sPrintBuf.mFile,
+                            printBuf_.mFile,
                             "%s: [%04" PRIu64 ":%02" PRIu64
                             ":%02" PRIu64
                             ".%03" PRIu64 " %" PRId_Pid ":%" PRId_Tid " "
@@ -466,7 +466,7 @@ print_(
                             aFunction, aFile, aLine);
                     else
                         fprintf(
-                            sPrintBuf.mFile,
+                            printBuf_.mFile,
                             "%s: [%" PRId_Pid ":%" PRId_Tid " %s %s:%u] ",
                             ownProcessName(),
                             FMTd_Pid(pid), FMTd_Tid(tid),
@@ -474,17 +474,17 @@ print_(
                 }
             }
 
-            vfprintf(sPrintBuf.mFile, aFmt, aArgs);
+            vfprintf(printBuf_.mFile, aFmt, aArgs);
             if ( ! aErrCode)
-                fprintf(sPrintBuf.mFile, "\n");
+                fprintf(printBuf_.mFile, "\n");
             else if (errText)
                 fprintf(
-                    sPrintBuf.mFile, " - errno %d [%s]\n", aErrCode, errText);
+                    printBuf_.mFile, " - errno %d [%s]\n", aErrCode, errText);
             else
-                fprintf(sPrintBuf.mFile, " - errno %d\n", aErrCode);
-            fflush(sPrintBuf.mFile);
+                fprintf(printBuf_.mFile, " - errno %d\n", aErrCode);
+            fflush(printBuf_.mFile);
 
-            writeFd(STDERR_FILENO, sPrintBuf.mBuf, sPrintBuf.mSize);
+            writeFd(STDERR_FILENO, printBuf_.mBuf, printBuf_.mSize);
         }
 
         if (locked)
@@ -626,15 +626,15 @@ Error_init(void)
 
     struct ProcessAppLock *applock = 0;
 
-    if (1 == ++sInit_)
+    if (1 == ++moduleInit_)
     {
         FILE *file;
         ERROR_UNLESS(
-            (file = open_memstream(&sPrintBuf.mBuf, &sPrintBuf.mSize)));
+            (file = open_memstream(&printBuf_.mBuf, &printBuf_.mSize)));
 
         applock = createProcessAppLock();
 
-        sPrintBuf.mFile = file;
+        printBuf_.mFile = file;
     }
 
     rc = 0;
@@ -653,19 +653,19 @@ Finally:
 void
 Error_exit(void)
 {
-    if (0 == --sInit_)
+    if (0 == --moduleInit_)
     {
         struct ProcessAppLock *applock = createProcessAppLock();
 
-        FILE *file = sPrintBuf.mFile;
+        FILE *file = printBuf_.mFile;
 
-        sPrintBuf.mFile = 0;
-        sPrintBuf.mBuf  = 0;
-        sPrintBuf.mSize = 0;
+        printBuf_.mFile = 0;
+        printBuf_.mBuf  = 0;
+        printBuf_.mSize = 0;
 
         ABORT_IF(fclose(file));
 
-        free(sPrintBuf.mBuf);
+        free(printBuf_.mBuf);
 
         destroyProcessAppLock(applock);
     }

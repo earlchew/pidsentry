@@ -39,9 +39,9 @@
 #include <fcntl.h>
 
 /* -------------------------------------------------------------------------- */
-static const char     *sBootIncarnation;
-static int             sBootIncarnationErr;
-static pthread_once_t  sBootIncarnationOnce = PTHREAD_ONCE_INIT;
+static const char     *bootIncarnation_;
+static int             bootIncarnationErr_;
+static pthread_once_t  bootIncarnationOnce_ = PTHREAD_ONCE_INIT;
 
 static void
 fetchSystemIncarnation_(void)
@@ -79,7 +79,7 @@ fetchSystemIncarnation_(void)
     memcpy(bootIncarnation, buf, buflen);
     bootIncarnation[buflen] = 0;
 
-    sBootIncarnation = bootIncarnation;
+    bootIncarnation_ = bootIncarnation;
 
     rc = 0;
 
@@ -93,24 +93,24 @@ Finally:
     });
 
     if (rc)
-        sBootIncarnationErr = errno;
+        bootIncarnationErr_ = errno;
 }
 
 const char *
 fetchSystemIncarnation(void)
 {
     ABORT_IF(
-        (errno = pthread_once(&sBootIncarnationOnce, fetchSystemIncarnation_)),
+        (errno = pthread_once(&bootIncarnationOnce_, fetchSystemIncarnation_)),
         {
             terminate(
                 errno,
                 "Unable to fetch system incarnation");
         });
 
-    if ( ! sBootIncarnation)
-        errno = sBootIncarnationErr;
+    if ( ! bootIncarnation_)
+        errno = bootIncarnationErr_;
 
-    return sBootIncarnation;
+    return bootIncarnation_;
 }
 
 /* -------------------------------------------------------------------------- */

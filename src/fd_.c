@@ -46,7 +46,7 @@
 /* -------------------------------------------------------------------------- */
 #define DEVNULLPATH "/dev/null"
 
-static const char sDevNullPath[] = DEVNULLPATH;
+static const char devNullPath_[] = DEVNULLPATH;
 
 /* -------------------------------------------------------------------------- */
 void
@@ -198,7 +198,7 @@ nullifyFd(int aFd)
     int fd;
 
     ERROR_IF(
-        (fd = open(sDevNullPath, O_WRONLY),
+        (fd = open(devNullPath_, O_WRONLY),
          -1 == fd));
 
     if (fd == aFd)

@@ -41,18 +41,18 @@
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
-static struct File sFileList =
+static struct File fileList_ =
 {
     .mFd   = -1,
-    .mNext = &sFileList,
-    .mPrev = &sFileList,
+    .mNext = &fileList_,
+    .mPrev = &fileList_,
 };
 
 /* -------------------------------------------------------------------------- */
 int
 createFile(struct File *self, int aFd)
 {
-    ensure(self != &sFileList);
+    ensure(self != &fileList_);
 
     int rc = -1;
 
@@ -69,8 +69,8 @@ createFile(struct File *self, int aFd)
             errno = err;
         });
 
-    self->mNext =  sFileList.mNext;
-    self->mPrev = &sFileList;
+    self->mNext =  fileList_.mNext;
+    self->mPrev = &fileList_;
 
     self->mNext->mPrev = self;
     self->mPrev->mNext = self;
@@ -92,7 +92,7 @@ Finally:
 int
 detachFile(struct File *self)
 {
-    ensure(self != &sFileList);
+    ensure(self != &fileList_);
 
     int rc = -1;
 
@@ -122,7 +122,7 @@ Finally:
 void
 closeFile(struct File *self)
 {
-    ensure(self != &sFileList);
+    ensure(self != &fileList_);
 
     if (self && -1 != self->mFd)
     {
@@ -149,13 +149,13 @@ void
 walkFileList(void *aOther,
              int aVisitor(void *aOther, const struct File *aFile))
 {
-    const struct File *fdPtr = &sFileList;
+    const struct File *fdPtr = &fileList_;
 
     do
     {
         fdPtr = fdPtr->mNext;
 
-        if (fdPtr == &sFileList)
+        if (fdPtr == &fileList_)
             break;
 
     } while ( ! aVisitor(aOther, fdPtr));
