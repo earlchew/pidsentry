@@ -60,7 +60,7 @@ enum PollFdChildKind
     POLL_FD_CHILD_KINDS
 };
 
-static const char *sPollFdNames[POLL_FD_CHILD_KINDS] =
+static const char *pollFdNames_[POLL_FD_CHILD_KINDS] =
 {
     [POLL_FD_CHILD_TETHER]     = "tether",
     [POLL_FD_CHILD_UMBILICAL]  = "umbilical",
@@ -78,7 +78,7 @@ enum PollFdChildTimerKind
     POLL_FD_CHILD_TIMER_KINDS
 };
 
-static const char *sPollFdTimerNames[POLL_FD_CHILD_TIMER_KINDS] =
+static const char *pollFdTimerNames_[POLL_FD_CHILD_TIMER_KINDS] =
 {
     [POLL_FD_CHILD_TIMER_TETHER]        = "tether",
     [POLL_FD_CHILD_TIMER_UMBILICAL]     = "umbilical",
@@ -409,6 +409,39 @@ forkChild(
                     if ( ! rdlen)
                         quitProcess(EXIT_FAILURE);
 
+                    terminate(
+                        errno,
+                        "Unable to synchronise child");
+                });
+
+            ssize_t wrlen;
+            ABORT_IF(
+                (wrlen = writeFile(aSyncSocket->mChildFile, buf, 1),
+                 -1 == wrlen || (errno = 0, 1 != wrlen)),
+                {
+                    if (-1 == wrlen && EPIPE == errno)
+                        quitProcess(EXIT_FAILURE);
+
+                    terminate(
+                        errno,
+                        "Unable to synchronise watchdog");
+                });
+        });
+
+        /* Wait until the watchdog has had a chance to announce the
+         * child pid before proceeding. This allows external programs,
+         * notably the unit test, to know that the child process
+         * is fully initialised. */
+
+        TEST_RACE
+        ({
+            char buf[1];
+
+            ssize_t rdlen;
+            ABORT_IF(
+                (rdlen = readFile(aSyncSocket->mChildFile, buf, 1),
+                 -1 == rdlen || (errno = 0, rdlen)),
+                {
                     terminate(
                         errno,
                         "Unable to synchronise child");
@@ -1788,7 +1821,7 @@ monitorChild(struct ChildProcess     *self,
                 warn(
                     0,
                     "Expected %s fd %d to be non-blocking",
-                    sPollFdNames[ix],
+                    pollFdNames_[ix],
                     childmonitor.mPollFds[ix].fd);
             });
     }
@@ -1799,10 +1832,10 @@ monitorChild(struct ChildProcess     *self,
 
             childmonitor.mPollFds,
             childmonitor.mPollFdActions,
-            sPollFdNames, POLL_FD_CHILD_KINDS,
+            pollFdNames_, POLL_FD_CHILD_KINDS,
 
             childmonitor.mPollFdTimerActions,
-            sPollFdTimerNames, POLL_FD_CHILD_TIMER_KINDS,
+            pollFdTimerNames_, POLL_FD_CHILD_TIMER_KINDS,
 
             pollFdCompletion_, &childmonitor));
     pollfd = &pollfd_;
