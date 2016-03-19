@@ -1641,7 +1641,6 @@ forkProcessDaemonSignalHandler_(void *self_, int aSigNum)
           formatProcessSignalName(&sigName, aSigNum));
 }
 
-#include <stdio.h>
 struct Pid
 forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid)
 {
