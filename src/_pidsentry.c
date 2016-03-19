@@ -748,13 +748,6 @@ cmdMonitorChild(char **aCmd)
 
     killChildProcessGroup(&childProcess);
 
-    /* Before reaping the child process, clean up the child process keeper.
-     * The keeper process itself will persist until the last reference
-     * is dropped. */
-
-    closeSocketPair(pidKeeperTether);
-    closeKeeperProcess(pidKeeperProcess);
-
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and
      * read the pid file will see the terminated process. */
@@ -783,6 +776,31 @@ cmdMonitorChild(char **aCmd)
           childStatus);
 
     closeSocketPair(&umbilicalSocket);
+
+    /* Clean up the child process keeper, and be prepared to wait
+     * a short time for the last reference to the child proces group
+     * to be dropped. This primarily cosmetic to avoid messages from
+     * the keeper cluttering the output after the watchdog has exited.
+     *
+     * It safe to give up if the last reference is not dropped quickly
+     * enough since the only function of the keeper can continue maintaining
+     * the references it has in hand. */
+
+    if (pidKeeperTether)
+    {
+        ABORT_IF(
+            shutdownFileSocketWriter(pidKeeperTether->mParentFile));
+
+        struct Duration keeperShutdownTimeout =
+            Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
+
+        ABORT_IF(
+            -1 == waitFileReadReady(pidKeeperTether->mParentFile,
+                                    &keeperShutdownTimeout));
+    }
+
+    closeSocketPair(pidKeeperTether);
+    closeKeeperProcess(pidKeeperProcess);
 
     ABORT_IF(
         resetProcessSigPipe(),

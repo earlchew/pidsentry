@@ -163,7 +163,7 @@ pollFdTether_(void                        *self_,
 
     ensure(keeperMonitorType_ == self->mType);
 
-    /* When the watchdog terminates, it closes its end of the keeper tether,
+    /* When the watchdog terminates, it shuts down its end of the keeper tether,
      * which is detected by the keeper here. Respond by removing the server
      * from the poll loop so that it will no longer respond to any
      * attempts to make new connections. */
@@ -443,7 +443,7 @@ runKeeperProcess_(
             [POLL_FD_KEEPER_TETHER] =
             {
                 .fd     = aKeeperTether->mChildFile->mFd,
-                .events = POLL_DISCONNECTEVENT,
+                .events = POLL_INPUTEVENTS,
             },
 
             [POLL_FD_KEEPER_SERVER] =
