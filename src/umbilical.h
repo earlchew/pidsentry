@@ -102,8 +102,7 @@ ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self);
 int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
-                       struct SocketPair       *aUmbilicalSocket,
-                       struct SocketPair       *aSyncSocket);
+                       struct SocketPair       *aUmbilicalSocket);
 
 int
 stopUmbilicalProcess(struct UmbilicalProcess *self);

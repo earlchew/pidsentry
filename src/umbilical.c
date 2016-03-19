@@ -326,8 +326,7 @@ static void
 runUmbilicalProcess_(struct UmbilicalProcess *self,
                      struct Pid               aWatchdogPid,
                      struct ChildProcess     *aChildProcess,
-                     struct SocketPair       *aUmbilicalSocket,
-                     struct SocketPair       *aSyncSocket)
+                     struct SocketPair       *aUmbilicalSocket)
 {
 
     debug(0,
@@ -357,7 +356,6 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
                 aUmbilicalSocket->mChildFile->mFd);
         });
 
-    closeSocketPair(aSyncSocket);
     closeSocketPair(aUmbilicalSocket);
 
     int whiteList[] =
@@ -394,8 +392,7 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
-                       struct SocketPair       *aUmbilicalSocket,
-                       struct SocketPair       *aSyncSocket)
+                       struct SocketPair       *aUmbilicalSocket)
 {
     int rc = -1;
 
@@ -432,8 +429,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
         runUmbilicalProcess_(self,
                              watchdogPid,
                              aChildProcess,
-                             aUmbilicalSocket,
-                             aSyncSocket);
+                             aUmbilicalSocket);
     }
 
     rc = 0;

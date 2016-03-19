@@ -523,8 +523,7 @@ cmdMonitorChild(char **aCmd)
     ABORT_IF(
         createUmbilicalProcess(&umbilicalProcess,
                                &childProcess,
-                               &umbilicalSocket,
-                               &syncSocket),
+                               &umbilicalSocket),
         {
             terminate(
                 errno,
