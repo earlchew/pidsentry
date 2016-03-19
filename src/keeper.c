@@ -536,7 +536,7 @@ forkKeeperProcess(
     int rc = -1;
 
     struct ThreadSigMask threadSigMask;
-    pushThreadSigMask(&threadSigMask, ThreadSigMaskUnblock, 0);
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
     struct Pid daemonPid = Pid(-1);
     ERROR_IF(
