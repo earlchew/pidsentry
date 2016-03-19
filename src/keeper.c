@@ -539,11 +539,11 @@ forkKeeperProcess(
     int rc = -1;
 
     struct ThreadSigMask threadSigMask;
-    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
+    pushThreadSigMask(&threadSigMask, ThreadSigMaskUnblock, 0);
 
     struct Pid daemonPid = Pid(-1);
     ERROR_IF(
-        (daemonPid = forkProcessDaemon(ForkProcessShareProcessGroup, Pgid(0)),
+        (daemonPid = forkProcessDaemon(),
          -1 == daemonPid.mPid));
 
     if ( ! daemonPid.mPid)

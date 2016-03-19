@@ -492,6 +492,44 @@ popThreadSigMask(struct ThreadSigMask *self)
 }
 
 /* -------------------------------------------------------------------------- */
+int
+waitThreadSigMask(const int *aSigList)
+{
+    int rc = -1;
+
+    sigset_t sigSet;
+
+    if ( ! aSigList)
+        ERROR_IF(
+            sigemptyset(&sigSet));
+    else
+    {
+        ERROR_IF(
+            sigfillset(&sigSet));
+        for (size_t ix = 0; aSigList[ix]; ++ix)
+            ERROR_IF(
+                sigdelset(&sigSet, aSigList[ix]));
+    }
+
+    int err = 0;
+    ERROR_IF(
+        (err = sigsuspend(&sigSet),
+         -1 != err || EINTR != errno),
+        {
+            if (-1 != err)
+                errno = 0;
+        });
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 struct ThreadSigMutex *
 createThreadSigMutex(struct ThreadSigMutex *self)
 {

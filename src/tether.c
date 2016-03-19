@@ -265,10 +265,8 @@ tetherThreadMain_(void *self_)
      * flushed after the child process has terminated. */
 
     struct ThreadSigMask threadSigMask;
-
-    const int sigList[] = { SIGALRM, 0 };
-
-    pushThreadSigMask(&threadSigMask, ThreadSigMaskUnblock, sigList);
+    pushThreadSigMask(
+        &threadSigMask, ThreadSigMaskUnblock, (const int []) { SIGALRM, 0 });
 
     struct TetherPoll tetherpoll =
     {

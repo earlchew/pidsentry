@@ -33,6 +33,7 @@
 #include "fd_.h"
 #include "pipe_.h"
 #include "socketpair_.h"
+#include "bellsocketpair_.h"
 #include "test_.h"
 #include "error_.h"
 #include "timekeeping_.h"
@@ -46,6 +47,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <ctype.h>
+#include <signal.h>
 
 #include <sys/file.h>
 #include <sys/wait.h>
@@ -269,9 +271,8 @@ changeSigAction_(unsigned          aSigNum,
             createMutex(&processSignalVectors_[aSigNum].mMutex_);
     unlockThreadSigMutex(&processSigMutex_);
 
-    int sigList[] = { aSigNum, 0 };
-
-    pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, sigList);
+    pushThreadSigMask(
+        &threadSigMask_, ThreadSigMaskBlock, (const int []) { aSigNum, 0 });
 
     threadSigMask = &threadSigMask_;
 
@@ -1632,17 +1633,26 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+struct ForkProcessDaemon
+{
+    unsigned mHangUp;
+};
+
 static void
 forkProcessDaemonSignalHandler_(void *self_, int aSigNum)
 {
+    struct ForkProcessDaemon *self = self_;
+
+    ++self->mHangUp;
+
     struct ProcessSignalName sigName;
     debug(1,
-          "ignoring signal %s",
+          "daemon received %s",
           formatProcessSignalName(&sigName, aSigNum));
 }
 
 struct Pid
-forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid)
+forkProcessDaemon(void)
 {
     pid_t rc = -1;
 
@@ -1652,8 +1662,8 @@ forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid)
     struct SocketPair  syncSocket_;
     struct SocketPair *syncSocket = 0;
 
-    const int sigList[] = { SIGHUP, 0 };
-    sigMask = pushThreadSigMask(&sigMask_, ThreadSigMaskBlock, sigList);
+    sigMask = pushThreadSigMask(
+        &sigMask_, ThreadSigMaskBlock, (const int []) { SIGHUP, 0 });
 
     ERROR_IF(
         createSocketPair(&syncSocket_, O_CLOEXEC));
@@ -1691,22 +1701,83 @@ forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid)
     {
         closeSocketPairParent(syncSocket);
 
+        struct BellSocketPair bellSocket;
+
         ABORT_IF(
-            (daemonPid = forkProcess(aOption, aPgid),
+            createBellSocketPair(&bellSocket, 0));
+
+        ABORT_IF(
+            (daemonPid = forkProcess(ForkProcessSetProcessGroup, Pgid(0)),
              -1 == daemonPid.mPid));
 
         /* Terminate the server to make the child an orphan. The child
-         * will become the daemon, and might also receive a SIGHUP and
-         * SIGCONT when it is adopted by init(8). */
+         * will become the daemon, and when it is adopted by init(8).
+         *
+         * When a parent process terminates, Posix says:
+         *
+         *    o If the process is a controlling process, the SIGHUP signal
+         *      shall be sent to each process in the foreground process group
+         *      of the controlling terminal belonging to the calling process.
+         *
+         *    o If the exit of the process causes a process group to become
+         *      orphaned, and if any member of the newly-orphaned process
+         *      group is stopped, then a SIGHUP signal followed by a
+         *      SIGCONT signal shall be sent to each process in the
+         *      newly-orphaned process group.
+         *
+         * The server created here is not a controlling process since it is
+         * not a session leader (although it have a controlling terminal).
+         * So no SIGHUP is sent for the first reason.
+         *
+         * To avoid ambiguity, the child is always placed into its own
+         * process group so that it will always receive a SIGHUP signal
+         * when orphaned. */
 
         if (daemonPid.mPid)
+        {
+            closeBellSocketPairChild(&bellSocket);
+            ABORT_IF(
+                waitBellSocketPairParent(&bellSocket));
+            closeBellSocketPair(&bellSocket);
+
+            while (1)
+            {
+                ABORT_IF(
+                    kill(daemonPid.mPid, SIGSTOP));
+
+                monotonicSleep(Duration(NSECS(MilliSeconds(100))));
+
+                enum ProcessStatus daemonStatus = monitorProcess(daemonPid);
+                if (ProcessStatusStopped == daemonStatus)
+                    break;
+
+                monotonicSleep(Duration(NSECS(Seconds(1))));
+            }
+
             quitProcess(EXIT_SUCCESS);
+        }
 
         daemonPid = ownProcessId();
 
+        struct ForkProcessDaemon processDaemon = { .mHangUp = 0 };
+
         ABORT_IF(
             watchProcessSignals(
-                VoidIntMethod(&forkProcessDaemonSignalHandler_, 0)));
+                VoidIntMethod(
+                    &forkProcessDaemonSignalHandler_, &processDaemon)));
+
+        closeBellSocketPairParent(&bellSocket);
+        ABORT_IF(
+            ringBellSocketPairChild(&bellSocket));
+        closeBellSocketPair(&bellSocket);
+
+        /* Once the signal handler is established to catch SIGHUP, allow
+         * the parent to stop and then make the daemon process an orphan. */
+
+        ABORT_IF(
+            waitThreadSigMask((const int []) { SIGHUP, 0 }));
+
+        debug(0, "daemon orphaned");
 
         ABORT_UNLESS(
             sizeof(daemonPid.mPid) == writeFile(syncSocket->mChildFile,

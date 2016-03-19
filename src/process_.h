@@ -185,7 +185,7 @@ struct Pid
 forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid);
 
 struct Pid
-forkProcessDaemon(enum ForkProcessOption aOption, struct Pgid aPgid);
+forkProcessDaemon(void);
 
 int
 reapProcess(struct Pid aPid, int *aStatus);

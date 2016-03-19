@@ -149,6 +149,9 @@ pushThreadSigMask(
 struct ThreadSigMask *
 popThreadSigMask(struct ThreadSigMask *self);
 
+int
+waitThreadSigMask(const int *aSigList);
+
 /* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
