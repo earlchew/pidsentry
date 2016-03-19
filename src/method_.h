@@ -38,8 +38,8 @@ extern "C" {
 #ifndef __cplusplus
 #define METHOD_CTOR_(Struct_)
 #else
-#define METHOD_CTOR_(Struct_)                     \
-    Struct_(Struct_ ## T_ aMethod, void *aObject) \
+#define METHOD_CTOR_(Struct_)                              \
+    explicit Struct_(Struct_ ## T_ aMethod, void *aObject) \
     { *this = Struct_ ## _(aMethod, aObject); }
 #endif
 

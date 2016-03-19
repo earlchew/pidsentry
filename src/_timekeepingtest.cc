@@ -32,7 +32,6 @@
 
 #include "gtest/gtest.h"
 
-#if 0
 bool
 operator==(const struct timespec &aLhs, const struct timespec &aRhs)
 {
@@ -131,8 +130,8 @@ TEST(TimeKeepingTest, DeadlineExpires)
 {
     auto period = Duration(NSECS(MilliSeconds(1000)));
 
-    struct EventClockTime since = EVENTCLOCKTIME_INIT;
-    struct Duration       remaining;
+    struct EventClockTime since     = EVENTCLOCKTIME_INIT;
+    struct Duration       remaining = Duration(NanoSeconds(0));
 
     auto startTimeOuter = monotonicTime();
     EXPECT_FALSE(deadlineTimeExpired(&since, period, &remaining, 0));
@@ -415,7 +414,6 @@ TEST(TimeKeepingTest, ShortenTimeInterval)
               shortenIntervalTime(&alarmVal,
                                   Duration(NanoSeconds(nsTime_1_0 * 11))));
 }
-#endif
 
 static struct Duration
 uptime()

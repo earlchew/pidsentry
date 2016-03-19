@@ -128,7 +128,7 @@ Duration_(struct NanoSeconds duration);
 struct Duration
 {
 #ifdef __cplusplus
-    Duration(struct NanoSeconds duration_)
+    explicit Duration(struct NanoSeconds duration_)
     : duration(duration_)
     { }
 #endif

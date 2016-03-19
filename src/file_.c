@@ -33,6 +33,7 @@
 #include "fd_.h"
 #include "process_.h"
 #include "test_.h"
+#include "thread_.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -41,19 +42,21 @@
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
-static struct File fileList_ =
+static struct
 {
-    .mFd   = -1,
-    .mNext = &fileList_,
-    .mPrev = &fileList_,
+    LIST_HEAD(, File) mHead;
+    pthread_mutex_t   mMutex;
+}
+fileList_ =
+{
+    .mHead  = LIST_HEAD_INITIALIZER(File),
+    .mMutex = PTHREAD_MUTEX_INITIALIZER,
 };
 
 /* -------------------------------------------------------------------------- */
 int
 createFile(struct File *self, int aFd)
 {
-    ensure(self != &fileList_);
-
     int rc = -1;
 
     self->mFd = aFd;
@@ -69,11 +72,11 @@ createFile(struct File *self, int aFd)
             errno = err;
         });
 
-    self->mNext =  fileList_.mNext;
-    self->mPrev = &fileList_;
-
-    self->mNext->mPrev = self;
-    self->mPrev->mNext = self;
+    lockMutex(&fileList_.mMutex);
+    {
+        LIST_INSERT_HEAD(&fileList_.mHead, self, mList);
+    }
+    unlockMutex(&fileList_.mMutex);
 
     rc = 0;
 
@@ -92,8 +95,6 @@ Finally:
 int
 detachFile(struct File *self)
 {
-    ensure(self != &fileList_);
-
     int rc = -1;
 
     if (self)
@@ -101,12 +102,13 @@ detachFile(struct File *self)
         ERROR_IF(
             -1 == self->mFd);
 
-        self->mPrev->mNext = self->mNext;
-        self->mNext->mPrev = self->mPrev;
+        lockMutex(&fileList_.mMutex);
+        {
+            LIST_REMOVE(self, mList);
+        }
+        unlockMutex(&fileList_.mMutex);
 
-        self->mPrev = 0;
-        self->mNext = 0;
-        self->mFd   = -1;
+        self->mFd = -1;
     }
 
     rc = 0;
@@ -122,18 +124,17 @@ Finally:
 void
 closeFile(struct File *self)
 {
-    ensure(self != &fileList_);
-
     if (self && -1 != self->mFd)
     {
         closeFd(&self->mFd);
 
-        self->mPrev->mNext = self->mNext;
-        self->mNext->mPrev = self->mPrev;
+        lockMutex(&fileList_.mMutex);
+        {
+            LIST_REMOVE(self, mList);
+        }
+        unlockMutex(&fileList_.mMutex);
 
-        self->mPrev = 0;
-        self->mNext = 0;
-        self->mFd   = -1;
+        self->mFd = -1;
     }
 }
 
@@ -149,16 +150,17 @@ void
 walkFileList(void *aOther,
              int aVisitor(void *aOther, const struct File *aFile))
 {
-    const struct File *fdPtr = &fileList_;
-
-    do
+    lockMutex(&fileList_.mMutex);
     {
-        fdPtr = fdPtr->mNext;
+        const struct File *filePtr;
 
-        if (fdPtr == &fileList_)
-            break;
-
-    } while ( ! aVisitor(aOther, fdPtr));
+        LIST_FOREACH(filePtr, &fileList_.mHead, mList)
+        {
+            if (aVisitor(aOther, filePtr))
+                break;
+        }
+    }
+    unlockMutex(&fileList_.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */

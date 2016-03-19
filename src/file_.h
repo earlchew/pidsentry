@@ -31,6 +31,7 @@
 
 #include <stdbool.h>
 
+#include <sys/queue.h>
 #include <sys/socket.h>
 
 #ifdef __cplusplus
@@ -45,9 +46,8 @@ struct Duration;
 
 struct File
 {
-    int          mFd;
-    struct File *mNext;
-    struct File *mPrev;
+    int              mFd;
+    LIST_ENTRY(File) mList;
 };
 
 /* -------------------------------------------------------------------------- */
