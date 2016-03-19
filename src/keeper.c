@@ -30,6 +30,7 @@
 #include "keeper.h"
 #include "error_.h"
 #include "socketpair_.h"
+#include "bellsocketpair_.h"
 #include "unixsocket_.h"
 #include "thread_.h"
 #include "macros_.h"
@@ -108,7 +109,7 @@ struct KeeperMonitor
 
     struct
     {
-        struct SocketPair *mSocket;
+        struct BellSocketPair *mSocket;
     } mTether;
 
     struct
@@ -373,16 +374,16 @@ pollFdCompletion_(void *self_)
 /* -------------------------------------------------------------------------- */
 static void
 runKeeperProcess_(
-    struct KeeperProcess *self,
-    struct SocketPair    *aKeeperTether,
-    struct UnixSocket    *aServerSocket)
+    struct KeeperProcess  *self,
+    struct BellSocketPair *aKeeperTether,
+    struct UnixSocket     *aServerSocket)
 {
     debug(0,
           "running keeper pid %" PRId_Pid " in pgid %" PRId_Pgid,
           FMTd_Pid(ownProcessId()),
           FMTd_Pgid(ownProcessGroupId()));
 
-    closeSocketPairParent(aKeeperTether);
+    closeBellSocketPairParent(aKeeperTether);
 
     struct Pid keptPid;
     ABORT_IF(
@@ -405,7 +406,7 @@ runKeeperProcess_(
         STDOUT_FILENO,
         STDERR_FILENO,
         ownProcessLockFile()->mFd,
-        aKeeperTether->mChildFile->mFd,
+        aKeeperTether->mSocketPair->mChildFile->mFd,
         aServerSocket->mFile->mFd,
     };
 
@@ -442,7 +443,7 @@ runKeeperProcess_(
         {
             [POLL_FD_KEEPER_TETHER] =
             {
-                .fd     = aKeeperTether->mChildFile->mFd,
+                .fd     = aKeeperTether->mSocketPair->mChildFile->mFd,
                 .events = POLL_INPUTEVENTS,
             },
 
@@ -499,12 +500,8 @@ runKeeperProcess_(
     /* Now that the keeper process has initialised, allow the watchdog
      * to continue execution. */
 
-    char buf[1] = { 0 };
-
-    int err;
     ABORT_IF(
-        (err = writeFile(aKeeperTether->mChildFile, buf, 1),
-         -1 == err || (errno = EIO, 1 != err)));
+        ringBellSocketPairChild(aKeeperTether));
 
     ABORT_IF(
         runPollFdLoop(&pollfd));
@@ -532,9 +529,9 @@ runKeeperProcess_(
 /* -------------------------------------------------------------------------- */
 int
 forkKeeperProcess(
-    struct KeeperProcess *self,
-    struct SocketPair    *aKeeperTether,
-    struct UnixSocket    *aServerSocket)
+    struct KeeperProcess  *self,
+    struct BellSocketPair *aKeeperTether,
+    struct UnixSocket     *aServerSocket)
 {
     int rc = -1;
 
@@ -552,15 +549,8 @@ forkKeeperProcess(
         quitProcess(EXIT_SUCCESS);
     }
 
-    ERROR_UNLESS(
-        1 == waitFileReadReady(aKeeperTether->mParentFile, 0));
-
-    char buf[1];
-
-    int err;
     ERROR_IF(
-        (err = readFile(aKeeperTether->mParentFile, buf, 1),
-         -1 == err || (errno = EIO, 1 != err)));
+        waitBellSocketPairParent(aKeeperTether));
 
     self->mPid = daemonPid;
 

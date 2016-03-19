@@ -36,7 +36,7 @@ extern "C" {
 #endif
 
 struct UnixSocket;
-struct SocketPair;
+struct BellSocketPair;
 
 /* -------------------------------------------------------------------------- */
 struct KeeperProcess
@@ -55,9 +55,9 @@ createKeeperProcess(
 
 int
 forkKeeperProcess(
-    struct KeeperProcess *self,
-    struct SocketPair    *aKeeperTether,
-    struct UnixSocket    *aServerSocket);
+    struct KeeperProcess  *self,
+    struct BellSocketPair *aKeeperTether,
+    struct UnixSocket     *aServerSocket);
 
 void
 closeKeeperProcess(

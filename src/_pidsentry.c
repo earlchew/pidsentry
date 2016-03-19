@@ -413,8 +413,8 @@ cmdMonitorChild(char **aCmd)
     struct KeeperProcess  pidKeeperProcess_;
     struct KeeperProcess *pidKeeperProcess = 0;
 
-    struct SocketPair  pidKeeperTether_;
-    struct SocketPair *pidKeeperTether = 0;
+    struct BellSocketPair  pidKeeperTether_;
+    struct BellSocketPair *pidKeeperTether = 0;
 
     struct sockaddr_un pidKeeperAddr;
 
@@ -430,7 +430,7 @@ cmdMonitorChild(char **aCmd)
         pidKeeperProcess = &pidKeeperProcess_;
 
         ABORT_IF(
-            createSocketPair(&pidKeeperTether_, O_NONBLOCK | O_CLOEXEC),
+            createBellSocketPair(&pidKeeperTether_, O_NONBLOCK | O_CLOEXEC),
             {
                 terminate(
                     errno,
@@ -466,7 +466,7 @@ cmdMonitorChild(char **aCmd)
             closeUnixSocket(&pidKeeperSocket);
         }
 
-        closeSocketPairChild(pidKeeperTether);
+        closeBellSocketPairChild(pidKeeperTether);
 
         /* Only identify the watchdog process after all the signal handlers
          * have been installed. The functional tests can use this as an
@@ -778,17 +778,18 @@ cmdMonitorChild(char **aCmd)
     if (pidKeeperTether)
     {
         ABORT_IF(
-            shutdownFileSocketWriter(pidKeeperTether->mParentFile));
+            shutdownFileSocketWriter(
+                pidKeeperTether->mSocketPair->mParentFile));
 
         struct Duration keeperShutdownTimeout =
             Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
 
         ABORT_IF(
-            -1 == waitFileReadReady(pidKeeperTether->mParentFile,
+            -1 == waitFileReadReady(pidKeeperTether->mSocketPair->mParentFile,
                                     &keeperShutdownTimeout));
     }
 
-    closeSocketPair(pidKeeperTether);
+    closeBellSocketPair(pidKeeperTether);
     closeKeeperProcess(pidKeeperProcess);
 
     ABORT_IF(
