@@ -66,12 +66,9 @@
  * Use struct Type for other poll loops
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
- * Provide a secure way for a client to signal the child via the watchdog
- *   without fear that the watchdog or the child has been aliased
  * -c command test:
  *    Check for obsolete pidfile
  *    Check for file descriptors in command process
- * pidsentry ?
  * Write unit test for forkProcessDaemon()
  */
 
@@ -85,8 +82,22 @@ announceChild(struct PidFile           *aPidFile,
     {
         if (0 < zombie)
         {
+            /* If the pidfile has become a zombie, it is possible to
+             * delete it here, but do not attempt to do so, and instead
+             * rely on the correct deletion semantics to be used when
+             * a new attempt is made to open the pidfile. */
+
+            ABORT_IF(
+                releaseLockPidFile(aPidFile),
+                {
+                    terminate(
+                        errno,
+                        "Cannot release lock on pid file '%s'",
+                        aPidFile->mPathName.mFileName);
+                });
+
             debug(0,
-                  "discarding zombie pid file '%s'",
+                  "disregarding zombie pid file '%s'",
                   aPidFile->mPathName.mFileName);
 
             closePidFile(aPidFile);
@@ -106,7 +117,7 @@ announceChild(struct PidFile           *aPidFile,
          * the pidfile exists. Since this newly created pidfile is empty,
          * it resembles an closed pidfile, and in the intervening time,
          * another process might have removed it and replaced it with
-         * another. */
+         * another, turning the pidfile held by this process into a zombie. */
 
         ABORT_IF(
             acquireWriteLockPidFile(aPidFile),
@@ -118,7 +129,8 @@ announceChild(struct PidFile           *aPidFile,
             });
 
         ABORT_IF(
-            (zombie = detectPidFileZombie(aPidFile), 0 > zombie),
+            (zombie = detectPidFileZombie(aPidFile),
+             0 > zombie),
             {
                 terminate(
                     errno,
@@ -126,6 +138,10 @@ announceChild(struct PidFile           *aPidFile,
                     aPidFile->mPathName.mFileName);
             });
     }
+
+    /* At this point, this process has a newly created, empty and locked
+     * pidfile. The pidfile cannot be deleted because a write lock must
+     * be held for deletion to occur. */
 
     debug(0, "initialised pid file '%s'", aPidFile->mPathName.mFileName);
 
@@ -137,9 +153,10 @@ announceChild(struct PidFile           *aPidFile,
                 "Cannot write to pid file '%s'", aPidFile->mPathName.mFileName);
         });
 
-    /* The pidfile was locked on creation, and now that it
-     * is completely initialised, it is ok to release
-     * the flock. */
+    /* The pidfile was locked on creation, and now that it is completely
+     * initialised, it is ok to release the flock. Any other process will
+     * check and see that the pidfile refers to a live process, and refrain
+     * from deleting it. */
 
     ABORT_IF(
         releaseLockPidFile(aPidFile),
@@ -541,16 +558,17 @@ cmdMonitorChild(char **aCmd)
     }
 
     /* With the child process announced, and the umbilical monitor
-     * prepared, allow the child process to run the target program.
-     *
-     * Wait until the child process acknowledges to avoid racing with
-     * the child process initialisation. */
+     * prepared, allow the child process to run the target program. */
 
     closeSocketPairChild(&syncSocket);
 
     TEST_RACE
     ({
-        /* Be aware that the supervisor might have sent a signal to the
+
+        /* The child process is waiting so that the chlid program will
+         * run only after the pidfile has been created.
+         *
+         * Be aware that the supervisor might have sent a signal to the
          * watchdog which will have propagated it to the child, causing
          * the child to terminate. */
 
@@ -568,12 +586,15 @@ cmdMonitorChild(char **aCmd)
                     "Unable to activate child process");
             });
 
+        /* Now wait for the child to respond to know that it has
+         * received the indication that it can start running. */
+
         ssize_t rdlen;
         ABORT_IF(
             (rdlen = readFile(syncSocket.mParentFile, buf, 1),
              -1 == rdlen
              ? ECONNRESET != errno
-             : (errno = 0, rdlen)),
+             : (errno = 0, 1 != rdlen)),
             {
                 terminate(
                     errno,
@@ -581,7 +602,11 @@ cmdMonitorChild(char **aCmd)
             });
     });
 
-    closeSocketPair(&syncSocket);
+    /* With the child acknowledging that it is ready to start
+     * after the pidfile is created, announce the child pid if
+     * required. Do this here before releasing the child process
+     * so that this content does not become co-mingled with other
+     * data on stdout when the child is running untethered. */
 
     if (gOptions.mIdentify)
     {
@@ -598,6 +623,8 @@ cmdMonitorChild(char **aCmd)
                 });
         });
     }
+
+    closeSocketPair(&syncSocket);
 
     /* Avoid closing the original stdout file descriptor only if
      * there is a need to copy the contents of the tether to it.

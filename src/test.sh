@@ -15,7 +15,8 @@ pidsentryexec()
 pidsentry()
 {
     if [ $# -eq 0 -o x"${1:-}" != x"exec" ] ; then
-        ( pidsentryexec "$@" )
+        ( pidsentryexec "$@" ) || return $?
+        return 0
     else
         shift
         pidsentryexec "$@"
@@ -508,6 +509,93 @@ runTests()
             [ x"$RC" != x"0" ] || echo OK
         }
     )'
+
+    testCase 'Competing child processes'
+    (
+    TASKS="1 2 3 4"
+    trap '
+        for REPLY in $TASKS ; do
+            eval '\''[ -z ${'\''TASK_$REPLY'\''++} ]'\'' ||
+                eval '\''kill -9 $'\''TASK_$REPLY
+        done ' 0
+    for REPLY in $TASKS ; do
+        {
+            TASK_PID=$BASHPID
+            PS4='+ $TASK_PID '
+            for (( IX = 0; IX < 8 ; ++IX )) ; do
+
+                # Try to run an instance of the child process using
+                # a common pidfile. Exactly one child process should
+                # run even though several compete to run.
+
+                pidsentry -d -i --test=1 -p $PIDFILE -u -- sh -c '
+                while : ; do date || break; sleep 1 ; done' | {
+
+                    trap 'echo $?' 0
+
+                    read PARENT UMBILICAL || {
+                        echo "Skipping pidfile from $TASK_PID" >&2
+                        echo X
+                        exit 0
+                    }
+                    : PARENT $PARENT UMBILICAL $UMBILICAL
+
+                    read CHILD
+                    : CHILD $CHILD
+                    echo $CHILD
+
+                    # Verify that the pidfile contains a reference to
+                    # the currently running instance of the child
+                    # process.
+
+                    randomsleep 1
+
+                    pidsentry -p $PIDFILE -c -- sh -c '
+                        echo $PIDSENTRY_CHILD_PID' | {
+
+                        read CHILD_PID || {
+                            echo "Cannot inspect pidfile from $TASK_PID" >&2
+                            exit 1
+                        }
+                        [ x"$CHILD" = x"$CHILD_PID" ] || {
+                            echo "Mismatched pidfile from $TASK_PID" >&2
+                            exit 1
+                        }
+                    }
+
+                    exit 0
+                } | {
+
+                    read CHILD
+                    : CHILD $CHILD
+                    read RC
+                    : RC $RC
+
+                    # Wait until no references to the child process
+                    # group remain. This should mean that the process
+                    # tree for this program instance has been cleaned up.
+
+                    [ x"$CHILD" = x"X" ] || {
+                        while kill -0 -- -"$CHILD" 2>&- ; do
+                            sleep 1
+                        done
+                    }
+
+                    exit $RC
+                }
+            done
+        } &
+        eval TASK_$REPLY='$!'
+    done
+    for REPLY in $TASKS ; do
+        eval wait '$'TASK_$REPLY || {
+            eval unset TASK_$REPLY
+            exit 1
+        }
+        eval unset TASK_$REPLY
+    done
+    trap '' 0
+    )
 
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"

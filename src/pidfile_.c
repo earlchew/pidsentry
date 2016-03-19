@@ -213,11 +213,11 @@ struct Pid
 readPidFile(const struct PidFile *self,
             struct sockaddr_un   *aPidKeeperAddr)
 {
-    int        rc           = -1;
-    struct Pid pid          = Pid(0);
-    int        pidfd        = -1;
-    char      *pidsignature = 0;
-    char      *signature    = 0;
+    int        rc    = -1;
+    struct Pid pid   = Pid(0);
+    int        pidfd = -1;
+
+    char *bufcpy = 0;
 
     ensure(LOCK_UN != self->mLock);
 
@@ -263,8 +263,7 @@ Finally:
     ({
         closeFd(&pidfd);
 
-        free(pidsignature);
-        free(signature);
+        free(bufcpy);
     });
 
     return rc ? Pid(-1) : pid;
@@ -374,6 +373,47 @@ destroyPidFile(struct PidFile *self)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+unlinkPidFile_(struct PidFile *self)
+{
+    int rc = -1;
+
+    ensure(LOCK_EX == self->mLock);
+
+    /* The pidfile might already have been unlinked from its enclosing
+     * directory by another process, but this code enforces the precondition
+     * that the caller must hold an exclusive lock on the pidfile to be
+     * unlinked before attempting the operation. */
+
+    int deleted = 0;
+
+    int zombie;
+    ERROR_IF(
+        (zombie = detectPidFileZombie(self),
+         0 > zombie));
+
+    /* If the pidfile is a zombie, it is no longer present in its
+     * enclosing directory, in which case it is not necessary
+     * to unlink it. */
+
+    if ( ! zombie)
+    {
+        ERROR_IF(
+            unlinkPathName(&self->mPathName, 0) && ENOENT != errno);
+
+        deleted = 1;
+    }
+
+    rc = deleted;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 openPidFile(struct PidFile *self, unsigned aFlags)
 {
@@ -405,8 +445,15 @@ openPidFile(struct PidFile *self, unsigned aFlags)
     }
     else
     {
-        /* Check if the pidfile already exists, and if the process that
-         * it names is still running. */
+        /* If O_CREAT is specified, a successful return provides the
+         * caller with a new, empty pidfile that was created
+         * exclusively (O_EXCL) in the enclosing directory, but because
+         * the pidfile it empty and unlocked, it can become a zombie
+         * at any time.
+         *
+         * In order to furnish the caller with a new pidfile, any
+         * pre-existing pidfile in the directory with the same name
+         * must be removed, if possible. */
 
         int err;
         ERROR_IF(
@@ -423,9 +470,10 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             ERROR_IF(
                 acquireWriteLockPidFile_(self));
 
-            /* If the pidfile names a valid process then give up since
-             * it means that the pidfile is already owned. Otherwise,
-             * the pidfile is not owned, and can be deleted. */
+            /* If the pre-existing pidfile names a valid process then give
+             * up since it means that the requested name is already taken.
+             * Otherwise, the pidfile is either empty, or names a process
+             * that non longer exists, and so can be deleted. */
 
             struct sockaddr_un pidKeeperAddr;
             struct Pid         pid;
@@ -439,12 +487,16 @@ openPidFile(struct PidFile *self, unsigned aFlags)
                     errno = EEXIST;
                 });
 
-            debug(
-                0,
-                "removing existing pidfile '%s'", self->mPathName.mFileName);
-
+            int unlinked;
             ERROR_IF(
-                unlinkPathName(&self->mPathName, 0) && ENOENT != errno);
+                (unlinked = unlinkPidFile_(self),
+                 -1 == unlinked));
+
+            if (unlinked)
+                debug(
+                    0,
+                    "removing existing pidfile '%s'",
+                    self->mPathName.mFileName);
 
             ERROR_IF(
                 releaseLockPidFile(self));
@@ -454,7 +506,11 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             self->mFile = 0;
         }
 
-        /* Open the pidfile using lock file semantics for writing, but
+        /* This is a window where another process can also race to
+         * create the pidfile. Guard against that by using O_EXCL
+         * which will only allow one of the prcesses to succeed.
+         *
+         * Open the pidfile using lock file semantics for writing, but
          * with readonly permissions. Use of lock file semantics ensures
          * that the watchdog will be the owner of the pid file, and
          * readonly permissions dissuades other processes from modifying
@@ -472,6 +528,11 @@ openPidFile(struct PidFile *self, unsigned aFlags)
                         S_IRUSR)));
         });
         self->mFile = &self->mFile_;
+
+        /* Although the pidfile is created, it is unlocked and empty, so
+         * any other process will consider it a zombie, remove it and
+         * write its own pidfile. If that happens, from the point of view
+         * of this caller, this pidfile will have become a zombie. */
     }
 
     ensure(self->mFile == &self->mFile_);
@@ -509,28 +570,32 @@ detectPidFileZombie(const struct PidFile *self)
 
     struct stat fileStatus;
 
+    int err;
     ERROR_IF(
-        fstatPathName(
+        (err = fstatPathName(
             &self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW),
-        {
-            if (ENOENT == errno)
-                rc = 1;
-        });
+         err && ENOENT != errno));
 
-    struct stat fdStatus;
+    bool zombie;
 
-    ERROR_IF(
-        fstatFile(self->mFile, &fdStatus));
+    if (err)
+        zombie = true;
+    else
+    {
+        struct stat fdStatus;
 
-    rc = ( fdStatus.st_dev != fileStatus.st_dev ||
-           fdStatus.st_ino != fileStatus.st_ino );
+        ERROR_IF(
+            fstatFile(self->mFile, &fdStatus));
+
+        zombie = ( fdStatus.st_dev != fileStatus.st_dev ||
+                   fdStatus.st_ino != fileStatus.st_ino );
+    }
+
+    rc = zombie;
 
 Finally:
 
     FINALLY({});
-
-    if ( ! rc && testAction(TestLevelRace))
-        rc = 1;
 
     return rc;
 }
@@ -566,8 +631,10 @@ closePidFile(struct PidFile *self)
              * that the pidfile is deleted from, say, the command
              * line. */
 
+            int unlinked;
             ABORT_IF(
-                unlinkPathName(&self->mPathName, 0) && ENOENT != errno,
+                (unlinked = unlinkPidFile_(self),
+                 -1 == unlinked || (errno = 0, ! unlinked)),
                 {
                     terminate(
                         errno,
