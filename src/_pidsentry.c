@@ -65,11 +65,7 @@
  *
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
- * -c command test:
- *    Check for obsolete pidfile
- *    Check for file descriptors in command process
  * Write unit test for forkProcessDaemon()
- * Protect file list with mutex
  */
 
 /* -------------------------------------------------------------------------- */

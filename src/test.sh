@@ -138,8 +138,18 @@ runTests()
 
     testCase 'Dead process in pid file'
     rm -f $PIDFILE
-    pidsentry -i -p $PIDFILE -- sh -c 'kill -9 $PPID' || :
+    pidsentry -i -u -p $PIDFILE -- sh -c 'while : ; do sleep 1 ; done' | {
+        read PARENT UMBILICAL
+        read CHILD
+        kill -9 $PARENT
+        kill -9 $CHILD
+    }
     [ -s $PIDFILE ]
+    REPLY=$(cksum $PIDFILE)
+    # Ensure that it is not possible to run a command against the child
+    ! pidsentry -p $PIDFILE -c -- true
+    [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
+    # Ensure that it is possible to create a new child
     testExit 0 pidsentry --test=1 -d -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
 
@@ -324,10 +334,30 @@ runTests()
         }
     )'
 
-    testCase 'Untethered child process'
+    testCase 'Untethered child process file descriptors'
+    # i.   stdin
+    # ii.  stdout
+    # iii. stderr
     testOutput '$(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
-      pidsentry --test=1 -u -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      pidsentry --test=1 -u -- ls -l /proc/self/fd |
+          grep "[0-9]-[0-9]" | wc -l)'
+
+    testCase 'Command process file descriptors'
+    # i.   stdin
+    # ii.  stdout
+    # iii. stderr
+    [ -n "$VALGRIND" ] || testOutput '$(
+        ls -l /proc/self/fd | grep "[0-9][0-9]" | wc -l)' = '$(
+        pidsentry -i -u -p $PIDFILE -- sh -c "while : ; do sleep 1 ; done" |
+        {
+            read PARENT UMBILICAL
+            read CHILD
+            pidsentry -p $PIDFILE -c ls -l /proc/self/fd |
+                grep "[0-9][[0-9]" | wc -l
+            kill $CHILD
+        }
+    )'
 
     testCase 'Untethered child process with 8M data'
     testOutput 8192000 = '$(
