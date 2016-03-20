@@ -502,7 +502,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
             /* Although the connection to the umbilical process is closed,
              * there is no guarantee that waitpid() will not block. */
 
-            switch (monitorProcess(self->mPid))
+            switch (monitorProcessChild(self->mPid))
             {
             default:
                 monotonicSleep(Duration(NSECS(Seconds(1))));

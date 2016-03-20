@@ -1435,7 +1435,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 enum ProcessStatus
-monitorProcess(struct Pid aPid)
+monitorProcessChild(struct Pid aPid)
 {
     enum ProcessStatus rc = ProcessStatusError;
 
@@ -1747,7 +1747,8 @@ forkProcessDaemon(void)
 
                 monotonicSleep(Duration(NSECS(MilliSeconds(100))));
 
-                enum ProcessStatus daemonStatus = monitorProcess(daemonPid);
+                enum ProcessStatus daemonStatus =
+                    monitorProcessChild(daemonPid);
                 if (ProcessStatusStopped == daemonStatus)
                     break;
 

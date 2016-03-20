@@ -165,7 +165,7 @@ superviseChildProcess_(const char        *aRole,
 
     enum ProcessStatus status;
     ABORT_IF(
-        (status = monitorProcess(aPid),
+        (status = monitorProcessChild(aPid),
          ProcessStatusError == status),
         {
             terminate(
@@ -1108,7 +1108,7 @@ pollFdTimerUmbilical_(void                        *self_,
         enum ProcessStatus umbilicalstatus;
 
         ABORT_IF(
-            (umbilicalstatus = monitorProcess(self->mUmbilical.mPid),
+            (umbilicalstatus = monitorProcessChild(self->mUmbilical.mPid),
              ProcessStatusError == umbilicalstatus && ECHILD != errno),
             {
                 terminate(
@@ -1277,7 +1277,7 @@ pollFdTimerTether_(void                        *self_,
         enum ProcessStatus childstatus;
 
         ABORT_IF(
-            (childstatus = monitorProcess(self->mChildPid),
+            (childstatus = monitorProcessChild(self->mChildPid),
              ProcessStatusError == childstatus && ECHILD != errno),
             {
                 terminate(

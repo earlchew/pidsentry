@@ -191,7 +191,7 @@ int
 reapProcess(struct Pid aPid, int *aStatus);
 
 enum ProcessStatus
-monitorProcess(struct Pid aPid);
+monitorProcessChild(struct Pid aPid);
 
 struct ExitCode
 extractProcessExitStatus(int aStatus, struct Pid aPid);
