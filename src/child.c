@@ -163,10 +163,10 @@ superviseChildProcess_(const char        *aRole,
      * The new shell inherits the earlier sleep as a child even
      * though it did not create it. */
 
-    enum ProcessStatus status;
+    struct ChildProcessState childState;
     ABORT_IF(
-        (status = monitorProcessChild(aPid),
-         ProcessStatusError == status),
+        (childState = monitorProcessChild(aPid),
+         ChildProcessStateError == childState.mChildState),
         {
             terminate(
                 errno,
@@ -175,7 +175,7 @@ superviseChildProcess_(const char        *aRole,
                 FMTd_Pid(aPid));
         });
 
-    if (ProcessStatusRunning == status)
+    if (ChildProcessStateRunning == childState.mChildState)
     {
         debug(1,
               "%s pid %" PRId_Pid " running",
@@ -190,15 +190,15 @@ superviseChildProcess_(const char        *aRole,
                     "Unable to set %s event latch", aRole);
             });
     }
-    else if (ProcessStatusExited != status &&
-             ProcessStatusKilled != status &&
-             ProcessStatusDumped != status)
+    else if (ChildProcessStateExited != childState.mChildState &&
+             ChildProcessStateKilled != childState.mChildState &&
+             ChildProcessStateDumped != childState.mChildState)
     {
         debug(1,
-              "%s pid %" PRId_Pid " status %c",
+              "%s pid %" PRId_Pid " status %" PRIs_ChildProcessState,
               aRole,
               FMTd_Pid(aPid),
-              status);
+              FMTs_ChildProcessState(childState));
     }
     else
     {
@@ -1105,11 +1105,11 @@ pollFdTimerUmbilical_(void                        *self_,
          * a timeout, and if the timeout is exceeded terminate the
          * child process. */
 
-        enum ProcessStatus umbilicalstatus;
-
+        struct ChildProcessState umbilicalState;
         ABORT_IF(
-            (umbilicalstatus = monitorProcessChild(self->mUmbilical.mPid),
-             ProcessStatusError == umbilicalstatus && ECHILD != errno),
+            (umbilicalState = monitorProcessChild(self->mUmbilical.mPid),
+             ChildProcessStateError == umbilicalState.mChildState &&
+             ECHILD != errno),
             {
                 terminate(
                     errno,
@@ -1121,13 +1121,15 @@ pollFdTimerUmbilical_(void                        *self_,
          * If so, do nothing here, and rely on subsequent brokn umbilical
          * connection to trigger action. */
 
-        if (ProcessStatusError != umbilicalstatus)
+        if (ChildProcessStateError != umbilicalState.mChildState)
         {
-            if (ProcessStatusTrapped == umbilicalstatus ||
-                ProcessStatusStopped == umbilicalstatus)
+            if (ChildProcessStateTrapped == umbilicalState.mChildState ||
+                ChildProcessStateStopped == umbilicalState.mChildState)
             {
                 debug(0,
-                      "deferred timeout umbilical status %c", umbilicalstatus);
+                      "deferred timeout umbilical status %"
+                      PRIs_ChildProcessState,
+                      FMTs_ChildProcessState(umbilicalState));
 
                 self->mUmbilical.mCycleCount = 0;
             }
@@ -1274,11 +1276,12 @@ pollFdTimerTether_(void                        *self_,
         struct PollFdTimerAction *tetherTimer =
             &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_TETHER];
 
-        enum ProcessStatus childstatus;
+        struct ChildProcessState childState;
 
         ABORT_IF(
-            (childstatus = monitorProcessChild(self->mChildPid),
-             ProcessStatusError == childstatus && ECHILD != errno),
+            (childState = monitorProcessChild(self->mChildPid),
+             ChildProcessStateError == childState.mChildState &&
+             ECHILD != errno),
             {
                 terminate(
                     errno,
@@ -1289,12 +1292,15 @@ pollFdTimerTether_(void                        *self_,
         /* Be aware if the child process is no longer active, it makes
          * sense to proceed as if the child process should be terminated. */
 
-        if (ProcessStatusError != childstatus)
+        if (ChildProcessStateError != childState.mChildState)
         {
-            if (ProcessStatusTrapped == childstatus ||
-                ProcessStatusStopped == childstatus)
+            if (ChildProcessStateTrapped == childState.mChildState ||
+                ChildProcessStateStopped == childState.mChildState)
             {
-                debug(0, "deferred timeout child status %c", childstatus);
+                debug(0,
+                      "deferred timeout child status %"
+                      PRIs_ChildProcessState,
+                      FMTs_ChildProcessState(childState));
 
                 self->mTether.mCycleCount = 0;
                 break;

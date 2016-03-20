@@ -61,27 +61,37 @@ enum ForkProcessOption
     ForkProcessSetProcessGroup,
 };
 
-enum ProcessState
+#define PRIs_ProcessState "c"
+#define FMTs_ProcessState(State) ((State).mState)
+struct ProcessState
 {
-    ProcessStateError    = -1,
-    ProcessStateRunning  = 'R',
-    ProcessStateSleeping = 'S',
-    ProcessStateWaiting  = 'W',
-    ProcessStateZombie   = 'Z',
-    ProcessStateStopped  = 'T',
-    ProcessStateTraced   = 'D',
-    ProcessStateDead     = 'X'
+    enum
+    {
+        ProcessStateError    = -1,
+        ProcessStateRunning  = 'R',
+        ProcessStateSleeping = 'S',
+        ProcessStateWaiting  = 'W',
+        ProcessStateZombie   = 'Z',
+        ProcessStateStopped  = 'T',
+        ProcessStateTraced   = 'D',
+        ProcessStateDead     = 'X'
+    } mState;
 };
 
-enum ProcessStatus
+#define PRIs_ChildProcessState "c"
+#define FMTs_ChildProcessState(State) ((State).mChildState)
+struct ChildProcessState
 {
-    ProcessStatusError     = -1,
-    ProcessStatusRunning   = 'r',
-    ProcessStatusExited    = 'x',
-    ProcessStatusKilled    = 'k',
-    ProcessStatusDumped    = 'd',
-    ProcessStatusStopped   = 's',
-    ProcessStatusTrapped   = 't',
+    enum
+    {
+        ChildProcessStateError     = -1,
+        ChildProcessStateRunning   = 'r',
+        ChildProcessStateExited    = 'x',
+        ChildProcessStateKilled    = 'k',
+        ChildProcessStateDumped    = 'd',
+        ChildProcessStateStopped   = 's',
+        ChildProcessStateTrapped   = 't',
+    } mChildState;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -190,7 +200,7 @@ forkProcessDaemon(void);
 int
 reapProcess(struct Pid aPid, int *aStatus);
 
-enum ProcessStatus
+struct ChildProcessState
 monitorProcessChild(struct Pid aPid);
 
 struct ExitCode
@@ -247,7 +257,7 @@ ownProcessGroupId(void);
 int
 fetchProcessSignature(struct Pid aPid, char **aSignature);
 
-enum ProcessState
+struct ProcessState
 fetchProcessState(struct Pid aPid);
 
 struct Pgid

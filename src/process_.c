@@ -1031,10 +1031,10 @@ formatProcessSignalName(struct ProcessSignalName *self, int aSigNum)
 }
 
 /* -------------------------------------------------------------------------- */
-enum ProcessState
+struct ProcessState
 fetchProcessState(struct Pid aPid)
 {
-    enum ProcessState rc = ProcessStateError;
+    struct ProcessState rc = { .mState = ProcessStateError };
 
     int   statfd  = -1;
     char *statbuf = 0;
@@ -1077,13 +1077,13 @@ fetchProcessState(struct Pid aPid)
                             errno = ENOSYS;
                         });
 
-                case 'R': rc = ProcessStateRunning;  break;
-                case 'S': rc = ProcessStateSleeping; break;
-                case 'D': rc = ProcessStateWaiting;  break;
-                case 'Z': rc = ProcessStateZombie;   break;
-                case 'T': rc = ProcessStateStopped;  break;
-                case 't': rc = ProcessStateTraced;   break;
-                case 'X': rc = ProcessStateDead;     break;
+                case 'R': rc.mState = ProcessStateRunning;  break;
+                case 'S': rc.mState = ProcessStateSleeping; break;
+                case 'D': rc.mState = ProcessStateWaiting;  break;
+                case 'Z': rc.mState = ProcessStateZombie;   break;
+                case 'T': rc.mState = ProcessStateStopped;  break;
+                case 't': rc.mState = ProcessStateTraced;   break;
+                case 'X': rc.mState = ProcessStateDead;     break;
                 }
             }
             break;
@@ -1434,10 +1434,10 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-enum ProcessStatus
+struct ChildProcessState
 monitorProcessChild(struct Pid aPid)
 {
-    enum ProcessStatus rc = ProcessStatusError;
+    struct ChildProcessState rc = { .mChildState = ChildProcessStateError };
 
     siginfo_t siginfo;
 
@@ -1447,7 +1447,7 @@ monitorProcessChild(struct Pid aPid)
                WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT));
 
     if (siginfo.si_pid != aPid.mPid)
-        rc = ProcessStatusRunning;
+        rc.mChildState = ChildProcessStateRunning;
     else
     {
         switch (siginfo.si_code)
@@ -1459,12 +1459,12 @@ monitorProcessChild(struct Pid aPid)
                     errno = EINVAL;
                 });
 
-        case CLD_EXITED:    rc = ProcessStatusExited;  break;
-        case CLD_KILLED:    rc = ProcessStatusKilled;  break;
-        case CLD_DUMPED:    rc = ProcessStatusDumped;  break;
-        case CLD_STOPPED:   rc = ProcessStatusStopped; break;
-        case CLD_TRAPPED:   rc = ProcessStatusTrapped; break;
-        case CLD_CONTINUED: rc = ProcessStatusRunning; break;
+        case CLD_EXITED:    rc.mChildState = ChildProcessStateExited;  break;
+        case CLD_KILLED:    rc.mChildState = ChildProcessStateKilled;  break;
+        case CLD_DUMPED:    rc.mChildState = ChildProcessStateDumped;  break;
+        case CLD_STOPPED:   rc.mChildState = ChildProcessStateStopped; break;
+        case CLD_TRAPPED:   rc.mChildState = ChildProcessStateTrapped; break;
+        case CLD_CONTINUED: rc.mChildState = ChildProcessStateRunning; break;
         }
     }
 
@@ -1747,9 +1747,9 @@ forkProcessDaemon(void)
 
                 monotonicSleep(Duration(NSECS(MilliSeconds(100))));
 
-                enum ProcessStatus daemonStatus =
+                struct ChildProcessState daemonStatus =
                     monitorProcessChild(daemonPid);
-                if (ProcessStatusStopped == daemonStatus)
+                if (ChildProcessStateStopped == daemonStatus.mChildState)
                     break;
 
                 monotonicSleep(Duration(NSECS(Seconds(1))));

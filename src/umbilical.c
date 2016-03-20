@@ -182,14 +182,15 @@ pollFdTimerUmbilical_(
      * timeout period expires, then assume that the watchdog itself
      * is stuck. */
 
-    enum ProcessStatus parentstatus = fetchProcessState(self->mParentPid);
+    struct ProcessState parentState = fetchProcessState(self->mParentPid);
 
-    if (ProcessStateStopped == parentstatus)
+    if (ProcessStateStopped == parentState.mState)
     {
         debug(
             0,
-            "umbilical timeout deferred due to parent status %c",
-            parentstatus);
+            "umbilical timeout deferred due to "
+            "parent status %" PRIs_ProcessState,
+            FMTs_ProcessState(parentState));
         self->mCycleCount = 0;
     }
     else if (++self->mCycleCount >= self->mCycleLimit)
@@ -502,15 +503,15 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
             /* Although the connection to the umbilical process is closed,
              * there is no guarantee that waitpid() will not block. */
 
-            switch (monitorProcessChild(self->mPid))
+            switch (monitorProcessChild(self->mPid).mChildState)
             {
             default:
                 monotonicSleep(Duration(NSECS(Seconds(1))));
                 continue;
 
-            case ProcessStatusExited:
-            case ProcessStatusKilled:
-            case ProcessStatusDumped:
+            case ChildProcessStateExited:
+            case ChildProcessStateKilled:
+            case ChildProcessStateDumped:
                 break;
             }
 
