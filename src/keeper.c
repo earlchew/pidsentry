@@ -136,7 +136,6 @@ createKeeperProcess(
 {
     int rc = -1;
 
-    self->mPid  = Pid(0);
     self->mPgid = aPgid;
 
     rc = 0;
@@ -372,21 +371,22 @@ pollFdCompletion_(void *self_)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
-runKeeperProcess_(
+int
+runKeeperProcess(
     struct KeeperProcess  *self,
     struct BellSocketPair *aKeeperTether,
     struct UnixSocket     *aServerSocket)
 {
-    debug(0,
-          "running keeper pid %" PRId_Pid " in pgid %" PRId_Pgid,
-          FMTd_Pid(ownProcessId()),
-          FMTd_Pgid(ownProcessGroupId()));
+    int rc = -1;
 
-    closeBellSocketPairParent(aKeeperTether);
+    struct Pipe  nullPipe_;
+    struct Pipe *nullPipe = 0;
+
+    struct PollFd  pollfd_;
+    struct PollFd *pollfd = 0;
 
     struct Pid keptPid;
-    ABORT_IF(
+    ERROR_IF(
         (keptPid = forkProcess(ForkProcessSetProcessGroup, self->mPgid),
          -1 == keptPid.mPid));
 
@@ -400,27 +400,15 @@ runKeeperProcess_(
         quitProcess(EXIT_SUCCESS);
     }
 
-    int whiteList[] =
-    {
-        STDIN_FILENO,
-        STDOUT_FILENO,
-        STDERR_FILENO,
-        ownProcessLockFile()->mFd,
-        aKeeperTether->mSocketPair->mChildFile->mFd,
-        aServerSocket->mFile->mFd,
-    };
-
-    closeFdDescriptors(whiteList, NUMBEROF(whiteList));
-
-    struct Pipe nullPipe;
-    ABORT_IF(
-        createPipe(&nullPipe, O_CLOEXEC | O_NONBLOCK));
+    ERROR_IF(
+        createPipe(&nullPipe_, O_CLOEXEC | O_NONBLOCK));
+    nullPipe = &nullPipe_;
 
     struct KeeperMonitor keeperMonitor =
     {
         .mType = keeperMonitorType_,
 
-        .mNullPipe = &nullPipe,
+        .mNullPipe = nullPipe,
 
         .mTether =
         {
@@ -483,10 +471,9 @@ runKeeperProcess_(
         &sentinelClient == TAILQ_LAST(&keeperMonitor.mServer.mClientList,
                                       KeeperClientList));
 
-    struct PollFd pollfd;
-    ABORT_IF(
+    ERROR_IF(
         createPollFd(
-            &pollfd,
+            &pollfd_,
 
             keeperMonitor.mPollFds,
             keeperMonitor.mPollFdActions,
@@ -496,15 +483,16 @@ runKeeperProcess_(
             pollFdTimerNames_, POLL_FD_KEEPER_TIMER_KINDS,
 
             pollFdCompletion_, &keeperMonitor));
+    pollfd = &pollfd_;
 
     /* Now that the keeper process has initialised, allow the watchdog
      * to continue execution. */
 
-    ABORT_IF(
+    ERROR_IF(
         ringBellSocketPairChild(aKeeperTether));
 
-    ABORT_IF(
-        runPollFdLoop(&pollfd));
+    ERROR_IF(
+        runPollFdLoop(pollfd));
 
     ensure(
         &sentinelClient == TAILQ_FIRST(&keeperMonitor.mServer.mClientList));
@@ -512,47 +500,12 @@ runKeeperProcess_(
         &sentinelClient == TAILQ_LAST(&keeperMonitor.mServer.mClientList,
                                       KeeperClientList));
 
-    closePollFd(&pollfd);
-
     int status;
-    ABORT_IF(
+    ERROR_IF(
         reapProcess(keptPid, &status));
 
-    ABORT_UNLESS(
+    ERROR_UNLESS(
         WIFEXITED(status) && ! WEXITSTATUS(status));
-
-    debug(0, "exit keeper");
-
-    quitProcess(EXIT_SUCCESS);
-}
-
-/* -------------------------------------------------------------------------- */
-int
-forkKeeperProcess(
-    struct KeeperProcess  *self,
-    struct BellSocketPair *aKeeperTether,
-    struct UnixSocket     *aServerSocket)
-{
-    int rc = -1;
-
-    struct ThreadSigMask threadSigMask;
-    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
-
-    struct Pid daemonPid = Pid(-1);
-    ERROR_IF(
-        (daemonPid = forkProcessDaemon(),
-         -1 == daemonPid.mPid));
-
-    if ( ! daemonPid.mPid)
-    {
-        runKeeperProcess_(self, aKeeperTether, aServerSocket);
-        quitProcess(EXIT_SUCCESS);
-    }
-
-    ERROR_IF(
-        waitBellSocketPairParent(aKeeperTether));
-
-    self->mPid = daemonPid;
 
     rc = 0;
 
@@ -560,20 +513,8 @@ Finally:
 
     FINALLY
     ({
-        if (rc)
-        {
-            if (-1 != daemonPid.mPid)
-                ABORT_IF(
-                    kill(daemonPid.mPid, SIGKILL),
-                    {
-                        terminate(
-                            errno,
-                            "Unable to kill keeper pid %" PRId_Pid,
-                            FMTd_Pid(daemonPid));
-                    });
-        }
-
-        popThreadSigMask(&threadSigMask);
+        closePollFd(pollfd);
+        closePipe(nullPipe);
     });
 
     return rc;

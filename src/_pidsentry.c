@@ -454,9 +454,48 @@ cmdMonitorChild(char **aCmd)
             ABORT_IF(
                 pidKeeperAddr.sun_path[0]);
 
+            struct Pid daemonPid = Pid(-1);
             ABORT_IF(
-                forkKeeperProcess(
-                    pidKeeperProcess, pidKeeperTether, &pidKeeperSocket),
+                (daemonPid = forkProcessDaemon(),
+                 -1 == daemonPid.mPid));
+
+            if ( ! daemonPid.mPid)
+            {
+                debug(0,
+                      "running keeper pid %" PRId_Pid " in pgid %" PRId_Pgid,
+                      FMTd_Pid(ownProcessId()),
+                      FMTd_Pgid(ownProcessGroupId()));
+
+                closeBellSocketPairParent(pidKeeperTether);
+
+                int whiteList[] =
+                {
+                    STDIN_FILENO,
+                    STDOUT_FILENO,
+                    STDERR_FILENO,
+                    ownProcessLockFile()->mFd,
+                    pidKeeperTether->mSocketPair->mChildFile->mFd,
+                    pidKeeperSocket.mFile->mFd,
+                };
+
+                closeFdDescriptors(whiteList, NUMBEROF(whiteList));
+
+                ABORT_IF(
+                    runKeeperProcess(
+                        pidKeeperProcess, pidKeeperTether, &pidKeeperSocket),
+                    {
+                        terminate(
+                            errno,
+                            "Unable to run process keeper");
+                    });
+
+                debug(0, "exit keeper");
+
+                quitProcess(EXIT_SUCCESS);
+            }
+
+            ABORT_IF(
+                waitBellSocketPairParent(pidKeeperTether),
                 {
                     terminate(
                         errno,

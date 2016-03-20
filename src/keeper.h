@@ -41,10 +41,7 @@ struct BellSocketPair;
 /* -------------------------------------------------------------------------- */
 struct KeeperProcess
 {
-    struct Pid  mPid;
     struct Pgid mPgid;
-
-    struct SocketPair *mKeeperTether;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -54,7 +51,7 @@ createKeeperProcess(
     struct Pgid           aPgid);
 
 int
-forkKeeperProcess(
+runKeeperProcess(
     struct KeeperProcess  *self,
     struct BellSocketPair *aKeeperTether,
     struct UnixSocket     *aServerSocket);
