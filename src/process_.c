@@ -1146,6 +1146,43 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+dupProcessLock_(struct ProcessLock       *self,
+                const struct ProcessLock *other)
+{
+    int rc = -1;
+
+    self->mFile     = 0;
+    self->mLock     = LOCK_UN;
+    self->mFileName = 0;
+
+    ERROR_UNLESS(
+        (self->mFileName = strdup(other->mFileName)));
+
+    ERROR_IF(
+        createFile(
+            &self->mFile_,
+            open(self->mFileName, O_RDONLY | O_CLOEXEC)));
+    self->mFile = &self->mFile_;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+        {
+            closeFile(self->mFile);
+
+            free(self->mFileName);
+        }
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 closeProcessLock_(struct ProcessLock *self)
 {
@@ -1523,7 +1560,8 @@ forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
             &processLock_[activeProcessLock]);
 
         ERROR_IF(
-            createProcessLock_(&processLock_[inactiveProcessLock]));
+            dupProcessLock_(&processLock_[inactiveProcessLock],
+                            &processLock_[activeProcessLock]));
         processLockPtr_[inactiveProcessLock] =
             &processLock_[inactiveProcessLock];
     }

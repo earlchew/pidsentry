@@ -53,14 +53,17 @@ TEST(ProcessTest, ProcessSignalName)
 
 TEST(ProcessTest, ProcessState)
 {
-    EXPECT_EQ(ProcessStateError, fetchProcessState(-1));
+    EXPECT_EQ(ProcessState::ProcessStateError,
+              fetchProcessState(-1).mState);
 
-    EXPECT_EQ(ProcessStateRunning, fetchProcessState(getpid()));
+    EXPECT_EQ(ProcessState::ProcessStateRunning,
+              fetchProcessState(getpid()).mState);
 }
 
 TEST(ProcessTest, ProcessStatus)
 {
-    EXPECT_EQ(ProcessStatusError, monitorProcess(getpid()));
+    EXPECT_EQ(ChildProcessState::ChildProcessStateError,
+              monitorProcessChild(getpid()).mChildState);
 
     pid_t childpid = fork();
 
@@ -72,10 +75,12 @@ TEST(ProcessTest, ProcessStatus)
         _exit(EXIT_FAILURE);
     }
 
-    while (ProcessStatusRunning == monitorProcess(childpid))
+    while (ChildProcessState::ChildProcessStateRunning ==
+           monitorProcessChild(childpid).mChildState)
         continue;
 
-    EXPECT_EQ(ProcessStatusExited, monitorProcess(childpid));
+    EXPECT_EQ(ChildProcessState::ChildProcessStateExited,
+              monitorProcessChild(childpid).mChildState);
 }
 
 TEST(ProcessTest, ProcessSignature)

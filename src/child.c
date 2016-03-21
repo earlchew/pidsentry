@@ -163,10 +163,10 @@ superviseChildProcess_(const char        *aRole,
      * The new shell inherits the earlier sleep as a child even
      * though it did not create it. */
 
-    struct ChildProcessState childState;
+    struct ProcessState processState;
     ABORT_IF(
-        (childState = monitorProcessChild(aPid),
-         ChildProcessStateError == childState.mChildState),
+        (processState = fetchProcessState(aPid),
+         ProcessStateError == processState.mState),
         {
             terminate(
                 errno,
@@ -175,7 +175,9 @@ superviseChildProcess_(const char        *aRole,
                 FMTd_Pid(aPid));
         });
 
-    if (ChildProcessStateRunning == childState.mChildState)
+    if (ProcessStateRunning  == processState.mState ||
+        ProcessStateSleeping == processState.mState ||
+        ProcessStateWaiting  == processState.mState)
     {
         debug(1,
               "%s pid %" PRId_Pid " running",
@@ -190,15 +192,14 @@ superviseChildProcess_(const char        *aRole,
                     "Unable to set %s event latch", aRole);
             });
     }
-    else if (ChildProcessStateExited != childState.mChildState &&
-             ChildProcessStateKilled != childState.mChildState &&
-             ChildProcessStateDumped != childState.mChildState)
+    else if (ProcessStateDead   != processState.mState &&
+             ProcessStateZombie != processState.mState)
     {
         debug(1,
-              "%s pid %" PRId_Pid " status %" PRIs_ChildProcessState,
+              "%s pid %" PRId_Pid " status %" PRIs_ProcessState,
               aRole,
               FMTd_Pid(aPid),
-              FMTs_ChildProcessState(childState));
+              FMTs_ProcessState(processState));
     }
     else
     {
@@ -655,7 +656,9 @@ monitorChildUmbilical(struct ChildProcess *self, struct Pid aParentPid)
      * from the umbilical pipe.
      */
 
+#if 0
     closeChildFiles_(self);
+#endif
 
     /* The umbilical process is not the parent of the child process being
      * watched, so that there is no reliable way to send a signal to that
@@ -746,7 +749,7 @@ struct ChildMonitor
     {
         struct File *mFile;
         struct Pid   mPid;
-        bool         mPreempt;
+        bool         mPreempt;       /* Request back-to-back pings */
         unsigned     mCycleCount;    /* Current number of cycles */
         unsigned     mCycleLimit;    /* Cycles before triggering */
     } mUmbilical;

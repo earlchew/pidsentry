@@ -50,7 +50,7 @@ struct ChildProcess;
 struct UmbilicalProcess
 {
     struct Pid         mPid;
-    struct Pgid        mPgid;
+    struct Pgid        mChildPgid;
     struct SocketPair *mSocket;
 };
 

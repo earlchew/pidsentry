@@ -335,8 +335,6 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
           FMTd_Pid(ownProcessId()),
           FMTd_Pgid(ownProcessGroupId()));
 
-    ensure(aChildProcess->mPgid.mPgid == ownProcessGroupId().mPgid);
-
     ABORT_IF(
         STDIN_FILENO !=
         dup2(aUmbilicalSocket->mChildFile->mFd, STDIN_FILENO),
@@ -382,11 +380,9 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     monitorChildUmbilical(aChildProcess, aWatchdogPid);
 
-    warn(0,
-         "Umbilical failed to clean process group %" PRId_Pgid,
-         FMTd_Pgid(ownProcessGroupId()));
+    debug(0, "exit umbilical");
 
-    quitProcess(EXIT_FAILURE);
+    quitProcess(EXIT_SUCCESS);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -397,9 +393,9 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 {
     int rc = -1;
 
-    self->mPid    = Pid(0);
-    self->mPgid   = aChildProcess->mPgid;
-    self->mSocket = aUmbilicalSocket;
+    self->mPid       = Pid(0);
+    self->mChildPgid = aChildProcess->mPgid;
+    self->mSocket    = aUmbilicalSocket;
 
     /* Ensure that SIGHUP is blocked so that the umbilical process
      * will not terminate should it be orphaned when the parent process
@@ -415,8 +411,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     struct Pid umbilicalPid;
     ERROR_IF(
-        (umbilicalPid = forkProcess(
-            ForkProcessSetProcessGroup, self->mPgid),
+        (umbilicalPid = forkProcessDaemon(),
          -1 == umbilicalPid.mPid));
 
     if (umbilicalPid.mPid)
@@ -491,64 +486,24 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
                 continue;
             }
 
+            /* The umbilical process might have been in the midst of
+             * responding to a ping, so take the trouble to drain the
+             * connection to get a clean shutdown. */
+
             int ready = 0;
             ERROR_IF(
                 (ready = waitFileReadReady(
                     self->mSocket->mParentFile, &remaining),
                  -1 == ready));
 
-            if ( ! ready)
-                continue;
-
-            /* Although the connection to the umbilical process is closed,
-             * there is no guarantee that waitpid() will not block. */
-
-            switch (monitorProcessChild(self->mPid).mChildState)
-            {
-            default:
-                monotonicSleep(Duration(NSECS(Seconds(1))));
-                continue;
-
-            case ChildProcessStateExited:
-            case ChildProcessStateKilled:
-            case ChildProcessStateDumped:
-                break;
-            }
-
-            int umbilicalStatus;
+            ssize_t rdlen = 0;
             ERROR_IF(
-                reapProcess(self->mPid, &umbilicalStatus));
+                (rdlen = readFile(
+                    self->mSocket->mParentFile, buf, 1),
+                 -1 == rdlen && ECONNRESET != errno));
 
-            ABORT_UNLESS(
-                WIFEXITED(umbilicalStatus) || WIFSIGNALED(umbilicalStatus),
-                {
-                    terminate(
-                        0,
-                        "Umbilical pid %" PRId_Pid " "
-                        "terminated for unknown reason",
-                        FMTd_Pid(self->mPid));
-                });
-
-            ERROR_IF(
-                ( ! WTERMSIG(umbilicalStatus) ||
-                  SIGKILL != WTERMSIG(umbilicalStatus)),
-                {
-                    errno = ECHILD;
-
-                    if (WIFEXITED(umbilicalStatus))
-                        warn(0,
-                             "Umbilical exited with status %d",
-                             WEXITSTATUS(umbilicalStatus));
-                    else
-                    {
-                        struct ProcessSignalName sigName;
-                        warn(0,
-                             "Umbilical killed by signal %s",
-                             formatProcessSignalName(
-                                 &sigName,
-                                 WTERMSIG(umbilicalStatus)));
-                    }
-                });
+            if (rdlen)
+                continue;
 
             break;
         }
