@@ -40,14 +40,14 @@ struct pollfd;
 /* -------------------------------------------------------------------------- */
 struct PollFdAction
 {
-    void (*mAction)(void                        *self,
-                    const struct EventClockTime *aPollTime);
+    int (*mAction)(void                        *self,
+                   const struct EventClockTime *aPollTime);
 };
 
 struct PollFdTimerAction
 {
-    void                (*mAction)(void                        *self,
-                                   const struct EventClockTime *aPollTime);
+    int                (*mAction)(void                        *self,
+                                  const struct EventClockTime *aPollTime);
     struct Duration       mPeriod;
     struct EventClockTime mSince;
 };

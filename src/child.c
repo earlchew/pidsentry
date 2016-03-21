@@ -812,10 +812,12 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
     }
 }
 
-static void
+static int
 pollFdTimerTermination_(void                        *self_,
                         const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
@@ -849,6 +851,14 @@ pollFdTimerTermination_(void                        *self_,
                 FMTd_Pid(pidNum),
                 formatProcessSignalName(&sigName, sigNum));
         });
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -892,10 +902,12 @@ pollFdCloseUmbilical_(struct ChildMonitor         *self,
     activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
 }
 
-static void
+static int
 pollFdUmbilical_(void                        *self_,
                  const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     struct PollFdTimerAction *umbilicalTimer =
@@ -967,6 +979,14 @@ pollFdUmbilical_(void                        *self_,
                            umbilicalTimer->mPeriod, aPollTime);
         }
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static int
@@ -1092,10 +1112,12 @@ pollFdContUmbilical_(struct ChildMonitor         *self,
     }
 }
 
-static void
+static int
 pollFdTimerUmbilical_(void                        *self_,
                       const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
@@ -1180,6 +1202,14 @@ pollFdTimerUmbilical_(void                        *self_,
             }
         }
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1229,10 +1259,12 @@ disconnectPollFdTether_(struct ChildMonitor *self)
     self->mPollFds[POLL_FD_CHILD_TETHER].events = 0;
 }
 
-static void
+static int
 pollFdTether_(void                        *self_,
               const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
@@ -1241,6 +1273,14 @@ pollFdTether_(void                        *self_,
      * between the child process and watchdog is shut down. */
 
     disconnectPollFdTether_(self);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static void
@@ -1261,10 +1301,12 @@ restartFdTimerTether_(struct ChildMonitor         *self,
     }
 }
 
-static void
+static int
 pollFdTimerTether_(void                        *self_,
                    const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
@@ -1347,13 +1389,23 @@ pollFdTimerTether_(void                        *self_,
             self, ChildTermination_Abort, aPollTime);
 
     } while (0);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 pollFdTimerOrphan_(void                        *self_,
                    const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
@@ -1377,6 +1429,14 @@ pollFdTimerOrphan_(void                        *self_,
         activateFdTimerTermination_(
             self, ChildTermination_Terminate, aPollTime);
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1447,10 +1507,12 @@ pollFdReapChildEvent_(struct ChildMonitor         *self,
     }
 }
 
-static void
+static int
 pollFdTimerChild_(void                        *self_,
                   const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
@@ -1458,6 +1520,15 @@ pollFdTimerChild_(void                        *self_,
     debug(0, "disconnecting tether thread");
 
     pingTetherThread(self->mTetherThread);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1496,10 +1567,12 @@ pollFdEventLatch_(struct EventLatch **aLatch, const char *aRole)
     return signalled;
 }
 
-static void
+static int
 pollFdEventPipe_(void                        *self_,
                  const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
@@ -1548,6 +1621,14 @@ pollFdEventPipe_(void                        *self_,
         }
         while (0);
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

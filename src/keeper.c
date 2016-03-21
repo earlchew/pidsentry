@@ -155,10 +155,12 @@ closeKeeperProcess(
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 pollFdTether_(void                        *self_,
               const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct KeeperMonitor *self = self_;
 
     ensure(keeperMonitorType_ == self->mType);
@@ -179,13 +181,23 @@ pollFdTether_(void                        *self_,
 
     tetherPollFd->fd     = self->mNullPipe->mRdFile->mFd;
     tetherPollFd->events = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 pollFdServer_(void                        *self_,
               const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct KeeperMonitor *self = self_;
 
     ensure(keeperMonitorType_ == self->mType);
@@ -247,6 +259,8 @@ pollFdServer_(void                        *self_,
     if ( ! janitorTimerAction->mPeriod.duration.ns)
         janitorTimerAction->mPeriod = Duration(NSECS(Seconds(5)));
 
+    rc = 0;
+
 Finally:
 
     FINALLY
@@ -257,13 +271,17 @@ Finally:
             free(keeperClient);
         }
     });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 pollFdTimerJanitor_(void                        *self_,
                     const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct KeeperMonitor *self = self_;
 
     ensure(keeperMonitorType_ == self->mType);
@@ -349,6 +367,14 @@ pollFdTimerJanitor_(void                        *self_,
 
         janitorTimerAction->mPeriod = Duration(NanoSeconds(0));
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

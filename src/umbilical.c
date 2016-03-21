@@ -68,10 +68,12 @@ static const char *pollFdTimerNames_[POLL_FD_MONITOR_TIMER_KINDS] =
 };
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 pollFdUmbilical_(void                        *self_,
                  const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
@@ -167,13 +169,23 @@ pollFdUmbilical_(void                        *self_,
 
         self->mCycleCount = 0;
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
-static void
+static int
 pollFdTimerUmbilical_(
     void                        *self_,
     const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
@@ -198,6 +210,14 @@ pollFdTimerUmbilical_(
         warn(0, "Umbilical connection timed out");
         self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static bool

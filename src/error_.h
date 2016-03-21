@@ -32,6 +32,7 @@
 #include "options_.h"
 #include "process_.h"
 #include "test_.h"
+#include "macros_.h"
 
 #include <errno.h>
 
@@ -87,13 +88,19 @@ extern "C" {
     ERROR_IF_(!, Predicate_, ##  __VA_ARGS__)
 
 /* -------------------------------------------------------------------------- */
-#define ABORT_IF(Predicate_, ...)                               \
-    TERMINATE_IF_(terminate_, /*!!*/, Predicate_, ## __VA_ARGS__)
+#define ALERT_IF(Predicate_, ...) \
+    UNWIND_IF_(warn, warn_, /*!!*/, Predicate_, ## __VA_ARGS__)
 
-#define ABORT_UNLESS(Predicate_, ...)                           \
-    TERMINATE_IF_(terminate_, !, Predicate_, ## __VA_ARGS__)
+#define ALERT_UNLESS(Predicate_, ...) \
+    UNWIND_IF_(warn, warn_, !, Predicate_, ## __VA_ARGS__)
 
-#define TERMINATE_IF_(Terminate_, Sense_, Predicate_, ...)      \
+#define ABORT_IF(Predicate_, ...) \
+    UNWIND_IF_(terminate, terminate_, /*!!*/, Predicate_, ## __VA_ARGS__)
+
+#define ABORT_UNLESS(Predicate_, ...) \
+    UNWIND_IF_(terminate, terminate_, !, Predicate_, ## __VA_ARGS__)
+
+#define UNWIND_IF_(Action_, Actor_, Sense_, Predicate_, ...)    \
     do                                                          \
     {                                                           \
         /* Stack unwinding restarts if a new frame              \
@@ -104,20 +111,12 @@ extern "C" {
                                                                 \
         if (Sense_ (Predicate_))                                \
         {                                                       \
-            void (*terminate)(                                  \
-                int         aErrCode,                           \
-                const char *aFunction,                          \
-                const char *aFile,                              \
-                unsigned    aLine,                              \
-                const char *aFmt, ...)                          \
-                __attribute__ ((                                \
-                    __format__(__printf__, 5, 6),               \
-                    __noreturn__)) = Terminate_;                \
+            AUTO(Action_, &Actor_);                             \
                                                                 \
             __VA_ARGS__                                         \
                                                                 \
             do                                                  \
-                (terminate)(                                    \
+                (Action_)(                                      \
                     errno,                                      \
                     __func__, __FILE__, __LINE__,               \
                     "%s", # Predicate_);                        \

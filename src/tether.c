@@ -88,10 +88,12 @@ struct TetherPoll
     struct PollFdTimerAction mPollFdTimerActions[POLL_FD_TETHER_TIMER_KINDS];
 };
 
-static void
+static int
 pollFdControl_(void                        *self_,
                const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct TetherPoll *self = self_;
 
     char buf[1];
@@ -112,12 +114,22 @@ pollFdControl_(void                        *self_,
 
     self->mPollFdTimerActions[POLL_FD_TETHER_TIMER_DISCONNECT].mPeriod =
         Duration(NSECS(Seconds(gOptions.mTimeout.mDrain_s)));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
-static void
+static int
 pollFdDrain_(void                        *self_,
              const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct TetherPoll *self = self_;
 
     if (self->mPollFds[POLL_FD_TETHER_CONTROL].events)
@@ -209,12 +221,22 @@ pollFdDrain_(void                        *self_,
         if (drained)
             self->mPollFds[POLL_FD_TETHER_CONTROL].events = 0;
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
-static void
+static int
 pollFdTimerDisconnected_(void                        *self_,
                          const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     struct TetherPoll *self = self_;
 
     /* Once the tether drain timeout expires, disable the timer, and
@@ -224,6 +246,14 @@ pollFdTimerDisconnected_(void                        *self_,
         Duration(NanoSeconds(0));
 
     self->mPollFds[POLL_FD_TETHER_CONTROL].events = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static bool

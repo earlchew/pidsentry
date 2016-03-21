@@ -34,4 +34,6 @@
 #define STRINGIFY_(Text_) #Text_
 #define STRINGIFY(Text_)  STRINGIFY_(Text_)
 
+#define AUTO(Var_, Value_) __typeof__((Value_)) Var_ = (Value_)
+
 #endif /* MACROS_H */

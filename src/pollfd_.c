@@ -251,8 +251,15 @@ runPollFdLoop(struct PollFd *self)
                     ++eventCount;
 
                     if (self->mFdActions.mActions[ix].mAction)
-                        self->mFdActions.mActions[ix].mAction(
-                            self->mObserver, &polltm);
+                        ALERT_IF(
+                            self->mFdActions.mActions[ix].mAction(
+                                self->mObserver, &polltm),
+                            {
+                                warn(
+                                    errno,
+                                    "Error dispatching %s",
+                                    self->mFdActions.mNames[ix]);
+                            });
                 }
             }
 
@@ -291,7 +298,13 @@ runPollFdLoop(struct PollFd *self)
                         FMTs_MilliSeconds(
                             MSECS(timerAction->mPeriod.duration)));
 
-                    timerAction->mAction(self->mObserver, &polltm);
+                    ALERT_IF(
+                        timerAction->mAction(self->mObserver, &polltm),
+                        {
+                            warn(errno,
+                                 "Error dispatching timer %s",
+                                 self->mTimerActions.mNames[ix]);
+                        });
                 }
             }
         }
