@@ -67,13 +67,14 @@
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
  * Write unit test for forkProcessDaemon()
+ * Use -1 for poll fd entry instead of null in child.c etc
  */
 
 /* -------------------------------------------------------------------------- */
 static struct PidFile *
-announceChild(struct PidFile           *aPidFile,
-              struct Pid                aPid,
-              const struct sockaddr_un *aPidKeeperAddr)
+announceChild(struct PidFile    *aPidFile,
+              struct Pid         aPid,
+              struct sockaddr_un aPidServerAddr)
 {
     for (int zombie = -1; zombie; )
     {
@@ -143,7 +144,7 @@ announceChild(struct PidFile           *aPidFile,
     debug(0, "initialised pid file '%s'", aPidFile->mPathName.mFileName);
 
     ABORT_IF(
-        writePidFile(aPidFile, aPid, aPidKeeperAddr),
+        writePidFile(aPidFile, aPid, &aPidServerAddr),
         {
             terminate(
                 errno,
@@ -406,6 +407,7 @@ cmdMonitorChild(char **aCmd)
             });
     }
 
+#if 0
     /* Before announcing the chld process, prepare the keeper process
      * that will hold a reference to the child pid, preventing
      * that pid from being re-used and alised to another process. */
@@ -515,8 +517,9 @@ cmdMonitorChild(char **aCmd)
          * the announcement is deferred so that it and the umbilical can
          * be announced in a single line at one point. */
 
-        announceChild(pidFile, childProcess.mPid, &pidKeeperAddr);
+        announceChild(pidFile, childProcess.mPid, &pidServerAddr);
     }
+#endif
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
@@ -573,6 +576,14 @@ cmdMonitorChild(char **aCmd)
     family.mUmbilicalPid = umbilicalProcess.mPid;
 
     closeSocketPairChild(&umbilicalSocket);
+
+    if (pidFile)
+    {
+        announceChild(
+            pidFile,
+            childProcess.mPid,
+            ownUmbilicalProcessPidServerAddress(&umbilicalProcess));
+    }
 
     if (gOptions.mIdentify)
     {
@@ -805,6 +816,7 @@ cmdMonitorChild(char **aCmd)
 
     closeSocketPair(&umbilicalSocket);
 
+#if 0
     /* Clean up the child process keeper, and be prepared to wait
      * a short time for the last reference to the child proces group
      * to be dropped. This primarily cosmetic to avoid messages from
@@ -830,6 +842,7 @@ cmdMonitorChild(char **aCmd)
 
     closeBellSocketPair(pidKeeperTether);
     closeKeeperProcess(pidKeeperProcess);
+#endif
 
     ABORT_IF(
         resetProcessSigPipe(),

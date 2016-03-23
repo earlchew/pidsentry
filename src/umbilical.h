@@ -36,6 +36,7 @@
 #include <stdbool.h>
 
 #include <sys/types.h>
+#include <sys/un.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +46,7 @@ struct Type;
 struct SocketPair;
 struct PidFile;
 struct ChildProcess;
+struct PidServer;
 
 /* -------------------------------------------------------------------------- */
 struct UmbilicalProcess
@@ -52,18 +54,21 @@ struct UmbilicalProcess
     struct Pid         mPid;
     struct Pgid        mChildPgid;
     struct SocketPair *mSocket;
+    struct sockaddr_un mPidServerAddr;
 };
 
 /* -------------------------------------------------------------------------- */
 enum PollFdMonitorKind
 {
     POLL_FD_MONITOR_UMBILICAL,
+    POLL_FD_MONITOR_PIDSERVER,
     POLL_FD_MONITOR_KINDS
 };
 
 enum PollFdMonitorTimerKind
 {
     POLL_FD_MONITOR_TIMER_UMBILICAL,
+    POLL_FD_MONITOR_TIMER_PIDSERVER,
     POLL_FD_MONITOR_TIMER_KINDS
 };
 
@@ -71,14 +76,20 @@ struct UmbilicalMonitor
 {
     const struct Type *mType;
 
-    struct File              *mUmbilicalFile;
+    struct
+    {
+        struct File *mFile;
+        unsigned     mCycleCount;
+        unsigned     mCycleLimit;
+        struct Pid   mParentPid;
+        bool         mClosed;
+    } mUmbilical;
+
+    struct PidServer *mPidServer;
+
     struct pollfd             mPollFds[POLL_FD_MONITOR_KINDS];
     struct PollFdAction       mPollFdActions[POLL_FD_MONITOR_KINDS];
     struct PollFdTimerAction  mPollFdTimerActions[POLL_FD_MONITOR_TIMER_KINDS];
-    unsigned                  mCycleCount;
-    unsigned                  mCycleLimit;
-    struct Pid                mParentPid;
-    bool                      mClosed;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -86,8 +97,8 @@ int
 createUmbilicalMonitor(
     struct UmbilicalMonitor *self,
     int                      aStdinFd,
-    struct Pid               aParentPid);
-
+    struct Pid               aParentPid,
+    struct PidServer        *aPidServer);
 
 int
 synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self);
@@ -103,6 +114,9 @@ int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
                        struct SocketPair       *aUmbilicalSocket);
+
+struct sockaddr_un
+ownUmbilicalProcessPidServerAddress(const struct UmbilicalProcess *self);
 
 int
 stopUmbilicalProcess(struct UmbilicalProcess *self);

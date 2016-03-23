@@ -29,6 +29,7 @@
 
 #include "umbilical.h"
 #include "child.h"
+#include "pidserver.h"
 
 #include "type_.h"
 #include "error_.h"
@@ -60,14 +61,86 @@ static const struct Type * const umbilicalMonitorType_ =
 static const char *pollFdNames_[POLL_FD_MONITOR_KINDS] =
 {
     [POLL_FD_MONITOR_UMBILICAL] = "umbilical",
+    [POLL_FD_MONITOR_PIDSERVER] = "pidserver",
 };
 
 static const char *pollFdTimerNames_[POLL_FD_MONITOR_TIMER_KINDS] =
 {
     [POLL_FD_MONITOR_TIMER_UMBILICAL] = "umbilical",
+    [POLL_FD_MONITOR_TIMER_PIDSERVER] = "pidserver",
 };
 
 /* -------------------------------------------------------------------------- */
+static int
+pollFdPidServer_(void                        *self_,
+                 const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    struct UmbilicalMonitor *self = self_;
+
+    ensure(umbilicalMonitorType_ == self->mType);
+
+    ERROR_IF(
+        acceptPidServerConnection(self->mPidServer));
+
+    struct PollFdTimerAction *timerAction =
+        &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_PIDSERVER];
+
+    if ( ! timerAction->mPeriod.duration.ns)
+        timerAction->mPeriod = Duration(NSECS(Seconds(5)));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+pollFdTimerPidServer_(
+    void                        *self_,
+    const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    struct UmbilicalMonitor *self = self_;
+
+    ensure(umbilicalMonitorType_ == self->mType);
+
+    /* If there are no further outstanding references after cleaning,
+     * there is no need to schedule the next cleaning cycle. */
+
+    if (cleanPidServer(self->mPidServer))
+    {
+        struct PollFdTimerAction *timerAction =
+            &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_PIDSERVER];
+
+        timerAction->mPeriod = Duration(NanoSeconds(0));
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+closeFdUmbilical_(struct UmbilicalMonitor *self)
+{
+    self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd     = -1;
+    self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+
+    self->mPollFds[POLL_FD_MONITOR_PIDSERVER].fd     = -1;
+    self->mPollFds[POLL_FD_MONITOR_PIDSERVER].events = 0;
+}
+
 static int
 pollFdUmbilical_(void                        *self_,
                  const struct EventClockTime *aPollTime)
@@ -108,25 +181,25 @@ pollFdUmbilical_(void                        *self_,
     {
         if (ECONNRESET == errno)
         {
-            if (self->mClosed)
+            if (self->mUmbilical.mClosed)
                 debug(0, "umbilical connection closed");
             else
                 warn(0, "Umbilical connection broken");
 
-            self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+            closeFdUmbilical_(self);
         }
     }
     else
     {
         debug(1, "received umbilical connection ping %zd", rdlen);
 
-        ensure( ! self->mClosed);
+        ensure( ! self->mUmbilical.mClosed);
 
         if ( ! buf[0])
         {
             debug(1, "umbilical connection close request");
 
-            self->mClosed = true;
+            self->mUmbilical.mClosed = true;
         }
         else
         {
@@ -167,7 +240,7 @@ pollFdUmbilical_(void                        *self_,
             &umbilicalTimer->mSince,
             Duration(NanoSeconds(umbilicalTimer->mPeriod.duration.ns / 2)));
 
-        self->mCycleCount = 0;
+        self->mUmbilical.mCycleCount = 0;
     }
 
     rc = 0;
@@ -194,7 +267,8 @@ pollFdTimerUmbilical_(
      * timeout period expires, then assume that the watchdog itself
      * is stuck. */
 
-    struct ProcessState parentState = fetchProcessState(self->mParentPid);
+    struct ProcessState parentState =
+        fetchProcessState(self->mUmbilical.mParentPid);
 
     if (ProcessStateStopped == parentState.mState)
     {
@@ -203,12 +277,13 @@ pollFdTimerUmbilical_(
             "umbilical timeout deferred due to "
             "parent status %" PRIs_ProcessState,
             FMTs_ProcessState(parentState));
-        self->mCycleCount = 0;
+        self->mUmbilical.mCycleCount = 0;
     }
-    else if (++self->mCycleCount >= self->mCycleLimit)
+    else if (++self->mUmbilical.mCycleCount >= self->mUmbilical.mCycleLimit)
     {
         warn(0, "Umbilical connection timed out");
-        self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+
+        closeFdUmbilical_(self);
     }
 
     rc = 0;
@@ -220,6 +295,7 @@ Finally:
     return rc;
 }
 
+/* -------------------------------------------------------------------------- */
 static bool
 pollFdCompletion_(void *self_)
 {
@@ -227,7 +303,15 @@ pollFdCompletion_(void *self_)
 
     ensure(umbilicalMonitorType_ == self->mType);
 
-    return ! self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events;
+    /* The umbilical event loop terminates when the connection to the
+     * watchdog is closed, and when there are no more outstanding
+     * child process group references. */
+
+    return
+        ! self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events &&
+        ! self->mPollFds[POLL_FD_MONITOR_PIDSERVER].events &&
+        ! self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_PIDSERVER]
+            .mPeriod.duration.ns;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -235,7 +319,8 @@ int
 createUmbilicalMonitor(
     struct UmbilicalMonitor *self,
     int                      aStdinFd,
-    struct Pid               aParentPid)
+    struct Pid               aParentPid,
+    struct PidServer        *aPidServer)
 {
     int rc = -1;
 
@@ -243,31 +328,55 @@ createUmbilicalMonitor(
 
     *self = (struct UmbilicalMonitor)
     {
-        .mType       = umbilicalMonitorType_,
-        .mCycleLimit = cycleLimit,
-        .mParentPid  = aParentPid,
-        .mClosed     = false,
+        .mType = umbilicalMonitorType_,
+
+        .mUmbilical =
+        {
+            .mCycleLimit = cycleLimit,
+            .mParentPid  = aParentPid,
+            .mClosed     = false,
+        },
+
+        .mPidServer = aPidServer,
 
         .mPollFds =
         {
-            [POLL_FD_MONITOR_UMBILICAL] = { .fd     = aStdinFd,
-                                            .events = POLL_INPUTEVENTS },
+            [POLL_FD_MONITOR_UMBILICAL] =
+            {
+                .fd     = aStdinFd,
+                .events = POLL_INPUTEVENTS
+            },
+
+            [POLL_FD_MONITOR_PIDSERVER] =
+            {
+                .fd     = aPidServer->mSocket->mFile->mFd,
+                .events = POLL_INPUTEVENTS
+            },
         },
 
         .mPollFdActions =
         {
             [POLL_FD_MONITOR_UMBILICAL] = { pollFdUmbilical_ },
+            [POLL_FD_MONITOR_PIDSERVER] = { pollFdPidServer_ },
         },
 
         .mPollFdTimerActions =
         {
             [POLL_FD_MONITOR_TIMER_UMBILICAL] =
             {
-                pollFdTimerUmbilical_,
-                Duration(
+                .mAction = pollFdTimerUmbilical_,
+                .mSince  = EVENTCLOCKTIME_INIT,
+                .mPeriod = Duration(
                     NanoSeconds(
                         NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns
                         / cycleLimit)),
+            },
+
+            [POLL_FD_MONITOR_TIMER_PIDSERVER] =
+            {
+                .mAction = pollFdTimerPidServer_,
+                .mSince  = EVENTCLOCKTIME_INIT,
+                .mPeriod = Duration(NanoSeconds(0)),
             },
         },
     };
@@ -339,7 +448,7 @@ Finally:
 bool
 ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 {
-    return self->mClosed;
+    return self->mUmbilical.mClosed;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -347,7 +456,8 @@ static void
 runUmbilicalProcess_(struct UmbilicalProcess *self,
                      struct Pid               aWatchdogPid,
                      struct ChildProcess     *aChildProcess,
-                     struct SocketPair       *aUmbilicalSocket)
+                     struct SocketPair       *aUmbilicalSocket,
+                     struct PidServer        *aPidServer)
 {
 
     debug(0,
@@ -383,6 +493,7 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
         STDOUT_FILENO,
         STDERR_FILENO,
         ownProcessLockFile()->mFd,
+        aPidServer->mSocket->mFile->mFd,
     };
 
     closeFdDescriptors(whiteList, NUMBEROF(whiteList));
@@ -398,7 +509,50 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
             });
     }
 
-    monitorChildUmbilical(aChildProcess, aWatchdogPid);
+    /* The umbilical process is not the parent of the child process being
+     * watched, so that there is no reliable way to send a signal to that
+     * process alone because the pid might be recycled by the time the signal
+     * is sent. Instead rely on the umbilical monitor being in the same
+     * process group as the child process and use the process group as
+     * a means of controlling the cild process. */
+
+    struct UmbilicalMonitor monitorpoll;
+    ABORT_IF(
+        createUmbilicalMonitor(
+            &monitorpoll, STDIN_FILENO, aWatchdogPid, aPidServer),
+        {
+            terminate(errno, "Unable to create umbilical monitor");
+        });
+
+    /* Synchronise with the watchdog to avoid timing races. The watchdog
+     * writes to the umbilical when it is ready to start timing. */
+
+    debug(0, "synchronising umbilical");
+
+    ABORT_IF(
+        synchroniseUmbilicalMonitor(&monitorpoll),
+        {
+            terminate(errno, "Unable to synchronise umbilical monitor");
+        });
+
+    debug(0, "synchronised umbilical");
+
+    ABORT_IF(
+        runUmbilicalMonitor(&monitorpoll),
+        {
+            terminate(errno, "Unable to run umbilical monitor");
+        });
+
+    /* The umbilical monitor returns when the connection to the watchdog
+     * is either lost or no longer active. Only issue a diagnostic if
+     * the shutdown was not orderly. */
+
+    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
+        warn(0,
+             "Killing child pgid %" PRId_Pgid " from umbilical",
+             FMTd_Pgid(aChildProcess->mPgid));
+
+    killChildProcessGroup(aChildProcess);
 
     debug(0, "exit umbilical");
 
@@ -412,6 +566,9 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct SocketPair       *aUmbilicalSocket)
 {
     int rc = -1;
+
+    struct PidServer  pidServer_;
+    struct PidServer *pidServer = 0;
 
     self->mPid       = Pid(0);
     self->mChildPgid = aChildProcess->mPgid;
@@ -427,11 +584,17 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     ensure( ! pthread_kill(pthread_self(), SIGHUP));
 
+    ERROR_IF(
+        createPidServer(&pidServer_));
+    pidServer = &pidServer_;
+
+    self->mPidServerAddr = pidServer->mSocketAddr;
+
     struct Pid watchdogPid = ownProcessId();
 
     struct Pid umbilicalPid;
     ERROR_IF(
-        (umbilicalPid = forkProcessDaemon(),
+        (umbilicalPid = forkProcess(ForkProcessSetProcessGroup, Pgid(0)),
          -1 == umbilicalPid.mPid));
 
     if (umbilicalPid.mPid)
@@ -445,16 +608,27 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
         runUmbilicalProcess_(self,
                              watchdogPid,
                              aChildProcess,
-                             aUmbilicalSocket);
+                             aUmbilicalSocket,
+                             pidServer);
     }
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        closePidServer(pidServer);
+    });
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct sockaddr_un
+ownUmbilicalProcessPidServerAddress(const struct UmbilicalProcess *self)
+{
+    return self->mPidServerAddr;
 }
 
 /* -------------------------------------------------------------------------- */

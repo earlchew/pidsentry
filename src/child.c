@@ -30,6 +30,7 @@
 #include "child.h"
 #include "umbilical.h"
 #include "tether.h"
+#include "pidserver.h"
 
 #include "thread_.h"
 #include "fd_.h"
@@ -51,6 +52,8 @@
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
+
+#include <sys/un.h>
 
 /* -------------------------------------------------------------------------- */
 enum PollFdChildKind
@@ -163,10 +166,10 @@ superviseChildProcess_(const char        *aRole,
      * The new shell inherits the earlier sleep as a child even
      * though it did not create it. */
 
-    struct ProcessState processState;
+    struct ChildProcessState processState;
     ABORT_IF(
-        (processState = fetchProcessState(aPid),
-         ProcessStateError == processState.mState),
+        (processState = monitorProcessChild(aPid),
+         ChildProcessStateError == processState.mChildState),
         {
             terminate(
                 errno,
@@ -175,9 +178,7 @@ superviseChildProcess_(const char        *aRole,
                 FMTd_Pid(aPid));
         });
 
-    if (ProcessStateRunning  == processState.mState ||
-        ProcessStateSleeping == processState.mState ||
-        ProcessStateWaiting  == processState.mState)
+    if (ChildProcessStateRunning == processState.mChildState)
     {
         debug(1,
               "%s pid %" PRId_Pid " running",
@@ -192,14 +193,14 @@ superviseChildProcess_(const char        *aRole,
                     "Unable to set %s event latch", aRole);
             });
     }
-    else if (ProcessStateDead   != processState.mState &&
-             ProcessStateZombie != processState.mState)
+    else if (ChildProcessStateStopped == processState.mChildState ||
+             ChildProcessStateTrapped == processState.mChildState)
     {
         debug(1,
-              "%s pid %" PRId_Pid " status %" PRIs_ProcessState,
+              "%s pid %" PRId_Pid " status %" PRIs_ChildProcessState,
               aRole,
               FMTd_Pid(aPid),
-              FMTs_ProcessState(processState));
+              FMTs_ChildProcessState(processState));
     }
     else
     {
@@ -645,6 +646,7 @@ closeChild(struct ChildProcess *self)
 }
 
 /* -------------------------------------------------------------------------- */
+#if 0
 void
 monitorChildUmbilical(struct ChildProcess *self, struct Pid aParentPid)
 {
@@ -704,6 +706,7 @@ monitorChildUmbilical(struct ChildProcess *self, struct Pid aParentPid)
 
     killChildProcessGroup(self);
 }
+#endif
 
 /* -------------------------------------------------------------------------- */
 /* Child Process Monitoring

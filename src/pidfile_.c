@@ -654,17 +654,17 @@ closePidFile(struct PidFile *self)
 int
 writePidFile(struct PidFile           *self,
              struct Pid                aPid,
-             const struct sockaddr_un *aPidKeeperAddr)
+             const struct sockaddr_un *aPidServerAddr)
 {
     int   rc        = -1;
     char *signature = 0;
 
     ensure(0 < aPid.mPid);
 
-    ensure( ! aPidKeeperAddr->sun_path[0]);
-    ensure( 1 < sizeof(aPidKeeperAddr->sun_path));
-    ensure( ! aPidKeeperAddr->sun_path[sizeof(aPidKeeperAddr->sun_path)-1]);
-    ensure( aPidKeeperAddr->sun_path[1]);
+    ensure( ! aPidServerAddr->sun_path[0]);
+    ensure( 1 < sizeof(aPidServerAddr->sun_path));
+    ensure( ! aPidServerAddr->sun_path[sizeof(aPidServerAddr->sun_path)-1]);
+    ensure( aPidServerAddr->sun_path[1]);
 
     ERROR_IF(
         fetchProcessSignature(aPid, &signature));
@@ -677,7 +677,7 @@ writePidFile(struct PidFile           *self,
             "%" PRId_Pid "\n%s\n%s\n",
             FMTd_Pid(aPid),
             signature,
-            &aPidKeeperAddr->sun_path[1]);
+            &aPidServerAddr->sun_path[1]);
 
     ERROR_IF(
         0 > buflen,

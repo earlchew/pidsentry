@@ -75,7 +75,8 @@ lib_LTLIBRARIES     =
 pidsentry_CFLAGS    = $(COMMON_CFLAGS)
 pidsentry_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,pidsentry.map -Wl,-cref
 pidsentry_LDADD     = libpidsentry_.la -lrt -lpthread
-pidsentry_SOURCES   = _pidsentry.c umbilical.c tether.c child.c command.c keeper.c
+pidsentry_SOURCES   = _pidsentry.c
+pidsentry_SOURCES  += umbilical.c tether.c child.c command.c pidserver.c
 
 _splicetest_SOURCES = _splicetest.c
 

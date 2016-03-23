@@ -26,92 +26,55 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef CHILD_H
-#define CHILD_H
+#ifndef PIDSERVER_H
+#define PIDSERVER_H
 
-#include "pid_.h"
-#include "pipe_.h"
-#include "thread_.h"
-#include "eventlatch_.h"
+#include "unixsocket_.h"
 
-#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/queue.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct StdFdFiller;
-struct SocketPair;
-struct BellSocketPair;
-struct ChildMonitor;
-struct UmbilicalProcess;
+/* -------------------------------------------------------------------------- */
+struct PidServerClient_
+{
+    TAILQ_ENTRY(PidServerClient_) mList;
+
+    struct ucred mCred;
+
+    struct UnixSocket  mSocket_;
+    struct UnixSocket *mSocket;
+};
+
+typedef TAILQ_HEAD(PidServerClientList_,
+                   PidServerClient_) PidServerClientListT_;
 
 /* -------------------------------------------------------------------------- */
-struct ChildProcess
+struct PidServer
 {
-    struct Pid  mPid;
-    struct Pgid mPgid;
+    struct UnixSocket  mSocket_;
+    struct UnixSocket *mSocket;
+    struct sockaddr_un mSocketAddr;
 
-    struct EventLatch  mChildLatch_;
-    struct EventLatch *mChildLatch;
-    struct EventLatch  mUmbilicalLatch_;
-    struct EventLatch *mUmbilicalLatch;
-
-    struct Pipe  mTetherPipe_;
-    struct Pipe* mTetherPipe;
-
-    struct
-    {
-        struct ThreadSigMutex  mMutex_;
-        struct ThreadSigMutex *mMutex;
-        struct ChildMonitor   *mMonitor;
-    } mChildMonitor;
+    struct PidServerClientList_ mClients;
+    struct PidServerClient_     mSentinel;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createChild(struct ChildProcess *self);
+createPidServer(struct PidServer *self);
 
 void
-superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
+closePidServer(struct PidServer *self);
 
 int
-forkChild(
-    struct ChildProcess   *self,
-    char                 **aCmd,
-    struct StdFdFiller    *aStdFdFiller,
-    struct BellSocketPair *aSyncSocket,
-    struct SocketPair     *aUmbilicalSocket);
+acceptPidServerConnection(struct PidServer *self);
 
-void
-killChild(struct ChildProcess *self, int aSigNum);
-
-void
-closeChildTether(struct ChildProcess *self);
-
-int
-monitorChild(struct ChildProcess     *self,
-             struct UmbilicalProcess *aUmbilicalProcess,
-             struct File             *aUmbilicalFile);
-
-void
-raiseChildSigCont(struct ChildProcess *self);
-
-int
-reapChild(struct ChildProcess *self, int *aStatus);
-
-void
-closeChild(struct ChildProcess *self);
-
-/* -------------------------------------------------------------------------- */
-void
-killChildProcessGroup(struct ChildProcess *self);
-
-void
-pauseChildProcessGroup(struct ChildProcess *self);
-
-void
-resumeChildProcessGroup(struct ChildProcess *self);
+bool
+cleanPidServer(struct PidServer *self);
 
 /* -------------------------------------------------------------------------- */
 
@@ -119,4 +82,4 @@ resumeChildProcessGroup(struct ChildProcess *self);
 }
 #endif
 
-#endif /* CHILD_H */
+#endif /* PIDSERVER_H */
