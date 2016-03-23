@@ -35,6 +35,7 @@
 #include "macros_.h"
 
 #include <errno.h>
+#include <setjmp.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -111,16 +112,31 @@ extern "C" {
                                                                 \
         if (Sense_ (Predicate_))                                \
         {                                                       \
-            AUTO(Action_, &Actor_);                             \
+            logErrorFrameSequence();                            \
                                                                 \
-            __VA_ARGS__                                         \
+            /* Unwind the error frame and issue the messages    \
+             * before emitting the final message. The last      \
+             * message will either not return, or unwind the    \
+             * call stack using longjmp(). */                   \
                                                                 \
-            do                                                  \
-                (Action_)(                                      \
-                    errno,                                      \
-                    __func__, __FILE__, __LINE__,               \
-                    "%s", # Predicate_);                        \
-            while (0);                                          \
+            struct ErrorUnwindFrame_ *unwindFrame_ =            \
+                pushErrorUnwindFrame_();                        \
+                                                                \
+            if ( ! setjmp(unwindFrame_->mJmpBuf))               \
+            {                                                   \
+                AUTO(Action_, &Actor_);                         \
+                                                                \
+                __VA_ARGS__                                     \
+                                                                \
+                do                                              \
+                    (Action_)(                                  \
+                        errno,                                  \
+                        __func__, __FILE__, __LINE__,           \
+                        "%s", # Predicate_);                    \
+                while (0);                                      \
+            }                                                   \
+                                                                \
+            popErrorUnwindFrame_(unwindFrame_);                 \
         }                                                       \
                                                                 \
         popErrorFrameSequence(frameSequence_);                  \
@@ -147,6 +163,22 @@ extern "C" {
                                                 \
         goto Error_;                            \
     Error_
+
+/* -------------------------------------------------------------------------- */
+struct ErrorUnwindFrame_
+{
+    unsigned mActive;
+    jmp_buf  mJmpBuf;
+};
+
+struct ErrorUnwindFrame_ *
+pushErrorUnwindFrame_(void);
+
+struct ErrorUnwindFrame_ *
+ownErrorUnwindActiveFrame_(void);
+
+void
+popErrorUnwindFrame_(struct ErrorUnwindFrame_ *self);
 
 /* -------------------------------------------------------------------------- */
 struct ErrorFrame
@@ -235,6 +267,13 @@ ensure_(const char *aFunction, const char *aFile, unsigned aLine, ...);
 
 void
 warn_(
+    int aErrCode,
+    const char *aFunction, const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
+    __attribute__ ((__format__(__printf__, 5, 6)));
+
+void
+alert_(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)

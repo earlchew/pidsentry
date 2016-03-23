@@ -44,6 +44,8 @@
 /* -------------------------------------------------------------------------- */
 static unsigned moduleInit_;
 
+static struct ErrorUnwindFrame_ __thread errorUnwind_;
+
 static struct
 {
     /* Carefully crafted so that new threads will see an initialised
@@ -175,6 +177,35 @@ logErrorFrameSequence(void)
             seqLen - ix - 1,
             errorStack_.mStack->mFrame[frame].mText);
     }
+}
+
+/* -------------------------------------------------------------------------- */
+struct ErrorUnwindFrame_ *
+pushErrorUnwindFrame_(void)
+{
+    struct ErrorUnwindFrame_ *self = &errorUnwind_;
+
+    ++self->mActive;
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+popErrorUnwindFrame_(struct ErrorUnwindFrame_ *self)
+{
+    ensure(self->mActive);
+
+    --self->mActive;
+}
+
+/* -------------------------------------------------------------------------- */
+struct ErrorUnwindFrame_ *
+ownErrorUnwindActiveFrame_(void)
+{
+    struct ErrorUnwindFrame_ *self = &errorUnwind_;
+
+    return self->mActive ? self : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -550,10 +581,10 @@ warn_(
 {
     FINALLY
     ({
-        va_list args;
-
         struct ErrorFrameSequence frameSequence =
             pushErrorFrameSequence();
+
+        va_list args;
 
         va_start(args, aFmt);
         print_(aErrCode, aFunction, aFile, aLine, aFmt, args);
@@ -561,6 +592,11 @@ warn_(
 
         popErrorFrameSequence(frameSequence);
     });
+
+    struct ErrorUnwindFrame_ *unwindFrame = ownErrorUnwindActiveFrame_();
+
+    if (unwindFrame)
+        longjmp(unwindFrame->mJmpBuf, 1);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -594,8 +630,6 @@ terminate_(
 {
     FINALLY
     ({
-        logErrorFrameSequence();
-
         struct ErrorFrameSequence frameSequence =
             pushErrorFrameSequence();
 
