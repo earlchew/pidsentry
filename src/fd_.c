@@ -197,8 +197,23 @@ nullifyFd(int aFd)
     int rc = -1;
     int fd;
 
+    /* Take a process lock to avoid the possibility of a concurrent
+     * fork() ending up with more file descriptors than it anticipated. */
+
+    struct ProcessAppLock *appLock;
+
+    appLock = createProcessAppLock();
+
+    int closeExec;
     ERROR_IF(
-        (fd = open(devNullPath_, O_WRONLY),
+        (closeExec = ownFdCloseOnExec(aFd),
+         -1 == closeExec));
+
+    if (closeExec)
+        closeExec = O_CLOEXEC;
+
+    ERROR_IF(
+        (fd = open(devNullPath_, O_WRONLY | closeExec),
          -1 == fd));
 
     if (fd == aFd)
@@ -214,6 +229,8 @@ Finally:
     FINALLY
     ({
         closeFd(&fd);
+
+        destroyProcessAppLock(appLock);
     });
 
     return rc;
