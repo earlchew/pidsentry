@@ -52,7 +52,7 @@ struct PidServer;
 struct UmbilicalProcess
 {
     struct Pid         mPid;
-    struct Pgid        mChildPgid;
+    struct Pid         mChildAnchor;
     struct SocketPair *mSocket;
     struct sockaddr_un mPidServerAddr;
 };

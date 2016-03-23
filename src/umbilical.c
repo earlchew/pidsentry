@@ -570,9 +570,9 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     struct PidServer  pidServer_;
     struct PidServer *pidServer = 0;
 
-    self->mPid       = Pid(0);
-    self->mChildPgid = aChildProcess->mPgid;
-    self->mSocket    = aUmbilicalSocket;
+    self->mPid         = Pid(0);
+    self->mChildAnchor = Pid(0);
+    self->mSocket      = aUmbilicalSocket;
 
     /* Ensure that SIGHUP is blocked so that the umbilical process
      * will not terminate should it be orphaned when the parent process
@@ -604,6 +604,18 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     else
     {
         self->mPid = ownProcessId();
+
+        /* The umbilical process will create an anchor in the process
+         * group of the child so that the child pid will uniquely
+         * identify the child while the umbilical exists. */
+
+        ABORT_IF(
+            (self->mChildAnchor = forkProcess(
+                ForkProcessSetProcessGroup, aChildProcess->mPgid),
+             -1 == self->mChildAnchor.mPid));
+
+        if ( ! self->mChildAnchor.mPid)
+            quitProcess(EXIT_SUCCESS);
 
         runUmbilicalProcess_(self,
                              watchdogPid,
