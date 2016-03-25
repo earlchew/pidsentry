@@ -1,4 +1,4 @@
-libpidsentry__la_SOURCES_CKSUM_1_ = 4167557776 590
+libpidsentry__la_SOURCES_CKSUM_1_ = 2890442037 618
 libpidsentry__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
 libpidsentry__la_SOURCES = \
   bellsocketpair_.c \
@@ -13,6 +13,8 @@ libpidsentry__la_SOURCES = \
   eventlatch_.h \
   eventpipe_.c \
   eventpipe_.h \
+  eventqueue_.c \
+  eventqueue_.h \
   fd_.c \
   fd_.h \
   file_.c \
