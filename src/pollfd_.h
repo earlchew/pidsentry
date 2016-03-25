@@ -90,7 +90,7 @@ struct PollEventText
 
 /* -------------------------------------------------------------------------- */
 #define POLL_INPUTEVENTS       ((unsigned) (POLLHUP|POLLERR|POLLPRI|POLLIN))
-#define POLL_POLLOUTPUTEVENTS  ((unsigned) (POLLHUP|POLLERR|POLLOUT))
+#define POLL_OUTPUTEVENTS      ((unsigned) (POLLHUP|POLLERR|POLLOUT))
 #define POLL_DISCONNECTEVENT   ((unsigned) (POLLHUP|POLLERR))
 
 /* -------------------------------------------------------------------------- */
