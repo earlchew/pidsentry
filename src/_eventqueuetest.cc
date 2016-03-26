@@ -107,4 +107,28 @@ TEST(EventQueueTest, CreatePushPopClose)
     closeEventQueue(&eventQueue);
 }
 
+TEST(EventQueueTest, CreateCloseEventFile)
+{
+    struct EventQueue      eventQueue;
+    struct EventQueueFile  eventFile;
+    struct BellSocketPair  testSocket;
+
+    EXPECT_EQ(0, createEventQueue(&eventQueue));
+
+    EXPECT_EQ(0, createBellSocketPair(&testSocket, 0));
+
+    /* Create the event queue file, then immediately close it to
+     * verify that it can be cleaned up. */
+
+    EXPECT_EQ(0, createEventQueueFile(&eventFile,
+                                      &eventQueue,
+                                      testSocket.mSocketPair->mParentFile,
+                                      EventQueuePollRead,
+                                      EventQueueHandle(&testSocket)));
+
+    closeEventQueueFile(&eventFile);
+    closeBellSocketPair(&testSocket);
+    closeEventQueue(&eventQueue);
+}
+
 #include "../googletest/src/gtest_main.cc"

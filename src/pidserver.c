@@ -51,12 +51,15 @@
 /* -------------------------------------------------------------------------- */
 static int
 createPidServerClient_(struct PidServerClient_ *self,
-                       struct UnixSocket       *aServer)
+                       struct PidServer        *aServer)
 {
     int rc = -1;
 
+    self->mServer = aServer;
+    self->mEvent  = 0;
+
     ERROR_IF(
-        acceptUnixSocket(&self->mSocket_, aServer),
+        acceptUnixSocket(&self->mSocket_, self->mServer->mSocket),
         {
             warn(errno, "Unable to accept connection");
         });
@@ -65,6 +68,15 @@ createPidServerClient_(struct PidServerClient_ *self,
     ERROR_IF(
         ownUnixSocketPeerCred(self->mSocket, &self->mCred));
 
+    ERROR_IF(
+        createEventQueueFile(
+            &self->mEvent_,
+            self->mServer->mEventQueue,
+            self->mSocket->mFile,
+            EventQueuePollRead,
+            EventQueueHandle(self)));
+    self->mEvent = &self->mEvent_;
+
     rc = 0;
 
 Finally:
@@ -72,7 +84,10 @@ Finally:
     FINALLY
     ({
         if (rc)
+        {
+            closeEventQueueFile(self->mEvent);
             closeUnixSocket(self->mSocket);
+        }
     });
 
     return rc;
@@ -83,7 +98,10 @@ static void
 closePidServerClient_(struct PidServerClient_ *self)
 {
     if (self)
+    {
+        closeEventQueueFile(self->mEvent);
         closeUnixSocket(self->mSocket);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -92,16 +110,10 @@ createPidServer(struct PidServer *self)
 {
     int rc = -1;
 
-    self->mSocket           = 0;
-    self->mSentinel.mSocket = 0;
+    self->mSocket     = 0;
+    self->mEventQueue = 0;
 
     TAILQ_INIT(&self->mClients);
-    TAILQ_INSERT_TAIL(&self->mClients, &self->mSentinel, mList);
-
-    ensure(
-        &self->mSentinel == TAILQ_FIRST(&self->mClients));
-    ensure(
-        &self->mSentinel == TAILQ_LAST(&self->mClients, PidServerClientList_));
 
     ERROR_IF(
         createUnixSocket(&self->mSocket_, 0, 0, 0));
@@ -113,6 +125,10 @@ createPidServer(struct PidServer *self)
     ERROR_IF(
         self->mSocketAddr.sun_path[0]);
 
+    ERROR_IF(
+        createEventQueue(&self->mEventQueue_));
+    self->mEventQueue = &self->mEventQueue_;
+
     rc = 0;
 
 Finally:
@@ -120,7 +136,10 @@ Finally:
     FINALLY
     ({
         if (rc)
+        {
+            closeEventQueue(self->mEventQueue);
             closeUnixSocket(self->mSocket);
+        }
     });
 
     return rc;
@@ -132,8 +151,6 @@ closePidServer(struct PidServer *self)
 {
     if (self)
     {
-        closeUnixSocket(self->mSocket);
-
         while ( ! TAILQ_EMPTY(&self->mClients))
         {
             struct PidServerClient_ *client =
@@ -143,6 +160,9 @@ closePidServer(struct PidServer *self)
 
             closePidServerClient_(client);
         }
+
+        closeEventQueue(self->mEventQueue);
+        closeUnixSocket(self->mSocket);
    }
 }
 
@@ -164,14 +184,10 @@ acceptPidServerConnection(struct PidServer *self)
     struct PidServerClient_ *client_ = 0;
     struct PidServerClient_ *client  = 0;
     ERROR_UNLESS(
-        (client_ = malloc(sizeof(*client_))),
-        {
-            monotonicSleep(Duration(NSECS(Seconds(1))));
-            errno = ENOMEM;
-        });
+        (client_ = malloc(sizeof(*client_))));
 
     ERROR_IF(
-        createPidServerClient_(client_, self->mSocket));
+        createPidServerClient_(client_, self));
     client  = client_;
     client_ = 0;
 
@@ -182,6 +198,9 @@ acceptPidServerConnection(struct PidServer *self)
                  "Discarding connection from %" PRIs_ucred,
                  FMTs_ucred(client->mCred));
         });
+
+    ERROR_IF(
+        pushEventQueue(self->mEventQueue, client->mEvent));
 
     char buf[1];
 
@@ -198,7 +217,7 @@ acceptPidServerConnection(struct PidServer *self)
         &self->mClients, client, mList);
     client = 0;
 
-    rc = 0;
+    rc = 1;
 
 Finally:
 
@@ -212,86 +231,52 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-bool
+int
 cleanPidServer(struct PidServer *self)
 {
-    /* This function is called to eriodically make a sweep
-     * of the references to the child process group, and to remove
-     * those references which have expired. */
+    int rc = -1;
 
-    unsigned passSentinel = 2;
-    unsigned clientLimit  = testAction(TestLevelRace) ? 1 : 100;
+    /* This function is called to process activity on the event
+     * queue, and remove those references to the child process group
+     * that have expired. */
 
-    struct Duration zeroDuration = Duration(NanoSeconds(0));
+    struct EventQueueFile *events[16];
 
-    struct PidServerClient_ *client = 0;
+    struct Duration zeroTimeout = Duration(NanoSeconds(0));
 
-    while (1)
+    int poppedEvents;
+    ERROR_IF(
+        (poppedEvents = popEventQueue(
+            self->mEventQueue,
+            events, NUMBEROF(events), &zeroTimeout),
+         -1 == poppedEvents));
+
+    for (int px = 0; px < poppedEvents; ++px)
     {
-        if (client)
-        {
-            TAILQ_INSERT_TAIL(&self->mClients, client, mList);
-            client = 0;
-        }
+        struct PidServerClient_ *client = events[px]->mSubject.mHandle;
 
-        if ( ! clientLimit)
-            break;
-
-        client = TAILQ_FIRST(&self->mClients);
+        debug(0,
+              "drop reference from %" PRIs_ucred,
+              FMTs_ucred(client->mCred));
 
         TAILQ_REMOVE(&self->mClients, client, mList);
 
-        if ( ! client->mSocket)
-        {
-            if ( ! --passSentinel)
-                clientLimit = 0;
-            continue;
-        }
-
-        switch (waitFileReadReady(client->mSocket->mFile, &zeroDuration))
-        {
-        default:
-            break;
-
-        case -1:
-            warn(errno,
-                 "Unable to check connection from %" PRIs_ucred,
-                 FMTs_ucred(client->mCred));
-            break;
-
-        case 1:
-
-            /* Any activity on the connection that holds the reference
-             * between the client and the keeper is sufficient to trigger
-             * the keeper to drop the reference. */
-
-            debug(0,
-                  "drop reference from %" PRIs_ucred,
-                  FMTs_ucred(client->mCred));
-
-            closePidServerClient_(client);
-            free(client);
-            client = 0;
-            break;
-        }
-
-        --clientLimit;
+        closePidServerClient_(client);
+        free(client);
+        client = 0;
     }
 
-    ensure( ! client);
+    /* There is no further need to continue cleaning if there are no
+     * more outstanding connections. The last remaining connection
+     * must be the sentinel. */
 
-    /* There is no further need to schedule the next run of the janitor
-     * if there are no more outstanding connections. The last remaining
-     * connection must be the sentinel. */
+    rc = TAILQ_EMPTY(&self->mClients);
 
-    bool cleaned = (
-        TAILQ_FIRST(&self->mClients) ==
-        TAILQ_LAST(&self->mClients, PidServerClientList_));
+Finally:
 
-    ensure( ! cleaned ||
-            &self->mSentinel == TAILQ_FIRST(&self->mClients));
+    FINALLY({});
 
-    return cleaned;
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -129,6 +129,8 @@ runPollFdLoop(struct PollFd *self)
 
     while ( ! self->mCompletionQuery(self->mObserver))
     {
+        bool noMemory = false;
+
         /* Poll the file descriptors and process the file descriptor
          * events before attempting to check for timeouts. This
          * order of operations is important to deal robustly with
@@ -255,6 +257,9 @@ runPollFdLoop(struct PollFd *self)
                             self->mFdActions.mActions[ix].mAction(
                                 self->mObserver, &polltm),
                             {
+                                if (ENOMEM == errno)
+                                    noMemory = true;
+
                                 warn(
                                     errno,
                                     "Error dispatching %s",
@@ -301,6 +306,9 @@ runPollFdLoop(struct PollFd *self)
                     ALERT_IF(
                         timerAction->mAction(self->mObserver, &polltm),
                         {
+                            if (ENOMEM == errno)
+                                noMemory = true;
+
                             warn(errno,
                                  "Error dispatching timer %s",
                                  self->mTimerActions.mNames[ix]);
@@ -309,6 +317,12 @@ runPollFdLoop(struct PollFd *self)
             }
         }
 
+        /* Do not allow the event loop to spin wildly if program
+         * memory is exhausted. Introduce a small delay to give
+         * the system a chance to recover some memory. */
+
+        if (noMemory)
+            monotonicSleep(Duration(NSECS(Seconds(1))));
     }
 
     rc = 0;

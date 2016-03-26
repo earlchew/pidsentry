@@ -30,6 +30,7 @@
 #define PIDSERVER_H
 
 #include "unixsocket_.h"
+#include "eventqueue_.h"
 
 #include <sys/un.h>
 #include <sys/queue.h>
@@ -38,15 +39,22 @@
 extern "C" {
 #endif
 
+struct PidServer;
+
 /* -------------------------------------------------------------------------- */
 struct PidServerClient_
 {
     TAILQ_ENTRY(PidServerClient_) mList;
 
+    struct PidServer *mServer;
+
     struct ucred mCred;
 
     struct UnixSocket  mSocket_;
     struct UnixSocket *mSocket;
+
+    struct EventQueueFile  mEvent_;
+    struct EventQueueFile *mEvent;
 };
 
 typedef TAILQ_HEAD(PidServerClientList_,
@@ -59,8 +67,10 @@ struct PidServer
     struct UnixSocket *mSocket;
     struct sockaddr_un mSocketAddr;
 
+    struct EventQueue  mEventQueue_;
+    struct EventQueue *mEventQueue;
+
     struct PidServerClientList_ mClients;
-    struct PidServerClient_     mSentinel;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -73,7 +83,7 @@ closePidServer(struct PidServer *self);
 int
 acceptPidServerConnection(struct PidServer *self);
 
-bool
+int
 cleanPidServer(struct PidServer *self);
 
 /* -------------------------------------------------------------------------- */

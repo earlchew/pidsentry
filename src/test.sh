@@ -268,7 +268,8 @@ runTests()
     # ii.  stdout
     # iii. stderr
     # iv.  pid server socket
-    [ -n "$VALGRIND" ] || testOutput "4" = '$(
+    # v.   pid server poll
+    [ -n "$VALGRIND" ] || testOutput "5" = '$(
         pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL

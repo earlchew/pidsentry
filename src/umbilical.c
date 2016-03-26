@@ -62,12 +62,12 @@ static const char *pollFdNames_[POLL_FD_MONITOR_KINDS] =
 {
     [POLL_FD_MONITOR_UMBILICAL] = "umbilical",
     [POLL_FD_MONITOR_PIDSERVER] = "pidserver",
+    [POLL_FD_MONITOR_PIDCLIENT] = "pidclient",
 };
 
 static const char *pollFdTimerNames_[POLL_FD_MONITOR_TIMER_KINDS] =
 {
     [POLL_FD_MONITOR_TIMER_UMBILICAL] = "umbilical",
-    [POLL_FD_MONITOR_TIMER_PIDSERVER] = "pidserver",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -84,11 +84,13 @@ pollFdPidServer_(void                        *self_,
     ERROR_IF(
         acceptPidServerConnection(self->mPidServer));
 
-    struct PollFdTimerAction *timerAction =
-        &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_PIDSERVER];
+    struct pollfd *pollFd = &self->mPollFds[POLL_FD_MONITOR_PIDCLIENT];
 
-    if ( ! timerAction->mPeriod.duration.ns)
-        timerAction->mPeriod = Duration(NSECS(Seconds(5)));
+    if ( ! pollFd->events)
+    {
+        pollFd->fd     = self->mPidServer->mEventQueue->mFile->mFd;
+        pollFd->events = POLL_INPUTEVENTS;
+    }
 
     rc = 0;
 
@@ -99,10 +101,10 @@ Finally:
     return rc;
 }
 
+/* -------------------------------------------------------------------------- */
 static int
-pollFdTimerPidServer_(
-    void                        *self_,
-    const struct EventClockTime *aPollTime)
+pollFdPidClient_(void                        *self_,
+                 const struct EventClockTime *aPollTime)
 {
     int rc = -1;
 
@@ -110,15 +112,12 @@ pollFdTimerPidServer_(
 
     ensure(umbilicalMonitorType_ == self->mType);
 
-    /* If there are no further outstanding references after cleaning,
-     * there is no need to schedule the next cleaning cycle. */
-
     if (cleanPidServer(self->mPidServer))
     {
-        struct PollFdTimerAction *timerAction =
-            &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_PIDSERVER];
+        struct pollfd *pollFd = &self->mPollFds[POLL_FD_MONITOR_PIDCLIENT];
 
-        timerAction->mPeriod = Duration(NanoSeconds(0));
+        pollFd->fd     = -1;
+        pollFd->events = 0;
     }
 
     rc = 0;
@@ -310,8 +309,7 @@ pollFdCompletion_(void *self_)
     return
         ! self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events &&
         ! self->mPollFds[POLL_FD_MONITOR_PIDSERVER].events &&
-        ! self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_PIDSERVER]
-            .mPeriod.duration.ns;
+        ! self->mPollFds[POLL_FD_MONITOR_PIDCLIENT].events;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -352,12 +350,19 @@ createUmbilicalMonitor(
                 .fd     = aPidServer->mSocket->mFile->mFd,
                 .events = POLL_INPUTEVENTS
             },
+
+            [POLL_FD_MONITOR_PIDCLIENT] =
+            {
+                .fd     = -1,
+                .events = 0,
+            },
         },
 
         .mPollFdActions =
         {
             [POLL_FD_MONITOR_UMBILICAL] = { pollFdUmbilical_ },
             [POLL_FD_MONITOR_PIDSERVER] = { pollFdPidServer_ },
+            [POLL_FD_MONITOR_PIDCLIENT] = { pollFdPidClient_ },
         },
 
         .mPollFdTimerActions =
@@ -370,13 +375,6 @@ createUmbilicalMonitor(
                     NanoSeconds(
                         NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns
                         / cycleLimit)),
-            },
-
-            [POLL_FD_MONITOR_TIMER_PIDSERVER] =
-            {
-                .mAction = pollFdTimerPidServer_,
-                .mSince  = EVENTCLOCKTIME_INIT,
-                .mPeriod = Duration(NanoSeconds(0)),
             },
         },
     };
@@ -494,6 +492,7 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
         STDERR_FILENO,
         ownProcessLockFile()->mFd,
         aPidServer->mSocket->mFile->mFd,
+        aPidServer->mEventQueue->mFile->mFd,
     };
 
     closeFdDescriptors(whiteList, NUMBEROF(whiteList));
