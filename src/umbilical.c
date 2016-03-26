@@ -655,7 +655,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
         (wrlen = writeFile(self->mSocket->mParentFile, buf, sizeof(buf)),
          -1 == wrlen && EPIPE != errno));
 
-    /* The umbilical process might no longer running and thus
+    /* The umbilical process might no longer be running and thus
      * unable to clean up the child process group. If so, it is
      * necessary for the watchdog clean up the child process
      * group directly. */

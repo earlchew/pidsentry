@@ -646,69 +646,6 @@ closeChild(struct ChildProcess *self)
 }
 
 /* -------------------------------------------------------------------------- */
-#if 0
-void
-monitorChildUmbilical(struct ChildProcess *self, struct Pid aParentPid)
-{
-    /* This function is called in the context of the umbilical process
-     * to monitor the umbilical, and if the umbilical fails, to kill
-     * the child.
-     *
-     * The caller has already configured stdin to be used to read data
-     * from the umbilical pipe.
-     */
-
-#if 0
-    closeChildFiles_(self);
-#endif
-
-    /* The umbilical process is not the parent of the child process being
-     * watched, so that there is no reliable way to send a signal to that
-     * process alone because the pid might be recycled by the time the signal
-     * is sent. Instead rely on the umbilical monitor being in the same
-     * process group as the child process and use the process group as
-     * a means of controlling the cild process. */
-
-    struct UmbilicalMonitor monitorpoll;
-    ABORT_IF(
-        createUmbilicalMonitor(&monitorpoll, STDIN_FILENO, aParentPid),
-        {
-            terminate(errno, "Unable to create umbilical monitor");
-        });
-
-    /* Synchronise with the watchdog to avoid timing races. The watchdog
-     * writes to the umbilical when it is ready to start timing. */
-
-    debug(0, "synchronising umbilical");
-
-    ABORT_IF(
-        synchroniseUmbilicalMonitor(&monitorpoll),
-        {
-            terminate(errno, "Unable to synchronise umbilical monitor");
-        });
-
-    debug(0, "synchronised umbilical");
-
-    ABORT_IF(
-        runUmbilicalMonitor(&monitorpoll),
-        {
-            terminate(errno, "Unable to run umbilical monitor");
-        });
-
-    /* The umbilical monitor returns when the connection to the watchdog
-     * is either lost or no longer active. Only issue a diagnostic if
-     * the shutdown was not orderly. */
-
-    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
-        warn(0,
-             "Killing child pgid %" PRId_Pgid " from umbilical",
-             FMTd_Pgid(self->mPgid));
-
-    killChildProcessGroup(self);
-}
-#endif
-
-/* -------------------------------------------------------------------------- */
 /* Child Process Monitoring
  *
  * The child process must be monitored for activity, and also for

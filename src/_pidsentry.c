@@ -814,34 +814,6 @@ cmdMonitorChild(char **aCmd)
 
     closeSocketPair(&umbilicalSocket);
 
-#if 0
-    /* Clean up the child process keeper, and be prepared to wait
-     * a short time for the last reference to the child proces group
-     * to be dropped. This primarily cosmetic to avoid messages from
-     * the keeper cluttering the output after the watchdog has exited.
-     *
-     * It safe to give up if the last reference is not dropped quickly
-     * enough since the only function of the keeper can continue maintaining
-     * the references it has in hand. */
-
-    if (pidKeeperTether)
-    {
-        ABORT_IF(
-            shutdownFileSocketWriter(
-                pidKeeperTether->mSocketPair->mParentFile));
-
-        struct Duration keeperShutdownTimeout =
-            Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
-
-        ABORT_IF(
-            -1 == waitFileReadReady(pidKeeperTether->mSocketPair->mParentFile,
-                                    &keeperShutdownTimeout));
-    }
-
-    closeBellSocketPair(pidKeeperTether);
-    closeKeeperProcess(pidKeeperProcess);
-#endif
-
     ABORT_IF(
         resetProcessSigPipe(),
         {
