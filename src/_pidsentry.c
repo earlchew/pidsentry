@@ -66,7 +66,6 @@
  * On receiving SIGABRT, trigger gdb
  * Dump /proc/../task/stack after SIGSTOP, just before delivering SIGABRT
  * Write unit test for forkProcessDaemon()
- * Use -1 for poll fd entry instead of null in child.c etc
  */
 
 /* -------------------------------------------------------------------------- */
