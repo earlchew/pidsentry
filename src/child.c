@@ -736,7 +736,6 @@ struct ChildMonitor
 
     struct Pid mChildPid;
 
-    struct Pipe         *mNullPipe;
     struct TetherThread *mTetherThread;
     struct EventPipe    *mEventPipe;
     struct EventLatch   *mContLatch;
@@ -896,9 +895,8 @@ pollFdCloseUmbilical_(struct ChildMonitor         *self,
     struct PollFdTimerAction *umbilicalTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
 
+    self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     = -1;
     self->mPollFds[POLL_FD_CHILD_UMBILICAL].events = 0;
-    self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     =
-        self->mNullPipe->mRdFile->mFd;
 
     umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
 
@@ -1258,7 +1256,7 @@ disconnectPollFdTether_(struct ChildMonitor *self)
 {
     debug(0, "disconnect tether control");
 
-    self->mPollFds[POLL_FD_CHILD_TETHER].fd     = self->mNullPipe->mRdFile->mFd;
+    self->mPollFds[POLL_FD_CHILD_TETHER].fd     = -1;
     self->mPollFds[POLL_FD_CHILD_TETHER].events = 0;
 }
 
@@ -1728,7 +1726,6 @@ monitorChild(struct ChildProcess     *self,
         .mType = childMonitorType_,
 
         .mChildPid     = self->mPid,
-        .mNullPipe     = nullPipe,
         .mTetherThread = tetherThread,
         .mEventPipe    = eventPipe,
         .mContLatch    = contLatch,
