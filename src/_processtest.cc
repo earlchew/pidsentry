@@ -234,7 +234,9 @@ TEST(ProcessTest, ProcessDaemon)
         closeBellSocketPairParent(&bellSocket);
         ringBellSocketPairChild(&bellSocket);
         waitBellSocketPairChild(&bellSocket);
-        quitProcess(EXIT_SUCCESS);
+
+        execlp("sh", "sh", "-c", "exit 0", 0);
+        _exit(EXIT_SUCCESS);
     }
 
     closeBellSocketPairChild(&bellSocket);
