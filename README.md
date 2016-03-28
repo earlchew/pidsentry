@@ -1,28 +1,32 @@
-Multiboot Chain Loader
+pidsentry
+=========
 
-This is a multiboot module that conforms to the Multiboot Specification
-version 0.6.96:
+Monitor child process with a watchdog and maintain a pid file
 
-    http://www.gnu.org/software/grub/manual/multiboot/multiboot.html
+#### Background
 
-The module can be loaded by GRUB 2 and used to chainload subsequent
-boot loaders.
+It is good practice to make C and C++ headers self-sufficient so
+that headers do not have to be included in any particular order,
+and changes to headers to not cause source files to break because
+the required order of the headers has changed.
 
-The functionality of this module differs from the GRUB chainloader command
-in the following key ways:
+#### Requirements
 
-    The GRUB chainloader command loads a single sector whereas this module
-    loads an entire file.
+* GNU Make
+* GNU Automake
 
-    The GRUB 2 chainloader command passes the following parameters to the
-    target whereas this module always passes these parameters as zero:
+#### Installation
 
-        %esi  Boot partition
-        %edx  Boot drive
+* Install `headercheck.mk` in the root of source tree.
+* Add `include $(top_srcdir)/headercheck.mk` to each applicable Makefile.am.
 
-Both the GRUB chainloader and this module load the target code at 0x0:0x7c00
-and executes the code in x86 real mode.
+The following is an example that shows a Makefile.am fragment demonstrating
+the above steps.
 
-The main purpose of the module is to allow GRUB 2 to chainload into legacy
-GRUB or other boot loader implementations that must execute in the first 1MB
-of memory.
+```
+% cat Makefile.am
+include $(top_srcdir)/headercheck.mk
+
+TESTS          = $(check_PROGRAMS)
+check_PROGRAMS = _test
+```
