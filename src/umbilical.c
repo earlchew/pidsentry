@@ -347,8 +347,8 @@ createUmbilicalMonitor(
 
             [POLL_FD_MONITOR_PIDSERVER] =
             {
-                .fd     = aPidServer->mSocket->mFile->mFd,
-                .events = POLL_INPUTEVENTS
+                .fd     = aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
+                .events = aPidServer ? POLL_INPUTEVENTS : 0,
             },
 
             [POLL_FD_MONITOR_PIDCLIENT] =
@@ -491,11 +491,17 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
         STDOUT_FILENO,
         STDERR_FILENO,
         ownProcessLockFile()->mFd,
-        aPidServer->mSocket->mFile->mFd,
-        aPidServer->mEventQueue->mFile->mFd,
+        aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
+        aPidServer ? aPidServer->mEventQueue->mFile->mFd : -1,
     };
 
-    closeFdDescriptors(whiteList, NUMBEROF(whiteList));
+    ABORT_IF(
+        closeFdDescriptors(whiteList, NUMBEROF(whiteList)),
+        {
+            terminate(
+                errno,
+                "Unable to close extraneous file descriptors");
+        });
 
     if (testMode(TestLevelSync))
     {
@@ -552,22 +558,16 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
              FMTd_Pgid(aChildProcess->mPgid));
 
     killChildProcessGroup(aChildProcess);
-
-    debug(0, "exit umbilical");
-
-    quitProcess(EXIT_SUCCESS);
 }
 
 /* -------------------------------------------------------------------------- */
 int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
-                       struct SocketPair       *aUmbilicalSocket)
+                       struct SocketPair       *aUmbilicalSocket,
+                       struct PidServer        *aPidServer)
 {
     int rc = -1;
-
-    struct PidServer  pidServer_;
-    struct PidServer *pidServer = 0;
 
     self->mPid         = Pid(0);
     self->mChildAnchor = Pid(0);
@@ -582,12 +582,6 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
      * the child process. */
 
     ensure( ! pthread_kill(pthread_self(), SIGHUP));
-
-    ERROR_IF(
-        createPidServer(&pidServer_));
-    pidServer = &pidServer_;
-
-    self->mPidServerAddr = pidServer->mSocketAddr;
 
     struct Pid watchdogPid = ownProcessId();
 
@@ -620,26 +614,20 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
                              watchdogPid,
                              aChildProcess,
                              aUmbilicalSocket,
-                             pidServer);
+                             aPidServer);
+
+        debug(0, "exit umbilical");
+
+        quitProcess(EXIT_SUCCESS);
     }
 
     rc = 0;
 
 Finally:
 
-    FINALLY
-    ({
-        closePidServer(pidServer);
-    });
+    FINALLY({});
 
     return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-struct sockaddr_un
-ownUmbilicalProcessPidServerAddress(const struct UmbilicalProcess *self)
-{
-    return self->mPidServerAddr;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -701,14 +689,17 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
                     self->mSocket->mParentFile, &remaining),
                  -1 == ready));
 
-            ssize_t rdlen = 0;
-            ERROR_IF(
-                (rdlen = readFile(
-                    self->mSocket->mParentFile, buf, 1),
-                 -1 == rdlen && ECONNRESET != errno));
+            if (ready)
+            {
+                ssize_t rdlen = 0;
+                ERROR_IF(
+                    (rdlen = readFile(
+                        self->mSocket->mParentFile, buf, 1),
+                     -1 == rdlen && ECONNRESET != errno));
 
-            if (rdlen)
-                continue;
+                if (rdlen)
+                    continue;
+            }
 
             break;
         }

@@ -32,6 +32,7 @@
 #include "child.h"
 #include "umbilical.h"
 #include "command.h"
+#include "pidserver.h"
 
 #include "env_.h"
 #include "macros_.h"
@@ -374,6 +375,9 @@ cmdMonitorChild(char **aCmd)
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
 
+    struct PidServer  pidServer_;
+    struct PidServer *pidServer = 0;
+
     if (gOptions.mPidFile)
     {
         ABORT_IF(
@@ -384,6 +388,16 @@ cmdMonitorChild(char **aCmd)
                     "Cannot initialise pid file '%s'", gOptions.mPidFile);
             });
         pidFile = &pidFile_;
+
+        ABORT_IF(
+            createPidServer(&pidServer_),
+            {
+                terminate(
+                    errno,
+                    "Cannot create pid server for '%s'", gOptions.mPidFile);
+            });
+
+        pidServer = &pidServer_;
     }
 
     /* If not running in test mode, change directory to avoid holding
@@ -403,120 +417,6 @@ cmdMonitorChild(char **aCmd)
                     "Unable to change directory to %s", rootDir);
             });
     }
-
-#if 0
-    /* Before announcing the chld process, prepare the keeper process
-     * that will hold a reference to the child pid, preventing
-     * that pid from being re-used and alised to another process. */
-
-    struct KeeperProcess  pidKeeperProcess_;
-    struct KeeperProcess *pidKeeperProcess = 0;
-
-    struct BellSocketPair  pidKeeperTether_;
-    struct BellSocketPair *pidKeeperTether = 0;
-
-    struct sockaddr_un pidKeeperAddr;
-
-    if (pidFile)
-    {
-        ABORT_IF(
-            createKeeperProcess(&pidKeeperProcess_, childProcess.mPgid),
-            {
-                terminate(
-                    errno,
-                    "Unable to create child process keeper");
-            });
-        pidKeeperProcess = &pidKeeperProcess_;
-
-        ABORT_IF(
-            createBellSocketPair(&pidKeeperTether_, O_NONBLOCK | O_CLOEXEC),
-            {
-                terminate(
-                    errno,
-                    "Unable to create child process keeper tether");
-            });
-        pidKeeperTether = &pidKeeperTether_;
-
-        {
-            struct UnixSocket pidKeeperSocket;
-            ABORT_IF(
-                createUnixSocket(&pidKeeperSocket, 0, 0, 0),
-                {
-                    terminate(
-                        errno,
-                        "Unable to create process keeper socket");
-                });
-
-            ABORT_IF(
-                ownUnixSocketName(&pidKeeperSocket, &pidKeeperAddr));
-
-            ABORT_IF(
-                pidKeeperAddr.sun_path[0]);
-
-            struct Pid daemonPid = Pid(-1);
-            ABORT_IF(
-                (daemonPid = forkProcessDaemon(),
-                 -1 == daemonPid.mPid));
-
-            if ( ! daemonPid.mPid)
-            {
-                debug(0,
-                      "running keeper pid %" PRId_Pid " in pgid %" PRId_Pgid,
-                      FMTd_Pid(ownProcessId()),
-                      FMTd_Pgid(ownProcessGroupId()));
-
-                closeBellSocketPairParent(pidKeeperTether);
-
-                int whiteList[] =
-                {
-                    STDIN_FILENO,
-                    STDOUT_FILENO,
-                    STDERR_FILENO,
-                    ownProcessLockFile()->mFd,
-                    pidKeeperTether->mSocketPair->mChildFile->mFd,
-                    pidKeeperSocket.mFile->mFd,
-                };
-
-                closeFdDescriptors(whiteList, NUMBEROF(whiteList));
-
-                ABORT_IF(
-                    runKeeperProcess(
-                        pidKeeperProcess, pidKeeperTether, &pidKeeperSocket),
-                    {
-                        terminate(
-                            errno,
-                            "Unable to run process keeper");
-                    });
-
-                debug(0, "exit keeper");
-
-                quitProcess(EXIT_SUCCESS);
-            }
-
-            ABORT_IF(
-                waitBellSocketPairParent(pidKeeperTether),
-                {
-                    terminate(
-                        errno,
-                        "Unable to create run process keeper");
-                });
-
-            closeUnixSocket(&pidKeeperSocket);
-        }
-
-        closeBellSocketPairChild(pidKeeperTether);
-
-        /* Only identify the watchdog process after all the signal handlers
-         * have been installed. The functional tests can use this as an
-         * indicator that the watchdog is ready to run the child process.
-         *
-         * Although the watchdog process can be announed at this point,
-         * the announcement is deferred so that it and the umbilical can
-         * be announced in a single line at one point. */
-
-        announceChild(pidFile, childProcess.mPid, &pidServerAddr);
-    }
-#endif
 
     /* With the child process launched, close the instance of StdFdFiller
      * so that stdin, stdout and stderr become available for manipulation
@@ -563,7 +463,8 @@ cmdMonitorChild(char **aCmd)
     ABORT_IF(
         createUmbilicalProcess(&umbilicalProcess,
                                &childProcess,
-                               &umbilicalSocket),
+                               &umbilicalSocket,
+                               pidServer),
         {
             terminate(
                 errno,
@@ -579,8 +480,15 @@ cmdMonitorChild(char **aCmd)
         announceChild(
             pidFile,
             childProcess.mPid,
-            ownUmbilicalProcessPidServerAddress(&umbilicalProcess));
+            pidServer->mSocketAddr);
     }
+
+    /* The PidServer instance will continue to run in the umbilical process,
+       so the instance that was created in the watchdog is no longer
+       required. */
+
+    closePidServer(pidServer);
+    pidServer = 0 ;
 
     if (gOptions.mIdentify)
     {

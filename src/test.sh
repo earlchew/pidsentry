@@ -267,10 +267,34 @@ runTests()
     # i.   stdin
     # ii.  stdout
     # iii. stderr
+    [ -n "$VALGRIND" ] || testOutput "3" = '$(
+        pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
+        {
+            read PARENT UMBILICAL
+            read CHILD
+            for P in $PARENT $UMBILICAL ; do
+                while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
+            done
+            ls -l /proc/$UMBILICAL/fd |
+                grep -v " -> /proc/$PARENT" |
+                grep "[0-9]-[0-9]" |
+                wc -l
+            for P in $PARENT $UMBILICAL ; do
+               kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
+            done
+            kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
+        }
+    )'
+
+    testCase 'Umbilical process file descriptors with pid server'
+    # i.   stdin
+    # ii.  stdout
+    # iii. stderr
     # iv.  pid server socket
     # v.   pid server poll
     [ -n "$VALGRIND" ] || testOutput "5" = '$(
-        pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry --test=3 -p $PIDFILE -i -- sh -c "
+            while : ; do sleep 1 ; done" |
         {
             read PARENT UMBILICAL
             read CHILD

@@ -54,7 +54,6 @@ struct UmbilicalProcess
     struct Pid         mPid;
     struct Pid         mChildAnchor;
     struct SocketPair *mSocket;
-    struct sockaddr_un mPidServerAddr;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -113,10 +112,8 @@ ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self);
 int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
-                       struct SocketPair       *aUmbilicalSocket);
-
-struct sockaddr_un
-ownUmbilicalProcessPidServerAddress(const struct UmbilicalProcess *self);
+                       struct SocketPair       *aUmbilicalSocket,
+                       struct PidServer        *aPidServer);
 
 int
 stopUmbilicalProcess(struct UmbilicalProcess *self);
