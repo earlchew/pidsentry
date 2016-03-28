@@ -76,7 +76,7 @@ TEST(ProcessTest, ProcessStatus)
 
     if ( ! childpid.mPid)
     {
-        execlp("sh", "sh", "-c", "exit 0", 0);
+        execl("/bin/true", "true", (char *) 0);
         _exit(EXIT_FAILURE);
     }
 
@@ -112,7 +112,7 @@ TEST(ProcessTest, ProcessSignature)
 
     if ( ! firstChild.mPid)
     {
-        execlp("sh", "sh", "-c", "exit 0", 0);
+        execl("/bin/true", "true", (char *) 0);
         _exit(EXIT_SUCCESS);
     }
 
@@ -121,7 +121,7 @@ TEST(ProcessTest, ProcessSignature)
 
     if ( ! secondChild.mPid)
     {
-        execlp("sh", "sh", "-c", "exit 0", 0);
+        execl("/bin/true", "true", (char *) 0);
         _exit(EXIT_SUCCESS);
     }
 
@@ -235,7 +235,7 @@ TEST(ProcessTest, ProcessDaemon)
         ringBellSocketPairChild(&bellSocket);
         waitBellSocketPairChild(&bellSocket);
 
-        execlp("sh", "sh", "-c", "exit 0", 0);
+        execl("/bin/true", "true", (char *) 0);
         _exit(EXIT_SUCCESS);
     }
 
