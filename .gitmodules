@@ -6,4 +6,4 @@
 	url = git@github.com:earlchew/automakewild.git
 [submodule "automakeheadercheck"]
 	path = automakeheadercheck
-	url = git@gitbox:automakeheadercheck.git
+	url = git@github.com:earlchew/automakeheadercheck.git
