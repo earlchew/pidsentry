@@ -3,7 +3,7 @@
 	url = git@github.com:google/googletest.git
 [submodule "automakewild"]
 	path = automakewild
-	url = git@gitbox:automakewild.git
+	url = git@github.com:earlchew/automakewild.git
 [submodule "automakeheadercheck"]
 	path = automakeheadercheck
 	url = git@gitbox:automakeheadercheck.git
