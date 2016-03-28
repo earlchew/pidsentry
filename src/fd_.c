@@ -96,13 +96,13 @@ closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
             ensure(whiteList[aWhiteListLen] > whiteList[ix]);
         }
 
-        debug(0, "purging %zd fds", aWhiteListLen);
-
         qsort(
             whiteList,
             NUMBEROF(whiteList), sizeof(whiteList[0]), rankFd_);
 
-        for (int fd = 0, wx = 0; NUMBEROF(whiteList) > wx; ++fd)
+        unsigned purgedFds = 0;
+
+        for (int fd = 0, wx = 0; NUMBEROF(whiteList) > wx; )
         {
             if (0 > whiteList[wx])
             {
@@ -110,29 +110,41 @@ closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
                 continue;
             }
 
-            if (fd != whiteList[wx])
+            do
             {
-                int valid;
-                ERROR_IF(
-                    (valid = ownFdValid(fd),
-                     -1 == valid));
-
-                if (valid)
+                if (fd != whiteList[wx])
                 {
-                    int closedFd = fd;
+                    ++purgedFds;
 
-                    closeFd(&closedFd);
+                    int valid;
+                    ERROR_IF(
+                        (valid = ownFdValid(fd),
+                         -1 == valid));
+
+                    if (valid)
+                    {
+                        int closedFd = fd;
+
+                        closeFd(&closedFd);
+                    }
                 }
-            }
-            else
-            {
-                debug(0, "not closing fd %d", fd);
+                else
+                {
+                    debug(0, "not closing fd %d", fd);
 
-                while (NUMBEROF(whiteList) > ++wx)
-                    if (whiteList[wx] != fd)
-                        break;
-            }
+                    while (NUMBEROF(whiteList) > ++wx)
+                    {
+                        if (whiteList[wx] != fd)
+                            break;
+                    }
+                }
+
+            } while (0);
+
+            ++fd;
         }
+
+        debug(0, "purged %u fds", purgedFds);
     }
 
     rc = 0;
