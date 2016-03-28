@@ -29,8 +29,13 @@
 
 #include "process_.h"
 #include "timekeeping_.h"
+#include "bellsocketpair_.h"
+#include "macros_.h"
+#include <string>
 
 #include <unistd.h>
+
+#include <sys/mman.h>
 
 #include <valgrind/valgrind.h>
 
@@ -54,22 +59,22 @@ TEST(ProcessTest, ProcessSignalName)
 TEST(ProcessTest, ProcessState)
 {
     EXPECT_EQ(ProcessState::ProcessStateError,
-              fetchProcessState(-1).mState);
+              fetchProcessState(Pid(-1)).mState);
 
     EXPECT_EQ(ProcessState::ProcessStateRunning,
-              fetchProcessState(getpid()).mState);
+              fetchProcessState(ownProcessId()).mState);
 }
 
 TEST(ProcessTest, ProcessStatus)
 {
     EXPECT_EQ(ChildProcessState::ChildProcessStateError,
-              monitorProcessChild(getpid()).mChildState);
+              monitorProcessChild(ownProcessId()).mChildState);
 
-    pid_t childpid = fork();
+    struct Pid childpid = Pid(fork());
 
-    EXPECT_NE(-1, childpid);
+    EXPECT_NE(-1, childpid.mPid);
 
-    if ( ! childpid)
+    if ( ! childpid.mPid)
     {
         execlp("sh", "sh", "-c", "exit 0", 0);
         _exit(EXIT_FAILURE);
@@ -87,22 +92,22 @@ TEST(ProcessTest, ProcessSignature)
 {
     char *parentSignature = 0;
 
-    EXPECT_EQ(-1, fetchProcessSignature(0, &parentSignature));
+    EXPECT_EQ(-1, fetchProcessSignature(Pid(0), &parentSignature));
     EXPECT_EQ(ENOENT, errno);
 
-    EXPECT_EQ(0, fetchProcessSignature(getpid(), &parentSignature));
+    EXPECT_EQ(0, fetchProcessSignature(ownProcessId(), &parentSignature));
     EXPECT_TRUE(parentSignature);
     EXPECT_TRUE(strlen(parentSignature));
 
     {
         char *altSignature = 0;
-        EXPECT_EQ(0, fetchProcessSignature(getpid(), &altSignature));
+        EXPECT_EQ(0, fetchProcessSignature(ownProcessId(), &altSignature));
         EXPECT_EQ(0, strcmp(parentSignature, altSignature));
 
         free(altSignature);
     }
 
-    struct Pid firstChild = forkProcess(ForkProcessShareProcessGroup, 0);
+    struct Pid firstChild = forkProcess(ForkProcessShareProcessGroup, Pgid(0));
     EXPECT_NE(-1, firstChild.mPid);
 
     if ( ! firstChild.mPid)
@@ -111,7 +116,7 @@ TEST(ProcessTest, ProcessSignature)
         _exit(EXIT_SUCCESS);
     }
 
-    struct Pid secondChild = forkProcess(ForkProcessShareProcessGroup, 0);
+    struct Pid secondChild = forkProcess(ForkProcessShareProcessGroup, Pgid(0));
     EXPECT_NE(-1, secondChild.mPid);
 
     if ( ! secondChild.mPid)
@@ -185,6 +190,77 @@ TEST(ProcessTest, ProcessAppLock)
     EXPECT_EQ(5, sigTermCount_);
 
     EXPECT_FALSE(sigaction(SIGTERM, &prevAction, 0));
+}
+
+TEST(ProcessTest, ProcessDaemon)
+{
+    struct BellSocketPair bellSocket;
+
+    EXPECT_EQ(0, createBellSocketPair(&bellSocket, 0));
+
+    struct DaemonState
+    {
+        int mErrno;
+        int mSigMask[NSIG];
+    };
+
+    struct DaemonState *daemonState =
+        reinterpret_cast<struct DaemonState *>(
+            mmap(0,
+                 sizeof(*daemonState),
+                 PROT_READ | PROT_WRITE,
+                 MAP_ANONYMOUS | MAP_SHARED, -1, 0));
+
+    EXPECT_NE(MAP_FAILED, (void *) daemonState);
+
+    daemonState->mErrno = ENOSYS;
+
+    struct Pid daemonPid = forkProcessDaemon();
+
+    if ( ! daemonPid.mPid)
+    {
+        sigset_t sigMask;
+
+        daemonState->mErrno = 0;
+
+        if (pthread_sigmask(SIG_BLOCK, 0, &sigMask))
+            daemonState->mErrno = errno;
+        else
+        {
+            for (unsigned sx = 0; NUMBEROF(daemonState->mSigMask) > sx; ++sx)
+                daemonState->mSigMask[sx] = sigismember(&sigMask, sx);
+        }
+
+        closeBellSocketPairParent(&bellSocket);
+        ringBellSocketPairChild(&bellSocket);
+        waitBellSocketPairChild(&bellSocket);
+        quitProcess(EXIT_SUCCESS);
+    }
+
+    closeBellSocketPairChild(&bellSocket);
+
+    EXPECT_NE(-1, daemonPid.mPid);
+    EXPECT_EQ(daemonPid.mPid, getpgid(daemonPid.mPid));
+    EXPECT_EQ(getsid(0), getsid(daemonPid.mPid));
+
+    waitBellSocketPairParent(&bellSocket);
+
+    EXPECT_EQ(0, daemonState->mErrno);
+
+    {
+        sigset_t sigMask;
+
+        EXPECT_EQ(0, pthread_sigmask(SIG_BLOCK, 0, &sigMask));
+
+        for (unsigned sx = 0; NUMBEROF(daemonState->mSigMask) > sx; ++sx)
+            EXPECT_EQ(
+                daemonState->mSigMask[sx], sigismember(&sigMask, sx))
+                << " failed at index " << sx;
+    }
+
+    EXPECT_EQ(0, munmap(daemonState, sizeof(*daemonState)));
+
+    closeBellSocketPair(&bellSocket);
 }
 
 #include "../googletest/src/gtest_main.cc"
