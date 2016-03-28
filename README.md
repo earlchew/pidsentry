@@ -37,3 +37,7 @@ pid, even if the host reboots.
 * Configure using `configure`
 * Build binaries using `make`
 * Run tests using `make check`
+
+#### Implementation
+
+![](https://github.com/earlchew/pidsentry/blob/master/pidsentry.png)
