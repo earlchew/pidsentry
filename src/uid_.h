@@ -44,7 +44,7 @@ Uid_(uid_t aUid);
 struct Uid
 {
 #ifdef __cplusplus
-    Uid(uid_t aUid)
+    explicit Uid(uid_t aUid)
     { *this = Uid_(aUid); }
 #endif
 
@@ -68,7 +68,7 @@ Gid_(gid_t aGid);
 struct Gid
 {
 #ifdef __cplusplus
-    Gid(gid_t aGid)
+    explicit Gid(gid_t aGid)
     { *this = Gid_(aGid); }
 #endif
 
