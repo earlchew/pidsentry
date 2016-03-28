@@ -1793,6 +1793,15 @@ forkProcessDaemon(void)
                 monotonicSleep(Duration(NSECS(Seconds(1))));
             }
 
+            /* When running with valgrind, use execl() to prevent
+             * valgrind performing a leak check on the intermediate
+             * process. */
+
+            if (RUNNING_ON_VALGRIND)
+                ABORT_IF(
+                    execl(
+                        "/bin/true", "true", (char *) 0) || (errno = 0, true));
+
             quitProcess(EXIT_SUCCESS);
         }
 
