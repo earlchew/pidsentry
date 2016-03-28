@@ -422,11 +422,11 @@ uptime()
 
     EXPECT_EQ(0, createPipe(&pipe, 0));
 
-    pid_t pid = fork();
+    struct Pid pid = Pid(fork());
 
-    EXPECT_NE(-1, pid);
+    EXPECT_NE(-1, pid.mPid);
 
-    if ( ! pid)
+    if ( ! pid.mPid)
     {
         int rc = 0;
 
