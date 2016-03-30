@@ -818,7 +818,10 @@ testOutput "" = '$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)'
 for TEST in runTest runTests ; do
     VALGRIND=
     $TEST
-    VALGRIND="valgrind --error-exitcode=128 --leak-check=yes"
+    VALGRIND="valgrind"
+    VALGRIND="$VALGRIND --error-exitcode=128"
+    VALGRIND="$VALGRIND --leak-check=yes"
+    VALGRIND="$VALGRIND --suppressions=pidsentry.supp"
     $TEST
 done
 
