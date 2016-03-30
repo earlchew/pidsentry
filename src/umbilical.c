@@ -133,6 +133,11 @@ Finally:
 static void
 closeFdUmbilical_(struct UmbilicalMonitor *self)
 {
+    ABORT_IF(
+        shutdown(
+            self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
+            SHUT_WR));
+
     self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd     = -1;
     self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
 
