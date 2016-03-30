@@ -403,22 +403,24 @@ forkChild(
         TEST_RACE
         ({
             ABORT_IF(
-                waitBellSocketPairChild(aSyncSocket, 0),
+                ! waitBellSocketPairChild(aSyncSocket, 0)
+                ? 0
+                : (EPIPE != errno && ENOENT != errno)
+                ? -1
+                : (quitProcess(EXIT_FAILURE), -1),
                 {
-                    if (EPIPE == errno)
-                        quitProcess(EXIT_FAILURE);
-
                     terminate(
                         errno,
                         "Unable to synchronise child");
                 });
 
             ABORT_IF(
-                ringBellSocketPairChild(aSyncSocket),
+                ! ringBellSocketPairChild(aSyncSocket)
+                ? 0
+                : EPIPE != errno
+                ? -1
+                : (quitProcess(EXIT_FAILURE), -1),
                 {
-                    if (EPIPE == errno)
-                        quitProcess(EXIT_FAILURE);
-
                     terminate(
                         errno,
                         "Unable to synchronise watchdog");
