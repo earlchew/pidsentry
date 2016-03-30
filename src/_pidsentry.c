@@ -69,11 +69,13 @@
  */
 
 /* -------------------------------------------------------------------------- */
-static struct PidFile *
+static int
 announceChild(struct PidFile    *aPidFile,
               struct Pid         aPid,
               struct sockaddr_un aPidServerAddr)
 {
+    int rc = -1;
+
     for (int zombie = -1; zombie; )
     {
         if (0 < zombie)
@@ -99,10 +101,10 @@ announceChild(struct PidFile    *aPidFile,
             closePidFile(aPidFile);
         }
 
-        ABORT_IF(
+        ERROR_IF(
             openPidFile(aPidFile, O_CLOEXEC | O_CREAT),
             {
-                terminate(
+                warn(
                     errno,
                     "Cannot create pid file '%s'",
                     aPidFile->mPathName.mFileName);
@@ -162,7 +164,13 @@ announceChild(struct PidFile    *aPidFile,
                 "Cannot unlock pid file '%s'", aPidFile->mPathName.mFileName);
         });
 
-    return aPidFile;
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -471,10 +479,11 @@ cmdMonitorChild(char **aCmd)
 
     if (pidFile)
     {
-        announceChild(
-            pidFile,
-            childProcess->mPid,
-            pidServer->mSocketAddr);
+        ERROR_IF(
+            announceChild(
+                pidFile,
+                childProcess->mPid,
+                pidServer->mSocketAddr));
     }
 
     /* Monitor the watchdog using another process so that a failure
@@ -752,7 +761,15 @@ cmdMonitorChild(char **aCmd)
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        closePidServer(pidServer);
+        destroyPidFile(pidFile);
+        closeBellSocketPair(syncSocket);
+        closeChild(childProcess);
+        closeSocketPair(umbilicalSocket);
+        closeStdFdFiller(stdFdFiller);
+    });
 
     return exitCode;
 }
