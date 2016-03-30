@@ -217,7 +217,7 @@ acceptPidServerConnection(struct PidServer *self)
         &self->mClients, client, mList);
     client = 0;
 
-    rc = 1;
+    rc = 0;
 
 Finally:
 
