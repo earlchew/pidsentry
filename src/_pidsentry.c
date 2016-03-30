@@ -258,6 +258,8 @@ raiseFamilySigCont_(void *self_)
 static struct ExitCode
 cmdMonitorChild(char **aCmd)
 {
+    struct ExitCode exitCode = { EXIT_FAILURE };
+
     ensure(aCmd);
 
     debug(0,
@@ -277,38 +279,44 @@ cmdMonitorChild(char **aCmd)
      * descriptors that are opened will not be mistaken for stdin,
      * stdout or stderr. */
 
-    struct StdFdFiller stdFdFiller;
+    struct StdFdFiller  stdFdFiller_;
+    struct StdFdFiller *stdFdFiller = 0;
 
     ABORT_IF(
-        createStdFdFiller(&stdFdFiller),
+        createStdFdFiller(&stdFdFiller_),
         {
             terminate(
                 errno,
                 "Unable to create stdin, stdout, stderr filler");
         });
+    stdFdFiller = &stdFdFiller_;
 
-    struct SocketPair umbilicalSocket;
+    struct SocketPair  umbilicalSocket_;
+    struct SocketPair *umbilicalSocket = 0;
     ABORT_IF(
-        createSocketPair(&umbilicalSocket, O_NONBLOCK | O_CLOEXEC),
+        createSocketPair(&umbilicalSocket_, O_NONBLOCK | O_CLOEXEC),
         {
             terminate(
                 errno,
                 "Unable to create umbilical socket");
         });
+    umbilicalSocket = &umbilicalSocket_;
 
-    struct ChildProcess childProcess;
+    struct ChildProcess  childProcess_;
+    struct ChildProcess *childProcess = 0;
     ABORT_IF(
-        createChild(&childProcess),
+        createChild(&childProcess_),
         {
             terminate(
                 errno,
                 "Unable to create child process");
         });
+    childProcess = &childProcess_;
 
     struct Family family =
     {
         .mType         = familyType_,
-        .mChildProcess = &childProcess,
+        .mChildProcess = childProcess,
         .mUmbilicalPid = Pid(0)
     };
 
@@ -320,18 +328,20 @@ cmdMonitorChild(char **aCmd)
                 "Unable to add watch on process termination");
         });
 
-    struct BellSocketPair syncSocket;
+    struct BellSocketPair  syncSocket_;
+    struct BellSocketPair *syncSocket = 0;
     ABORT_IF(
-        createBellSocketPair(&syncSocket, 0),
+        createBellSocketPair(&syncSocket_, 0),
         {
             terminate(
                 errno,
                 "Unable to create sync socket");
         });
+    syncSocket = &syncSocket_;
 
     ABORT_IF(
         forkChild(
-            &childProcess, aCmd, &stdFdFiller, &syncSocket, &umbilicalSocket),
+            childProcess, aCmd, stdFdFiller, syncSocket, umbilicalSocket),
         {
             terminate(
                 errno,
@@ -422,7 +432,8 @@ cmdMonitorChild(char **aCmd)
      * so that stdin, stdout and stderr become available for manipulation
      * and will not be closed multiple times. */
 
-    closeStdFdFiller(&stdFdFiller);
+    closeStdFdFiller(stdFdFiller);
+    stdFdFiller = 0;
 
     /* Discard the original stdin file descriptor, and instead attach
      * the reading end of the tether as stdin. This means that the
@@ -431,7 +442,7 @@ cmdMonitorChild(char **aCmd)
 
     ABORT_IF(
         STDIN_FILENO != dup2(
-            childProcess.mTetherPipe->mRdFile->mFd, STDIN_FILENO),
+            childProcess->mTetherPipe->mRdFile->mFd, STDIN_FILENO),
         {
             terminate(
                 errno,
@@ -443,7 +454,7 @@ cmdMonitorChild(char **aCmd)
      * the only possible references to the tether pipe remain in the
      * child process, if required, and stdin and stdout in this process. */
 
-    closeChildTether(&childProcess);
+    closeChildTether(childProcess);
 
     ABORT_IF(
         purgeProcessOrphanedFds(),
@@ -453,17 +464,30 @@ cmdMonitorChild(char **aCmd)
                 "Unable to purge orphaned files");
         });
 
-    /* Monitor the umbilical using another process so that a failure
-     * of this process can be detected independently. Only create the
-     * monitoring process after all the file descriptors have been
-     * purged so that the monitor does not inadvertently hold file
-     * descriptors that should only be held by the child. */
+    /* Attempt to create the pidfile, if required, before creating the
+     * umbilical process because it is quite possible for the attempt
+     * to create the file to fail, and it is simpler to avoid having
+     * clean up the umbilical process. */
+
+    if (pidFile)
+    {
+        announceChild(
+            pidFile,
+            childProcess->mPid,
+            pidServer->mSocketAddr);
+    }
+
+    /* Monitor the watchdog using another process so that a failure
+     * of the watchdog can be detected independently. Only create the
+     * umbilical process after all the file descriptors have been
+     * purged so that the umbilical does not inadvertently hold file
+     * descriptors that should only be held by the child process. */
 
     struct UmbilicalProcess umbilicalProcess;
     ABORT_IF(
         createUmbilicalProcess(&umbilicalProcess,
-                               &childProcess,
-                               &umbilicalSocket,
+                               childProcess,
+                               umbilicalSocket,
                                pidServer),
         {
             terminate(
@@ -473,22 +497,14 @@ cmdMonitorChild(char **aCmd)
 
     family.mUmbilicalPid = umbilicalProcess.mPid;
 
-    closeSocketPairChild(&umbilicalSocket);
-
-    if (pidFile)
-    {
-        announceChild(
-            pidFile,
-            childProcess.mPid,
-            pidServer->mSocketAddr);
-    }
+    closeSocketPairChild(umbilicalSocket);
 
     /* The PidServer instance will continue to run in the umbilical process,
        so the instance that was created in the watchdog is no longer
        required. */
 
     closePidServer(pidServer);
-    pidServer = 0 ;
+    pidServer = 0;
 
     if (gOptions.mIdentify)
     {
@@ -511,11 +527,11 @@ cmdMonitorChild(char **aCmd)
     /* With the child process announced, and the umbilical monitor
      * prepared, allow the child process to run the target program. */
 
-    closeBellSocketPairChild(&syncSocket);
+    closeBellSocketPairChild(syncSocket);
 
     TEST_RACE
     ({
-        /* The child process is waiting so that the chlid program will
+        /* The child process is waiting so that the child program will
          * run only after the pidfile has been created.
          *
          * Be aware that the supervisor might have sent a signal to the
@@ -523,7 +539,7 @@ cmdMonitorChild(char **aCmd)
          * the child to terminate. */
 
         ABORT_IF(
-            ringBellSocketPairParent(&syncSocket) && EPIPE != errno,
+            ringBellSocketPairParent(syncSocket) && EPIPE != errno,
             {
                 terminate(
                     errno,
@@ -534,7 +550,7 @@ cmdMonitorChild(char **aCmd)
          * received the indication that it can start running. */
 
         ABORT_IF(
-            waitBellSocketPairParent(&syncSocket) && EPIPE != errno,
+            waitBellSocketPairParent(syncSocket) && EPIPE != errno,
             {
                 terminate(
                     errno,
@@ -555,7 +571,7 @@ cmdMonitorChild(char **aCmd)
             ABORT_IF(
                 -1 == dprintf(STDOUT_FILENO,
                               "%" PRId_Pid "\n",
-                              FMTd_Pid(childProcess.mPid)),
+                              FMTd_Pid(childProcess->mPid)),
                 {
                     terminate(
                         errno,
@@ -564,7 +580,8 @@ cmdMonitorChild(char **aCmd)
         });
     }
 
-    closeBellSocketPair(&syncSocket);
+    closeBellSocketPair(syncSocket);
+    syncSocket = 0;
 
     /* Avoid closing the original stdout file descriptor only if
      * there is a need to copy the contents of the tether to it.
@@ -618,9 +635,9 @@ cmdMonitorChild(char **aCmd)
      * running, release the pid file if one was allocated. */
 
     ABORT_IF(
-        monitorChild(&childProcess,
+        monitorChild(childProcess,
                      &umbilicalProcess,
-                     umbilicalSocket.mParentFile),
+                     umbilicalSocket->mParentFile),
         {
             terminate(
                 errno,
@@ -690,7 +707,7 @@ cmdMonitorChild(char **aCmd)
      * so killing the child process group will not change its exit
      * status. */
 
-    killChildProcessGroup(&childProcess);
+    killChildProcessGroup(childProcess);
 
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and
@@ -698,28 +715,30 @@ cmdMonitorChild(char **aCmd)
 
     debug(0,
           "reaping child pid %" PRId_Pid,
-          FMTd_Pid(childProcess.mPid));
+          FMTd_Pid(childProcess->mPid));
 
-    struct Pid childPid = childProcess.mPid;
+    struct Pid childPid = childProcess->mPid;
 
     int childStatus;
     ABORT_IF(
-        reapChild(&childProcess, &childStatus),
+        reapChild(childProcess, &childStatus),
         {
             terminate(
                 errno,
                 "Unable to reap child pid %" PRId_Pid,
-                FMTd_Pid(childProcess.mPid));
+                FMTd_Pid(childProcess->mPid));
         });
 
-    closeChild(&childProcess);
+    closeChild(childProcess);
+    childProcess = 0;
 
     debug(0,
           "reaped child pid %" PRId_Pid " status %d",
           FMTd_Pid(childPid),
           childStatus);
 
-    closeSocketPair(&umbilicalSocket);
+    closeSocketPair(umbilicalSocket);
+    umbilicalSocket = 0;
 
     ABORT_IF(
         resetProcessSigPipe(),
@@ -729,7 +748,13 @@ cmdMonitorChild(char **aCmd)
                 "Unable to reset SIGPIPE");
         });
 
-    return extractProcessExitStatus(childStatus, childPid);
+    exitCode = extractProcessExitStatus(childStatus, childPid);
+
+Finally:
+
+    FINALLY({});
+
+    return exitCode;
 }
 
 /* -------------------------------------------------------------------------- */
