@@ -636,13 +636,16 @@ Finally:
 void
 closeChild(struct ChildProcess *self)
 {
-    ensure( ! self->mChildMonitor.mMonitor);
-    destroyThreadSigMutex(self->mChildMonitor.mMutex);
+    if (self)
+    {
+        ensure( ! self->mChildMonitor.mMonitor);
+        destroyThreadSigMutex(self->mChildMonitor.mMutex);
 
-    closeChildFiles_(self);
+        closeChildFiles_(self);
 
-    closeEventLatch(self->mUmbilicalLatch);
-    closeEventLatch(self->mChildLatch);
+        closeEventLatch(self->mUmbilicalLatch);
+        closeEventLatch(self->mChildLatch);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
