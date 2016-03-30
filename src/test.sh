@@ -35,7 +35,7 @@ randomsleep()
 
 testCase()
 {
-    printf '\ntestCase - %s\n' "$1"
+    printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$1"
     TESTCASE=$1
 }
 
