@@ -107,10 +107,13 @@ Finally:
 void
 closeStdFdFiller(struct StdFdFiller *self)
 {
-    for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
+    if (self)
     {
-        closeFile(self->mFile[ix]);
-        self->mFile[ix] = 0;
+        for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
+        {
+            closeFile(self->mFile[ix]);
+            self->mFile[ix] = 0;
+        }
     }
 }
 
