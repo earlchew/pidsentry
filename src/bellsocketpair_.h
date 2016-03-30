@@ -35,6 +35,8 @@
 extern "C" {
 #endif
 
+struct Duration;
+
 struct BellSocketPair
 {
     struct SocketPair  mSocketPair_;
@@ -61,10 +63,12 @@ int
 ringBellSocketPairParent(struct BellSocketPair *self);
 
 int
-waitBellSocketPairChild(struct BellSocketPair *self);
+waitBellSocketPairChild(struct BellSocketPair *self,
+                        const struct Duration *aTimeout);
 
 int
-waitBellSocketPairParent(struct BellSocketPair *self);
+waitBellSocketPairParent(struct BellSocketPair *self,
+                         const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */
 

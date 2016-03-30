@@ -130,22 +130,23 @@ ringBellSocketPairChild(struct BellSocketPair *self)
 
 /* -------------------------------------------------------------------------- */
 static int
-waitBellSocketPair_(struct File *aFile)
+waitBellSocketPair_(struct File           *aFile,
+                    const struct Duration *aTimeout)
 {
     int rc = -1;
-
-    char buf[1];
 
     int err;
 
     err = -1;
     ERROR_IF(
-        (err = waitFileReadReady(aFile, 0),
+        (err = waitFileReadReady(aFile, aTimeout),
          -1 == err || ! err),
         {
             if ( ! err)
                 errno = EWOULDBLOCK;
         });
+
+    char buf[1];
 
     err = -1;
     ERROR_IF(
@@ -168,15 +169,17 @@ Finally:
 }
 
 int
-waitBellSocketPairParent(struct BellSocketPair *self)
+waitBellSocketPairParent(struct BellSocketPair *self,
+                         const struct Duration *aTimeout)
 {
-    return waitBellSocketPair_(self->mSocketPair->mParentFile);
+    return waitBellSocketPair_(self->mSocketPair->mParentFile, aTimeout);
 }
 
 int
-waitBellSocketPairChild(struct BellSocketPair *self)
+waitBellSocketPairChild(struct BellSocketPair *self,
+                        const struct Duration *aTimeout)
 {
-    return waitBellSocketPair_(self->mSocketPair->mChildFile);
+    return waitBellSocketPair_(self->mSocketPair->mChildFile, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */

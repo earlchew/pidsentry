@@ -403,7 +403,7 @@ forkChild(
         TEST_RACE
         ({
             ABORT_IF(
-                waitBellSocketPairChild(aSyncSocket),
+                waitBellSocketPairChild(aSyncSocket, 0),
                 {
                     if (EPIPE == errno)
                         quitProcess(EXIT_FAILURE);
@@ -435,7 +435,7 @@ forkChild(
             int err;
 
             ABORT_IF(
-                (err = waitBellSocketPairChild(aSyncSocket),
+                (err = waitBellSocketPairChild(aSyncSocket, 0),
                  ! err || ENOENT != errno),
                 {
                     terminate(

@@ -1775,7 +1775,7 @@ forkProcessDaemon(void)
         {
             closeBellSocketPairChild(&bellSocket);
             ABORT_IF(
-                waitBellSocketPairParent(&bellSocket));
+                waitBellSocketPairParent(&bellSocket, 0));
             closeBellSocketPair(&bellSocket);
 
             while (1)

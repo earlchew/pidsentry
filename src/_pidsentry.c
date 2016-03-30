@@ -550,7 +550,7 @@ cmdMonitorChild(char **aCmd)
          * received the indication that it can start running. */
 
         ABORT_IF(
-            waitBellSocketPairParent(syncSocket) && EPIPE != errno,
+            waitBellSocketPairParent(syncSocket, 0) && EPIPE != errno,
             {
                 terminate(
                     errno,

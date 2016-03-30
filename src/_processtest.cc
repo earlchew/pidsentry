@@ -233,7 +233,7 @@ TEST(ProcessTest, ProcessDaemon)
 
         closeBellSocketPairParent(&bellSocket);
         ringBellSocketPairChild(&bellSocket);
-        waitBellSocketPairChild(&bellSocket);
+        waitBellSocketPairChild(&bellSocket, 0);
 
         execl("/bin/true", "true", (char *) 0);
         _exit(EXIT_SUCCESS);
@@ -245,7 +245,7 @@ TEST(ProcessTest, ProcessDaemon)
     EXPECT_EQ(daemonPid.mPid, getpgid(daemonPid.mPid));
     EXPECT_EQ(getsid(0), getsid(daemonPid.mPid));
 
-    waitBellSocketPairParent(&bellSocket);
+    waitBellSocketPairParent(&bellSocket, 0);
 
     EXPECT_EQ(0, daemonState->mErrno);
 
