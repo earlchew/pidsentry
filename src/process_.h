@@ -213,7 +213,7 @@ int
 execProcess(const char *aCmd, char **aArgv);
 
 void
-quitProcess(int aStatus) __attribute__((__noreturn__));
+exitProcess(int aStatus) __attribute__((__noreturn__));
 
 void
 abortProcess(void) __attribute__((__noreturn__));

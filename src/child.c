@@ -422,7 +422,7 @@ forkChild(
                 ? 0
                 : (EPIPE != errno && ENOENT != errno)
                 ? -1
-                : (quitProcess(EXIT_FAILURE), -1),
+                : (exitProcess(EXIT_FAILURE), -1),
                 {
                     terminate(
                         errno,
@@ -434,7 +434,7 @@ forkChild(
                 ? 0
                 : EPIPE != errno
                 ? -1
-                : (quitProcess(EXIT_FAILURE), -1),
+                : (exitProcess(EXIT_FAILURE), -1),
                 {
                     terminate(
                         errno,

@@ -613,7 +613,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
              -1 == self->mChildAnchor.mPid));
 
         if ( ! self->mChildAnchor.mPid)
-            quitProcess(EXIT_SUCCESS);
+            exitProcess(EXIT_SUCCESS);
 
         runUmbilicalProcess_(self,
                              watchdogPid,
@@ -623,7 +623,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
         debug(0, "exit umbilical");
 
-        quitProcess(EXIT_SUCCESS);
+        exitProcess(EXIT_SUCCESS);
     }
 
     rc = 0;

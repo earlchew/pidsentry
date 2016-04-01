@@ -1804,7 +1804,7 @@ forkProcessDaemon(void)
                     execl(
                         "/bin/true", "true", (char *) 0) || (errno = 0, true));
 
-            quitProcess(EXIT_SUCCESS);
+            exitProcess(EXIT_SUCCESS);
         }
 
         daemonPid = ownProcessId();
@@ -1882,7 +1882,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-quitProcess(int aStatus)
+exitProcess(int aStatus)
 {
     _exit(aStatus);
 

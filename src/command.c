@@ -234,9 +234,7 @@ runCommand(struct Command *self,
                         "Unable to execute '%s'", aCmd[0]);
                 });
 
-        do
-            quitProcess(EXIT_FAILURE);
-        while (1);
+        exitProcess(EXIT_FAILURE);
     }
 
     debug(0,
