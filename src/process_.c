@@ -1487,6 +1487,8 @@ monitorProcessChild(struct Pid aPid)
         rc.mChildState = ChildProcessStateRunning;
     else
     {
+        rc.mChildStatus = siginfo.si_status;
+
         switch (siginfo.si_code)
         {
         default:

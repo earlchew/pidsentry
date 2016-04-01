@@ -67,7 +67,7 @@ struct ProcessState
 {
     enum
     {
-        ProcessStateError    = -1,
+        ProcessStateError    = '#',
         ProcessStateRunning  = 'R',
         ProcessStateSleeping = 'S',
         ProcessStateWaiting  = 'W',
@@ -78,13 +78,14 @@ struct ProcessState
     } mState;
 };
 
-#define PRIs_ChildProcessState "c"
-#define FMTs_ChildProcessState(State) ((State).mChildState)
+#define PRIs_ChildProcessState "c.%d"
+#define FMTs_ChildProcessState(State) \
+    ((State).mChildState), ((State).mChildState)
 struct ChildProcessState
 {
     enum
     {
-        ChildProcessStateError     = -1,
+        ChildProcessStateError     = '#',
         ChildProcessStateRunning   = 'r',
         ChildProcessStateExited    = 'x',
         ChildProcessStateKilled    = 'k',
@@ -92,6 +93,8 @@ struct ChildProcessState
         ChildProcessStateStopped   = 's',
         ChildProcessStateTrapped   = 't',
     } mChildState;
+
+    int mChildStatus;
 };
 
 /* -------------------------------------------------------------------------- */

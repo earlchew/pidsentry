@@ -152,7 +152,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static struct ChildProcessState
 superviseChildProcess_(const char        *aRole,
                        struct Pid         aPid,
                        struct EventLatch *aLatch)
@@ -204,10 +204,13 @@ superviseChildProcess_(const char        *aRole,
     }
     else
     {
+        struct ProcessSignalName sigName;
+
         debug(1,
-              "%s pid %" PRId_Pid " terminated",
+              "%s pid %" PRId_Pid " killed by %s",
               aRole,
-              FMTd_Pid(aPid));
+              FMTd_Pid(aPid),
+              formatProcessSignalName(&sigName, processState.mChildStatus));
 
         ABORT_IF(
             EventLatchSettingError == disableEventLatch(aLatch),
@@ -217,6 +220,8 @@ superviseChildProcess_(const char        *aRole,
                     "Unable to disable %s event latch", aRole);
             });
     }
+
+    return processState;
 }
 
 void
@@ -226,8 +231,18 @@ superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid)
         superviseChildProcess_(
             "umbilical", aUmbilicalPid, self->mUmbilicalLatch);
 
-    superviseChildProcess_(
-        "child", self->mPid, self->mChildLatch);
+    struct ChildProcessState processState =
+        superviseChildProcess_(
+            "child", self->mPid, self->mChildLatch);
+
+    /* If the monitored child process has been killed by SIGQUIT and
+     * dumped core, then dump core in sympathy. */
+
+    if (ChildProcessStateDumped == processState.mChildState &&
+        SIGQUIT == processState.mChildStatus)
+    {
+        abortProcess();
+    }
 }
 
 /* -------------------------------------------------------------------------- */

@@ -229,7 +229,12 @@ raiseFamilySignal_(void *self_, int aSigNum)
 
     ensure(familyType_ == self->mType);
 
-    return killChild(self->mChildProcess, aSigNum);
+    /* Propagate the signal to the child. Note that SIGQUIT might cause
+     * the child to terminate and dump core. Dump core in sympathy if this
+     * happens, but do that only if the child actually does so. This is
+     * taken care of in reapFamily_(). */
+
+    killChild(self->mChildProcess, aSigNum);
 }
 
 static void
