@@ -241,7 +241,7 @@ superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid)
     if (ChildProcessStateDumped == processState.mChildState &&
         SIGQUIT == processState.mChildStatus)
     {
-        abortProcess();
+        quitProcess();
     }
 }
 
