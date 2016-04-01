@@ -656,9 +656,10 @@ runTests()
     testCase 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      pidsentry --test=1 -i -dd -- sh -c "
-            trap 'exit 1' $SIGNALS
-            while : ; do sleep 1 ; done" |
+      ( ulimit -c 0
+        pidsentry --test=1 -i -dd -- sh -c "
+            while : ; do sleep 1 ; done" || { /bin/echo $? ; exit 0 ; }
+        /bin/echo $? ) |
       {
          read PARENT UMBILICAL
          while kill -0 "$PARENT" 2>&- ; do
@@ -670,18 +671,24 @@ runTests()
          done >&2
          read CHILD
          kill -0 $CHILD 2>&- || /bin/echo OK
+         read RC
+         /bin/echo $RC
       } | {
+          set -x
           read REPLY
           [ x"$REPLY" = x"OK" ]
+          read RC
+          [ x"$RC" = x"$((128 + SIG))" ]
       }
     done
 
     testCase 'Slow signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
-      pidsentry -i --test=1 -dd -- sh -c "
-            trap 'exit 1' $SIGNALS
-            while : ; do sleep 1 ; done" |
+      ( ulimit -c 0
+        pidsentry -i --test=1 -dd -- sh -c "
+            while : ; do sleep 1 ; done" || { /bin/echo $? ; exit 0 ; }
+        /bin/echo $? ) |
       {
          read PARENT UMBILICAL
          sleep 1
@@ -694,9 +701,14 @@ runTests()
          done >&2
          read CHILD
          kill -0 $CHILD 2>&- || /bin/echo OK
+         read RC
+         /bin/echo "$RC"
       } | {
+          set -x
           read REPLY
           [ x"$REPLY" = x"OK" ]
+          read RC
+          [ x"$RC" = x"$((128 + SIG))" ]
       }
     done
 
