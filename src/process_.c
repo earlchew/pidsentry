@@ -81,6 +81,7 @@ static struct ProcessLock     processLock_[2];
 static struct ProcessLock    *processLockPtr_[2];
 static unsigned               activeProcessLock_;
 static unsigned               processAbort_;
+static unsigned               processQuit_;
 
 static struct ProcessSignalThread processSignalThread_ =
 {
@@ -138,15 +139,16 @@ static struct ProcessSignalVector
 } processSignalVectors_[NSIG];
 
 static void
-dispatchSigAbort_(void)
+dispatchSigExit_(int aSigNum)
 {
-    if (processAbort_)
-    {
-        /* A handler for SIGABRT is established, but abortProcess() was
-         * invoked. Abort the process from here. */
+    /* Check for handlers for termination signals that might compete
+     * with programmatically requested behaviour. */
 
+    if (SIGABRT == aSigNum && processAbort_)
         abortProcess();
-    }
+
+    if (SIGQUIT == aSigNum && processQuit_)
+        quitProcess();
 }
 
 static void
@@ -163,8 +165,7 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
 
         lockMutex(sv->mMutex);
         {
-            if (SIGABRT == aSigNum)
-                dispatchSigAbort_();
+            dispatchSigExit_(aSigNum);
 
             if (SIG_DFL != sv->mAction.sa_handler &&
                 SIG_IGN != sv->mAction.sa_handler)
@@ -204,8 +205,7 @@ dispatchSigHandler_(int aSigNum)
 
         lockMutex(sv->mMutex);
         {
-            if (SIGABRT == aSigNum)
-                dispatchSigAbort_();
+            dispatchSigExit_(aSigNum);
 
             if (SIG_DFL != sv->mAction.sa_handler &&
                 SIG_IGN != sv->mAction.sa_handler)
@@ -1891,8 +1891,11 @@ exitProcess(int aStatus)
 }
 
 /* -------------------------------------------------------------------------- */
-void
-abortProcess(void)
+static void
+killProcess_(int aSigNum, unsigned *aSigTrigger) __attribute__((__noreturn__));
+
+static void
+killProcess_(int aSigNum, unsigned *aSigTrigger)
 {
     /* When running under valgrind, do not abort() because it causes the
      * program to behave as if it received SIGKILL. Instead, exit the
@@ -1900,24 +1903,24 @@ abortProcess(void)
      * for leaks. */
 
     if (RUNNING_ON_VALGRIND)
-        _exit(128 + SIGABRT);
+        _exit(128 + aSigNum);
 
-    /* Other threads might be attaching or have attached a handler for SIGABRT,
-     * and the SIGABRT signal might be blocked.
+    /* Other threads might be attaching or have attached a signal handler,
+     * and the signal might be blocked.
      *
      * Also, multiple threads might call this function at the same time.
      *
-     * Try to raise SIGABRT in this thread, but also mark processAbort_
-     * which will be noticed if a handler is already attached.
+     * Try to raise the signal in this thread, but also mark the signal
+     * trigger which will be noticed if a handler is already attached.
      *
      * Do not call back into any application libraries to avoid the risk
-     * of infinite recursion, however be aware that dispatchSigAbort_()
+     * of infinite recursion, however be aware that dispatchSigHandler_()
      * might end up calling into this function recursively.
      *
-     * Do not call abort(3) because that will try to flush IO streams
-     * and perform other activity that might fail. */
+     * Do not call library functions such as abort(3) because they will
+     * try to flush IO streams and perform other activity that might fail. */
 
-    __sync_or_and_fetch(&processAbort_, 1);
+    __sync_or_and_fetch(aSigTrigger, 1);
 
     do
     {
@@ -1926,9 +1929,9 @@ abortProcess(void)
         if (pthread_sigmask(SIG_SETMASK, 0, &sigSet))
             break;
 
-        if (1 == sigismember(&sigSet, SIGABRT))
+        if (1 == sigismember(&sigSet, aSigNum))
         {
-            if (sigdelset(&sigSet, SIGABRT))
+            if (sigdelset(&sigSet, aSigNum))
                 break;
 
             if (pthread_sigmask(SIG_SETMASK, &sigSet, 0))
@@ -1939,16 +1942,16 @@ abortProcess(void)
         {
             struct sigaction sigAction = { .sa_handler = SIG_DFL };
 
-            if (sigaction(SIGABRT, &sigAction, 0))
+            if (sigaction(aSigNum, &sigAction, 0))
                 break;
 
-            /* There is a window here for another thread to configure SIGABRT
-             * to be ignored, or handled. So when SIGABRT is raised, it might
-             * not actually cause the process to abort. */
+            /* There is a window here for another thread to configure the
+             * signal to be ignored, or handled. So when the signal is raised,
+             * it might not actually cause the process to abort. */
 
             if ( ! testAction(TestLevelRace))
             {
-                if (raise(SIGABRT))
+                if (raise(aSigNum))
                     break;
             }
 
@@ -1957,7 +1960,7 @@ abortProcess(void)
             if (sigpending(&pendingSet))
                 break;
 
-            int pendingSignal = sigismember(&pendingSet, SIGABRT);
+            int pendingSignal = sigismember(&pendingSet, aSigNum);
             if (-1 == pendingSignal)
                 break;
 
@@ -1976,11 +1979,11 @@ abortProcess(void)
     }
     while (0);
 
-    /* There was an error trying to deliver SIGABRT to the process, so
+    /* There was an error trying to deliver the signal to the process, so
      * try one last time, then resort to killing the process. */
 
     if ( ! testAction(TestLevelRace))
-        raise(SIGABRT);
+        raise(aSigNum);
 
     while (1)
     {
@@ -1991,6 +1994,19 @@ abortProcess(void)
         if ( ! testAction(TestLevelRace))
             raise(SIGKILL);
     }
+}
+
+/* -------------------------------------------------------------------------- */
+void
+abortProcess(void)
+{
+    killProcess_(SIGABRT, &processAbort_);
+}
+
+void
+quitProcess(void)
+{
+    killProcess_(SIGQUIT, &processQuit_);
 }
 
 /* -------------------------------------------------------------------------- */

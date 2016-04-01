@@ -218,6 +218,9 @@ exitProcess(int aStatus) __attribute__((__noreturn__));
 void
 abortProcess(void) __attribute__((__noreturn__));
 
+void
+quitProcess(void) __attribute__((__noreturn__));
+
 /* -------------------------------------------------------------------------- */
 int
 acquireProcessAppLock(void);
