@@ -1882,16 +1882,6 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-exitProcess(int aStatus)
-{
-    exit(aStatus);
-
-    while (1)
-        raise(SIGKILL);
-}
-
-/* -------------------------------------------------------------------------- */
-void
 quitProcess(int aStatus)
 {
     _exit(aStatus);
