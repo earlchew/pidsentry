@@ -453,7 +453,7 @@ forkChild(
 
             ABORT_IF(
                 (err = waitBellSocketPairChild(aSyncSocket, 0),
-                 ! err || ENOENT != errno),
+                 ! err || (ENOENT != errno && EPIPE != errno)),
                 {
                     terminate(
                         err ? errno : 0,
