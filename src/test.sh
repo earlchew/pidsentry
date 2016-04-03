@@ -657,22 +657,22 @@ runTests()
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
       ( ulimit -c 0
-        pidsentry --test=1 -i -dd -- sh -c "
-            while : ; do sleep 1 ; done" || { /bin/echo $? ; exit 0 ; }
+        pidsentry --test=1 -i -dd -- tail -f /dev/null ||
+            { /bin/echo $? ; exit 0 ; }
         /bin/echo $? ) |
       {
          read PARENT UMBILICAL
-         while kill -0 "$PARENT" 2>&- ; do
-             kill -"$SIG" "$PARENT"
+         while kill -"$SIG" "$PARENT" 2>&- ; do
              date ; /bin/echo kill -"$SIG" "$PARENT"
-             kill -0 "$PARENT" 2>&- || break
-             date
+             ( STATE=$(ps -o 'state=' -p $PARENT) && [ x"$STATE" != xZ ] ) ||
+                 break
              sleep 1
          done >&2
          read CHILD
-         kill -0 $CHILD 2>&- || /bin/echo OK
+         ( STATE=$(ps -o 'state=' -p $CHILD) && [ x"$STATE" != xZ ] ) ||
+             /bin/echo OK
          read RC
-         /bin/echo $RC
+         /bin/echo "$RC"
       } | {
           set -x
           read REPLY
@@ -686,21 +686,21 @@ runTests()
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
       ( ulimit -c 0
-        pidsentry -i --test=1 -dd -- sh -c "
-            while : ; do sleep 1 ; done" || { /bin/echo $? ; exit 0 ; }
+        pidsentry -i --test=1 -dd -- tail -f /dev/null ||
+            { /bin/echo $? ; exit 0 ; }
         /bin/echo $? ) |
       {
          read PARENT UMBILICAL
          sleep 1
-         while kill -0 "$PARENT" 2>&- ; do
-             kill -"$SIG" "$PARENT"
+         while kill -"$SIG" "$PARENT" 2>&- ; do
              date ; /bin/echo kill -"$SIG" "$PARENT"
-             kill -0 "$PARENT" 2>&- || break
-             date
+             ( STATE=$(ps -o 'state=' -p $PARENT) && [ x"$STATE" != xZ ] ) ||
+                 break
              sleep 1
          done >&2
          read CHILD
-         kill -0 $CHILD 2>&- || /bin/echo OK
+         ( STATE=$(ps -o 'state=' -p $CHILD) && [ x"$STATE" != xZ ] ) ||
+             /bin/echo OK
          read RC
          /bin/echo "$RC"
       } | {
