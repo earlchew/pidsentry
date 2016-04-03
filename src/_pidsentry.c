@@ -769,6 +769,31 @@ Finally:
     FINALLY
     ({
         closePidServer(pidServer);
+
+        ABORT_IF(
+            unwatchProcessSigCont(),
+            {
+                terminate(
+                    errno,
+                    "Unable to remove watch from process continuation");
+            });
+
+        ABORT_IF(
+            unwatchProcessSignals(),
+            {
+                terminate(
+                    errno,
+                    "Unable to remove watch from signals");
+            });
+
+        ABORT_IF(
+            unwatchProcessChildren(),
+            {
+                terminate(
+                    errno,
+                    "Unable to remove watch on child process termination");
+            });
+
         destroyPidFile(pidFile);
         closeBellSocketPair(syncSocket);
         closeChild(childProcess);
