@@ -233,7 +233,9 @@ runTests()
 
     testCase 'Environment propagation'
     testOutput '0' = '"$(
-        pidsentry -- sh -c '\''date ; printenv'\'' | grep "^K9_" | wc -l)"'
+        pidsentry -- sh -c '\''date ; printenv'\'' |
+            grep "^PIDSENTRY_" |
+            wc -l)"'
 
     testCase 'Exit code propagation'
     testExit 2 pidsentry --test=1 -- sh -c 'exit 2'
@@ -442,11 +444,11 @@ runTests()
         randomsleep 1
         kill -9 $PARENT
         sleep 3
-        ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+        ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep pidsentry
     }
 
     testCase 'Early umbilical death'
-    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep pidsentry
     pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
@@ -462,7 +464,7 @@ runTests()
     }
 
     testCase 'Early child death'
-    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep k9
+    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep pidsentry
     pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         read CHILD
@@ -765,7 +767,7 @@ runTests()
     testOutput AABB = '$(
         exec 3>&1
         {
-            trap '\''[ -z "$K9PID" ] || kill -- "$K9PID"'\'' 15
+            trap '\''[ -z "$TESTPID" ] || kill -- "$TESTPID"'\'' 15
             sh -c '\''/bin/echo $PPID'\''
             dd if=/dev/zero bs=$((64 * 1024)) count=1
             ( sleep 2
@@ -775,8 +777,8 @@ runTests()
                sleep 2
                dd if=/dev/zero bs=$((64 * 1024)) count=1 &
                while : ; do sleep 1 ; done" &
-            K9PID=$!
-            wait $K9PID
+            TESTPID=$!
+            wait $TESTPID
         } | {
             read SUBSHELL
 
