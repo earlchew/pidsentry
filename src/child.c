@@ -173,7 +173,7 @@ superviseChildProcess_(const char        *aRole,
         {
             terminate(
                 errno,
-                "Unable to determine status of %s pid %" PRId_Pid,
+                "Unable to determine state of %s pid %" PRId_Pid,
                 aRole,
                 FMTd_Pid(aPid));
         });
@@ -197,7 +197,7 @@ superviseChildProcess_(const char        *aRole,
              ChildProcessStateTrapped == processState.mChildState)
     {
         debug(1,
-              "%s pid %" PRId_Pid " status %" PRIs_ChildProcessState,
+              "%s pid %" PRId_Pid " state %" PRIs_ChildProcessState,
               aRole,
               FMTd_Pid(aPid),
               FMTs_ChildProcessState(processState));
@@ -206,11 +206,39 @@ superviseChildProcess_(const char        *aRole,
     {
         struct ProcessSignalName sigName;
 
-        debug(1,
-              "%s pid %" PRId_Pid " killed by %s",
-              aRole,
-              FMTd_Pid(aPid),
-              formatProcessSignalName(&sigName, processState.mChildStatus));
+        switch (processState.mChildState)
+        {
+        default:
+            debug(1, "%s " "pid %" PRId_Pid " state %" PRIs_ChildProcessState,
+                  aRole,
+                  FMTd_Pid(aPid),
+                  FMTs_ChildProcessState(processState));
+            break;
+
+        case ChildProcessStateExited:
+            debug(1,
+                  "%s "
+                  "pid %" PRId_Pid " "
+                  "state %" PRIs_ChildProcessState " "
+                  "status %d",
+                  aRole,
+                  FMTd_Pid(aPid),
+                  FMTs_ChildProcessState(processState),
+                  processState.mChildStatus);
+            break;
+
+        case ChildProcessStateKilled:
+            debug(1,
+                  "%s "
+                  "pid %" PRId_Pid " "
+                  "state %" PRIs_ChildProcessState " "
+                  "killed by %s",
+                  aRole,
+                  FMTd_Pid(aPid),
+                  FMTs_ChildProcessState(processState),
+                  formatProcessSignalName(&sigName, processState.mChildStatus));
+            break;
+        }
 
         ABORT_IF(
             EventLatchSettingError == disableEventLatch(aLatch),
