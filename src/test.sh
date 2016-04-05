@@ -33,6 +33,12 @@ randomsleep()
     sleep $(( $(random) % $1 )).$(( $(random) % 1000 ))
 }
 
+liveprocess()
+{
+    ( STATE=$(ps -o 'state=' -p "$1") && [ x"$STATE" != xZ ] ) || return $?
+    return 0
+}
+
 testCase()
 {
     printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$1"
@@ -525,7 +531,7 @@ runTests()
             read CHILD
             randomsleep 3
             if ! kill -STOP $PARENT ; then
-                kill -0 $PARENT && { /bin/echo NOTOK ; exit 1 ; }
+                ! liveprocess $PARENT || { /bin/echo NOTOK ; exit 1 ; }
             else
                 randomsleep 10
                 kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
@@ -542,7 +548,7 @@ runTests()
             read CHILD
             randomsleep 3
             if ! kill -TSTP $PARENT ; then
-                kill -0 $PARENT && { /bin/echo NOTOK ; exit 1 ; }
+                ! liveprocess $PARENT || { /bin/echo NOTOK ; exit 1 ; }
             else
                 randomsleep 10
                 kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
@@ -666,13 +672,11 @@ runTests()
          read PARENT UMBILICAL
          while kill -"$SIG" "$PARENT" 2>&- ; do
              date ; /bin/echo kill -"$SIG" "$PARENT"
-             ( STATE=$(ps -o 'state=' -p $PARENT) && [ x"$STATE" != xZ ] ) ||
-                 break
+             liveprocess $PARENT || break
              sleep 1
          done >&2
          read CHILD
-         ( STATE=$(ps -o 'state=' -p $CHILD) && [ x"$STATE" != xZ ] ) ||
-             /bin/echo OK
+         liveprocess $CHILD || /bin/echo OK
          read RC
          /bin/echo "$RC"
       } | {
@@ -696,13 +700,11 @@ runTests()
          sleep 1
          while kill -"$SIG" "$PARENT" 2>&- ; do
              date ; /bin/echo kill -"$SIG" "$PARENT"
-             ( STATE=$(ps -o 'state=' -p $PARENT) && [ x"$STATE" != xZ ] ) ||
-                 break
+             liveprocess $PARENT || break
              sleep 1
          done >&2
          read CHILD
-         ( STATE=$(ps -o 'state=' -p $CHILD) && [ x"$STATE" != xZ ] ) ||
-             /bin/echo OK
+         liveprocess $CHILD || /bin/echo OK
          read RC
          /bin/echo "$RC"
       } | {
