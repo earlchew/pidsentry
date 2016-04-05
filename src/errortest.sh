@@ -34,12 +34,14 @@ if [ -n "${PIDSENTRY_TEST_ERROR++}" ] ; then
     unset PIDSENTRY_TEST_ERROR
 fi
 
+mkdir -p scratch
+
 VALGRIND="valgrind"
 VALGRIND="$VALGRIND --error-exitcode=128"
 VALGRIND="$VALGRIND --leak-check=yes"
 VALGRIND="$VALGRIND --suppressions=pidsentry.supp"
 
-VALGRINDOPT="--log-file=errortest.log"
+VALGRINDOPT="--log-file=scratch/errortest.log"
 
 # Find the number of error injection points when running the test.
 # Round up the result to determine the number of iterations to use
