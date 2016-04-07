@@ -82,8 +82,14 @@ watchJobControlSignals(struct JobControl   *self,
                        struct VoidIntMethod aRaiseMethod);
 
 int
+unwatchJobControlSignals(struct JobControl *self);
+
+int
 watchJobControlDone(struct JobControl *self,
                     struct VoidMethod  aReapMethod);
+
+int
+unwatchJobControlDone(struct JobControl *self);
 
 int
 watchJobControlStop(struct JobControl *self,
@@ -91,8 +97,14 @@ watchJobControlStop(struct JobControl *self,
                     struct VoidMethod  aResumeMethod);
 
 int
+unwatchJobControlStop(struct JobControl *self);
+
+int
 watchJobControlContinue(struct JobControl *self,
                         struct VoidMethod  aContinueMethod);
+
+int
+unwatchJobControlContinue(struct JobControl *self);
 
 /* -------------------------------------------------------------------------- */
 
