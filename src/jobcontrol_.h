@@ -30,8 +30,7 @@
 #define JOBCONTROL_H
 
 #include "method_.h"
-
-#include <pthread.h>
+#include "thread_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,27 +45,27 @@ struct JobControl
 
     struct
     {
-        pthread_mutex_t      mMutex;
-        struct VoidIntMethod mMethod;
+        struct ThreadSigMutex mMutex;
+        struct VoidIntMethod  mMethod;
     } mRaise;
 
     struct
     {
-        pthread_mutex_t   mMutex;
-        struct VoidMethod mMethod;
+        struct ThreadSigMutex mMutex;
+        struct VoidMethod     mMethod;
     } mReap;
 
     struct
     {
-        pthread_mutex_t   mMutex;
-        struct VoidMethod mPauseMethod;
-        struct VoidMethod mResumeMethod;
+        struct ThreadSigMutex mMutex;
+        struct VoidMethod     mPauseMethod;
+        struct VoidMethod     mResumeMethod;
     } mStop;
 
     struct
     {
-        pthread_mutex_t   mMutex;
-        struct VoidMethod mMethod;
+        struct ThreadSigMutex mMutex;
+        struct VoidMethod     mMethod;
     } mContinue;
 };
 

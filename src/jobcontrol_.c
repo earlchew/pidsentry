@@ -45,10 +45,10 @@ reapJobControl_(void *self_)
 
     ensure(jobControlType_ == self->mType);
 
-    lockMutex(&self->mReap.mMutex);
+    lockThreadSigMutex(&self->mReap.mMutex);
     if ( ! ownVoidMethodNil(self->mReap.mMethod))
         callVoidMethod(self->mReap.mMethod);
-    unlockMutex(&self->mReap.mMutex);
+    unlockThreadSigMutex(&self->mReap.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -59,10 +59,10 @@ raiseJobControlSignal_(void *self_, int aSigNum)
 
     ensure(jobControlType_ == self->mType);
 
-    lockMutex(&self->mRaise.mMutex);
+    lockThreadSigMutex(&self->mRaise.mMutex);
     if ( ! ownVoidIntMethodNil(self->mRaise.mMethod))
         callVoidIntMethod(self->mRaise.mMethod, aSigNum);
-    unlockMutex(&self->mRaise.mMutex);
+    unlockThreadSigMutex(&self->mRaise.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -73,7 +73,7 @@ raiseJobControlSigStop_(void *self_)
 
     ensure(jobControlType_ == self->mType);
 
-    lockMutex(&self->mStop.mMutex);
+    lockThreadSigMutex(&self->mStop.mMutex);
     if ( ! ownVoidMethodNil(self->mStop.mPauseMethod))
         callVoidMethod(self->mStop.mPauseMethod);
 
@@ -88,7 +88,7 @@ raiseJobControlSigStop_(void *self_)
 
     if ( ! ownVoidMethodNil(self->mStop.mResumeMethod))
         callVoidMethod(self->mStop.mResumeMethod);
-    unlockMutex(&self->mStop.mMutex);
+    unlockThreadSigMutex(&self->mStop.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -99,10 +99,10 @@ raiseJobControlSigCont_(void *self_)
 
     ensure(jobControlType_ == self->mType);
 
-    lockMutex(&self->mContinue.mMutex);
+    lockThreadSigMutex(&self->mContinue.mMutex);
     if ( ! ownVoidMethodNil(self->mContinue.mMethod))
         callVoidMethod(self->mContinue.mMethod);
-    unlockMutex(&self->mContinue.mMutex);
+    unlockThreadSigMutex(&self->mContinue.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -113,17 +113,17 @@ createJobControl(struct JobControl *self)
 
     self->mType = jobControlType_;
 
-    createMutex(&self->mRaise.mMutex);
+    createThreadSigMutex(&self->mRaise.mMutex);
     self->mRaise.mMethod  = VoidIntMethod(0, 0);
 
-    createMutex(&self->mReap.mMutex);
+    createThreadSigMutex(&self->mReap.mMutex);
     self->mReap.mMethod = VoidMethod(0, 0);
 
-    createMutex(&self->mStop.mMutex);
+    createThreadSigMutex(&self->mStop.mMutex);
     self->mStop.mPauseMethod  = VoidMethod(0, 0);
     self->mStop.mResumeMethod = VoidMethod(0, 0);
 
-    createMutex(&self->mContinue.mMutex);
+    createThreadSigMutex(&self->mContinue.mMutex);
     self->mContinue.mMethod = VoidMethod(0, 0);
 
     rc = 0;
@@ -134,10 +134,10 @@ Finally:
     ({
         if (rc)
         {
-            destroyMutex(&self->mContinue.mMutex);
-            destroyMutex(&self->mStop.mMutex);
-            destroyMutex(&self->mReap.mMutex);
-            destroyMutex(&self->mRaise.mMutex);
+            destroyThreadSigMutex(&self->mContinue.mMutex);
+            destroyThreadSigMutex(&self->mStop.mMutex);
+            destroyThreadSigMutex(&self->mReap.mMutex);
+            destroyThreadSigMutex(&self->mRaise.mMutex);
         }
     });
 
@@ -155,10 +155,10 @@ closeJobControl(struct JobControl *self)
         ABORT_IF(unwatchProcessSignals());
         ABORT_IF(unwatchProcessChildren());
 
-        destroyMutex(&self->mContinue.mMutex);
-        destroyMutex(&self->mStop.mMutex);
-        destroyMutex(&self->mReap.mMutex);
-        destroyMutex(&self->mRaise.mMutex);
+        destroyThreadSigMutex(&self->mContinue.mMutex);
+        destroyThreadSigMutex(&self->mStop.mMutex);
+        destroyThreadSigMutex(&self->mReap.mMutex);
+        destroyThreadSigMutex(&self->mRaise.mMutex);
     }
 }
 
@@ -169,7 +169,7 @@ watchJobControlSignals(struct JobControl   *self,
 {
     int rc = -1;
 
-    pthread_mutex_t *lock = 0;
+    struct ThreadSigMutex *lock = 0;
 
     ERROR_IF(
         ownVoidIntMethodNil(aRaiseMethod),
@@ -177,7 +177,7 @@ watchJobControlSignals(struct JobControl   *self,
             errno = EINVAL;
         });
 
-    lock = lockMutex(&self->mRaise.mMutex);
+    lock = lockThreadSigMutex(&self->mRaise.mMutex);
 
     ERROR_IF(
         watchProcessSignals(VoidIntMethod(raiseJobControlSignal_, self)));
@@ -190,7 +190,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(lock);
+        unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -202,7 +202,7 @@ unwatchJobControlSignals(struct JobControl *self)
 {
     int rc = -1;
 
-    lockMutex(&self->mRaise.mMutex);
+    lockThreadSigMutex(&self->mRaise.mMutex);
 
     ERROR_IF(
         ownVoidIntMethodNil(self->mRaise.mMethod),
@@ -221,7 +221,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mRaise.mMutex);
+        unlockThreadSigMutex(&self->mRaise.mMutex);
     });
 
     return rc;
@@ -234,7 +234,7 @@ watchJobControlDone(struct JobControl *self,
 {
     int rc = -1;
 
-    pthread_mutex_t *lock = 0;
+    struct ThreadSigMutex *lock = 0;
 
     ERROR_IF(
         ownVoidMethodNil(aReapMethod),
@@ -242,7 +242,7 @@ watchJobControlDone(struct JobControl *self,
             errno = EINVAL;
         });
 
-    lock = lockMutex(&self->mReap.mMutex);
+    lock = lockThreadSigMutex(&self->mReap.mMutex);
 
     ERROR_IF(
         watchProcessChildren(VoidMethod(reapJobControl_, self)));
@@ -255,7 +255,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(lock);
+        unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -267,7 +267,7 @@ unwatchJobControlDone(struct JobControl *self)
 {
     int rc = -1;
 
-    lockMutex(&self->mReap.mMutex);
+    lockThreadSigMutex(&self->mReap.mMutex);
 
     ERROR_IF(
         ownVoidMethodNil(self->mReap.mMethod),
@@ -286,7 +286,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mReap.mMutex);
+        unlockThreadSigMutex(&self->mReap.mMutex);
     });
 
     return rc;
@@ -300,7 +300,7 @@ watchJobControlStop(struct JobControl *self,
 {
     int rc = -1;
 
-    pthread_mutex_t *lock = 0;
+    struct ThreadSigMutex *lock = 0;
 
     ERROR_IF(
         ownVoidMethodNil(aPauseMethod) &&
@@ -309,7 +309,7 @@ watchJobControlStop(struct JobControl *self,
             errno = EINVAL;
         });
 
-    lock = lockMutex(&self->mStop.mMutex);
+    lock = lockThreadSigMutex(&self->mStop.mMutex);
 
     ERROR_IF(
         watchProcessSigStop(VoidMethod(raiseJobControlSigStop_, self)));
@@ -323,7 +323,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(lock);
+        unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -335,7 +335,7 @@ unwatchJobControlStop(struct JobControl *self)
 {
     int rc = -1;
 
-    lockMutex(&self->mStop.mMutex);
+    lockThreadSigMutex(&self->mStop.mMutex);
 
     ERROR_IF(
         ownVoidMethodNil(self->mStop.mPauseMethod) &&
@@ -356,7 +356,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mStop.mMutex);
+        unlockThreadSigMutex(&self->mStop.mMutex);
     });
 
     return rc;
@@ -369,7 +369,7 @@ watchJobControlContinue(struct JobControl *self,
 {
     int rc = -1;
 
-    pthread_mutex_t *lock = 0;
+    struct ThreadSigMutex *lock = 0;
 
     ERROR_IF(
         ownVoidMethodNil(aContinueMethod),
@@ -377,7 +377,7 @@ watchJobControlContinue(struct JobControl *self,
             errno = EINVAL;
         });
 
-    lock = lockMutex(&self->mContinue.mMutex);
+    lock = lockThreadSigMutex(&self->mContinue.mMutex);
 
     ERROR_IF(
         watchProcessSigCont(VoidMethod(raiseJobControlSigCont_, self)));
@@ -390,7 +390,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(lock);
+        unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -402,7 +402,7 @@ unwatchJobControlContinue(struct JobControl *self)
 {
     int rc = -1;
 
-    lockMutex(&self->mContinue.mMutex);
+    lockThreadSigMutex(&self->mContinue.mMutex);
 
     ERROR_IF(
         ownVoidMethodNil(self->mContinue.mMethod),
@@ -421,7 +421,7 @@ Finally:
 
     FINALLY
     ({
-        unlockMutex(&self->mContinue.mMutex);
+        unlockThreadSigMutex(&self->mContinue.mMutex);
     });
 
     return rc;
