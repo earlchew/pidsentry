@@ -45,27 +45,23 @@ struct JobControl
 
     struct
     {
-        struct ThreadSigMutex mMutex;
-        struct VoidIntMethod  mMethod;
+        struct VoidIntMethod mMethod;
     } mRaise;
 
     struct
     {
-        struct ThreadSigMutex mMutex;
-        struct VoidMethod     mMethod;
+        struct VoidMethod mMethod;
     } mReap;
 
     struct
     {
-        struct ThreadSigMutex mMutex;
-        struct VoidMethod     mPauseMethod;
-        struct VoidMethod     mResumeMethod;
+        struct VoidMethod mPauseMethod;
+        struct VoidMethod mResumeMethod;
     } mStop;
 
     struct
     {
-        struct ThreadSigMutex mMutex;
-        struct VoidMethod     mMethod;
+        struct VoidMethod mMethod;
     } mContinue;
 };
 
