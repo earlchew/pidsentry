@@ -120,7 +120,7 @@ cmdMonitorChild(char **aCmd)
     struct Sentry *sentry = 0;
 
     ABORT_IF(
-        createSentry(&sentry_),
+        createSentry(&sentry_, aCmd),
         {
             terminate(
                 errno,
@@ -129,7 +129,7 @@ cmdMonitorChild(char **aCmd)
     sentry = &sentry_;
 
     ERROR_IF(
-        runSentry(sentry, aCmd, &exitCode));
+        runSentry(sentry, &exitCode));
 
 Finally:
 

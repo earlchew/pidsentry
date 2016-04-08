@@ -157,7 +157,10 @@ reapSentry_(void *self_)
 
     ensure(sentryType_ == self->mType);
 
-    superviseChildProcess(self->mChildProcess, self->mUmbilicalPid);
+    struct Pid umbilicalPid =
+        self->mUmbilicalProcess ? self->mUmbilicalProcess->mPid : Pid(0);
+
+    superviseChildProcess(self->mChildProcess, umbilicalPid);
 }
 
 static void
@@ -207,18 +210,21 @@ raiseSentrySigCont_(void *self_)
 
 /* -------------------------------------------------------------------------- */
 int
-createSentry(struct Sentry *self)
+createSentry(struct Sentry *self,
+             char         **aCmd)
 {
     int rc = -1;
 
     self->mType = sentryType_;
 
-    self->mStdFdFiller     = 0;
-    self->mUmbilicalSocket = 0;
-    self->mChildProcess    = 0;
-    self->mJobControl      = 0;
-    self->mSyncSocket      = 0;
-    self->mUmbilicalPid    = Pid(0);
+    self->mStdFdFiller      = 0;
+    self->mUmbilicalSocket  = 0;
+    self->mChildProcess     = 0;
+    self->mJobControl       = 0;
+    self->mSyncSocket       = 0;
+    self->mPidFile          = 0;
+    self->mPidServer        = 0;
+    self->mUmbilicalProcess = 0;
 
     /* The instance of the StdFdFiller guarantees that any further file
      * descriptors that are opened will not be mistaken for stdin,
@@ -247,49 +253,6 @@ createSentry(struct Sentry *self)
     ERROR_IF(
         createBellSocketPair(&self->mSyncSocket_, 0));
     self->mSyncSocket = &self->mSyncSocket_;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-        {
-            closeBellSocketPair(self->mSyncSocket);
-            closeJobControl(self->mJobControl);
-            closeChild(self->mChildProcess);
-            closeSocketPair(self->mUmbilicalSocket);
-            closeStdFdFiller(self->mStdFdFiller);
-        }
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-void
-closeSentry(struct Sentry *self)
-{
-    if (self)
-    {
-        closeBellSocketPair(self->mSyncSocket);
-        closeJobControl(self->mJobControl);
-        closeChild(self->mChildProcess);
-        closeSocketPair(self->mUmbilicalSocket);
-        closeStdFdFiller(self->mStdFdFiller);
-
-        self->mType = 0;
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-int
-runSentry(struct Sentry   *self,
-          char           **aCmd,
-          struct ExitCode *aExitCode)
-{
-    int rc = -1;
 
     ABORT_IF(
         forkChild(
@@ -340,32 +303,25 @@ runSentry(struct Sentry   *self,
      * working directory. Note that the pidfile might reside in
      * the current directory. */
 
-    struct PidFile  pidFile_;
-    struct PidFile *pidFile = 0;
-
-    struct PidServer  pidServer_;
-    struct PidServer *pidServer = 0;
-
     if (gOptions.mPidFile)
     {
         ABORT_IF(
-            initPidFile(&pidFile_, gOptions.mPidFile),
+            initPidFile(&self->mPidFile_, gOptions.mPidFile),
             {
                 terminate(
                     errno,
                     "Cannot initialise pid file '%s'", gOptions.mPidFile);
             });
-        pidFile = &pidFile_;
+        self->mPidFile = &self->mPidFile_;
 
         ABORT_IF(
-            createPidServer(&pidServer_),
+            createPidServer(&self->mPidServer_),
             {
                 terminate(
                     errno,
                     "Cannot create pid server for '%s'", gOptions.mPidFile);
             });
-
-        pidServer = &pidServer_;
+        self->mPidServer = &self->mPidServer_;
     }
 
     /* If not running in test mode, change directory to avoid holding
@@ -427,13 +383,13 @@ runSentry(struct Sentry   *self,
      * to create the file to fail, and it is simpler to avoid having
      * clean up the umbilical process. */
 
-    if (pidFile)
+    if (self->mPidFile)
     {
         ERROR_IF(
             announceChild_(
-                pidFile,
+                self->mPidFile,
                 self->mChildProcess->mPid,
-                pidServer->mSocketAddr));
+                self->mPidServer->mSocketAddr));
     }
 
     /* Monitor the watchdog using another process so that a failure
@@ -442,19 +398,17 @@ runSentry(struct Sentry   *self,
      * purged so that the umbilical does not inadvertently hold file
      * descriptors that should only be held by the child process. */
 
-    struct UmbilicalProcess umbilicalProcess;
     ABORT_IF(
-        createUmbilicalProcess(&umbilicalProcess,
+        createUmbilicalProcess(&self->mUmbilicalProcess_,
                                self->mChildProcess,
                                self->mUmbilicalSocket,
-                               pidServer),
+                               self->mPidServer),
         {
             terminate(
                 errno,
                 "Unable to create umbilical process");
         });
-
-    self->mUmbilicalPid = umbilicalProcess.mPid;
+    self->mUmbilicalProcess = &self->mUmbilicalProcess_;
 
     closeSocketPairChild(self->mUmbilicalSocket);
 
@@ -462,8 +416,8 @@ runSentry(struct Sentry   *self,
        so the instance that was created in the watchdog is no longer
        required. */
 
-    closePidServer(pidServer);
-    pidServer = 0;
+    closePidServer(self->mPidServer);
+    self->mPidServer = 0;
 
     if (gOptions.mIdentify)
     {
@@ -474,7 +428,7 @@ runSentry(struct Sentry   *self,
                               "%" PRId_Pid " "
                               "%" PRId_Pid "\n",
                               FMTd_Pid(ownProcessId()),
-                              FMTd_Pid(umbilicalProcess.mPid)),
+                              FMTd_Pid(self->mUmbilicalProcess->mPid)),
                 {
                     terminate(
                         errno,
@@ -589,13 +543,61 @@ runSentry(struct Sentry   *self,
              });
     }
 
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+        {
+            closePidServer(self->mPidServer);
+            destroyPidFile(self->mPidFile);
+            closeBellSocketPair(self->mSyncSocket);
+            closeJobControl(self->mJobControl);
+            closeChild(self->mChildProcess);
+            closeSocketPair(self->mUmbilicalSocket);
+            closeStdFdFiller(self->mStdFdFiller);
+
+            self->mType = 0;
+        }
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+closeSentry(struct Sentry *self)
+{
+    if (self)
+    {
+        closePidServer(self->mPidServer);
+        destroyPidFile(self->mPidFile);
+        closeBellSocketPair(self->mSyncSocket);
+        closeJobControl(self->mJobControl);
+        closeChild(self->mChildProcess);
+        closeSocketPair(self->mUmbilicalSocket);
+        closeStdFdFiller(self->mStdFdFiller);
+
+        self->mType = 0;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+int
+runSentry(struct Sentry   *self,
+          struct ExitCode *aExitCode)
+{
+    int rc = -1;
+
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
     ABORT_IF(
         monitorChild(self->mChildProcess,
-                     &umbilicalProcess,
+                     self->mUmbilicalProcess,
                      self->mUmbilicalSocket->mParentFile),
         {
             terminate(
@@ -627,18 +629,19 @@ runSentry(struct Sentry   *self,
                 "Unable to remove watch on child process termination");
         });
 
-    if (pidFile)
+    if (self->mPidFile)
     {
         ABORT_IF(
-            acquireWriteLockPidFile(pidFile),
+            acquireWriteLockPidFile(self->mPidFile),
             {
                 terminate(
                     errno,
-                    "Cannot lock pid file '%s'", pidFile->mPathName.mFileName);
+                    "Cannot lock pid file '%s'",
+                    self->mPidFile->mPathName.mFileName);
             });
 
-        destroyPidFile(pidFile);
-        pidFile = 0;
+        destroyPidFile(self->mPidFile);
+        self->mPidFile = 0;
     }
 
     /* Attempt to stop the umbilical process cleanly so that the watchdog
@@ -647,11 +650,11 @@ runSentry(struct Sentry   *self,
 
     debug(0,
           "stopping umbilical pid %" PRId_Pid,
-          FMTd_Pid(umbilicalProcess.mPid));
+          FMTd_Pid(self->mUmbilicalProcess->mPid));
 
     int notStopped;
     ABORT_IF(
-        (notStopped = stopUmbilicalProcess(&umbilicalProcess),
+        (notStopped = stopUmbilicalProcess(self->mUmbilicalProcess),
          notStopped && ETIMEDOUT != errno),
         {
             terminate(errno, "Unable to stop umbilical process");
@@ -713,11 +716,7 @@ runSentry(struct Sentry   *self,
 
 Finally:
 
-    FINALLY
-    ({
-        closePidServer(pidServer);
-        destroyPidFile(pidFile);
-    });
+    FINALLY({});
 
     return rc;
 }

@@ -30,11 +30,14 @@
 #define SENTRY_H
 
 #include "child.h"
+#include "umbilical.h"
+#include "pidserver.h"
 
 #include "stdfdfiller_.h"
 #include "socketpair_.h"
 #include "jobcontrol_.h"
 #include "bellsocketpair_.h"
+#include "pidfile_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,19 +65,26 @@ struct Sentry
     struct BellSocketPair  mSyncSocket_;
     struct BellSocketPair *mSyncSocket;
 
-    struct Pid mUmbilicalPid;
+    struct PidFile  mPidFile_;
+    struct PidFile *mPidFile;
+
+    struct PidServer  mPidServer_;
+    struct PidServer *mPidServer;
+
+    struct UmbilicalProcess  mUmbilicalProcess_;
+    struct UmbilicalProcess *mUmbilicalProcess;
 };
 
 /* -------------------------------------------------------------------------- */
 int
-createSentry(struct Sentry *self);
+createSentry(struct Sentry *self,
+             char         **aCmd);
 
 void
 closeSentry(struct Sentry *self);
 
 int
 runSentry(struct Sentry   *self,
-          char           **aCmd,
           struct ExitCode *aExitCode);
 
 /* -------------------------------------------------------------------------- */
