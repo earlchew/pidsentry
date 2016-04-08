@@ -50,6 +50,7 @@
 #include "dl_.h"
 #include "type_.h"
 #include "process_.h"
+#include "jobcontrol_.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -238,22 +239,21 @@ raiseFamilySignal_(void *self_, int aSigNum)
 }
 
 static void
-raiseFamilySigStop_(void *self_)
+raiseFamilyStop_(void *self_)
 {
     struct Family *self = self_;
 
     ensure(familyType_ == self->mType);
 
     pauseChildProcessGroup(self->mChildProcess);
+}
 
-    ABORT_IF(
-        raise(SIGSTOP),
-        {
-            terminate(
-                errno,
-                "Unable to stop process pid %" PRId_Pid,
-                FMTd_Pid(ownProcessId()));
-        });
+static void
+raiseFamilyResume_(void *self_)
+{
+    struct Family *self = self_;
+
+    ensure(familyType_ == self->mType);
 
     resumeChildProcessGroup(self->mChildProcess);
 }
@@ -333,8 +333,20 @@ cmdMonitorChild(char **aCmd)
         .mUmbilicalPid = Pid(0)
     };
 
+    struct JobControl  jobControl_;
+    struct JobControl *jobControl = 0;
+
     ABORT_IF(
-        watchProcessChildren(VoidMethod(reapFamily_, &family)),
+        createJobControl(&jobControl_),
+        {
+            terminate(
+                errno,
+                "Unable to initialise job control");
+        });
+    jobControl = &jobControl_;
+
+    ABORT_IF(
+        watchJobControlDone(jobControl, VoidMethod(reapFamily_, &family)),
         {
             terminate(
                 errno,
@@ -367,7 +379,8 @@ cmdMonitorChild(char **aCmd)
      * notice via its synchronisation pipe. */
 
     ABORT_IF(
-        watchProcessSignals(VoidIntMethod(raiseFamilySignal_, &family)),
+        watchJobControlSignals(jobControl,
+                               VoidIntMethod(raiseFamilySignal_, &family)),
         {
             terminate(
                 errno,
@@ -375,7 +388,9 @@ cmdMonitorChild(char **aCmd)
         });
 
     ABORT_IF(
-        watchProcessSigStop(VoidMethod(raiseFamilySigStop_, &family)),
+        watchJobControlStop(jobControl,
+                            VoidMethod(raiseFamilyStop_, &family),
+                            VoidMethod(raiseFamilyResume_, &family)),
         {
             terminate(
                 errno,
@@ -383,7 +398,8 @@ cmdMonitorChild(char **aCmd)
         });
 
     ABORT_IF(
-        watchProcessSigCont(VoidMethod(raiseFamilySigCont_, &family)),
+        watchJobControlContinue(jobControl,
+                                VoidMethod(raiseFamilySigCont_, &family)),
         {
             terminate(
                 errno,
@@ -659,7 +675,7 @@ cmdMonitorChild(char **aCmd)
         });
 
     ABORT_IF(
-        unwatchProcessSigCont(),
+        unwatchJobControlContinue(jobControl),
         {
             terminate(
                 errno,
@@ -667,7 +683,7 @@ cmdMonitorChild(char **aCmd)
         });
 
     ABORT_IF(
-        unwatchProcessSignals(),
+        unwatchJobControlSignals(jobControl),
         {
             terminate(
                 errno,
@@ -675,7 +691,7 @@ cmdMonitorChild(char **aCmd)
         });
 
     ABORT_IF(
-        unwatchProcessChildren(),
+        unwatchJobControlDone(jobControl),
         {
             terminate(
                 errno,
@@ -769,33 +785,9 @@ Finally:
     FINALLY
     ({
         closePidServer(pidServer);
-
-        ABORT_IF(
-            unwatchProcessSigCont(),
-            {
-                terminate(
-                    errno,
-                    "Unable to remove watch from process continuation");
-            });
-
-        ABORT_IF(
-            unwatchProcessSignals(),
-            {
-                terminate(
-                    errno,
-                    "Unable to remove watch from signals");
-            });
-
-        ABORT_IF(
-            unwatchProcessChildren(),
-            {
-                terminate(
-                    errno,
-                    "Unable to remove watch on child process termination");
-            });
-
         destroyPidFile(pidFile);
         closeBellSocketPair(syncSocket);
+        closeJobControl(jobControl);
         closeChild(childProcess);
         closeSocketPair(umbilicalSocket);
         closeStdFdFiller(stdFdFiller);
