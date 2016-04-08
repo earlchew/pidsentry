@@ -1664,6 +1664,8 @@ monitorChild(struct ChildProcess     *self,
     struct PollFd  pollfd_;
     struct PollFd *pollfd = 0;
 
+    struct ChildMonitor *childMonitor = 0;
+
     ERROR_IF(
         createPipe(&nullPipe_, O_CLOEXEC | O_NONBLOCK));
     nullPipe = &nullPipe_;
@@ -1706,7 +1708,7 @@ monitorChild(struct ChildProcess     *self,
 
     const unsigned timeoutCycles = 2;
 
-    struct ChildMonitor childmonitor =
+    struct ChildMonitor childMonitor_ =
     {
         .mType = childMonitorType_,
 
@@ -1864,15 +1866,16 @@ monitorChild(struct ChildProcess     *self,
             },
         },
     };
+    childMonitor = &childMonitor_;
 
     if ( ! gOptions.mTether)
-        disconnectPollFdTether_(&childmonitor);
+        disconnectPollFdTether_(childMonitor);
 
     /* Make the umbilical timer expire immediately so that the umbilical
      * process is activated to monitor the watchdog. */
 
     struct PollFdTimerAction *umbilicalTimer =
-        &childmonitor.mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
+        &childMonitor->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
 
     lapTimeTrigger(&umbilicalTimer->mSince, umbilicalTimer->mPeriod, 0);
 
@@ -1882,16 +1885,16 @@ monitorChild(struct ChildProcess     *self,
      * would affect all file descriptors referring to the same open file,
      so this approach cannot be employed directly. */
 
-    for (size_t ix = 0; NUMBEROF(childmonitor.mPollFds) > ix; ++ix)
+    for (size_t ix = 0; NUMBEROF(childMonitor->mPollFds) > ix; ++ix)
     {
         ERROR_UNLESS(
-            ownFdNonBlocking(childmonitor.mPollFds[ix].fd),
+            ownFdNonBlocking(childMonitor->mPollFds[ix].fd),
             {
                 warn(
                     0,
                     "Expected %s fd %d to be non-blocking",
                     pollFdNames_[ix],
-                    childmonitor.mPollFds[ix].fd);
+                    childMonitor->mPollFds[ix].fd);
             });
     }
 
@@ -1899,17 +1902,17 @@ monitorChild(struct ChildProcess     *self,
         createPollFd(
             &pollfd_,
 
-            childmonitor.mPollFds,
-            childmonitor.mPollFdActions,
+            childMonitor->mPollFds,
+            childMonitor->mPollFdActions,
             pollFdNames_, POLL_FD_CHILD_KINDS,
 
-            childmonitor.mPollFdTimerActions,
+            childMonitor->mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_CHILD_TIMER_KINDS,
 
-            pollFdCompletion_, &childmonitor));
+            pollFdCompletion_, childMonitor));
     pollfd = &pollfd_;
 
-    updateChildMonitor_(self, &childmonitor);
+    updateChildMonitor_(self, childMonitor);
 
     ERROR_IF(
         runPollFdLoop(pollfd));
@@ -1921,6 +1924,9 @@ Finally:
     FINALLY
     ({
         updateChildMonitor_(self, 0);
+
+        if (childMonitor)
+            childMonitor->mType = 0;
 
         closePollFd(pollfd);
 

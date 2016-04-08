@@ -278,6 +278,8 @@ closeSentry(struct Sentry *self)
         closeChild(self->mChildProcess);
         closeSocketPair(self->mUmbilicalSocket);
         closeStdFdFiller(self->mStdFdFiller);
+
+        self->mType = 0;
     }
 }
 

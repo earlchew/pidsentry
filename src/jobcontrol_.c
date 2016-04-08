@@ -159,6 +159,8 @@ closeJobControl(struct JobControl *self)
         destroyThreadSigMutex(&self->mStop.mMutex);
         destroyThreadSigMutex(&self->mReap.mMutex);
         destroyThreadSigMutex(&self->mRaise.mMutex);
+
+        self->mType = 0;
     }
 }
 
