@@ -251,7 +251,7 @@ createSentry(struct Sentry *self,
                             VoidMethod(reapSentry_, self)));
 
     ERROR_IF(
-        createBellSocketPair(&self->mSyncSocket_, 0));
+        createBellSocketPair(&self->mSyncSocket_, O_CLOEXEC));
     self->mSyncSocket = &self->mSyncSocket_;
 
     ABORT_IF(
@@ -456,7 +456,8 @@ createSentry(struct Sentry *self,
             {
                 terminate(
                     errno,
-                    "Unable to activate child process");
+                    "Unable to synchronise child process with "
+                    "pid file creation");
             });
 
         /* Now wait for the child to respond to know that it has
@@ -467,7 +468,8 @@ createSentry(struct Sentry *self,
             {
                 terminate(
                     errno,
-                    "Unable synchronise child process");
+                    "Unable synchronise with child process after "
+                    "pid file creation");
             });
     });
 
@@ -493,8 +495,21 @@ createSentry(struct Sentry *self,
         });
     }
 
-    closeBellSocketPair(self->mSyncSocket);
-    self->mSyncSocket = 0;
+    TEST_RACE
+    ({
+        /* The child process is waiting to know that the child pid has
+         * been announced. Indicate to the child process that this has
+         * been done. */
+
+        ABORT_IF(
+            ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno,
+            {
+                terminate(
+                    errno,
+                    "Unable to synchronise child process with "
+                    "pid announcement");
+            });
+    });
 
     /* Avoid closing the original stdout file descriptor only if
      * there is a need to copy the contents of the tether to it.
@@ -531,16 +546,45 @@ createSentry(struct Sentry *self,
             });
     }
 
+    TEST_RACE
+    ({
+        /* Wait until the child has started the target child program to
+         * know that the child is no longer sharing any file descriptors
+         * or file locks.
+         *
+         * This is important to avoid deadlocks when the watchdog is
+         * stopped by SIGSTOP, especially as part of test. */
+
+        int err;
+        ABORT_IF(
+            (err = waitBellSocketPairParent(self->mSyncSocket, 0),
+             ! err || (ENOENT != errno && EPIPE != errno)),
+            {
+                terminate(
+                    err ? errno : 0,
+                    "Unable synchronise with child process after "
+                    "program execution");
+            });
+    });
+
+    closeBellSocketPair(self->mSyncSocket);
+    self->mSyncSocket = 0;
+
+    /* Now that the child is no longer sharing any file descriptors or file
+     * locks, stop the watchdog if the test requires it. Note that this
+     * will race with other threads that might be holding a file lock, etc so
+     * the watchdog will be stopped with the resources held. */
+
     if (testMode(TestLevelSync))
     {
         ABORT_IF(
             raise(SIGSTOP),
             {
-                 terminate(
-                     errno,
-                     "Unable to stop process pid %" PRId_Pid,
-                     FMTd_Pid(ownProcessId()));
-             });
+                terminate(
+                    errno,
+                    "Unable to stop process pid %" PRId_Pid,
+                    FMTd_Pid(ownProcessId()));
+            });
     }
 
     rc = 0;

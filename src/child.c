@@ -454,7 +454,8 @@ forkChild(
                 {
                     terminate(
                         errno,
-                        "Unable to synchronise child");
+                        "Unable to synchronise with watchdog before "
+                        "pid file creation");
                 });
 
             ABORT_IF(
@@ -466,30 +467,10 @@ forkChild(
                 {
                     terminate(
                         errno,
-                        "Unable to synchronise watchdog");
+                        "Unable to synchronise with watchdog after "
+                        "pid file creation");
                 });
         });
-
-        /* Wait until the watchdog has had a chance to announce the
-         * child pid before proceeding. This allows external programs,
-         * notably the unit test, to know that the child process
-         * is fully initialised. */
-
-        TEST_RACE
-        ({
-            int err;
-
-            ABORT_IF(
-                (err = waitBellSocketPairChild(aSyncSocket, 0),
-                 ! err || (ENOENT != errno && EPIPE != errno)),
-                {
-                    terminate(
-                        err ? errno : 0,
-                        "Unable to synchronise child");
-                });
-        });
-
-        closeBellSocketPair(aSyncSocket);
 
         do
         {
@@ -603,6 +584,35 @@ forkChild(
             closePipe(self->mTetherPipe);
 
         } while (0);
+
+        /* Wait until the watchdog has had a chance to announce the
+         * child pid before proceeding. This allows external programs,
+         * notably the unit test, to know that the child process
+         * is fully initialised. */
+
+        TEST_RACE
+        ({
+            ABORT_IF(
+                ! waitBellSocketPairChild(aSyncSocket, 0)
+                ? 0
+                : (EPIPE != errno && ENOENT != errno)
+                ? -1
+                : (exitProcess(EXIT_FAILURE), -1),
+                {
+                    terminate(
+                        errno,
+                        "Unable to synchronise with watchdog after "
+                        "pid announcement");
+                });
+        });
+
+        /* Rely on the upcoming exec() to provide the final synchronisation
+         * indication to the waiting watchdog. The watchdog relies on this
+         * to know that the child will no longer share any file descriptors
+         * and locks with the parent. */
+
+        ensure(
+            ownFileCloseOnExec(aSyncSocket->mSocketPair->mChildFile));
 
         debug(0, "child process synchronised");
 
