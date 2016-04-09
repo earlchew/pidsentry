@@ -72,10 +72,16 @@ closeFilePair(struct File **aFile1,
                         struct File **aFile2);
 
 int
-nonblockingFile(struct File *self);
+nonBlockingFile(struct File *self);
+
+int
+ownFileNonBlocking(const struct File *self);
 
 int
 closeFileOnExec(struct File *self, unsigned aCloseOnExec);
+
+int
+ownFileCloseOnExec(const struct File *self);
 
 ssize_t
 writeFile(struct File *self, const char *aBuf, size_t aLen);

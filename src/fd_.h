@@ -54,7 +54,7 @@ int
 nullifyFd(int aFd);
 
 int
-nonblockingFd(int aFd);
+nonBlockingFd(int aFd);
 
 int
 ownFdNonBlocking(int aFd);

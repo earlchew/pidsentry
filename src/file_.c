@@ -207,9 +207,16 @@ closeFilePair(struct File **aFile1, struct File **aFile2)
 
 /* -------------------------------------------------------------------------- */
 int
-nonblockingFile(struct File *self)
+nonBlockingFile(struct File *self)
 {
-    return nonblockingFd(self->mFd);
+    return nonBlockingFd(self->mFd);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFileNonBlocking(const struct File *self)
+{
+    return ownFdNonBlocking(self->mFd);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -217,6 +224,13 @@ int
 closeFileOnExec(struct File *self, unsigned aCloseOnExec)
 {
     return closeFdOnExec(self->mFd, aCloseOnExec);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ownFileCloseOnExec(const struct File *self)
+{
+    return ownFdCloseOnExec(self->mFd);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -325,7 +339,7 @@ acceptFileSocket(struct File *self, unsigned aFlags)
 
         if (flags & SOCK_NONBLOCK)
             ERROR_IF(
-                nonblockingFd(fd));
+                nonBlockingFd(fd));
     }
 
     rc = fd;

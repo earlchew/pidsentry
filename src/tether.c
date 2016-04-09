@@ -288,7 +288,7 @@ tetherThreadMain_(void *self_)
      * so it is known to be nonblocking. The file descriptor for stdout
      * is inherited, so it is likely blocking. */
 
-    ensure(nonblockingFd(srcFd));
+    ensure(nonBlockingFd(srcFd));
 
     /* The tether thread is configured to receive SIGALRM, but
      * these signals are not delivered until the thread is

@@ -250,7 +250,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-nonblockingFd(int aFd)
+nonBlockingFd(int aFd)
 {
     int rc = -1;
 
