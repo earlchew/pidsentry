@@ -1442,7 +1442,7 @@ ownProcessLockFile(void)
 
 /* -------------------------------------------------------------------------- */
 int
-reapProcess(struct Pid aPid, int *aStatus)
+reapProcessChild(struct Pid aPid, int *aStatus)
 {
     int rc = -1;
 
@@ -1462,6 +1462,51 @@ reapProcess(struct Pid aPid, int *aStatus)
     } while (pid != aPid.mPid);
 
     rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct ChildProcessState
+waitProcessChild(struct Pid aPid)
+{
+    struct ChildProcessState rc = { .mChildState = ChildProcessStateError };
+
+    ERROR_IF(
+        -1 == aPid.mPid || ! aPid.mPid,
+        {
+            errno = EINVAL;
+        });
+
+    siginfo_t siginfo;
+
+    do
+    {
+        siginfo.si_pid = 0;
+        ERROR_IF(
+            waitid(P_PID, aPid.mPid, &siginfo, WEXITED | WNOWAIT) &&
+            EINTR != errno);
+
+    } while (siginfo.si_pid != aPid.mPid);
+
+    rc.mChildStatus = siginfo.si_status;
+
+    switch (siginfo.si_code)
+    {
+    default:
+        ERROR_IF(
+            true,
+            {
+                errno = EINVAL;
+            });
+
+    case CLD_EXITED: rc.mChildState = ChildProcessStateExited;  break;
+    case CLD_KILLED: rc.mChildState = ChildProcessStateKilled;  break;
+    }
 
 Finally:
 
@@ -1516,7 +1561,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 struct Pid
-forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid)
+forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
 {
     pid_t rc = -1;
 
@@ -1711,7 +1756,7 @@ forkProcessDaemon(void)
 
     struct Pid serverPid;
     ERROR_IF(
-        (serverPid = forkProcess(ForkProcessShareProcessGroup, Pgid(0)),
+        (serverPid = forkProcessChild(ForkProcessShareProcessGroup, Pgid(0)),
          -1 == serverPid.mPid));
 
     struct Pid daemonPid;
@@ -1722,7 +1767,7 @@ forkProcessDaemon(void)
 
         int status;
         ERROR_IF(
-            reapProcess(serverPid, &status));
+            reapProcessChild(serverPid, &status));
 
         ERROR_UNLESS(
             WIFEXITED(status) && ! WEXITSTATUS(status));
@@ -1747,7 +1792,7 @@ forkProcessDaemon(void)
             createBellSocketPair(&bellSocket, 0));
 
         ABORT_IF(
-            (daemonPid = forkProcess(ForkProcessSetProcessGroup, Pgid(0)),
+            (daemonPid = forkProcessChild(ForkProcessSetProcessGroup, Pgid(0)),
              -1 == daemonPid.mPid));
 
         /* Terminate the server to make the child an orphan. The child

@@ -97,7 +97,7 @@ monitorChild(struct ChildProcess     *self,
 void
 raiseChildSigCont(struct ChildProcess *self);
 
-int
+void
 reapChild(struct ChildProcess *self, int *aStatus);
 
 void

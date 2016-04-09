@@ -195,13 +195,16 @@ checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
 struct Pid
-forkProcess(enum ForkProcessOption aOption, struct Pgid aPgid);
+forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid);
 
 struct Pid
 forkProcessDaemon(void);
 
 int
-reapProcess(struct Pid aPid, int *aStatus);
+reapProcessChild(struct Pid aPid, int *aStatus);
+
+struct ChildProcessState
+waitProcessChild(struct Pid aPid);
 
 struct ChildProcessState
 monitorProcessChild(struct Pid aPid);

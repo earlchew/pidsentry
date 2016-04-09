@@ -171,7 +171,7 @@ runCommand(struct Command *self,
     syncPipe = &syncPipe_;
 
     ERROR_IF(
-        (pid = forkProcess(ForkProcessShareProcessGroup, Pgid(0)),
+        (pid = forkProcessChild(ForkProcessShareProcessGroup, Pgid(0)),
          -1 == pid.mPid));
 
     if (pid.mPid)
@@ -282,7 +282,7 @@ reapCommand(struct Command  *self,
 
     int status;
     ERROR_IF(
-        reapProcess(self->mPid, &status));
+        reapProcessChild(self->mPid, &status));
 
     struct ExitCode exitCode = extractProcessExitStatus(status, self->mPid);
 

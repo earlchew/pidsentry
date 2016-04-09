@@ -461,7 +461,7 @@ uptime()
     closePipe(&pipe);
 
     int status;
-    EXPECT_EQ(0, reapProcess(pid, &status));
+    EXPECT_EQ(0, reapProcessChild(pid, &status));
 
     struct ExitCode exitcode = extractProcessExitStatus(status, pid);
 

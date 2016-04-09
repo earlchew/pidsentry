@@ -592,7 +592,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     struct Pid umbilicalPid;
     ERROR_IF(
-        (umbilicalPid = forkProcess(ForkProcessSetProcessGroup, Pgid(0)),
+        (umbilicalPid = forkProcessChild(ForkProcessSetProcessGroup, Pgid(0)),
          -1 == umbilicalPid.mPid));
 
     if (umbilicalPid.mPid)
@@ -608,7 +608,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
          * identify the child while the umbilical exists. */
 
         ABORT_IF(
-            (self->mChildAnchor = forkProcess(
+            (self->mChildAnchor = forkProcessChild(
                 ForkProcessSetProcessGroup, aChildProcess->mPgid),
              -1 == self->mChildAnchor.mPid));
 

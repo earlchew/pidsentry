@@ -107,7 +107,8 @@ TEST(ProcessTest, ProcessSignature)
         free(altSignature);
     }
 
-    struct Pid firstChild = forkProcess(ForkProcessShareProcessGroup, Pgid(0));
+    struct Pid firstChild = forkProcessChild(
+        ForkProcessShareProcessGroup, Pgid(0));
     EXPECT_NE(-1, firstChild.mPid);
 
     if ( ! firstChild.mPid)
@@ -116,7 +117,8 @@ TEST(ProcessTest, ProcessSignature)
         _exit(EXIT_SUCCESS);
     }
 
-    struct Pid secondChild = forkProcess(ForkProcessShareProcessGroup, Pgid(0));
+    struct Pid secondChild = forkProcessChild(
+        ForkProcessShareProcessGroup, Pgid(0));
     EXPECT_NE(-1, secondChild.mPid);
 
     if ( ! secondChild.mPid)
@@ -134,9 +136,21 @@ TEST(ProcessTest, ProcessSignature)
     EXPECT_NE(std::string(firstChildSignature),
               std::string(secondChildSignature));
 
+    struct ChildProcessState childState;
+
+    childState = waitProcessChild(firstChild);
+    EXPECT_EQ(ChildProcessState::ChildProcessStateExited,
+              childState.mChildState);
+    EXPECT_EQ(0, childState.mChildStatus);
+
+    childState = waitProcessChild(secondChild);
+    EXPECT_EQ(ChildProcessState::ChildProcessStateExited,
+              childState.mChildState);
+    EXPECT_EQ(0, childState.mChildStatus);
+
     int status;
-    EXPECT_EQ(0, reapProcess(firstChild, &status));
-    EXPECT_EQ(0, reapProcess(secondChild, &status));
+    EXPECT_EQ(0, reapProcessChild(firstChild, &status));
+    EXPECT_EQ(0, reapProcessChild(secondChild, &status));
 
     free(parentSignature);
     free(firstChildSignature);

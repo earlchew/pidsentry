@@ -401,7 +401,7 @@ forkChild(
 
     struct Pid childPid;
     ERROR_IF(
-        (childPid = forkProcess(ForkProcessSetProcessGroup, Pgid(0)),
+        (childPid = forkProcessChild(ForkProcessSetProcessGroup, Pgid(0)),
          -1 == childPid.mPid));
 
     /* Do not try to place the watchdog in the process group of the child.
@@ -660,21 +660,22 @@ closeChildFiles_(struct ChildProcess *self)
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 reapChild(struct ChildProcess *self, int *aStatus)
 {
-    int rc = -1;
+    ABORT_IF(
+        reapProcessChild(self->mPid, aStatus),
+        {
+            terminate(
+                errno,
+                "Unable to wait for status from child pid %" PRId_Pid,
+                FMTd_Pid(self->mPid));
+        });
 
-    ERROR_IF(
-        reapProcess(self->mPid, aStatus));
+    /* Once the child process is reaped, the process no longer exists, so
+     * the pid should no longer be used to refer to it. */
 
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+    self->mPid = Pid(0);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -683,6 +684,14 @@ closeChild(struct ChildProcess *self)
 {
     if (self)
     {
+        if (self->mPid.mPid)
+        {
+            killChild(self, SIGKILL);
+
+            int status;
+            reapChild(self, &status);
+        }
+
         ensure( ! self->mChildMonitor.mMonitor);
         destroyThreadSigMutex(self->mChildMonitor.mMutex);
 

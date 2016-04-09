@@ -682,14 +682,7 @@ runSentry(struct Sentry   *self,
     struct Pid childPid = self->mChildProcess->mPid;
 
     int childStatus;
-    ABORT_IF(
-        reapChild(self->mChildProcess, &childStatus),
-        {
-            terminate(
-                errno,
-                "Unable to reap child pid %" PRId_Pid,
-                FMTd_Pid(self->mChildProcess->mPid));
-        });
+    reapChild(self->mChildProcess, &childStatus);
 
     closeChild(self->mChildProcess);
     self->mChildProcess = 0;
