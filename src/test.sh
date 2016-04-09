@@ -39,6 +39,12 @@ liveprocess()
     return 0
 }
 
+stoppedprocess()
+{
+    ( STATE=$(ps -o 'state=' -p "$1") && [ x"$STATE" != xT ] ) || return $?
+    return 0
+}
+
 testCase()
 {
     printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$1"
@@ -516,7 +522,7 @@ runTests()
 
     testCase 'Stopped parent'
     testOutput OK = '"$(pidsentry --test=1 -i -d -t 8,2 -- sleep 4 | {
-        read PARENT UMBILCAL
+        read PARENT UMBILICAL
         read CHILD
         kill -STOP $PARENT
         sleep 8
@@ -718,23 +724,39 @@ runTests()
 
     testCase 'Fixed termination deadline'
     testOutput OK = '$(
-        pidsentry --test=1 -i -dd -t 3,,4 -- sh -cx "
+        pidsentry --test=3 -i -dd -t 3,,4 -- sh -cx "
             trap : 15 6
+            while : \$PPID ; do
+                STATE=\`ps -o state= -p \$PPID\` || break
+                [ x\$STATE != xZ ] || break
+                [ x\$STATE != xT ] || break
+                sleep 1
+            done
+            kill -CONT \$PPID
             /bin/echo READY
-            while : ; do sleep 1 ; done" |
+            while : ; do sleep 2 ; done" |
         {
             set -x
             # t+3s : Watchdog times out child and issues kill -ABRT
             # t+7s : Watchdog escalates and issues kill -KILL
-            read PARENT UMBILCAL
+            read PARENT UMBILICAL
+            : PARENT $PARENT UMBILICAL $UMBILICAL
             read CHILD
+            : CHILD $CHILD
             read READY # Signal handler established
+            [ x"$READY" = xREADY ]
+            while : ; do
+                liveprocess $UMBILICAL || break
+                stoppedprocess $UMBILICAL || break
+                sleep 1
+            done
+            kill -CONT $UMBILICAL
             while : ; do sleep 1 ; kill $PARENT 2>&- ; done &
             SLAVE=$!
             sleep 4 # Wait for watchdog to send first signal
-            read -t 0 && echo FAIL
+            read -t 0 && echo FAIL1
             sleep 10 # Watchdog should have terminated child and exited
-            read -t 0 && echo OK || echo FAIL
+            read -t 0 && echo OK || echo FAIL2
             kill -9 $SLAVE 2>&-
         }
     )'
