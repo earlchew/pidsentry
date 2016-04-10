@@ -119,13 +119,8 @@ cmdMonitorChild(char **aCmd)
     struct Sentry  sentry_;
     struct Sentry *sentry = 0;
 
-    ABORT_IF(
-        createSentry(&sentry_, aCmd),
-        {
-            terminate(
-                errno,
-                "Unable to create sentry");
-        });
+    ERROR_IF(
+        createSentry(&sentry_, aCmd));
     sentry = &sentry_;
 
     ERROR_IF(
