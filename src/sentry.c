@@ -423,6 +423,13 @@ createSentry(struct Sentry *self,
 
     if (gOptions.mIdentify)
     {
+        /* Ensure that the pidfile, if requested, is created before the
+         * process pids are identified. The unit test assumes that this
+         * is the case. */
+
+        if (self->mPidFile)
+            ensure(self->mPidFile->mFile);
+
         TEST_RACE
         ({
             ABORT_IF(
