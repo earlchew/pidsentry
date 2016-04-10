@@ -641,6 +641,9 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
 {
     int rc = -1;
 
+    /* Try to shut down the umbilical process, but take care that it
+     * might already have terminated. */
+
     char buf[1] = { 0 };
 
     ssize_t wrlen;
@@ -648,13 +651,12 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
         (wrlen = writeFile(self->mSocket->mParentFile, buf, sizeof(buf)),
          -1 == wrlen && EPIPE != errno));
 
-    /* The umbilical process might no longer be running and thus
-     * unable to clean up the child process group. If so, it is
-     * necessary for the watchdog clean up the child process
-     * group directly. */
-
     if (-1 != wrlen)
     {
+        /* If the umbilical process has not yet already shut down, be
+         * prepared to wait a short time to obtain an orderly shut down,
+         * but do not stall here indefinitely. */
+
         ERROR_IF(
             shutdownFileSocketWriter(self->mSocket->mParentFile));
 
