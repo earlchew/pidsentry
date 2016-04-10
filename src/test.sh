@@ -172,7 +172,7 @@ runTests()
             while : ; do sleep 1 ; done" | {
                 read PARENT UMBILICAL
                 read CHILD
-                pidsentry -p $PIDFILE -- true || echo OK
+                pidsentry -p $PIDFILE -- true || /bin/echo OK
              kill -9 $CHILD
         }
     )'
@@ -214,7 +214,9 @@ runTests()
     for REPLY in $(
       exec sh -c '
         /bin/echo $$
-        set -- '"$VALGRIND"' ./pidsentry --test=1 -i -- sh -c '\''/bin/echo $$'\'
+        set --
+        set -- "$@" '"$VALGRIND"'
+        set -- "$@" ./pidsentry --test=1 -i -- sh -c '\''/bin/echo $$'\'
         exec libtool --mode=execute "$@"
       {
         read REALPARENT
@@ -516,8 +518,8 @@ runTests()
             read PARENT UMBILICAL
             read CHILD
             sleep 8
-            kill -CONT $CHILD || { echo NOTOK ; exit 1 ; }
-            echo OK
+            kill -CONT $CHILD || { /bin/echo NOTOK ; exit 1 ; }
+            /bin/echo OK
         })"'
 
     testCase 'Stopped parent'
@@ -526,8 +528,8 @@ runTests()
         read CHILD
         kill -STOP $PARENT
         sleep 8
-        kill -CONT $PARENT || { echo NOTOK ; exit 1 ; }
-        echo OK
+        kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
+        /bin/echo OK
     })"'
 
     testCase 'Randomly stopped parent'
@@ -575,13 +577,14 @@ runTests()
             RC=$?
             kill -9 $PARENT
             sleep 3
-            ! kill -0 $CHILD 2>/dev/null || echo NOTOK
-            [ x"$RC" != x"0" ] || echo OK
+            ! kill -0 $CHILD 2>/dev/null || /bin/echo NOTOK
+            [ x"$RC" != x"0" ] || /bin/echo OK
         }
     )'
 
     testCase 'Competing child processes'
     (
+    set -x
     TASKS="1 2 3 4"
     trap '
         for REPLY in $TASKS ; do
@@ -591,28 +594,49 @@ runTests()
     for REPLY in $TASKS ; do
         {
             TASK_PID=$BASHPID
-            PS4='+ $TASK_PID '
-            for (( IX = 0; IX < 8 ; ++IX )) ; do
+            PS4='+ $TASK_PID:$BASHPID '
+            for (( IX = 0; IX < 8; ++IX )) ; do
 
                 # Try to run an instance of the child process using
                 # a common pidfile. Exactly one child process should
                 # run even though several compete to run.
 
-                pidsentry -d -i --test=1 -p $PIDFILE -u -- sh -c '
-                while : ; do date || break; sleep 1 ; done' | {
+                {
+                    RC=0
+                    set -- tail -f /dev/null
+                    pidsentry -d -i --test=1 -p $PIDFILE -u -- "$@" ||
+                    {
+                        RC=$?
+                        [ x"$RC" != x137 ] || RC=0
+                    }
+                    /bin/echo "$RC"
+                    exit "$RC"
+                } | {
+                    trapexit()
+                    {
+                        [ -z "${CHILD++}" ] || kill -9 "$CHILD" || :
+                        set -- 255
+                        while read REPLY ; do
+                            set -- "$REPLY"
+                        done
+                        /bin/echo "$1"
+                        exit "$1"
+                    }
 
-                    trap 'echo $?' 0
+                    trap 'trapexit $?' 0
 
-                    read PARENT UMBILICAL || {
-                        echo "Skipping pidfile from $TASK_PID" >&2
-                        echo X
+                    { read PARENT UMBILICAL && read CHILD ; } || {
+                        /bin/echo "Skipping pidfile from $TASK_PID" >&2
+                        /bin/echo X
+                        /bin/echo 0
+                        trap '' 0
                         exit 0
                     }
-                    : PARENT $PARENT UMBILICAL $UMBILICAL
 
-                    read CHILD
+                    : PARENT $PARENT UMBILICAL $UMBILICAL
                     : CHILD $CHILD
-                    echo $CHILD
+
+                    /bin/echo $CHILD
 
                     # Verify that the pidfile contains a reference to
                     # the currently running instance of the child
@@ -621,14 +645,14 @@ runTests()
                     randomsleep 1
 
                     pidsentry -p $PIDFILE -c -- sh -c '
-                        echo $PIDSENTRY_CHILD_PID' | {
+                        /bin/echo $PIDSENTRY_CHILD_PID' | {
 
                         read CHILD_PID || {
-                            echo "Cannot inspect pidfile from $TASK_PID" >&2
+                            /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
                             exit 1
                         }
                         [ x"$CHILD" = x"$CHILD_PID" ] || {
-                            echo "Mismatched pidfile from $TASK_PID" >&2
+                            /bin/echo "Mismatched pidfile from $TASK_PID" >&2
                             exit 1
                         }
                     }
@@ -638,20 +662,24 @@ runTests()
 
                     read CHILD
                     : CHILD $CHILD
-                    read RC
-                    : RC $RC
+
+                    while : ; do
+                        read TESTRC
+                        : TESTRC $TESTRC
+                        [ -z "${TESTRC##X*}" ] || break
+                   done
 
                     # Wait until no references to the child process
                     # group remain. This should mean that the process
                     # tree for this program instance has been cleaned up.
 
-                    [ x"$CHILD" = x"X" ] || {
+                    [ x"$CHILD" = xX ] || {
                         while kill -0 -- -"$CHILD" 2>&- ; do
                             sleep 1
                         done
                     }
 
-                    exit $RC
+                    exit $TESTRC
                 }
             done
         } &
@@ -754,9 +782,9 @@ runTests()
             while : ; do sleep 1 ; kill $PARENT 2>&- ; done &
             SLAVE=$!
             sleep 4 # Wait for watchdog to send first signal
-            read -t 0 && echo FAIL1
+            read -t 0 && /bin/echo FAIL1
             sleep 10 # Watchdog should have terminated child and exited
-            read -t 0 && echo OK || echo FAIL2
+            read -t 0 && /bin/echo OK || /bin/echo FAIL2
             kill -9 $SLAVE 2>&-
         }
     )'
