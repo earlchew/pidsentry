@@ -42,6 +42,8 @@
 
 #include <sys/un.h>
 
+#include <valgrind/valgrind.h>
+
 static const struct Type * const sentryType_ = TYPE("Sentry");
 
 /* -------------------------------------------------------------------------- */
@@ -432,7 +434,10 @@ createSentry(struct Sentry *self,
                 {
                     terminate(
                         errno,
-                        "Unable to print parent and umbilical pid");
+                        "Unable to print parent %" PRId_Pid
+                        "and umbilical pid %" PRId_Pid,
+                        FMTd_Pid(ownProcessId()),
+                        FMTd_Pid(self->mUmbilicalProcess->mPid));
                 });
         });
     }
@@ -692,20 +697,26 @@ runSentry(struct Sentry   *self,
      * can exit in an orderly fashion with the exit status of the child
      * process as the last line emitted. */
 
+    struct Pid umbilicalPid = self->mUmbilicalProcess->mPid;
+
     debug(0,
-          "stopping umbilical pid %" PRId_Pid,
-          FMTd_Pid(self->mUmbilicalProcess->mPid));
+          "stopping umbilical pid %" PRId_Pid, FMTd_Pid(umbilicalPid));
 
     int notStopped;
     ABORT_IF(
         (notStopped = stopUmbilicalProcess(self->mUmbilicalProcess),
          notStopped && ETIMEDOUT != errno),
         {
-            terminate(errno, "Unable to stop umbilical process");
+            terminate(
+                errno,
+                "Unable to stop umbilical process pid %" PRId_Pid,
+                FMTd_Pid(umbilicalPid));
         });
 
     if (notStopped)
-        warn(0, "Umable to stop umbilical process cleanly");
+        warn(0,
+             "Unable to stop umbilical process pid %" PRId_Pid" cleanly",
+             FMTd_Pid(umbilicalPid));
 
     /* The child process group is cleaned up from both the umbilical process
      * and the watchdog with the expectation that at least one of them
@@ -719,11 +730,10 @@ runSentry(struct Sentry   *self,
      * that any competing reader that manages to sucessfully lock and
      * read the pid file will see the terminated process. */
 
-    debug(0,
-          "reaping child pid %" PRId_Pid,
-          FMTd_Pid(self->mChildProcess->mPid));
-
     struct Pid childPid = self->mChildProcess->mPid;
+
+    debug(0,
+          "reaping child pid %" PRId_Pid, FMTd_Pid(childPid));
 
     int childStatus;
     reapChild(self->mChildProcess, &childStatus);
@@ -748,6 +758,43 @@ runSentry(struct Sentry   *self,
         });
 
     *aExitCode = extractProcessExitStatus(childStatus, childPid);
+
+    /* Normally allow the umbilical process to terminate asynchronously,
+     * but if running under valgrind, combine the exit codes to be
+     * sure that the exit code only indicates success if the umbilical
+     * process is also successful. */
+
+    if (RUNNING_ON_VALGRIND)
+    {
+        int umbilicalStatus;
+        ABORT_IF(
+            reapProcessChild(umbilicalPid, &umbilicalStatus),
+            {
+                terminate(
+                    errno,
+                    "Unable to reap umbilical process pid %" PRId_Pid "status",
+                    FMTd_Pid(umbilicalPid));
+            });
+
+        debug(0,
+              "reaped umbilical pid %" PRId_Pid " status %d",
+              FMTd_Pid(umbilicalPid),
+              umbilicalStatus);
+
+        struct ExitCode umbilicalExitCode =
+            extractProcessExitStatus(umbilicalStatus, umbilicalPid);
+
+        ABORT_IF(
+            umbilicalExitCode.mStatus,
+            {
+                terminate(
+                    0,
+                    "Umbilical process pid %" PRId_Pid " "
+                    "exit code %" PRId_ExitCode,
+                    FMTd_Pid(umbilicalPid),
+                    FMTd_ExitCode(umbilicalExitCode));
+            });
+    }
 
     rc = 0;
 
