@@ -1811,7 +1811,7 @@ forkProcessDaemon(void)
          *      newly-orphaned process group.
          *
          * The server created here is not a controlling process since it is
-         * not a session leader (although it have a controlling terminal).
+         * not a session leader (although it might have a controlling terminal).
          * So no SIGHUP is sent for the first reason.
          *
          * To avoid ambiguity, the child is always placed into its own
