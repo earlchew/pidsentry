@@ -202,7 +202,7 @@ acceptPidServerConnection(struct PidServer *self)
     ERROR_IF(
         pushEventQueue(self->mEventQueue, client->mEvent));
 
-    char buf[1];
+    char buf[1] = { 0 };
 
     int err;
     ERROR_IF(
