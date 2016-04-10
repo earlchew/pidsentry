@@ -2102,12 +2102,6 @@ extractProcessExitStatus(int aStatus, struct Pid aPid)
 
     if (WIFEXITED(aStatus))
     {
-        debug(
-            0,
-            "process pid %" PRId_Pid " exited %d",
-            FMTd_Pid(aPid),
-            WEXITSTATUS(aStatus));
-
         exitCode.mStatus = WEXITSTATUS(aStatus);
     }
     else if (WIFSIGNALED(aStatus))
