@@ -665,8 +665,13 @@ lockFd(int aFd, int aType)
             errno = EINVAL;
         });
 
-    ERROR_IF(
-        flock(aFd, aType));
+    int err;
+
+    do
+        ERROR_IF(
+            (err = flock(aFd, aType),
+             -1 == err && EINTR != errno));
+    while (err);
 
     rc = 0;
 
