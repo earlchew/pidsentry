@@ -68,6 +68,7 @@ check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
 check_PROGRAMS     += _processtest
 check_PROGRAMS     += _threadtest
+check_PROGRAMS     += _valgrindsigtest
 noinst_PROGRAMS     =
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libpidsentry_.la
@@ -120,6 +121,9 @@ _unixsockettest_LDADD   = $(TEST_LIBS)
 
 _isblockingtest_SOURCES = _isblockingtest.c
 _isblockingtest_LDADD   = $(TEST_LIBS)
+
+_valgrindsigtest_SOURCES = _valgrindsigtest.c
+_valgrindsigtest_LDADD   = $(TEST_LIBS)
 
 include libpidsentry__la.am
 $(call WILDCARD,libpidsentry__la,libpidsentry__la_SOURCES,[a-z]*_.[ch])
