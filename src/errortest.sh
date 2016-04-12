@@ -17,6 +17,17 @@ pidsentrytest()
     pidsentry -dd --test=2 -- dd if=/dev/zero bs=64K count=4
 }
 
+testLostWatchdogs()
+{
+    ps -awwo user=,ppid=,pid=,pgid=,command= |
+    {
+        while read REPLY ; do
+            [ -n "${REPLY##*pidsentry*}" ] || exit 1
+        done
+        exit 0
+    }
+}
+
 TRIGGER=1
 if [ -n "${PIDSENTRY_TEST_ERROR++}" ] ; then
     case "$PIDSENTRY_TEST_ERROR" in
@@ -61,7 +72,7 @@ while [ $TRIGGER -lt $RANGE ] ; do
 
     : $(( ++TRIGGER ))
 
-    [ -z "$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)" ]
+    testLostWatchdogs
 
     export PIDSENTRY_TEST_ERROR="$TRIGGER"
     printf ""
@@ -77,5 +88,6 @@ while [ $TRIGGER -lt $RANGE ] ; do
         exit 1
     }
 
-    [ -z "$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)" ]
+    testLostWatchdogs
+
 done
