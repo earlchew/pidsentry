@@ -64,6 +64,16 @@ struct ThreadSigMutex
     .mMutex = PTHREAD_MUTEX_INITIALIZER, \
     .mCond  = PTHREAD_COND_INITIALIZER, }
 
+struct RWMutexReader
+{
+    pthread_rwlock_t *mMutex;
+};
+
+struct RWMutexWriter
+{
+    pthread_rwlock_t *mMutex;
+};
+
 /* -------------------------------------------------------------------------- */
 struct Tid
 ownThreadId(void);
@@ -125,6 +135,29 @@ unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond);
 
 pthread_mutex_t *
 unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond);
+
+/* -------------------------------------------------------------------------- */
+pthread_rwlock_t *
+createRWMutex(pthread_rwlock_t *self);
+
+pthread_rwlock_t *
+destroyRWMutex(pthread_rwlock_t *self);
+
+/* -------------------------------------------------------------------------- */
+struct RWMutexReader *
+createRWMutexReader(struct RWMutexReader *self,
+                    pthread_rwlock_t     *aMutex);
+
+struct RWMutexReader *
+destroyRWMutexReader(struct RWMutexReader *self);
+
+/* -------------------------------------------------------------------------- */
+struct RWMutexWriter *
+createRWMutexWriter(struct RWMutexWriter *self,
+                    pthread_rwlock_t     *aMutex);
+
+struct RWMutexWriter *
+destroyRWMutexWriter(struct RWMutexWriter *self);
 
 /* -------------------------------------------------------------------------- */
 pthread_cond_t *

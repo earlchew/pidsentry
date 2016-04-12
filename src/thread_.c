@@ -639,3 +639,108 @@ ownThreadSigMutexLocked(struct ThreadSigMutex *self)
 }
 
 /* -------------------------------------------------------------------------- */
+pthread_rwlock_t *
+createRWMutex(pthread_rwlock_t *self)
+{
+    ABORT_IF(
+        (errno = pthread_rwlock_init(self, 0)),
+        {
+            terminate(
+                errno,
+                "Unable to create rwlock");
+        });
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+pthread_rwlock_t *
+destroyRWMutex(pthread_rwlock_t *self)
+{
+    if (self)
+    {
+        ABORT_IF(
+            (errno = pthread_rwlock_destroy(self)),
+            {
+                terminate(
+                    errno,
+                    "Unable to destroy rwlock");
+            });
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+struct RWMutexReader *
+createRWMutexReader(struct RWMutexReader *self,
+                    pthread_rwlock_t     *aMutex)
+{
+    ABORT_IF(
+        (errno = pthread_rwlock_rdlock(aMutex)),
+        {
+            terminate(
+                errno,
+                "Unable to acquire rwlock reader lock");
+        });
+
+    self->mMutex = aMutex;
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct RWMutexReader *
+destroyRWMutexReader(struct RWMutexReader *self)
+{
+    if (self)
+    {
+        ABORT_IF(
+            (errno = pthread_rwlock_unlock(self->mMutex)),
+            {
+                terminate(
+                    errno,
+                    "Unable to release rwlock reader lock");
+            });
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+struct RWMutexWriter *
+createRWMutexWriter(struct RWMutexWriter *self,
+                    pthread_rwlock_t     *aMutex)
+{
+    ABORT_IF(
+        (errno = pthread_rwlock_wrlock(aMutex)),
+        {
+            terminate(
+                errno,
+                "Unable to acquire rwlock writer lock");
+        });
+
+    self->mMutex = aMutex;
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct RWMutexWriter *
+destroyRWMutexWriter(struct RWMutexWriter *self)
+{
+    if (self)
+    {
+        ABORT_IF(
+            (errno = pthread_rwlock_unlock(self->mMutex)),
+            {
+                terminate(
+                    errno,
+                    "Unable to release rwlock writer lock");
+            });
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
