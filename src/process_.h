@@ -237,13 +237,13 @@ createProcessAppLock(void);
 void
 destroyProcessAppLock(struct ProcessAppLock *self);
 
-/* -------------------------------------------------------------------------- */
 const char *
-ownProcessLockPath(void);
+ownProcessAppLockPath(const struct ProcessAppLock *self);
 
 const struct File *
-ownProcessLockFile(void);
+ownProcessAppLockFile(const struct ProcessAppLock *self);
 
+/* -------------------------------------------------------------------------- */
 struct Duration
 ownProcessElapsedTime(void);
 

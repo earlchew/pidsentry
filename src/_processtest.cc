@@ -182,7 +182,7 @@ TEST(ProcessTest, ProcessAppLock)
     EXPECT_FALSE(raise(SIGTERM));
     EXPECT_EQ(2, sigTermCount_);
 
-    struct ProcessAppLock *lock = createProcessAppLock();
+    struct ProcessAppLock *appLock = createProcessAppLock();
     {
         // Verify that the application lock also excludes the delivery
         // of signals while the lock is taken.
@@ -193,7 +193,7 @@ TEST(ProcessTest, ProcessAppLock)
         EXPECT_FALSE(raise(SIGTERM));
         EXPECT_EQ(2, sigTermCount_);
     }
-    destroyProcessAppLock(lock);
+    destroyProcessAppLock(appLock);
 
     EXPECT_EQ(3, sigTermCount_);
 

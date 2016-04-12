@@ -490,23 +490,29 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     closeSocketPair(aUmbilicalSocket);
 
-    int whiteList[] =
     {
-        STDIN_FILENO,
-        STDOUT_FILENO,
-        STDERR_FILENO,
-        ownProcessLockFile()->mFd,
-        aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
-        aPidServer ? aPidServer->mEventQueue->mFile->mFd : -1,
-    };
+        struct ProcessAppLock *appLock = createProcessAppLock();
 
-    ABORT_IF(
-        closeFdDescriptors(whiteList, NUMBEROF(whiteList)),
-        {
-            terminate(
-                errno,
-                "Unable to close extraneous file descriptors");
-        });
+        int whiteList[] =
+            {
+                STDIN_FILENO,
+                STDOUT_FILENO,
+                STDERR_FILENO,
+                ownProcessAppLockFile(appLock)->mFd,
+                aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
+                aPidServer ? aPidServer->mEventQueue->mFile->mFd : -1,
+            };
+
+        ABORT_IF(
+            closeFdDescriptors(whiteList, NUMBEROF(whiteList)),
+            {
+                terminate(
+                    errno,
+                    "Unable to close extraneous file descriptors");
+            });
+
+        destroyProcessAppLock(appLock);
+    }
 
     if (testMode(TestLevelSync))
     {

@@ -76,7 +76,9 @@ struct ProcessSignalThread
 };
 
 static struct ProcessAppLock  processAppLock_;
+static pthread_rwlock_t       processForkLock_ = PTHREAD_RWLOCK_INITIALIZER;
 static struct ThreadSigMutex  processSigMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
+static struct ThreadSigMutex  processLockMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
 static struct ProcessLock     processLock_[2];
 static struct ProcessLock    *processLockPtr_[2];
 static unsigned               activeProcessLock_;
@@ -163,6 +165,9 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
               "dispatch signal %s",
               formatProcessSignalName(&sigName, aSigNum));
 
+        struct RWMutexReader forkLock;
+
+        createRWMutexReader(&forkLock, &processForkLock_);
         lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
@@ -188,6 +193,7 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
             }
         }
         unlockMutex(sv->mMutex);
+        destroyRWMutexReader(&forkLock);
     });
 }
 
@@ -203,6 +209,9 @@ dispatchSigHandler_(int aSigNum)
               "dispatch signal %s",
               formatProcessSignalName(&sigName, aSigNum));
 
+        struct RWMutexReader forkLock;
+
+        createRWMutexReader(&forkLock, &processForkLock_);
         lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
@@ -228,6 +237,7 @@ dispatchSigHandler_(int aSigNum)
             }
         }
         unlockMutex(sv->mMutex);
+        destroyRWMutexReader(&forkLock);
     });
 }
 
@@ -240,10 +250,13 @@ changeSigAction_(unsigned          aSigNum,
 
     ensure(NUMBEROF(processSignalVectors_) > aSigNum);
 
+    struct RWMutexReader  forkLock_;
+    struct RWMutexReader *forkLock = 0;
+
     struct ThreadSigMask  threadSigMask_;
     struct ThreadSigMask *threadSigMask = 0;
 
-    pthread_mutex_t *lock = 0;
+    pthread_mutex_t *sigLock = 0;
 
     struct sigaction nextAction = aNewAction;
 
@@ -271,12 +284,18 @@ changeSigAction_(unsigned          aSigNum,
             createMutex(&processSignalVectors_[aSigNum].mMutex_);
     unlockThreadSigMutex(&processSigMutex_);
 
+    forkLock = createRWMutexReader(&forkLock_, &processForkLock_);
+
+    /* Block signal delivery into this thread to avoid the signal
+     * dispatch attempting to acquire the dispatch mutex recursively
+     * in the same thread context. */
+
     pushThreadSigMask(
         &threadSigMask_, ThreadSigMaskBlock, (const int []) { aSigNum, 0 });
 
     threadSigMask = &threadSigMask_;
 
-    lock = lockMutex(processSignalVectors_[aSigNum].mMutex);
+    sigLock = lockMutex(processSignalVectors_[aSigNum].mMutex);
 
     struct sigaction prevAction;
     ERROR_IF(
@@ -296,9 +315,11 @@ Finally:
 
     FINALLY
     ({
-        lock = unlockMutex(lock);
+        sigLock = unlockMutex(sigLock);
 
         popThreadSigMask(threadSigMask);
+
+        forkLock = destroyRWMutexReader(forkLock);
     });
 
     return rc;
@@ -1340,9 +1361,9 @@ acquireProcessAppLock(void)
 
     struct ThreadSigMutex *lock = 0;
 
-    lock = lockThreadSigMutex(&processSigMutex_);
+    lock = lockThreadSigMutex(&processLockMutex_);
 
-    if (1 == ownThreadSigMutexLocked(&processSigMutex_))
+    if (1 == ownThreadSigMutexLocked(&processLockMutex_))
     {
         struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
@@ -1369,7 +1390,7 @@ releaseProcessAppLock(void)
 {
     int rc = -1;
 
-    struct ThreadSigMutex *lock = &processSigMutex_;
+    struct ThreadSigMutex *lock = &processLockMutex_;
 
     if (1 == ownThreadSigMutexLocked(lock))
     {
@@ -1424,8 +1445,10 @@ destroyProcessAppLock(struct ProcessAppLock *self)
 
 /* -------------------------------------------------------------------------- */
 const char *
-ownProcessLockPath(void)
+ownProcessAppLockPath(const struct ProcessAppLock *self)
 {
+    ensure(&processAppLock_ == self);
+
     struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
     return processLock ? processLock->mFileName : 0;
@@ -1433,8 +1456,10 @@ ownProcessLockPath(void)
 
 /* -------------------------------------------------------------------------- */
 const struct File *
-ownProcessLockFile(void)
+ownProcessAppLockFile(const struct ProcessAppLock *self)
 {
+    ensure(&processAppLock_ == self);
+
     struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
     return processLock ? processLock->mFile : 0;
@@ -1565,7 +1590,8 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
 {
     pid_t rc = -1;
 
-    const char            *err  = 0;
+    const char *err = 0;
+
     struct ThreadSigMutex *lock = 0;
 
     unsigned activeProcessLock   = 0 + activeProcessLock_;
@@ -1587,12 +1613,7 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
          -1 == clocktick));
 #endif
 
-    /* Temporarily block all signals so that the child will not receive
-     * signals which it cannot handle reliably, and so that signal
-     * handlers will not run in this process when the process mutex
-     * is held. */
-
-    lock = lockThreadSigMutex(&processSigMutex_);
+    lock = lockThreadSigMutex(&processLockMutex_);
 
     /* The child process needs separate process lock. It cannot share
      * the process lock with the parent because flock(2) distinguishes
@@ -1618,12 +1639,18 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
      * is an important consideration for propagating signals to
      * the child process. */
 
+    struct RWMutexWriter forkLock;
+
+    createRWMutexWriter(&forkLock, &processForkLock_);
+
     pid_t childPid;
 
     TEST_RACE
     ({
         childPid = fork();
     });
+
+    destroyRWMutexWriter(&forkLock);
 
     switch (childPid)
     {
@@ -1677,19 +1704,14 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
         }
 
         /* Reset all the signals so that the child will not attempt
-         * to catch signals. After that, reset the signal mask so
-         * that the child will receive signals. */
+         * to catch signals. The parent should have set the signal
+         * mask appropriately. */
 
         ERROR_IF(
             resetSignals_(),
             {
                 err = "Unable to reset signal handlers";
             });
-
-        /* This is the only thread running in the new process so
-         * it is safe to release the process mutex here. */
-
-        lock = unlockThreadSigMutex(lock);
 
         break;
     }

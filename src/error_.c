@@ -658,7 +658,7 @@ Error_init(void)
 {
     int rc = -1;
 
-    struct ProcessAppLock *applock = 0;
+    struct ProcessAppLock *appLock = 0;
 
     if (1 == ++moduleInit_)
     {
@@ -666,7 +666,7 @@ Error_init(void)
         ERROR_UNLESS(
             (file = open_memstream(&printBuf_.mBuf, &printBuf_.mSize)));
 
-        applock = createProcessAppLock();
+        appLock = createProcessAppLock();
 
         printBuf_.mFile = file;
     }
@@ -677,7 +677,7 @@ Finally:
 
     FINALLY
     ({
-        destroyProcessAppLock(applock);
+        destroyProcessAppLock(appLock);
     });
 
     return rc;
@@ -689,7 +689,7 @@ Error_exit(void)
 {
     if (0 == --moduleInit_)
     {
-        struct ProcessAppLock *applock = createProcessAppLock();
+        struct ProcessAppLock *appLock = createProcessAppLock();
 
         FILE *file = printBuf_.mFile;
 
@@ -701,7 +701,7 @@ Error_exit(void)
 
         free(printBuf_.mBuf);
 
-        destroyProcessAppLock(applock);
+        destroyProcessAppLock(appLock);
     }
 }
 

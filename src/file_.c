@@ -304,7 +304,7 @@ acceptFileSocket(struct File *self, unsigned aFlags)
     int fd    = -1;
     int flags = 0;
 
-    struct ProcessAppLock *applock = 0;
+    struct ProcessAppLock *appLock = 0;
 
     switch (aFlags)
     {
@@ -327,7 +327,7 @@ acceptFileSocket(struct File *self, unsigned aFlags)
              -1 == fd));
     else
     {
-        applock = createProcessAppLock();
+        appLock = createProcessAppLock();
 
         ERROR_IF(
             (fd = accept(self->mFd, 0, 0),
@@ -350,7 +350,7 @@ Finally:
     ({
         if (-1 == rc)
             closeFd(&fd);
-        destroyProcessAppLock(applock);
+        destroyProcessAppLock(appLock);
     });
 
     return rc;
