@@ -40,6 +40,63 @@
 #include <sys/syscall.h>
 
 /* -------------------------------------------------------------------------- */
+static void *
+timedLock_(void *aLock,
+           int aTryLock(void *),
+           int aTimedLock(void *, const struct timespec *))
+{
+    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
+
+    while (1)
+    {
+        ABORT_IF(
+            (errno = aTryLock(aLock),
+             errno && EBUSY != errno),
+            {
+                terminate(errno, "Unable to acquire rwlock");
+            });
+
+        if ( ! errno)
+            break;
+
+        /* There is no way to configure the mutex to use a monotonic
+         * clock to compute the deadline. Since the timeout is only
+         * important on the error path, this is not a critical problem
+         * in this use case. */
+
+        const unsigned timeout_s = 600;
+
+        struct WallClockTime tm = wallclockTime();
+
+        struct timespec deadline =
+            timeSpecFromNanoSeconds(
+                NanoSeconds(
+                    tm.wallclock.ns + NSECS(Seconds(timeout_s * 60)).ns));
+
+        ABORT_IF(
+            (errno = aTimedLock(aLock, &deadline),
+             errno && ETIMEDOUT != errno),
+            {
+                terminate(errno,
+                          "Unable to acquire rwlock after %us", timeout_s);
+            });
+
+        if (errno)
+        {
+            /* Try again if the attempt to lock the mutex timed out
+             * but the process was stopped for some part of that time. */
+
+            if (checkProcessSigContTracker(&sigContTracker))
+                continue;
+        }
+
+        break;
+    }
+
+    return aLock;
+}
+
+/* -------------------------------------------------------------------------- */
 struct Tid
 ownThreadId(void)
 {
@@ -195,57 +252,22 @@ destroyMutex(pthread_mutex_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+tryMutexLock_(void *self)
+{
+    return pthread_mutex_trylock(self);
+}
+
+static int
+tryMutexTimedLock_(void *self, const struct timespec *aDeadline)
+{
+    return pthread_mutex_timedlock(self, aDeadline);
+}
+
 static pthread_mutex_t *
 lockMutex_(pthread_mutex_t *self)
 {
-    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
-
-    while (1)
-    {
-        ABORT_IF(
-            (errno = pthread_mutex_trylock(self),
-             errno && EBUSY != errno),
-            {
-                terminate(errno, "Unable to lock mutex");
-            });
-
-        if ( ! errno)
-            break;
-
-        /* There is no way to configure the mutex to use a monotonic
-         * clock to compute the deadline. Since the timeout is only
-         * important on the error path, this is not a critical problem
-         * in this use case. */
-
-        const unsigned timeout_s = 600;
-
-        struct WallClockTime tm = wallclockTime();
-
-        struct timespec deadline =
-            timeSpecFromNanoSeconds(
-                NanoSeconds(
-                    tm.wallclock.ns + NSECS(Seconds(timeout_s * 60)).ns));
-
-        ABORT_IF(
-            (errno = pthread_mutex_timedlock(self, &deadline),
-             errno && ETIMEDOUT != errno),
-            {
-                terminate(errno, "Unable to lock mutex after %us", timeout_s);
-            });
-
-        if (errno)
-        {
-            /* Try again if the attempt to lock the mutex timed out
-             * but the process was stopped for some part of that time. */
-
-            if (checkProcessSigContTracker(&sigContTracker))
-                continue;
-        }
-
-        break;
-    }
-
-    return self;
+    return timedLock_(self, tryMutexLock_, tryMutexTimedLock_);
 }
 
 pthread_mutex_t *
@@ -672,19 +694,24 @@ destroyRWMutex(pthread_rwlock_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+tryRWMutexRdLock_(void *self)
+{
+    return pthread_rwlock_tryrdlock(self);
+}
+
+static int
+tryRWMutexTimedRdLock_(void *self, const struct timespec *aDeadline)
+{
+    return pthread_rwlock_timedrdlock(self, aDeadline);
+}
+
 struct RWMutexReader *
 createRWMutexReader(struct RWMutexReader *self,
                     pthread_rwlock_t     *aMutex)
 {
-    ABORT_IF(
-        (errno = pthread_rwlock_rdlock(aMutex)),
-        {
-            terminate(
-                errno,
-                "Unable to acquire rwlock reader lock");
-        });
-
-    self->mMutex = aMutex;
+    self->mMutex = timedLock_(
+        aMutex, tryRWMutexRdLock_, tryRWMutexTimedRdLock_);
 
     return self;
 }
@@ -708,19 +735,24 @@ destroyRWMutexReader(struct RWMutexReader *self)
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+tryRWMutexWrLock_(void *self)
+{
+    return pthread_rwlock_trywrlock(self);
+}
+
+static int
+tryRWMutexTimedWrLock_(void *self, const struct timespec *aDeadline)
+{
+    return pthread_rwlock_timedwrlock(self, aDeadline);
+}
+
 struct RWMutexWriter *
 createRWMutexWriter(struct RWMutexWriter *self,
                     pthread_rwlock_t     *aMutex)
 {
-    ABORT_IF(
-        (errno = pthread_rwlock_wrlock(aMutex)),
-        {
-            terminate(
-                errno,
-                "Unable to acquire rwlock writer lock");
-        });
-
-    self->mMutex = aMutex;
+    self->mMutex = timedLock_(
+        aMutex, tryRWMutexWrLock_, tryRWMutexTimedWrLock_);
 
     return self;
 }
