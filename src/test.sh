@@ -6,6 +6,13 @@ set -eu
 # process from the shell. This is important because SIGPIPE will be
 # delivered to the separate echo process, rather than to the shell.
 
+PIDSENTRY_VALGRIND_ERROR=128
+
+PIDSENTRY_TEST_PID=$(sh -c '/bin/echo $PPID')
+
+unset PIDSENTRY_TEST_FAILED
+trap 'PIDSENTRY_TEST_FAILED= ; trap - 15' 15
+
 pidsentryexec()
 {
     unset PIDSENTRY_TEST_ERROR
@@ -15,7 +22,13 @@ pidsentryexec()
 pidsentry()
 {
     if [ $# -eq 0 -o x"${1:-}" != x"exec" ] ; then
-        ( pidsentryexec "$@" ) || return $?
+        ( pidsentryexec "$@" ) ||
+        {
+            set -- $?
+            [ x"$1" != x"$PIDSENTRY_VALGRIND_ERROR" ] ||
+                kill -15 "$PIDSENTRY_TEST_PID"
+            return $1
+        }
         return 0
     else
         shift
@@ -45,10 +58,16 @@ stoppedprocess()
     return 0
 }
 
-testCase()
+testCaseBegin()
 {
-    printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$1"
     TESTCASE=$1
+    printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$TESTCASE"
+}
+
+testCaseEnd()
+{
+    [ -z "${PIDSENTRY_TEST_FAILED++}" ] || testFail "$TESTCASE"
+    printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$TESTCASE"
 }
 
 testTrace_()
@@ -104,6 +123,17 @@ testOutput()
     fi
 }
 
+testLostWatchdogs()
+{
+    ps -awwo user=,ppid=,pid=,pgid=,command= |
+    {
+        while read REPLY ; do
+            [ -n "${REPLY##*pidsentry*}" ] || exit 1
+        done
+        exit 0
+    }
+}
+
 runTest()
 {
     :
@@ -111,44 +141,57 @@ runTest()
 
 runTests()
 {
-    testCase 'Usage'
+    testCaseBegin 'Usage'
     testExit 1 pidsentry -? -- true
+    testCaseEnd
 
-    testCase 'Missing -p option value'
+    testCaseBegin 'Valgrind signal propagation'
+    testExit $((128 + 15)) $VALGRIND ./_valgrindsigtest x
+    testCaseEnd
+
+    testCaseBegin 'Missing -p option value'
     testExit 1 pidsentry -p
+    testCaseEnd
 
-    testCase 'Valid -p option value'
+    testCaseBegin 'Valid -p option value'
     testExit 0 pidsentry -d -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Long --pidfile option'
+    testCaseBegin 'Long --pidfile option'
     testExit 0 pidsentry --pidfile $PIDFILE -- true
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Missing command'
+    testCaseBegin 'Missing command'
     testExit 1 pidsentry
+    testCaseEnd
 
-    testCase 'Simple command'
+    testCaseBegin 'Simple command'
     REPLY=$(pidsentry -dd /bin/echo test)
     [ x"$REPLY" = x"test" ]
+    testCaseEnd
 
-    testCase 'Simple command in test mode'
+    testCaseBegin 'Simple command in test mode'
     REPLY=$(pidsentry -dd --test=1 /bin/echo test)
     [ x"$REPLY" = x"test" ]
+    testCaseEnd
 
-    testCase 'Empty pid file'
+    testCaseBegin 'Empty pid file'
     rm -f $PIDFILE
     : > $PIDFILE
     testExit 0 pidsentry --test=1 -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Invalid content in pid file'
+    testCaseBegin 'Invalid content in pid file'
     rm -f $PIDFILE
     dd if=/dev/zero bs=1K count=1 > $PIDFILE
     testExit 0 pidsentry --test=1 -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Dead process in pid file'
+    testCaseBegin 'Dead process in pid file'
     rm -f $PIDFILE
     pidsentry -i -u -p $PIDFILE -- sh -c 'while : ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
@@ -164,8 +207,9 @@ runTests()
     # Ensure that it is possible to create a new child
     testExit 0 pidsentry --test=1 -d -p $PIDFILE -- true
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Existing process in pid file'
+    testCaseBegin 'Existing process in pid file'
     rm -f $PIDFILE
     testOutput "OK" = '$(
         pidsentry -i -p $PIDFILE -u -- sh -c "
@@ -177,8 +221,9 @@ runTests()
         }
     )'
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Aliased process in pid file'
+    testCaseBegin 'Aliased process in pid file'
     rm -f $PIDFILE
     sh -c '
       stat -c %y /proc/$$/.
@@ -198,19 +243,22 @@ runTests()
     pidsentry --test=1 -d -p $PIDFILE -- true
     wait
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Read non-existent pid file'
+    testCaseBegin 'Read non-existent pid file'
     rm -f $PIDFILE
     testExit 1 pidsentry --test=1 -p $PIDFILE -c -- true
     [ ! -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Read malformed pid file'
+    testCaseBegin 'Read malformed pid file'
     rm -f $PIDFILE
     date > $PIDFILE
     testExit 1 pidsentry --test=1 -p $PIDFILE -c -- true
     [ -f $PIDFILE ]
+    testCaseEnd
 
-    testCase 'Identify processes'
+    testCaseBegin 'Identify processes'
     for REPLY in $(
       exec sh -c '
         /bin/echo $$
@@ -227,8 +275,9 @@ runTests()
 
       [ x"${REPLY%% *}" = x"${REPLY#* }" ]
     done
+    testCaseEnd
 
-    testCase 'Test blocked signals in child'
+    testCaseBegin 'Test blocked signals in child'
     testOutput "0000000000000000" = '$(
         pidsentry -- grep SigBlk /proc/self/status |
         {
@@ -236,7 +285,9 @@ runTests()
             /bin/echo "$SIGNALS"
         }
     )'
-    testCase 'Test ignored signals in child'
+    testCaseEnd
+
+    testCaseBegin 'Test ignored signals in child'
     testOutput "0000000000000000" = '$(
         pidsentry -- grep SigIgn /proc/self/status |
         {
@@ -244,21 +295,25 @@ runTests()
             /bin/echo "$SIGNALS"
         }
     )'
+    testCaseEnd
 
-    testCase 'Environment propagation'
+    testCaseBegin 'Environment propagation'
     testOutput '0' = '"$(
         pidsentry -- sh -c '\''date ; printenv'\'' |
             grep "^PIDSENTRY_" |
             wc -l)"'
+    testCaseEnd
 
-    testCase 'Exit code propagation'
+    testCaseBegin 'Exit code propagation'
     testExit 2 pidsentry --test=1 -- sh -c 'exit 2'
+    testCaseEnd
 
-    testCase 'Signal exit code propagation'
+    testCaseBegin 'Signal exit code propagation'
     testExit $((128 + 9)) pidsentry --test=1 -- sh -c '
         /bin/echo Killing $$ ; kill -9 $$'
+    testCaseEnd
 
-    testCase 'Child process group'
+    testCaseBegin 'Child process group'
     pidsentry -i -- ps -o pid,pgid,cmd | {
         read PARENT UMBILICAL
         read CHILD
@@ -278,8 +333,9 @@ runTests()
         [ x"$PARENTPGID" != x"$CHILDPGID" ]
         [ x"$CHILD" != x"$CHILDPGID" ]
     }
+    testCaseEnd
 
-    testCase 'Umbilical process file descriptors'
+    testCaseBegin 'Umbilical process file descriptors'
     # i.   stdin
     # ii.  stdout
     # iii. stderr
@@ -301,8 +357,9 @@ runTests()
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
         }
     )'
+    testCaseEnd
 
-    testCase 'Umbilical process file descriptors with pid server'
+    testCaseBegin 'Umbilical process file descriptors with pid server'
     # i.   stdin
     # ii.  stdout
     # iii. stderr
@@ -327,8 +384,9 @@ runTests()
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
         }
     )'
+    testCaseEnd
 
-    testCase 'Watchdog process file descriptors'
+    testCaseBegin 'Watchdog process file descriptors'
     # i.   stdin
     # ii.  stdout
     # iii. stderr
@@ -351,8 +409,9 @@ runTests()
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
         }
     )'
+    testCaseEnd
 
-    testCase 'Untethered watchdog process file descriptors'
+    testCaseBegin 'Untethered watchdog process file descriptors'
     # i.   stdin
     # ii.  stdout
     # iii. stderr
@@ -375,8 +434,9 @@ runTests()
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
         }
     )'
+    testCaseEnd
 
-    testCase 'Untethered child process file descriptors'
+    testCaseBegin 'Untethered child process file descriptors'
     # i.   stdin
     # ii.  stdout
     # iii. stderr
@@ -384,8 +444,9 @@ runTests()
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
       pidsentry --test=1 -u -- ls -l /proc/self/fd |
           grep "[0-9]-[0-9]" | wc -l)'
+    testCaseEnd
 
-    testCase 'Command process file descriptors'
+    testCaseBegin 'Command process file descriptors'
     # i.   stdin
     # ii.  stdout
     # iii. stderr
@@ -400,85 +461,97 @@ runTests()
             kill $CHILD
         }
     )'
+    testCaseEnd
 
-    testCase 'Untethered child process with 8M data'
+    testCaseBegin 'Untethered child process with 8M data'
     testOutput 8192000 = '$(
       pidsentry --test=1 -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+    testCaseEnd
 
-    testCase 'Tether with new file descriptor'
+    testCaseBegin 'Tether with new file descriptor'
     testOutput '$(( 1 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
       pidsentry --test=1 -f - -- ls -l /proc/self/fd |
           grep "[0-9]-[0-9]" |
           wc -l)'
+    testCaseEnd
 
-    testCase 'Tether using stdout'
+    testCaseBegin 'Tether using stdout'
     testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
       pidsentry --test=1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+    testCaseEnd
 
-    testCase 'Tether using named stdout'
+    testCaseBegin 'Tether using named stdout'
     testOutput '$(( 0 + $(
       ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
       pidsentry --test=1 -f 1 -- ls -l /proc/self/fd |
           grep "[0-9]-[0-9]" |
           wc -l)'
+    testCaseEnd
 
-    testCase 'Tether using stdout with 8M data'
+    testCaseBegin 'Tether using stdout with 8M data'
     testOutput 8192000 = '$(
       pidsentry --test=1 -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+    testCaseEnd
 
-    testCase 'Tether quietly using stdout with 8M data'
+    testCaseBegin 'Tether quietly using stdout with 8M data'
     testOutput 0 = '$(
       pidsentry --test=1 -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+    testCaseEnd
 
-    testCase 'Tether named in environment'
+    testCaseBegin 'Tether named in environment'
     testOutput "TETHER=1" = '$(
       pidsentry --test=1 -n TETHER -- printenv | grep TETHER)'
+    testCaseEnd
 
-    testCase 'Tether named alone in argument'
+    testCaseBegin 'Tether named alone in argument'
     testOutput "1" = '$(
       pidsentry --test=1 -n @tether@ -- /bin/echo @tether@ | grep "1")'
+    testCaseEnd
 
-    testCase 'Tether named as suffix in argument'
+    testCaseBegin 'Tether named as suffix in argument'
     testOutput "x1" = '$(
       pidsentry --test=1 -n @tether@ -- /bin/echo x@tether@ | grep "1")'
+    testCaseEnd
 
-    testCase 'Tether named as prefix argument'
+    testCaseBegin 'Tether named as prefix argument'
     testOutput "1x" = '$(
       pidsentry --test=1 -n @tether@ -- /bin/echo @tether@x | grep "1")'
+    testCaseEnd
 
-    testCase 'Tether named as infix argument'
+    testCaseBegin 'Tether named as infix argument'
     testOutput "x1x" = '$(
       pidsentry --test=1 -n @tether@ -- /bin/echo x@tether@x | grep "1")'
+    testCaseEnd
 
-    testCase 'Early parent death'
+    testCaseBegin 'Early parent death'
     pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
         kill -9 $PARENT
         sleep 3
-        ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep pidsentry
+        testLostWatchdogs
     }
+    testCaseEnd
 
-    testCase 'Early umbilical death'
-    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep pidsentry
+    testCaseBegin 'Early umbilical death'
+    testLostWatchdogs
     pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         randomsleep 1
         kill -9 $UMBILICAL
         SLEPT=0
         while : ; do
-            ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= |
-                grep pidsentry ||
-                break
+            ! testLostWatchdogs || break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
         done
     }
+    testCaseEnd
 
-    testCase 'Early child death'
-    ! ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= | grep pidsentry
+    testCaseBegin 'Early child death'
+    testLostWatchdogs
     pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
         read PARENT UMBILICAL
         read CHILD
@@ -486,15 +559,14 @@ runTests()
         kill -9 $CHILD
         SLEPT=0
         while : ; do
-            ps -C 'pidsentry sh' -o user=,ppid=,pid=,pgid=,args= |
-                grep pidsentry ||
-                break
+            ! testLostWatchdogs || break
             sleep 1
             [ $(( ++SLEPT )) -lt 60 ] || exit 1
         done
     }
+    testCaseEnd
 
-    testCase 'Unexpected death of child'
+    testCaseBegin 'Unexpected death of child'
     REPLY=$(
       exec 3>&1
       {
@@ -511,8 +583,9 @@ runTests()
         kill -9 -- "$CHILD"
       })
     [ x"$REPLY" = x$((128 + 9)) ]
+    testCaseEnd
 
-    testCase 'Stopped child'
+    testCaseBegin 'Stopped child'
     testOutput OK = '"$(
         pidsentry --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
             read PARENT UMBILICAL
@@ -521,8 +594,9 @@ runTests()
             kill -CONT $CHILD || { /bin/echo NOTOK ; exit 1 ; }
             /bin/echo OK
         })"'
+    testCaseEnd
 
-    testCase 'Stopped parent'
+    testCaseBegin 'Stopped parent'
     testOutput OK = '"$(pidsentry --test=1 -i -d -t 8,2 -- sleep 4 | {
         read PARENT UMBILICAL
         read CHILD
@@ -531,8 +605,9 @@ runTests()
         kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
         /bin/echo OK
     })"'
+    testCaseEnd
 
-    testCase 'Randomly stopped parent'
+    testCaseBegin 'Randomly stopped parent'
     testOutput 'OK' = '$(
         { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
             read PARENT UMBILICAL
@@ -548,8 +623,9 @@ runTests()
             /bin/echo $REPLY
         }
     )'
+    testCaseEnd
 
-    testCase 'Randomly stopped process family'
+    testCaseBegin 'Randomly stopped process family'
     testOutput 'OK' = '$(
         { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
             read PARENT UMBILICAL
@@ -565,8 +641,9 @@ runTests()
             /bin/echo $REPLY
         }
     )'
+    testCaseEnd
 
-    testCase 'Broken umbilical'
+    testCaseBegin 'Broken umbilical'
     testOutput "OK" = '$(
         exec 3>&1
         pidsentry -dd -i -- sleep 9 | {
@@ -581,8 +658,9 @@ runTests()
             [ x"$RC" != x"0" ] || /bin/echo OK
         }
     )'
+    testCaseEnd
 
-    testCase 'Competing child processes'
+    testCaseBegin 'Competing child processes'
     (
     set -x
     TASKS="1 2 3 4"
@@ -629,7 +707,7 @@ runTests()
                         /bin/echo "Skipping pidfile from $TASK_PID" >&2
                         /bin/echo X
                         /bin/echo 0
-                        trap '' 0
+                        trap - 0
                         exit 0
                     }
 
@@ -692,10 +770,11 @@ runTests()
         }
         eval unset TASK_$REPLY
     done
-    trap '' 0
+    trap - 0
     )
+    testCaseEnd
 
-    testCase 'Fast signal queueing'
+    testCaseBegin 'Fast signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
       ( ulimit -c 0
@@ -721,8 +800,9 @@ runTests()
           [ x"$RC" = x"$((128 + SIG))" ]
       }
     done
+    testCaseEnd
 
-    testCase 'Slow signal queueing'
+    testCaseBegin 'Slow signal queueing'
     SIGNALS="1 2 3 15"
     for SIG in $SIGNALS ; do
       ( ulimit -c 0
@@ -749,8 +829,9 @@ runTests()
           [ x"$RC" = x"$((128 + SIG))" ]
       }
     done
+    testCaseEnd
 
-    testCase 'Fixed termination deadline'
+    testCaseBegin 'Fixed termination deadline'
     testOutput OK = '$(
         pidsentry --test=3 -i -dd -t 3,,4 -- sh -cx "
             trap : 15 6
@@ -788,8 +869,9 @@ runTests()
             kill -9 $SLAVE 2>&-
         }
     )'
+    testCaseEnd
 
-    testCase 'Test SIGPIPE propagates from child'
+    testCaseBegin 'Test SIGPIPE propagates from child'
     testOutput "X-$((128 + 13))" = '$(
         exec 3>&1
         if pidsentry --test=1 -d -d -- sh -cx "
@@ -799,8 +881,9 @@ runTests()
             /bin/echo "X-$?" >&3
         fi | read
     )'
+    testCaseEnd
 
-    testCase 'Test EPIPE propagates to child'
+    testCaseBegin 'Test EPIPE propagates to child'
     testOutput "X-2" = '$(
         exec 3>&1
         if pidsentry -dd -- sh -c "
@@ -814,8 +897,9 @@ runTests()
             /bin/echo "X-$?" >&3
         fi | dd of=/dev/null bs=1 count=$((1 + $(random) % 128))
     )'
+    testCaseEnd
 
-    testCase 'Test output is non-blocking even when pipe buffer is filled'
+    testCaseBegin 'Test output is non-blocking even when pipe buffer is filled'
     testOutput AABB = '$(
         exec 3>&1
         {
@@ -848,8 +932,9 @@ runTests()
             /bin/echo -n BB
         }
     )'
+    testCaseEnd
 
-    testCase 'Timeout with data that must be flushed after 6s'
+    testCaseBegin 'Timeout with data that must be flushed after 6s'
     REPLY=$(
         START=$(date +%s)
         pidsentry --test=1 -t 4 -- sh -c 'trap : 6 ; sleep 6'
@@ -857,6 +942,7 @@ runTests()
         /bin/echo $(( STOP - START))
     )
     [ "$REPLY" -ge 6 ]
+    testCaseEnd
 }
 
 unset TEST_MODE_EXTENDED
@@ -873,29 +959,32 @@ if [ -n "${TEST_MODE++}" ] ; then
 fi
 unset TEST_MODE
 
-trap 'rm -rf scratch/*' 0
+trap 'RC=$? ; rm -rf scratch/* || : ; exit $RC' 0
 mkdir -p scratch
 
 PIDFILE=scratch/pidfile
 
-testCase 'No running watchdogs'
-testOutput "" = '$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)'
+testCaseBegin 'No running watchdogs'
+testLostWatchdogs
+testCaseEnd
 
 for TEST in runTest runTests ; do
     VALGRIND=
     $TEST
     VALGRIND="valgrind"
-    VALGRIND="$VALGRIND --error-exitcode=128"
+    VALGRIND="$VALGRIND --error-exitcode=$PIDSENTRY_VALGRIND_ERROR"
     VALGRIND="$VALGRIND --leak-check=yes"
     VALGRIND="$VALGRIND --suppressions=pidsentry.supp"
     $TEST
 done
 
-testCase 'No lost watchdogs'
-testOutput "" = '$(ps -C pidsentry -o user=,ppid=,pid=,pgid=,command=)'
+testCaseBegin 'No lost watchdogs'
+testLostWatchdogs
+testCaseEnd
 
-testCase 'Valgrind run over unit tests'
+testCaseBegin 'Valgrind run over unit tests'
 testOutput "" != "/bin/echo $VALGRIND"
+testCaseEnd
 
 TESTS=$(/bin/echo $(ls -1 _* | grep -v -F .) )
 TESTS_ENVIRONMENT="${TESTS_ENVIRONMENT+$TESTS_ENVIRONMENT }$VALGRIND"
@@ -904,8 +993,9 @@ make check TESTS_ENVIRONMENT="$TESTS_ENVIRONMENT" TESTS="$TESTS"
 # The error handling test takes a very long time to run, so run a quick
 # version of the test, unless TEST_MODE is configured.
 
-testCase 'Error handling'
+testCaseBegin 'Error handling'
 (
     [ -n "${TEST_MODE_EXTENDED++}" ] || export PIDSENTRY_TEST_ERROR=once
     ./errortest.sh
 )
+testCaseEnd
