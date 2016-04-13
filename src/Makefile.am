@@ -45,7 +45,7 @@ COMMON_CFLAGS     += -Wmissing-prototypes -Wmissing-declarations
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=c++0x
 COMMON_CXXFLAGS   += -Wno-variadic-macros -Wno-long-long
 COMMON_LINKFLAGS   = -Wl,--gc-sections
-TEST_LIBS          = libpidsentry_.la libgoogletest.la -lrt
+TEST_LIBS          = libpidsentry_.la libgoogletest.la -lpthread -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
 TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
 TEST_CXXFLAGS      = $(TEST_FLAGS) $(COMMON_CXXFLAGS)

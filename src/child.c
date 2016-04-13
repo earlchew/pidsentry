@@ -642,6 +642,13 @@ forkChild(
 
     ensure(self->mPid.mPid == self->mPgid.mPgid);
 
+    /* Beware of the inherent race here between the child starting and
+     * terminating, and the recording of the child pid. To cover the
+     * case that the child might have terminated before the child pid
+     * is recorded, force a supervision run after the pid is recorded. */
+
+    superviseChildProcess(self, Pid(0));
+
     rc = 0;
 
 Finally:

@@ -85,6 +85,16 @@ static unsigned               activeProcessLock_;
 static unsigned               processAbort_;
 static unsigned               processQuit_;
 
+static struct
+{
+    pthread_mutex_t      mMutex;
+    struct Pid           mParentPid;
+    struct RWMutexWriter mForkLock;
+} processFork_ =
+{
+    .mMutex = PTHREAD_MUTEX_INITIALIZER,
+};
+
 static struct ProcessSignalThread processSignalThread_ =
 {
     .mMutex = PTHREAD_MUTEX_INITIALIZER,
@@ -1255,6 +1265,44 @@ unlockProcessLock_(struct ProcessLock *self)
 }
 
 /* -------------------------------------------------------------------------- */
+static void
+prepareFork_(void)
+{
+    lockMutex(&processFork_.mMutex);
+
+    createRWMutexWriter(&processFork_.mForkLock, &processForkLock_);
+
+    processFork_.mParentPid = ownProcessId();
+
+    debug(1, "prepare fork");
+}
+
+static void
+postForkParent_(void)
+{
+    debug(1, "groom forked parent");
+
+    ensure(ownProcessId().mPid == processFork_.mParentPid.mPid);
+
+    destroyRWMutexWriter(&processFork_.mForkLock);
+
+    unlockMutex(&processFork_.mMutex);
+}
+
+static void
+postForkChild_(void)
+{
+    debug(1, "groom forked child");
+
+    /* Do not check the parent pid here because it is theoretically possible
+     * that the parent will have terminated and the pid reused by the time
+     * the child gets around to checking. */
+
+    destroyRWMutexWriter(&processFork_.mForkLock);
+
+    unlockMutex(&processFork_.mMutex);
+}
+
 static void *
 signalThread_(void *self_)
 {
@@ -1315,6 +1363,10 @@ Process_init(const char *aArg0)
 
         hookProcessSigCont_();
         hookProcessSigStop_();
+
+        ERROR_IF(
+            errno = pthread_atfork(
+                prepareFork_, postForkParent_, postForkChild_));
     }
 
     rc = 0;
@@ -1639,18 +1691,12 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
      * is an important consideration for propagating signals to
      * the child process. */
 
-    struct RWMutexWriter forkLock;
-
-    createRWMutexWriter(&forkLock, &processForkLock_);
-
     pid_t childPid;
 
     TEST_RACE
     ({
         childPid = fork();
     });
-
-    destroyRWMutexWriter(&forkLock);
 
     switch (childPid)
     {

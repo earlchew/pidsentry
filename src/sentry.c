@@ -414,6 +414,13 @@ createSentry(struct Sentry *self,
 
     closeSocketPairChild(self->mUmbilicalSocket);
 
+    /* Beware of the inherent race here between the umbilical starting and
+     * terminating, and the recording of the umbilical process. To cover the
+     * case that the umbilical might have terminated before the process
+     * is recorded, force a supervision run after the process is recorded. */
+
+    reapSentry_(self);
+
     /* The PidServer instance will continue to run in the umbilical process,
        so the instance that was created in the watchdog is no longer
        required. */
