@@ -90,6 +90,8 @@ static struct
     pthread_mutex_t      mMutex;
     struct Pid           mParentPid;
     struct RWMutexWriter mForkLock;
+    unsigned             mActiveProcessLock;
+    unsigned             mInactiveProcessLock;
 } processFork_ =
 {
     .mMutex = PTHREAD_MUTEX_INITIALIZER,
@@ -1265,147 +1267,6 @@ unlockProcessLock_(struct ProcessLock *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
-prepareFork_(void)
-{
-    lockMutex(&processFork_.mMutex);
-
-    createRWMutexWriter(&processFork_.mForkLock, &processForkLock_);
-
-    processFork_.mParentPid = ownProcessId();
-
-    debug(1, "prepare fork");
-}
-
-static void
-postForkParent_(void)
-{
-    debug(1, "groom forked parent");
-
-    ensure(ownProcessId().mPid == processFork_.mParentPid.mPid);
-
-    destroyRWMutexWriter(&processFork_.mForkLock);
-
-    unlockMutex(&processFork_.mMutex);
-}
-
-static void
-postForkChild_(void)
-{
-    debug(1, "groom forked child");
-
-    /* Do not check the parent pid here because it is theoretically possible
-     * that the parent will have terminated and the pid reused by the time
-     * the child gets around to checking. */
-
-    destroyRWMutexWriter(&processFork_.mForkLock);
-
-    unlockMutex(&processFork_.mMutex);
-}
-
-static void *
-signalThread_(void *self_)
-{
-    struct ProcessSignalThread *self = self_;
-
-    /* This is a spare thread which will always be available as a context
-     * in which signals can be delivered in the case that all other
-     * threads are unable accept signals. */
-
-    popThreadSigMask(&processSigMask_);
-
-    lockMutex(&self->mMutex);
-    while ( ! self->mStopping)
-        waitCond(&self->mCond, &self->mMutex);
-    unlockMutex(&self->mMutex);
-
-    return 0;
-}
-
-int
-Process_init(const char *aArg0)
-{
-    int rc = -1;
-
-    if (1 == ++moduleInit_)
-    {
-        ensure( ! processLockPtr_[activeProcessLock_]);
-
-        processArg0_ = aArg0;
-
-        /* Ensure that the recorded time base is non-zero to allow it
-         * to be distinguished from the case that it was not recorded
-         * at all, and also ensure that the measured elapsed process
-         * time is always non-zero. */
-
-        processTimeBase_ = monotonicTime();
-        do
-            --processTimeBase_.monotonic.ns;
-        while ( ! processTimeBase_.monotonic.ns);
-
-        programName_ = strrchr(processArg0_, '/');
-        programName_ = programName_ ? programName_ + 1 : processArg0_;
-
-        srandom(ownProcessId().mPid);
-
-        ERROR_IF(
-            createProcessLock_(&processLock_[activeProcessLock_]));
-        processLockPtr_[activeProcessLock_] = &processLock_[activeProcessLock_];
-
-        ERROR_IF(
-            Error_init());
-
-        pushThreadSigMask(&processSigMask_, ThreadSigMaskBlock, 0);
-
-        createThread(
-            &processSignalThread_.mThread, 0,
-            signalThread_, &processSignalThread_);
-
-        hookProcessSigCont_();
-        hookProcessSigStop_();
-
-        ERROR_IF(
-            errno = pthread_atfork(
-                prepareFork_, postForkParent_, postForkChild_));
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-void
-Process_exit(void)
-{
-    if (0 == --moduleInit_)
-    {
-        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-
-        ensure(processLock);
-
-        unhookProcessSigStop_();
-        unhookProcessSigCont_();
-
-        lockMutex(&processSignalThread_.mMutex);
-        processSignalThread_.mStopping = true;
-        unlockMutexSignal(&processSignalThread_.mMutex,
-                          &processSignalThread_.mCond);
-
-        joinThread(&processSignalThread_.mThread);
-
-        Error_exit();
-
-        closeProcessLock_(processLock);
-        processLockPtr_[activeProcessLock_] = 0;
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 int
 acquireProcessAppLock(void)
 {
@@ -1644,16 +1505,6 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
 
     const char *err = 0;
 
-    struct ThreadSigMutex *lock = 0;
-
-    unsigned activeProcessLock   = 0 + activeProcessLock_;
-    unsigned inactiveProcessLock = 1 - activeProcessLock;
-
-    ensure(NUMBEROF(processLock_) > activeProcessLock);
-    ensure(NUMBEROF(processLock_) > inactiveProcessLock);
-
-    ensure( ! processLockPtr_[inactiveProcessLock]);
-
     pid_t pgid = aPgid.mPgid;
 
     ensure(ForkProcessSetProcessGroup == aOption || ! pgid);
@@ -1664,27 +1515,6 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
         (clocktick = sysconf(_SC_CLK_TCK),
          -1 == clocktick));
 #endif
-
-    lock = lockThreadSigMutex(&processLockMutex_);
-
-    /* The child process needs separate process lock. It cannot share
-     * the process lock with the parent because flock(2) distinguishes
-     * locks by file descriptor table entry. Create the process lock
-     * in the parent first so that the child process is guaranteed to
-     * be able to synchronise its messages. */
-
-    if (processLockPtr_[activeProcessLock_])
-    {
-        ensure(
-            processLockPtr_[activeProcessLock] ==
-            &processLock_[activeProcessLock]);
-
-        ERROR_IF(
-            dupProcessLock_(&processLock_[inactiveProcessLock],
-                            &processLock_[activeProcessLock]));
-        processLockPtr_[inactiveProcessLock] =
-            &processLock_[inactiveProcessLock];
-    }
 
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
@@ -1701,6 +1531,7 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
     switch (childPid)
     {
     default:
+
         /* Forcibly set the process group of the child to avoid
          * the race that would occur if only the child attempts
          * to set its own process group */
@@ -1733,13 +1564,6 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
 
         srandom(ownProcessId().mPid);
 
-        /* Switch the process lock first in case the child process
-         * needs to emit diagnostic messages so that the messages
-         * will not be garbled. */
-
-        activeProcessLock_  = inactiveProcessLock;
-        inactiveProcessLock = activeProcessLock;
-
         if (ForkProcessSetProcessGroup == aOption)
         {
             ERROR_IF(
@@ -1769,11 +1593,6 @@ Finally:
     FINALLY
     ({
         int errcode = errno;
-
-        closeProcessLock_(processLockPtr_[inactiveProcessLock]);
-        processLockPtr_[inactiveProcessLock] = 0;
-
-        lock = unlockThreadSigMutex(lock);
 
         ABORT_IF(
             err,
@@ -2415,6 +2234,226 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+prepareFork_(void)
+{
+    /* This function is called in the context of the parent process
+     * just before a fork occurs. It prepares to create a new
+     * instance of the application lock to be used by the child process.
+     * The existing instance of the application lock is acquired by
+     * the parent, then held by both parent and child. */
+
+    lockMutex(&processFork_.mMutex);
+
+    unsigned activeProcessLock   = 0 + activeProcessLock_;
+    unsigned inactiveProcessLock = 1 - activeProcessLock;
+
+    processFork_.mActiveProcessLock   = activeProcessLock;
+    processFork_.mInactiveProcessLock = inactiveProcessLock;
+
+    ensure(NUMBEROF(processLock_) > activeProcessLock);
+    ensure(NUMBEROF(processLock_) > inactiveProcessLock);
+
+    ensure( ! processLockPtr_[inactiveProcessLock]);
+
+    lockThreadSigMutex(&processLockMutex_);
+
+    /* The child process needs separate process lock. It cannot share
+     * the process lock with the parent because flock(2) distinguishes
+     * locks by file descriptor table entry. Create the process lock
+     * in the parent first so that the child process is guaranteed to
+     * be able to synchronise its messages. */
+
+    if (processLockPtr_[activeProcessLock_])
+    {
+        ensure(
+            processLockPtr_[activeProcessLock] ==
+            &processLock_[activeProcessLock]);
+
+        ABORT_IF(
+            dupProcessLock_(&processLock_[inactiveProcessLock],
+                            &processLock_[activeProcessLock]));
+        processLockPtr_[inactiveProcessLock] =
+            &processLock_[inactiveProcessLock];
+    }
+
+    createRWMutexWriter(&processFork_.mForkLock, &processForkLock_);
+
+    processFork_.mParentPid = ownProcessId();
+
+    debug(1, "prepare fork");
+}
+
+static void
+completeFork_(void)
+{
+    /* This function is called in the context of both parent and child
+     * process immediately after the fork completes. Both processes
+     * release the resources acquired when preparations were made
+     * immediately preceding the fork. */
+
+    destroyRWMutexWriter(&processFork_.mForkLock);
+
+    unsigned inactiveProcessLock = processFork_.mInactiveProcessLock;
+
+    closeProcessLock_(processLockPtr_[inactiveProcessLock]);
+    processLockPtr_[inactiveProcessLock] = 0;
+
+    unlockThreadSigMutex(&processLockMutex_);
+
+    unlockMutex(&processFork_.mMutex);
+}
+
+static void
+postForkParent_(void)
+{
+    /* This function is called in the context of the parent process
+     * immediately after the fork completes. */
+
+    debug(1, "groom forked parent");
+
+    ensure(ownProcessId().mPid == processFork_.mParentPid.mPid);
+
+    completeFork_();
+}
+
+static void
+postForkChild_(void)
+{
+    /* This function is called in the context of the child process
+     * immediately after the fork completes.
+     *
+     * Switch the process lock first in case the child process needs to
+     * emit diagnostic messages so that the messages will not be garbled. */
+
+    unsigned activeProcessLock   = processFork_.mActiveProcessLock;
+    unsigned inactiveProcessLock = processFork_.mInactiveProcessLock;
+
+    activeProcessLock_  = inactiveProcessLock;
+
+    inactiveProcessLock = activeProcessLock;
+    activeProcessLock   = activeProcessLock_;
+
+    processFork_.mActiveProcessLock   = activeProcessLock;
+    processFork_.mInactiveProcessLock = inactiveProcessLock;
+
+    debug(1, "groom forked child");
+
+    /* Do not check the parent pid here because it is theoretically possible
+     * that the parent will have terminated and the pid reused by the time
+     * the child gets around to checking. */
+
+    completeFork_();
+}
+
+/* -------------------------------------------------------------------------- */
+static void *
+signalThread_(void *self_)
+{
+    struct ProcessSignalThread *self = self_;
+
+    /* This is a spare thread which will always be available as a context
+     * in which signals can be delivered in the case that all other
+     * threads are unable accept signals. */
+
+    popThreadSigMask(&processSigMask_);
+
+    lockMutex(&self->mMutex);
+    while ( ! self->mStopping)
+        waitCond(&self->mCond, &self->mMutex);
+    unlockMutex(&self->mMutex);
+
+    return 0;
+}
+
+int
+Process_init(const char *aArg0)
+{
+    int rc = -1;
+
+    if (1 == ++moduleInit_)
+    {
+        ensure( ! processLockPtr_[activeProcessLock_]);
+
+        processArg0_ = aArg0;
+
+        /* Ensure that the recorded time base is non-zero to allow it
+         * to be distinguished from the case that it was not recorded
+         * at all, and also ensure that the measured elapsed process
+         * time is always non-zero. */
+
+        processTimeBase_ = monotonicTime();
+        do
+            --processTimeBase_.monotonic.ns;
+        while ( ! processTimeBase_.monotonic.ns);
+
+        programName_ = strrchr(processArg0_, '/');
+        programName_ = programName_ ? programName_ + 1 : processArg0_;
+
+        srandom(ownProcessId().mPid);
+
+        ERROR_IF(
+            createProcessLock_(&processLock_[activeProcessLock_]));
+        processLockPtr_[activeProcessLock_] = &processLock_[activeProcessLock_];
+
+        ERROR_IF(
+            Error_init());
+
+        pushThreadSigMask(&processSigMask_, ThreadSigMaskBlock, 0);
+
+        createThread(
+            &processSignalThread_.mThread, 0,
+            signalThread_, &processSignalThread_);
+
+        hookProcessSigCont_();
+        hookProcessSigStop_();
+
+        /* Ensure that the synchronisation and signal functions are
+         * prepared when a fork occurs so that they will be available
+         * for use in the child process. */
+
+        ERROR_IF(
+            errno = pthread_atfork(
+                prepareFork_, postForkParent_, postForkChild_));
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+Process_exit(void)
+{
+    if (0 == --moduleInit_)
+    {
+        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
+
+        ensure(processLock);
+
+        unhookProcessSigStop_();
+        unhookProcessSigCont_();
+
+        lockMutex(&processSignalThread_.mMutex);
+        processSignalThread_.mStopping = true;
+        unlockMutexSignal(&processSignalThread_.mMutex,
+                          &processSignalThread_.mCond);
+
+        joinThread(&processSignalThread_.mThread);
+
+        Error_exit();
+
+        closeProcessLock_(processLock);
+        processLockPtr_[activeProcessLock_] = 0;
+    }
 }
 
 /* -------------------------------------------------------------------------- */
