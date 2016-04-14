@@ -45,13 +45,20 @@ class ProcessTest : public ::testing::Test
 {
     void SetUp()
     {
-        ASSERT_EQ(0, Process_init(__FILE__));
+        ASSERT_EQ(
+            0,
+            Process_init(
+                &mProgram, IntIntCharPtrPtrMethod(0, 0), __FILE__, 0, 0));
     }
 
     void TearDown()
     {
-        Process_exit();
+        Process_exit(&mProgram);
     }
+
+private:
+
+    struct Program mProgram;
 };
 
 TEST_F(ProcessTest, ProcessSignalName)
@@ -195,7 +202,7 @@ sigTermAction_(int)
     ++sigTermCount_;
 }
 
-TEST(ProcessTestNaked, ProcessAppLock)
+TEST_F(ProcessTest, ProcessAppLock)
 {
     struct sigaction nextAction;
     struct sigaction prevAction;

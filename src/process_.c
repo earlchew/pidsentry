@@ -67,14 +67,6 @@ struct ProcessAppLock
     void *mNull;;
 };
 
-struct ProcessSignalThread
-{
-    pthread_mutex_t mMutex;
-    pthread_cond_t  mCond;
-    pthread_t       mThread;
-    bool            mStopping;
-};
-
 static struct ProcessAppLock processAppLock_;
 
 static pthread_rwlock_t      processSigVecLock_ = PTHREAD_RWLOCK_INITIALIZER;
@@ -112,14 +104,8 @@ static struct
     .mMutex = PTHREAD_MUTEX_INITIALIZER,
 };
 
-static struct ProcessSignalThread processSignalThread_ =
-{
-    .mMutex = PTHREAD_MUTEX_INITIALIZER,
-    .mCond  = PTHREAD_COND_INITIALIZER,
-};
-
 static unsigned              moduleInit_;
-static unsigned              moduleInitFork_;
+static bool                  moduleInitOnce_;
 static struct ThreadSigMask  processSigMask_;
 static const char           *processArg0_;
 static const char           *programName_;
@@ -2441,119 +2427,148 @@ postProcessForkChild_(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static void *
-signalThread_(void *self_)
+struct ProcessThread
 {
-    struct ProcessSignalThread *self = self_;
+    pthread_t                     mThread;
+    struct IntIntCharPtrPtrMethod mMain;
+    int                           mArgc;
+    char                        **mArgv;
+    int                           mExit;
+};
 
-    /* This is a spare thread which will always be available as a context
-     * in which signals can be delivered in the case that all other
-     * threads are unable accept signals. */
+static void *
+processThread_(void *self_)
+{
+    struct ProcessThread *self = self_;
 
-    popThreadSigMask(&processSigMask_);
-
-    lockMutex(&self->mMutex);
-    while ( ! self->mStopping)
-        waitCond(&self->mCond, &self->mMutex);
-    unlockMutex(&self->mMutex);
+    self->mExit = callIntIntCharPtrPtrMethod(
+        self->mMain, self->mArgc, self->mArgv);
 
     return 0;
 }
 
 int
-Process_init(const char *aArg0)
+Process_init(struct Program               *self,
+             struct IntIntCharPtrPtrMethod aMain,
+             const char                   *aArg0,
+             int                           aArgc,
+             char                        **aArgv)
 {
     int rc = -1;
 
-    if (1 == ++moduleInit_)
+    ensure( ! moduleInit_);
+
+    processArg0_ = aArg0;
+
+    programName_ = strrchr(processArg0_, '/');
+    programName_ = programName_ ? programName_ + 1 : processArg0_;
+
+    /* Ensure that the recorded time base is non-zero to allow it
+     * to be distinguished from the case that it was not recorded
+     * at all, and also ensure that the measured elapsed process
+     * time is always non-zero. */
+
+    if ( ! moduleInitOnce_)
     {
-        ensure( ! processLockPtr_[activeProcessLock_]);
-
-        processArg0_ = aArg0;
-
-        /* Ensure that the recorded time base is non-zero to allow it
-         * to be distinguished from the case that it was not recorded
-         * at all, and also ensure that the measured elapsed process
-         * time is always non-zero. */
+        moduleInitOnce_ = true;
 
         processTimeBase_ = monotonicTime();
         do
             --processTimeBase_.monotonic.ns;
         while ( ! processTimeBase_.monotonic.ns);
 
-        programName_ = strrchr(processArg0_, '/');
-        programName_ = programName_ ? programName_ + 1 : processArg0_;
-
         srandom(ownProcessId().mPid);
-
-        ERROR_IF(
-            createProcessLock_(&processLock_[activeProcessLock_]));
-        processLockPtr_[activeProcessLock_] = &processLock_[activeProcessLock_];
-
-        ERROR_IF(
-            Error_init());
-
-        pushThreadSigMask(&processSigMask_, ThreadSigMaskBlock, 0);
-
-        createThread(
-            &processSignalThread_.mThread, 0,
-            signalThread_, &processSignalThread_);
-
-        hookProcessSigCont_();
-        hookProcessSigStop_();
 
         /* Ensure that the synchronisation and signal functions are
          * prepared when a fork occurs so that they will be available
          * for use in the child process. Be aware that once functions
          * are registered, there is no way to deregister them. */
 
-        if (1 != ++moduleInitFork_)
-            --moduleInitFork_;
+        ERROR_IF(
+            errno = pthread_atfork(
+                prepareProcessFork_,
+                postProcessForkParent_,
+                postProcessForkChild_));
+    }
+
+    ERROR_IF(
+        Error_init());
+
+    ensure( ! processLockPtr_[activeProcessLock_]);
+
+    ERROR_IF(
+        createProcessLock_(&processLock_[activeProcessLock_]));
+    processLockPtr_[activeProcessLock_] = &processLock_[activeProcessLock_];
+
+    hookProcessSigCont_();
+    hookProcessSigStop_();
+
+    ++moduleInit_;
+
+    struct ProcessThread processThread =
+    {
+        .mMain = aMain,
+        .mArgc = aArgc,
+        .mArgv = aArgv,
+        .mExit = EXIT_FAILURE,
+    };
+
+    pthread_t *processThreadPtr = 0;
+
+    pushThreadSigMask(&processSigMask_, ThreadSigMaskBlock, 0);
+    {
+        if (ownIntIntCharPtrPtrMethodNil(aMain))
+            processThread.mExit = EXIT_SUCCESS;
         else
         {
-            ERROR_IF(
-                errno = pthread_atfork(
-                    prepareProcessFork_,
-                    postProcessForkParent_,
-                    postProcessForkChild_));
+            createThread(
+                &processThread.mThread, 0, processThread_, &processThread);
+            processThreadPtr = &processThread.mThread;
         }
     }
+    popThreadSigMask(&processSigMask_);
+
+    if (processThreadPtr)
+        joinThread(processThreadPtr);
+
+    self->mExitCode.mStatus = processThread.mExit;
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        if (rc)
+        {
+            closeProcessLock_(processLockPtr_[activeProcessLock_]);
+            processLockPtr_[activeProcessLock_] = 0;
+        }
+    });
 
     return rc;
 }
 
 /* -------------------------------------------------------------------------- */
 void
-Process_exit(void)
+Process_exit(struct Program *self)
 {
-    if (0 == --moduleInit_)
+    if (self)
     {
-        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-
-        ensure(processLock);
+        ensure( ! --moduleInit_);
 
         unhookProcessSigStop_();
         unhookProcessSigCont_();
 
-        lockMutex(&processSignalThread_.mMutex);
-        processSignalThread_.mStopping = true;
-        unlockMutexSignal(&processSignalThread_.mMutex,
-                          &processSignalThread_.mCond);
-
-        joinThread(&processSignalThread_.mThread);
-
         popThreadSigMask(&processSigMask_);
 
-        Error_exit();
-
-        closeProcessLock_(processLock);
+        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
         processLockPtr_[activeProcessLock_] = 0;
+
+        ensure(processLock);
+        closeProcessLock_(processLock);
+
+        Error_exit();
     }
 }
 

@@ -97,6 +97,11 @@ struct ChildProcessState
     int mChildStatus;
 };
 
+struct Program
+{
+    struct ExitCode mExitCode;
+};
+
 /* -------------------------------------------------------------------------- */
 struct ProcessSigContTracker
 ProcessSigContTracker_(void);
@@ -274,10 +279,14 @@ fetchProcessGroupId(struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
 int
-Process_init(const char *aArg0);
+Process_init(struct Program               *self,
+             struct IntIntCharPtrPtrMethod aMain,
+             const char                   *aArg0,
+             int                           aArgc,
+             char                        **aArgv);
 
 void
-Process_exit(void);
+Process_exit(struct Program *self);
 
 /* -------------------------------------------------------------------------- */
 
