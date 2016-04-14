@@ -486,39 +486,42 @@ flushTetherThread(struct TetherThread *self)
 void
 closeTetherThread(struct TetherThread *self)
 {
-    ensure(self->mFlushed);
-
-    /* This method is not called until the tether thread has closed
-     * its end of the control pipe to indicate that it has completed.
-     * At that point the thread is waiting for the thread state
-     * to change so that it can exit. */
-
-    debug(0, "synchronising tether thread");
-
+    if (self)
     {
-        lockMutex(&self->mState.mMutex);
+        ensure(self->mFlushed);
 
-        ensure(TETHER_THREAD_RUNNING == self->mState.mValue);
-        self->mState.mValue = TETHER_THREAD_STOPPING;
+        /* This method is not called until the tether thread has closed
+         * its end of the control pipe to indicate that it has completed.
+         * At that point the thread is waiting for the thread state
+         * to change so that it can exit. */
 
-        unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
-    }
+        debug(0, "synchronising tether thread");
 
-    (void) joinThread(&self->mThread);
-
-    ABORT_IF(
-        unwatchProcessClock(),
         {
-            terminate(
-                errno,
-                "Unable to reset synchronisation clock");
-        });
+            lockMutex(&self->mState.mMutex);
 
-    destroyCond(&self->mState.mCond);
-    destroyMutex(&self->mState.mMutex);
-    destroyMutex(&self->mActivity.mMutex);
+            ensure(TETHER_THREAD_RUNNING == self->mState.mValue);
+            self->mState.mValue = TETHER_THREAD_STOPPING;
 
-    closePipe(&self->mControlPipe);
+            unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
+        }
+
+        (void) joinThread(&self->mThread);
+
+        ABORT_IF(
+            unwatchProcessClock(),
+            {
+                terminate(
+                    errno,
+                    "Unable to reset synchronisation clock");
+            });
+
+        destroyCond(&self->mState.mCond);
+        destroyMutex(&self->mState.mMutex);
+        destroyMutex(&self->mActivity.mMutex);
+
+        closePipe(&self->mControlPipe);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
