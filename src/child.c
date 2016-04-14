@@ -1958,10 +1958,6 @@ Finally:
 
         ABORT_IF(
             EventLatchSettingError == bindEventLatchPipe(
-                contLatch, 0));
-
-        ABORT_IF(
-            EventLatchSettingError == bindEventLatchPipe(
                 self->mUmbilicalLatch, 0));
 
         ABORT_IF(

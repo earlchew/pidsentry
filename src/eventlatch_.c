@@ -57,7 +57,13 @@ void
 closeEventLatch(struct EventLatch *self)
 {
     if (self)
+    {
+        if (self->mPipe)
+            ABORT_IF(
+                EventLatchSettingError == bindEventLatchPipe(self, 0));
+
         self->mMutex = destroyThreadSigMutex(self->mMutex);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
