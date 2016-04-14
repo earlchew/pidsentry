@@ -35,6 +35,27 @@
 
 #include "gtest/gtest.h"
 
+TEST(ThreadTest, MutexDestroy)
+{
+    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    destroyMutex(&mutex);
+}
+
+TEST(ThreadTest, CondDestroy)
+{
+    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+    destroyCond(&cond);
+}
+
+TEST(ThreadTest, RWMutexDestroy)
+{
+    pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
+
+    destroyRWMutex(&rwlock);
+}
+
 static int sigTermCount_;
 
 static void

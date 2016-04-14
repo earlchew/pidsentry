@@ -41,7 +41,20 @@
 
 #include "gtest/gtest.h"
 
-TEST(ProcessTest, ProcessSignalName)
+class ProcessTest : public ::testing::Test
+{
+    void SetUp()
+    {
+        ASSERT_EQ(0, Process_init(__FILE__));
+    }
+
+    void TearDown()
+    {
+        Process_exit();
+    }
+};
+
+TEST_F(ProcessTest, ProcessSignalName)
 {
     struct ProcessSignalName sigName;
 
@@ -56,7 +69,7 @@ TEST(ProcessTest, ProcessSignalName)
     EXPECT_EQ(std::string(nsigName), formatProcessSignalName(&sigName, NSIG));
 }
 
-TEST(ProcessTest, ProcessState)
+TEST_F(ProcessTest, ProcessState)
 {
     EXPECT_EQ(ProcessState::ProcessStateError,
               fetchProcessState(Pid(-1)).mState);
@@ -65,7 +78,7 @@ TEST(ProcessTest, ProcessState)
               fetchProcessState(ownProcessId()).mState);
 }
 
-TEST(ProcessTest, ProcessStatus)
+TEST_F(ProcessTest, ProcessStatus)
 {
     EXPECT_EQ(ChildProcessState::ChildProcessStateError,
               monitorProcessChild(ownProcessId()).mChildState);
@@ -88,7 +101,7 @@ TEST(ProcessTest, ProcessStatus)
               monitorProcessChild(childpid).mChildState);
 }
 
-TEST(ProcessTest, ProcessSignature)
+TEST_F(ProcessTest, ProcessSignature)
 {
     char *parentSignature = 0;
 
@@ -113,9 +126,15 @@ TEST(ProcessTest, ProcessSignature)
 
     if ( ! firstChild.mPid)
     {
-        execl("/bin/true", "true", (char *) 0);
-        _exit(EXIT_SUCCESS);
+        if (ownProcessAppLockCount())
+            execl("/bin/false", "false", (char *) 0);
+        else
+            execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
     }
+
+    EXPECT_EQ(0, acquireProcessAppLock());
+    EXPECT_EQ(1u, ownProcessAppLockCount());
 
     struct Pid secondChild = forkProcessChild(
         ForkProcessShareProcessGroup, Pgid(0));
@@ -123,9 +142,15 @@ TEST(ProcessTest, ProcessSignature)
 
     if ( ! secondChild.mPid)
     {
-        execl("/bin/true", "true", (char *) 0);
-        _exit(EXIT_SUCCESS);
+        if (ownProcessAppLockCount())
+            execl("/bin/false", "false", (char *) 0);
+        else
+            execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
     }
+
+    EXPECT_EQ(0, releaseProcessAppLock());
+    EXPECT_EQ(0u, ownProcessAppLockCount());
 
     char *firstChildSignature = 0;
     EXPECT_EQ(0, fetchProcessSignature(firstChild, &firstChildSignature));
@@ -150,7 +175,12 @@ TEST(ProcessTest, ProcessSignature)
 
     int status;
     EXPECT_EQ(0, reapProcessChild(firstChild, &status));
+    EXPECT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(0, WEXITSTATUS(status));
+
     EXPECT_EQ(0, reapProcessChild(secondChild, &status));
+    EXPECT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(0, WEXITSTATUS(status));
 
     free(parentSignature);
     free(firstChildSignature);
@@ -165,7 +195,7 @@ sigTermAction_(int)
     ++sigTermCount_;
 }
 
-TEST(ProcessTest, ProcessAppLock)
+TEST(ProcessTestNaked, ProcessAppLock)
 {
     struct sigaction nextAction;
     struct sigaction prevAction;
@@ -206,7 +236,7 @@ TEST(ProcessTest, ProcessAppLock)
     EXPECT_FALSE(sigaction(SIGTERM, &prevAction, 0));
 }
 
-TEST(ProcessTest, ProcessDaemon)
+TEST_F(ProcessTest, ProcessDaemon)
 {
     struct BellSocketPair bellSocket;
 

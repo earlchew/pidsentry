@@ -115,8 +115,8 @@ createChild(struct ChildProcess *self)
         createEventLatch(&self->mUmbilicalLatch_));
     self->mUmbilicalLatch = &self->mUmbilicalLatch_;
 
-    createThreadSigMutex(&self->mChildMonitor.mMutex_);
-    self->mChildMonitor.mMutex = &self->mChildMonitor.mMutex_;
+    self->mChildMonitor.mMutex = createThreadSigMutex(
+        &self->mChildMonitor.mMutex_);
 
     /* Only the reading end of the tether is marked non-blocking. The
      * writing end must be used by the child process (and perhaps inherited

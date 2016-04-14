@@ -580,19 +580,23 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 {
     int rc = -1;
 
+    struct ThreadSigMask  sigMask_;
+    struct ThreadSigMask *sigMask = 0;
+
     self->mPid         = Pid(0);
     self->mChildAnchor = Pid(0);
     self->mSocket      = aUmbilicalSocket;
 
     /* Ensure that SIGHUP is blocked so that the umbilical process
      * will not terminate should it be orphaned when the parent process
-     * terminates. Verifying the signal is blocked here is important to
-     * avoid a termination race.
+     * terminates. Do this first in the parent is important to avoid
+     * a termination race.
      *
      * Note that forkProcess() will reset all handled signals in
      * the child process. */
 
-    ensure( ! pthread_kill(pthread_self(), SIGHUP));
+    sigMask = pushThreadSigMask(
+        &sigMask_, ThreadSigMaskBlock, (const int []) { SIGHUP, 0 });
 
     struct Pid watchdogPid = ownProcessId();
 
@@ -636,7 +640,10 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        popThreadSigMask(sigMask);
+    });
 
     return rc;
 }

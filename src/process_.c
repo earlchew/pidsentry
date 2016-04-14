@@ -75,15 +75,30 @@ struct ProcessSignalThread
     bool            mStopping;
 };
 
-static struct ProcessAppLock  processAppLock_;
-static pthread_rwlock_t       processForkLock_ = PTHREAD_RWLOCK_INITIALIZER;
-static struct ThreadSigMutex  processSigMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
-static struct ThreadSigMutex  processLockMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
-static struct ProcessLock     processLock_[2];
-static struct ProcessLock    *processLockPtr_[2];
-static unsigned               activeProcessLock_;
-static unsigned               processAbort_;
-static unsigned               processQuit_;
+static struct ProcessAppLock processAppLock_;
+
+static pthread_rwlock_t      processSigVecLock_ = PTHREAD_RWLOCK_INITIALIZER;
+static struct ThreadSigMutex processSigMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
+
+static unsigned processAbort_;
+static unsigned processQuit_;
+
+#define PROCESS_ACTIVELOCK_INIT 0
+
+static unsigned activeProcessLock_ = PROCESS_ACTIVELOCK_INIT;
+
+static struct ThreadSigMutex processLockMutex_[2] =
+{
+    [PROCESS_ACTIVELOCK_INIT] = THREAD_SIG_MUTEX_INITIALIZER,
+};
+
+static struct ThreadSigMutex *processLockMutexPtr_[2] =
+{
+    [PROCESS_ACTIVELOCK_INIT] = &processLockMutex_[PROCESS_ACTIVELOCK_INIT],
+};
+
+static struct ProcessLock  processLock_[2];
+static struct ProcessLock *processLockPtr_[2];
 
 static struct
 {
@@ -104,6 +119,7 @@ static struct ProcessSignalThread processSignalThread_ =
 };
 
 static unsigned              moduleInit_;
+static unsigned              moduleInitFork_;
 static struct ThreadSigMask  processSigMask_;
 static const char           *processArg0_;
 static const char           *programName_;
@@ -179,7 +195,7 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
 
         struct RWMutexReader forkLock;
 
-        createRWMutexReader(&forkLock, &processForkLock_);
+        createRWMutexReader(&forkLock, &processSigVecLock_);
         lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
@@ -223,7 +239,7 @@ dispatchSigHandler_(int aSigNum)
 
         struct RWMutexReader forkLock;
 
-        createRWMutexReader(&forkLock, &processForkLock_);
+        createRWMutexReader(&forkLock, &processSigVecLock_);
         lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
@@ -262,8 +278,8 @@ changeSigAction_(unsigned          aSigNum,
 
     ensure(NUMBEROF(processSignalVectors_) > aSigNum);
 
-    struct RWMutexReader  forkLock_;
-    struct RWMutexReader *forkLock = 0;
+    struct RWMutexReader  sigVecLock_;
+    struct RWMutexReader *sigVecLock = 0;
 
     struct ThreadSigMask  threadSigMask_;
     struct ThreadSigMask *threadSigMask = 0;
@@ -296,11 +312,11 @@ changeSigAction_(unsigned          aSigNum,
             createMutex(&processSignalVectors_[aSigNum].mMutex_);
     unlockThreadSigMutex(&processSigMutex_);
 
-    forkLock = createRWMutexReader(&forkLock_, &processForkLock_);
-
     /* Block signal delivery into this thread to avoid the signal
      * dispatch attempting to acquire the dispatch mutex recursively
      * in the same thread context. */
+
+    sigVecLock = createRWMutexReader(&sigVecLock_, &processSigVecLock_);
 
     pushThreadSigMask(
         &threadSigMask_, ThreadSigMaskBlock, (const int []) { aSigNum, 0 });
@@ -331,7 +347,7 @@ Finally:
 
         popThreadSigMask(threadSigMask);
 
-        forkLock = destroyRWMutexReader(forkLock);
+        sigVecLock = destroyRWMutexReader(sigVecLock);
     });
 
     return rc;
@@ -1274,9 +1290,9 @@ acquireProcessAppLock(void)
 
     struct ThreadSigMutex *lock = 0;
 
-    lock = lockThreadSigMutex(&processLockMutex_);
+    lock = lockThreadSigMutex(processLockMutexPtr_[activeProcessLock_]);
 
-    if (1 == ownThreadSigMutexLocked(&processLockMutex_))
+    if (1 == ownThreadSigMutexLocked(processLockMutexPtr_[activeProcessLock_]))
     {
         struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
 
@@ -1303,7 +1319,7 @@ releaseProcessAppLock(void)
 {
     int rc = -1;
 
-    struct ThreadSigMutex *lock = &processLockMutex_;
+    struct ThreadSigMutex *lock = processLockMutexPtr_[activeProcessLock_];
 
     if (1 == ownThreadSigMutexLocked(lock))
     {
@@ -1354,6 +1370,13 @@ destroyProcessAppLock(struct ProcessAppLock *self)
                 terminate(errno, "Unable to release application lock");
             });
     }
+}
+
+/* -------------------------------------------------------------------------- */
+unsigned
+ownProcessAppLockCount(void)
+{
+    return ownThreadSigMutexLocked(processLockMutexPtr_[activeProcessLock_]);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2244,12 +2267,31 @@ prepareFork_(void)
      * just before a fork occurs. It prepares to create a new
      * instance of the application lock to be used by the child process.
      * The existing instance of the application lock is acquired by
-     * the parent, then held by both parent and child. */
+     * the parent, then held by both parent and child.
+     *
+     * Acquire processFork_.mMutex to allow only one thread to
+     * use the shared process fork structure instance at a time. */
 
     lockMutex(&processFork_.mMutex);
 
+    /* The following code only manipulates the inactive member of
+     * processLock_, and fork preparation is already serialised within
+     * the context of the current process, so there is no obvious need
+     * to acquire processLockMutex_. The lock is acquired anyway for
+     * robustness since a thread might exist at some future time that
+     * will try to manipulate processLock_[] and processLockPtr_[].
+     *
+     * Note that processLockMutex_ is recursive with the implication
+     * being that it might already be held by this thread on entry
+     * to this function. */
+
     unsigned activeProcessLock   = 0 + activeProcessLock_;
     unsigned inactiveProcessLock = 1 - activeProcessLock;
+
+    lockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
+
+    ensure(
+        0 < ownThreadSigMutexLocked(processLockMutexPtr_[activeProcessLock]));
 
     processFork_.mActiveProcessLock   = activeProcessLock;
     processFork_.mInactiveProcessLock = inactiveProcessLock;
@@ -2258,8 +2300,7 @@ prepareFork_(void)
     ensure(NUMBEROF(processLock_) > inactiveProcessLock);
 
     ensure( ! processLockPtr_[inactiveProcessLock]);
-
-    lockThreadSigMutex(&processLockMutex_);
+    ensure( ! processLockMutexPtr_[inactiveProcessLock]);
 
     /* The child process needs separate process lock. It cannot share
      * the process lock with the parent because flock(2) distinguishes
@@ -2267,7 +2308,10 @@ prepareFork_(void)
      * in the parent first so that the child process is guaranteed to
      * be able to synchronise its messages. */
 
-    if (processLockPtr_[activeProcessLock_])
+    processLockMutexPtr_[inactiveProcessLock] =
+        createThreadSigMutex(&processLockMutex_[inactiveProcessLock]);
+
+    if (processLockPtr_[activeProcessLock])
     {
         ensure(
             processLockPtr_[activeProcessLock] ==
@@ -2280,7 +2324,13 @@ prepareFork_(void)
             &processLock_[inactiveProcessLock];
     }
 
-    createRWMutexWriter(&processFork_.mForkLock, &processForkLock_);
+    /* Acquire the processSigVecLock_ for writing to ensure that there
+     * are no other signal vector activity in progress. The purpose here
+     * is to prevent the signal mutexes from being held while a fork is
+     * in progress, since those locked mutexes will then be transferred
+     * into the child process. */
+
+    createRWMutexWriter(&processFork_.mForkLock, &processSigVecLock_);
 
     processFork_.mParentPid = ownProcessId();
 
@@ -2297,12 +2347,25 @@ completeFork_(void)
 
     destroyRWMutexWriter(&processFork_.mForkLock);
 
+    unsigned activeProcessLock   = processFork_.mActiveProcessLock;
     unsigned inactiveProcessLock = processFork_.mInactiveProcessLock;
 
-    closeProcessLock_(processLockPtr_[inactiveProcessLock]);
-    processLockPtr_[inactiveProcessLock] = 0;
+    if (processLockPtr_[inactiveProcessLock])
+    {
+        closeProcessLock_(processLockPtr_[inactiveProcessLock]);
+        processLockPtr_[inactiveProcessLock] = 0;
+    }
 
-    unlockThreadSigMutex(&processLockMutex_);
+    /* Only the parent acquired its instance of the processLockMutex_,
+     * while the child has its own pristine instance. */
+
+    if (ownProcessId().mPid == processFork_.mParentPid.mPid)
+    {
+        destroyThreadSigMutex(processLockMutexPtr_[inactiveProcessLock]);
+        processLockMutexPtr_[inactiveProcessLock] = 0;
+
+        unlockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
+    }
 
     unlockMutex(&processFork_.mMutex);
 }
@@ -2324,7 +2387,8 @@ static void
 postForkChild_(void)
 {
     /* This function is called in the context of the child process
-     * immediately after the fork completes.
+     * immediately after the fork completes, at which time it will
+     * be the only thread running in the new process.
      *
      * Switch the process lock first in case the child process needs to
      * emit diagnostic messages so that the messages will not be garbled. */
@@ -2340,6 +2404,12 @@ postForkChild_(void)
     processFork_.mActiveProcessLock   = activeProcessLock;
     processFork_.mInactiveProcessLock = inactiveProcessLock;
 
+    /* The child process gets its own instance of the processLockMutex_
+     * and that is now the active instance. The instance held by the
+     * parent is no longer usable in the context of the child. */
+
+    processLockMutexPtr_[inactiveProcessLock] = 0;
+
     debug(1, "groom forked child");
 
     /* Do not check the parent pid here because it is theoretically possible
@@ -2347,6 +2417,27 @@ postForkChild_(void)
      * the child gets around to checking. */
 
     completeFork_();
+}
+
+static void
+prepareProcessFork_(void)
+{
+    if (moduleInit_)
+        prepareFork_();
+}
+
+static void
+postProcessForkParent_(void)
+{
+    if (moduleInit_)
+        postForkParent_();
+}
+
+static void
+postProcessForkChild_(void)
+{
+    if (moduleInit_)
+        postForkChild_();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2413,11 +2504,19 @@ Process_init(const char *aArg0)
 
         /* Ensure that the synchronisation and signal functions are
          * prepared when a fork occurs so that they will be available
-         * for use in the child process. */
+         * for use in the child process. Be aware that once functions
+         * are registered, there is no way to deregister them. */
 
-        ERROR_IF(
-            errno = pthread_atfork(
-                prepareFork_, postForkParent_, postForkChild_));
+        if (1 != ++moduleInitFork_)
+            --moduleInitFork_;
+        else
+        {
+            ERROR_IF(
+                errno = pthread_atfork(
+                    prepareProcessFork_,
+                    postProcessForkParent_,
+                    postProcessForkChild_));
+        }
     }
 
     rc = 0;
@@ -2448,6 +2547,8 @@ Process_exit(void)
                           &processSignalThread_.mCond);
 
         joinThread(&processSignalThread_.mThread);
+
+        popThreadSigMask(&processSigMask_);
 
         Error_exit();
 
