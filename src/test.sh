@@ -992,6 +992,9 @@ make check TESTS_ENVIRONMENT="$TESTS_ENVIRONMENT" TESTS="$TESTS"
 testCaseBegin 'Error handling'
 (
     [ -n "${TEST_MODE_EXTENDED++}" ] || export PIDSENTRY_TEST_ERROR=once
-    ./errortest.sh
+    ./errortest.sh || {
+        printf "\n%s\n" "Check error log in scratch/*"
+        exit 1
+    }
 )
 testCaseEnd
