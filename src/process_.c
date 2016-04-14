@@ -106,7 +106,7 @@ static struct
 
 static unsigned              moduleInit_;
 static bool                  moduleInitOnce_;
-static struct ThreadSigMask  processSigMask_;
+static sigset_t              processSigMask_;
 static const char           *processArg0_;
 static const char           *programName_;
 static struct MonotonicTime  processTimeBase_;
@@ -1802,8 +1802,6 @@ execProcess(const char *aCmd, char **aArgv)
 {
     int rc = -1;
 
-    popThreadSigMask(&processSigMask_);
-
     /* Call resetProcessSigPipe_() here to ensure that SIGPIPE will be
      * delivered to the new program. Note that it is possible that there
      * was no previous call to forkProcess(), though this is normally
@@ -1811,6 +1809,9 @@ execProcess(const char *aCmd, char **aArgv)
 
     ERROR_IF(
         resetProcessSigPipe_());
+
+    ERROR_IF(
+        errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
 
     execvp(aCmd, aArgv);
 
@@ -2494,6 +2495,9 @@ Process_init(struct Program               *self,
     ERROR_IF(
         Error_init());
 
+    ERROR_IF(
+        errno = pthread_sigmask(SIG_BLOCK, 0, &processSigMask_));
+
     ensure( ! processLockPtr_[activeProcessLock_]);
 
     ERROR_IF(
@@ -2505,6 +2509,10 @@ Process_init(struct Program               *self,
 
     ++moduleInit_;
 
+    /* Normally, run the main program in a separate thread to leave the
+     * main thread available to handle signals. This leads to more
+     * predictable signal handling behaviour in the program. */
+
     struct ProcessThread processThread =
     {
         .mMain = aMain,
@@ -2513,23 +2521,15 @@ Process_init(struct Program               *self,
         .mExit = EXIT_FAILURE,
     };
 
-    pthread_t *processThreadPtr = 0;
-
-    pushThreadSigMask(&processSigMask_, ThreadSigMaskBlock, 0);
+    if (ownIntIntCharPtrPtrMethodNil(aMain))
+        processThread.mExit = EXIT_SUCCESS;
+    else
     {
-        if (ownIntIntCharPtrPtrMethodNil(aMain))
-            processThread.mExit = EXIT_SUCCESS;
-        else
-        {
-            createThread(
-                &processThread.mThread, 0, processThread_, &processThread);
-            processThreadPtr = &processThread.mThread;
-        }
-    }
-    popThreadSigMask(&processSigMask_);
+        createThread(
+            &processThread.mThread, 0, processThread_, &processThread);
 
-    if (processThreadPtr)
-        joinThread(processThreadPtr);
+        joinThread(&processThread.mThread);
+    }
 
     self->mExitCode.mStatus = processThread.mExit;
 
@@ -2560,13 +2560,14 @@ Process_exit(struct Program *self)
         unhookProcessSigStop_();
         unhookProcessSigCont_();
 
-        popThreadSigMask(&processSigMask_);
-
         struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
         processLockPtr_[activeProcessLock_] = 0;
 
         ensure(processLock);
         closeProcessLock_(processLock);
+
+        ABORT_IF(
+            errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
 
         Error_exit();
     }
