@@ -90,3 +90,20 @@ ownVoidIntMethodNil(struct VoidIntMethod self)
 }
 
 /* -------------------------------------------------------------------------- */
+void
+callVoidIntCharPtrPtrMethod(
+    struct VoidIntCharPtrPtrMethod self, int aArgc, char **aArgv)
+{
+    ensure(self.mMethod);
+
+    self.mMethod(self.mObject, aArgc, aArgv);
+}
+
+/* -------------------------------------------------------------------------- */
+bool
+ownVoidIntCharPtrPtrMethodNil(struct VoidIntCharPtrPtrMethod self)
+{
+    return ! self.mMethod;
+}
+
+/* -------------------------------------------------------------------------- */
