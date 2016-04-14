@@ -145,10 +145,6 @@ runTests()
     testExit 1 pidsentry -? -- true
     testCaseEnd
 
-    testCaseBegin 'Valgrind signal propagation'
-    testExit $((128 + 15)) $VALGRIND ./_valgrindsigtest x
-    testCaseEnd
-
     testCaseBegin 'Missing -p option value'
     testExit 1 pidsentry -p
     testCaseEnd
