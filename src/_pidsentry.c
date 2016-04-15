@@ -29,7 +29,7 @@
 
 #include "_pidsentry.h"
 
-#include "sentry.h"
+#include "agent.h"
 #include "command.h"
 
 #include "env_.h"
@@ -116,21 +116,21 @@ cmdMonitorChild(char **aCmd)
                 "Unable to ignore SIGPIPE");
         });
 
-    struct Sentry  sentry_;
-    struct Sentry *sentry = 0;
+    struct Agent  agent_;
+    struct Agent *agent = 0;
 
     ERROR_IF(
-        createSentry(&sentry_, aCmd));
-    sentry = &sentry_;
+        createAgent(&agent_, aCmd));
+    agent = &agent_;
 
     ERROR_IF(
-        runSentry(sentry, &exitCode));
+        runAgent(agent, &exitCode));
 
 Finally:
 
     FINALLY
     ({
-        closeSentry(sentry);
+        closeAgent(agent);
     });
 
     return exitCode;
