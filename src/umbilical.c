@@ -494,14 +494,14 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
         struct ProcessAppLock *appLock = createProcessAppLock();
 
         int whiteList[] =
-            {
-                STDIN_FILENO,
-                STDOUT_FILENO,
-                STDERR_FILENO,
-                ownProcessAppLockFile(appLock)->mFd,
-                aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
-                aPidServer ? aPidServer->mEventQueue->mFile->mFd : -1,
-            };
+        {
+            STDIN_FILENO,
+            STDOUT_FILENO,
+            STDERR_FILENO,
+            ownProcessAppLockFile(appLock)->mFd,
+            aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
+            aPidServer ? aPidServer->mEventQueue->mFile->mFd : -1,
+        };
 
         ABORT_IF(
             closeFdDescriptors(whiteList, NUMBEROF(whiteList)),
