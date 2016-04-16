@@ -28,6 +28,7 @@
 */
 
 #include "agent.h"
+#include "parent.h"
 
 #include "type_.h"
 #include "error_.h"
@@ -146,6 +147,16 @@ runAgent(struct Agent    *self,
 {
     int rc = -1;
 
+    struct ParentProcess  parentProcess_;
+    struct ParentProcess *parentProcess = 0;
+
+    if (gOptions.mOrphaned)
+    {
+        ABORT_IF(
+            createParent(&parentProcess_));
+        parentProcess = &parentProcess_;
+    }
+
     ERROR_IF(
         runSentry(self->mSentry, aExitCode));
 
@@ -153,7 +164,10 @@ runAgent(struct Agent    *self,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        closeParent(parentProcess);
+    });
 
     return rc;
 }
