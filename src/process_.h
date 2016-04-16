@@ -262,6 +262,9 @@ const char*
 ownProcessName(void);
 
 struct Pid
+ownProcessParentId(void);
+
+struct Pid
 ownProcessId(void);
 
 struct Pgid

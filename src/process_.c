@@ -1962,6 +1962,13 @@ ownProcessName(void)
 
 /* -------------------------------------------------------------------------- */
 struct Pid
+ownProcessParentId(void)
+{
+    return Pid(getppid());
+}
+
+/* -------------------------------------------------------------------------- */
+struct Pid
 ownProcessId(void)
 {
     return Pid(getpid());
