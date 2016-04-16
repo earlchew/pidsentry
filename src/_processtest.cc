@@ -127,16 +127,42 @@ TEST_F(ProcessTest, ProcessSignature)
         free(altSignature);
     }
 
+    sigset_t sigMask;
+    EXPECT_EQ(0, pthread_sigmask(SIG_BLOCK, 0, &sigMask));
+
     struct Pid firstChild = forkProcessChild(
         ForkProcessShareProcessGroup, Pgid(0));
     EXPECT_NE(-1, firstChild.mPid);
 
     if ( ! firstChild.mPid)
     {
-        if (ownProcessAppLockCount())
-            execl("/bin/false", "false", (char *) 0);
-        else
+        do
+        {
+            sigset_t childSigMask;
+            if (pthread_sigmask(SIG_BLOCK, 0, &sigMask))
+            {
+                fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
+                break;
+            }
+
+            if (sigismember(&sigMask, SIGSEGV) !=
+                sigismember(&childSigMask, SIGSEGV))
+            {
+                fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
+                break;
+            }
+
+            if (ownProcessAppLockCount())
+            {
+                fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
+                break;
+            }
+
             execl("/bin/true", "true", (char *) 0);
+
+        } while (0);
+
+        execl("/bin/false", "false", (char *) 0);
         _exit(EXIT_FAILURE);
     }
 

@@ -2346,13 +2346,10 @@ completeFork_(void)
     /* Only the parent acquired its instance of the processLockMutex_,
      * while the child has its own pristine instance. */
 
-    if (ownProcessId().mPid == processFork_.mParentPid.mPid)
-    {
-        destroyThreadSigMutex(processLockMutexPtr_[inactiveProcessLock]);
-        processLockMutexPtr_[inactiveProcessLock] = 0;
+    destroyThreadSigMutex(processLockMutexPtr_[inactiveProcessLock]);
+    processLockMutexPtr_[inactiveProcessLock] = 0;
 
-        unlockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
-    }
+    unlockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
 
     unlockMutex(&processFork_.mMutex);
 }
@@ -2393,9 +2390,14 @@ postForkChild_(void)
 
     /* The child process gets its own instance of the processLockMutex_
      * and that is now the active instance. The instance held by the
-     * parent is no longer usable in the context of the child. */
+     * parent is no longer usable in the context of the child, but take
+     * care because the parent lock might have been acquired recursively
+     * more than once. */
 
-    processLockMutexPtr_[inactiveProcessLock] = 0;
+    while (ownThreadSigMutexLocked(processLockMutexPtr_[inactiveProcessLock]))
+        unlockThreadSigMutex(processLockMutexPtr_[inactiveProcessLock]);
+
+    lockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
 
     debug(1, "groom forked child");
 
