@@ -103,35 +103,6 @@ bool
 ownVoidIntMethodNil(struct VoidIntMethod self);
 
 /* -------------------------------------------------------------------------- */
-typedef int (*IntIntCharPtrPtrMethodT_)(void *self, int aArgc, char **aArgv);
-
-struct IntIntCharPtrPtrMethod
-IntIntCharPtrPtrMethod_(IntIntCharPtrPtrMethodT_ aMethod, void *aObject);
-
-struct IntIntCharPtrPtrMethod
-{
-    METHOD_CTOR_(IntIntCharPtrPtrMethod)
-
-    void                     *mObject;
-    IntIntCharPtrPtrMethodT_ mMethod;
-};
-
-#ifndef __cplusplus
-static inline struct IntIntCharPtrPtrMethod
-IntIntCharPtrPtrMethod(IntIntCharPtrPtrMethodT_ aMethod, void *aObject)
-{
-    return IntIntCharPtrPtrMethod_(aMethod, aObject);
-}
-#endif
-
-int
-callIntIntCharPtrPtrMethod(
-    struct IntIntCharPtrPtrMethod self, int aArgc, char **aArgv);
-
-bool
-ownIntIntCharPtrPtrMethodNil(struct IntIntCharPtrPtrMethod self);
-
-/* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 }

@@ -90,33 +90,3 @@ ownVoidIntMethodNil(struct VoidIntMethod self)
 }
 
 /* -------------------------------------------------------------------------- */
-struct IntIntCharPtrPtrMethod
-IntIntCharPtrPtrMethod_(IntIntCharPtrPtrMethodT_ aMethod, void *aObject)
-{
-    ensure(aMethod || ! aObject);
-
-    return (struct IntIntCharPtrPtrMethod)
-    {
-        .mMethod = aMethod,
-        .mObject = aObject,
-    };
-}
-
-/* -------------------------------------------------------------------------- */
-int
-callIntIntCharPtrPtrMethod(
-    struct IntIntCharPtrPtrMethod self, int aArgc, char **aArgv)
-{
-    ensure(self.mMethod);
-
-    return self.mMethod(self.mObject, aArgc, aArgv);
-}
-
-/* -------------------------------------------------------------------------- */
-bool
-ownIntIntCharPtrPtrMethodNil(struct IntIntCharPtrPtrMethod self)
-{
-    return ! self.mMethod;
-}
-
-/* -------------------------------------------------------------------------- */
