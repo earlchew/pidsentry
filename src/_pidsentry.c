@@ -137,44 +137,10 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-main_(void *self, int argc, char **argv)
-{
-    /* This code will run in a slave thread with signal delivery masked,
-     * leaving the main thread to handle delivery of signals. This is
-     * primarily to work around behaviour in valgrind (Bug 361615). */
-
-    struct ExitCode exitCode = { EXIT_FAILURE };
-
-    char **args;
-
-    ERROR_IF(
-        processOptions(argc, argv, &args),
-        {
-            if (EINVAL != errno)
-                message(errno,
-                        "Unable to parse command line");
-        });
-
-    if (gOptions.mCommand)
-        exitCode = cmdRunCommand(gOptions.mPidFile, args);
-    else
-        exitCode = cmdMonitorChild(args);
-
-Finally:
-
-    FINALLY({});
-
-    return exitCode.mStatus;
-}
-
 int
 main(int argc, char **argv)
 {
     struct ExitCode exitCode = { EXIT_FAILURE };
-
-    struct Program  program_;
-    struct Program *program = 0;
 
     ABORT_IF(
         Test_init("PIDSENTRY_TEST_ERROR"),
@@ -193,23 +159,30 @@ main(int argc, char **argv)
         });
 
     ABORT_IF(
-        Process_init(&program_,
-                     IntIntCharPtrPtrMethod(main_, 0),
-                     argv[0],
-                     argc,
-                     argv),
+        Process_init(argv[0]),
         {
             terminate(
                 errno,
                 "Unable to initialise process state");
         });
-    program = &program_;
 
-    exitCode = program->mExitCode;
+    char **args;
+    ERROR_IF(
+        processOptions(argc, argv, &args),
+        {
+            if (EINVAL != errno)
+                message(errno,
+                        "Unable to parse command line");
+        });
+
+    if (gOptions.mCommand)
+        exitCode = cmdRunCommand(gOptions.mPidFile, args);
+    else
+        exitCode = cmdMonitorChild(args);
 
 Finally:
 
-    Process_exit(program);
+    Process_exit();
 
     Timekeeping_exit();
 

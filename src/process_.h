@@ -279,14 +279,10 @@ fetchProcessGroupId(struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
 int
-Process_init(struct Program               *self,
-             struct IntIntCharPtrPtrMethod aMain,
-             const char                   *aArg0,
-             int                           aArgc,
-             char                        **aArgv);
+Process_init(const char *aArg0);
 
 void
-Process_exit(struct Program *self);
+Process_exit(void);
 
 /* -------------------------------------------------------------------------- */
 

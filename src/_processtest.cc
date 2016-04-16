@@ -45,20 +45,13 @@ class ProcessTest : public ::testing::Test
 {
     void SetUp()
     {
-        ASSERT_EQ(
-            0,
-            Process_init(
-                &mProgram, IntIntCharPtrPtrMethod(0, 0), __FILE__, 0, 0));
+        ASSERT_EQ(0, Process_init(__FILE__));
     }
 
     void TearDown()
     {
-        Process_exit(&mProgram);
+        Process_exit();
     }
-
-private:
-
-    struct Program mProgram;
 };
 
 TEST_F(ProcessTest, ProcessSignalName)

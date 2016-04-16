@@ -2430,32 +2430,8 @@ postProcessForkChild_(void)
 }
 
 /* -------------------------------------------------------------------------- */
-struct ProcessThread
-{
-    pthread_t                     mThread;
-    struct IntIntCharPtrPtrMethod mMain;
-    int                           mArgc;
-    char                        **mArgv;
-    int                           mExit;
-};
-
-static void *
-processThread_(void *self_)
-{
-    struct ProcessThread *self = self_;
-
-    self->mExit = callIntIntCharPtrPtrMethod(
-        self->mMain, self->mArgc, self->mArgv);
-
-    return 0;
-}
-
 int
-Process_init(struct Program               *self,
-             struct IntIntCharPtrPtrMethod aMain,
-             const char                   *aArg0,
-             int                           aArgc,
-             char                        **aArgv)
+Process_init(const char *aArg0)
 {
     int rc = -1;
 
@@ -2511,30 +2487,6 @@ Process_init(struct Program               *self,
 
     ++moduleInit_;
 
-    /* Normally, run the main program in a separate thread to leave the
-     * main thread available to handle signals. This leads to more
-     * predictable signal handling behaviour in the program. */
-
-    struct ProcessThread processThread =
-    {
-        .mMain = aMain,
-        .mArgc = aArgc,
-        .mArgv = aArgv,
-        .mExit = EXIT_FAILURE,
-    };
-
-    if (ownIntIntCharPtrPtrMethodNil(aMain))
-        processThread.mExit = EXIT_SUCCESS;
-    else
-    {
-        createThread(
-            &processThread.mThread, 0, processThread_, &processThread);
-
-        joinThread(&processThread.mThread);
-    }
-
-    self->mExitCode.mStatus = processThread.mExit;
-
     rc = 0;
 
 Finally:
@@ -2553,26 +2505,23 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-Process_exit(struct Program *self)
+Process_exit(void)
 {
-    if (self)
-    {
-        ensure( ! --moduleInit_);
+    ensure( ! --moduleInit_);
 
-        unhookProcessSigStop_();
-        unhookProcessSigCont_();
+    unhookProcessSigStop_();
+    unhookProcessSigCont_();
 
-        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-        processLockPtr_[activeProcessLock_] = 0;
+    struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
+    processLockPtr_[activeProcessLock_] = 0;
 
-        ensure(processLock);
-        closeProcessLock_(processLock);
+    ensure(processLock);
+    closeProcessLock_(processLock);
 
-        ABORT_IF(
-            errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
+    ABORT_IF(
+        errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
 
-        Error_exit();
-    }
+    Error_exit();
 }
 
 /* -------------------------------------------------------------------------- */
