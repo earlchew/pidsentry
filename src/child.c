@@ -76,7 +76,6 @@ enum PollFdChildTimerKind
 {
     POLL_FD_CHILD_TIMER_TETHER,
     POLL_FD_CHILD_TIMER_UMBILICAL,
-    POLL_FD_CHILD_TIMER_ORPHAN,
     POLL_FD_CHILD_TIMER_TERMINATION,
     POLL_FD_CHILD_TIMER_DISCONNECTION,
     POLL_FD_CHILD_TIMER_KINDS
@@ -86,7 +85,6 @@ static const char *pollFdTimerNames_[POLL_FD_CHILD_TIMER_KINDS] =
 {
     [POLL_FD_CHILD_TIMER_TETHER]        = "tether",
     [POLL_FD_CHILD_TIMER_UMBILICAL]     = "umbilical",
-    [POLL_FD_CHILD_TIMER_ORPHAN]        = "orphan",
     [POLL_FD_CHILD_TIMER_TERMINATION]   = "termination",
     [POLL_FD_CHILD_TIMER_DISCONNECTION] = "disconnection",
 };
@@ -1412,46 +1410,6 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-pollFdTimerOrphan_(void                        *self_,
-                   const struct EventClockTime *aPollTime)
-{
-    int rc = -1;
-
-    struct ChildMonitor *self = self_;
-
-    ensure(childMonitorType_ == self->mType);
-
-    /* Using PR_SET_PDEATHSIG is very attractive however the detailed
-     * discussion at the end of this thread is important:
-     *
-     * https://bugzilla.kernel.org/show_bug.cgi?id=43300
-     *
-     * In the most general case, PR_SET_PDEATHSIG is useless because
-     * it tracks the termination of the parent thread, not the parent
-     * process. */
-
-    if (1 == getppid())
-    {
-        debug(0, "orphaned");
-
-        self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_ORPHAN].mPeriod =
-            Duration(NanoSeconds(0));
-
-        activateFdTimerTermination_(
-            self, ChildTermination_Terminate, aPollTime);
-    }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 static bool
 pollFdCompletion_(void *self_)
 {
@@ -1863,18 +1821,6 @@ monitorChild(struct ChildProcess     *self,
                 .mPeriod = Duration(
                     NanoSeconds(
                         NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns / 2)),
-            },
-
-            [POLL_FD_CHILD_TIMER_ORPHAN] =
-            {
-                /* If requested to be aware when the watchdog becomes an orphan,
-                 * check if init(8) is the parent of this process. If this is
-                 * detected, start sending signals to the child to encourage it
-                 * to exit. */
-
-                .mAction = pollFdTimerOrphan_,
-                .mSince  = EVENTCLOCKTIME_INIT,
-                .mPeriod = Duration(NSECS(Seconds(gOptions.mOrphaned ? 3 : 0))),
             },
 
             [POLL_FD_CHILD_TIMER_TERMINATION] =
