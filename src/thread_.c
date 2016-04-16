@@ -138,6 +138,14 @@ joinThread(pthread_t *self)
 
 /* -------------------------------------------------------------------------- */
 void
+cancelThread(pthread_t *self)
+{
+    ABORT_IF(
+        (errno = pthread_cancel(*self)));
+}
+
+/* -------------------------------------------------------------------------- */
+void
 createThreadAttr(pthread_attr_t *self)
 {
     ABORT_IF(

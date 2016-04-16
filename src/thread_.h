@@ -88,6 +88,9 @@ createThread(pthread_t      *self,
 void *
 joinThread(pthread_t *self);
 
+void
+cancelThread(pthread_t *self);
+
 /* -------------------------------------------------------------------------- */
 void
 createThreadAttr(pthread_attr_t *self);
