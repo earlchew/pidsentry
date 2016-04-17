@@ -67,6 +67,7 @@ check_PROGRAMS     += _fdtest
 check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
 check_PROGRAMS     += _processtest
+check_PROGRAMS     += _printftest
 check_PROGRAMS     += _threadtest
 noinst_PROGRAMS     =
 noinst_SCRIPTS      = $(check_SCRIPTS)
@@ -105,6 +106,9 @@ _fdtest_LDADD   = $(TEST_LIBS)
 
 _parsetest_SOURCES = _parsetest.cc
 _parsetest_LDADD   = $(TEST_LIBS)
+
+_printftest_SOURCES = _printftest.cc
+_printftest_LDADD   = $(TEST_LIBS)
 
 _processtest_SOURCES = _processtest.cc
 _processtest_LDADD   = $(TEST_LIBS)
