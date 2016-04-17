@@ -33,6 +33,7 @@
 #include "fd_.h"
 #include "test_.h"
 #include "thread_.h"
+#include "printf_.h"
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -330,7 +331,7 @@ dprint_(
             dprintf(STDERR_FILENO, "- lock error %d - ", aLockErr);
     }
 
-    vdprintf(STDERR_FILENO, aFmt, aArgs);
+    xvdprintf(STDERR_FILENO, aFmt, aArgs);
     if ( ! aErrCode)
         dprintf(STDERR_FILENO, "\n");
     else if (aErrText)
@@ -505,7 +506,7 @@ print_(
                 }
             }
 
-            vfprintf(printBuf_.mFile, aFmt, aArgs);
+            xvfprintf(printBuf_.mFile, aFmt, aArgs);
             if ( ! aErrCode)
                 fprintf(printBuf_.mFile, "\n");
             else if (errText)
@@ -662,6 +663,9 @@ Error_init(void)
 
     if (1 == ++moduleInit_)
     {
+        ABORT_IF(
+            Printf_init());
+
         FILE *file;
         ERROR_UNLESS(
             (file = open_memstream(&printBuf_.mBuf, &printBuf_.mSize)));
@@ -702,6 +706,8 @@ Error_exit(void)
         free(printBuf_.mBuf);
 
         destroyProcessAppLock(appLock);
+
+        Printf_exit();
     }
 }
 
