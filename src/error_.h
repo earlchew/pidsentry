@@ -31,6 +31,7 @@
 
 #include "options_.h"
 #include "process_.h"
+#include "printf_.h"
 #include "test_.h"
 #include "macros_.h"
 
@@ -164,24 +165,25 @@ extern "C" {
         goto Error_;                            \
     Error_
 
-#define finally_warn_if_(Sense_, Predicate_, Self_, PrintfMethod_, Fmt_, ...) \
+#define finally_warn_if_(Sense_, Predicate_, Self_, PrintfMethod_, ...) \
     do                                                                        \
     {                                                                         \
         if ( Sense_ (Predicate_))                                             \
         {                                                                     \
-            warn(0,                                                           \
-                 "%" PRIs_Method Fmt_,                                        \
-                 FMTs_Method(Self_, PrintfMethod_), ## __VA_ARGS__);          \
+            Error_warn_(0,                                                    \
+                 "%" PRIs_Method                                              \
+                 IFEMPTY("", " ", CAR(__VA_ARGS__)) CAR(__VA_ARGS__),         \
+                 FMTs_Method(Self_, PrintfMethod_) CDR(__VA_ARGS__));         \
         }                                                                     \
     } while (0)
 
-#define finally_warn_if(Predicate_, Self_, PrintfMethod_, Fmt_, ...)    \
+#define finally_warn_if(Predicate_, Self_, PrintfMethod_, ...)          \
     finally_warn_if_(                                                   \
-        /*!!*/, Predicate_, Self_, PrintfMethod_, Fmt_, ## __VA_ARGS__)
+        /*!!*/, Predicate_, Self_, PrintfMethod_, ## __VA_ARGS__)
 
-#define finally_warn_unless(Predicate_, Self_, PrintfMethod_, Fmt_, ...) \
+#define finally_warn_unless(Predicate_, Self_, PrintfMethod_, ...)       \
     finally_warn_if_(                                                    \
-        !, Predicate_, Self_, PrintfMethod_, Fmt_, ## __VA_ARGS__)
+        !, Predicate_, Self_, PrintfMethod_, ## __VA_ARGS__)
 
 /* -------------------------------------------------------------------------- */
 struct ErrorUnwindFrame_

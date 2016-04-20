@@ -29,6 +29,8 @@
 
 #include "error_.h"
 
+#include "printf_.h"
+
 #include <unistd.h>
 
 #undef terminate
@@ -39,7 +41,20 @@
 
 #include "gtest/gtest.h"
 
-TEST(ErrorTest, ErrnoText)
+class ErrorTest : public ::testing::Test
+{
+    void SetUp()
+    {
+        ASSERT_EQ(0, Error_init());
+    }
+
+    void TearDown()
+    {
+        Error_exit();
+    }
+};
+
+TEST_F(ErrorTest, ErrnoText)
 {
     Error_warn_(EPERM, "Test EPERM");
     Error_warn_(0,     "Test errno 0");
@@ -59,6 +74,12 @@ fail()
 }
 
 static int
+print(const void *self_, FILE *aFile)
+{
+    return fprintf(aFile, "<Test Print Context>");
+}
+
+static int
 testFinallyIfOk()
 {
     int rc = -1;
@@ -73,7 +94,10 @@ testFinallyIfOk()
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, 0, print);
+    });
 
     return rc;
 }
@@ -102,6 +126,8 @@ Finally:
 
     FINALLY
     ({
+        finally_warn_if(rc, 0, print, "Error context at testFinallyIfFail_1");
+
         ABORT_UNLESS(
             testFinallyIfFail_0());
     });
@@ -126,6 +152,8 @@ Finally:
 
     FINALLY
     ({
+        finally_warn_if(rc, 0, print, "Error context at testFinallyIfFail_2");
+
         ABORT_UNLESS(
             testFinallyIfFail_1());
     });
@@ -133,7 +161,7 @@ Finally:
     return rc;
 }
 
-TEST(ErrorTest, FinallyIf)
+TEST_F(ErrorTest, FinallyIf)
 {
     int errCode;
     int sigErrCode;
