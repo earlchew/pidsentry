@@ -36,4 +36,17 @@
 
 #define AUTO(Var_, Value_) __typeof__((Value_)) Var_ = (Value_)
 
+#define CAR_(Car_, ...) Car_
+#define CDR_(Car_, ...) , ## __VA_ARGS__
+
+#define CAR(...)        CAR_(__VA_ARGS__)
+#define CDR(...)        CDR_(__VA_ARGS__)
+
+#define IFEMPTY(True_, False_, ...)  IFEMPTY_(True_, False_, __VA_ARGS__)
+#define IFEMPTY_(True_, False_, ...) IFEMPTY_1_(IFEMPTY_COMMA_ \
+                                                __VA_ARGS__ (), True_, False_)
+#define IFEMPTY_COMMA_()             ,
+#define IFEMPTY_1_(A_, B_, C_)       IFEMPTY_2_(A_, B_, C_)
+#define IFEMPTY_2_(A_, B_, C_, ...)  C_
+
 #endif /* MACROS_H */
