@@ -142,6 +142,9 @@ main(int argc, char **argv)
 {
     struct ExitCode exitCode = { EXIT_FAILURE };
 
+    struct TimeKeepingModule  timeKeepingModule_;
+    struct TimeKeepingModule *timeKeepingModule = 0;
+
     ABORT_IF(
         Test_init("PIDSENTRY_TEST_ERROR"),
         {
@@ -151,12 +154,8 @@ main(int argc, char **argv)
         });
 
     ABORT_IF(
-        Timekeeping_init(),
-        {
-            terminate(
-                0,
-                "Unable to initialise timekeeping module");
-        });
+        Timekeeping_init(&timeKeepingModule_));
+    timeKeepingModule = &timeKeepingModule_;
 
     ABORT_IF(
         Process_init(argv[0]),
@@ -184,7 +183,7 @@ Finally:
 
     Process_exit();
 
-    Timekeeping_exit();
+    Timekeeping_exit(timeKeepingModule);
 
     if (testMode(TestLevelError))
         dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());

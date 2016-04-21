@@ -419,19 +419,32 @@ monotonicSleep(struct Duration aPeriod)
 
 /* -------------------------------------------------------------------------- */
 int
-Timekeeping_init(void)
+Timekeeping_init(struct TimeKeepingModule *self)
 {
+    int rc = -1;
+
+    self->mModule = self;
+
     if (++moduleInit_ == 1)
         eventclockTime_init_();
 
-    return 0;
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
 void
-Timekeeping_exit(void)
+Timekeeping_exit(struct TimeKeepingModule *self)
 {
-    --moduleInit_;
+    if (self)
+    {
+        --moduleInit_;
+    }
 }
 
 /* -------------------------------------------------------------------------- */

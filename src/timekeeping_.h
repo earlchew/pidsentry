@@ -40,6 +40,11 @@
 extern "C" {
 #endif
 
+struct TimeKeepingModule
+{
+    struct TimeKeepingModule *mModule;
+};
+
 struct MonotonicTime
 {
     struct NanoSeconds monotonic;
@@ -121,10 +126,10 @@ deadlineTimeExpired(
 
 /* -------------------------------------------------------------------------- */
 int
-Timekeeping_init(void);
+Timekeeping_init(struct TimeKeepingModule *self);
 
 void
-Timekeeping_exit(void);
+Timekeeping_exit(struct TimeKeepingModule *self);
 
 /* -------------------------------------------------------------------------- */
 
