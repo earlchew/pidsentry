@@ -106,6 +106,7 @@ static struct
 
 static unsigned              moduleInit_;
 static bool                  moduleInitOnce_;
+static bool                  moduleInitAtFork_;
 static sigset_t              processSigMask_;
 static const char           *processArg0_;
 static const char           *programName_;
@@ -2438,9 +2439,14 @@ postProcessForkChild_(void)
 
 /* -------------------------------------------------------------------------- */
 int
-Process_init(const char *aArg0)
+Process_init(struct ProcessModule *self, const char *aArg0)
 {
     int rc = -1;
+
+    bool hookedSignals = false;
+
+    self->mModule      = self;
+    self->mErrorModule = 0;
 
     ensure( ! moduleInit_);
 
@@ -2456,8 +2462,6 @@ Process_init(const char *aArg0)
 
     if ( ! moduleInitOnce_)
     {
-        moduleInitOnce_ = true;
-
         processTimeBase_ = monotonicTime();
         do
             --processTimeBase_.monotonic.ns;
@@ -2465,6 +2469,11 @@ Process_init(const char *aArg0)
 
         srandom(ownProcessId().mPid);
 
+        moduleInitOnce_ = true;
+    }
+
+    if ( ! moduleInitAtFork_)
+    {
         /* Ensure that the synchronisation and signal functions are
          * prepared when a fork occurs so that they will be available
          * for use in the child process. Be aware that once functions
@@ -2475,10 +2484,13 @@ Process_init(const char *aArg0)
                 prepareProcessFork_,
                 postProcessForkParent_,
                 postProcessForkChild_));
+
+        moduleInitAtFork_ = true;
     }
 
     ERROR_IF(
-        Error_init());
+        Error_init(&self->mErrorModule_));
+    self->mErrorModule = &self->mErrorModule_;
 
     ERROR_IF(
         errno = pthread_sigmask(SIG_BLOCK, 0, &processSigMask_));
@@ -2491,6 +2503,7 @@ Process_init(const char *aArg0)
 
     hookProcessSigCont_();
     hookProcessSigStop_();
+    hookedSignals = true;
 
     ++moduleInit_;
 
@@ -2502,8 +2515,19 @@ Finally:
     ({
         if (rc)
         {
-            closeProcessLock_(processLockPtr_[activeProcessLock_]);
+            if (hookedSignals)
+            {
+                unhookProcessSigStop_();
+                unhookProcessSigCont_();
+            }
+
+            struct ProcessLock *processLock =
+                processLockPtr_[activeProcessLock_];
             processLockPtr_[activeProcessLock_] = 0;
+
+            closeProcessLock_(processLock);
+
+            Error_exit(self->mErrorModule);
         }
     });
 
@@ -2512,23 +2536,26 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-Process_exit(void)
+Process_exit(struct ProcessModule *self)
 {
-    ensure( ! --moduleInit_);
+    if (self)
+    {
+        ensure( ! --moduleInit_);
 
-    unhookProcessSigStop_();
-    unhookProcessSigCont_();
+        unhookProcessSigStop_();
+        unhookProcessSigCont_();
 
-    struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-    processLockPtr_[activeProcessLock_] = 0;
+        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
+        processLockPtr_[activeProcessLock_] = 0;
 
-    ensure(processLock);
-    closeProcessLock_(processLock);
+        ensure(processLock);
+        closeProcessLock_(processLock);
 
-    ABORT_IF(
-        errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
+        ABORT_IF(
+            errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
 
-    Error_exit();
+        Error_exit(self->mErrorModule);
+    }
 }
 
 /* -------------------------------------------------------------------------- */

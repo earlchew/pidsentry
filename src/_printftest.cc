@@ -35,13 +35,17 @@ class PrintfTest : public ::testing::Test
 {
     void SetUp()
     {
-        ASSERT_EQ(0, Printf_init());
+        ASSERT_EQ(0, Printf_init(&mModule));
     }
 
     void TearDown()
     {
-        Printf_exit();
+        Printf_exit(&mModule);
     }
+
+private:
+
+    struct PrintfModule mModule;
 };
 
 class TestClass

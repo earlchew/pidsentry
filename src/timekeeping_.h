@@ -29,7 +29,7 @@
 #ifndef TIMEKEEPING_H
 #define TIMEKEEPING_H
 
-#include "process_.h"
+#include "timescale_.h"
 
 #include <stdbool.h>
 #include <signal.h>

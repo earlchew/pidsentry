@@ -32,6 +32,7 @@
 #include "error_.h"
 #include "macros_.h"
 #include "fd_.h"
+#include "process_.h"
 
 #include <errno.h>
 #include <inttypes.h>

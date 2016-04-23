@@ -34,6 +34,7 @@
 #include "test_.h"
 #include "timekeeping_.h"
 #include "parse_.h"
+#include "process_.h"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -38,6 +38,11 @@
 extern "C" {
 #endif
 
+struct PrintfModule
+{
+    struct PrintfModule *mModule;
+};
+
 #define PRIs_Method "%%p<struct PrintfMethod>%%"
 #define FMTs_Method(Object_, Method_)                   \
     ({                                                  \
@@ -91,10 +96,10 @@ xvdprintf(int aFd, const char *aFmt, va_list);
 
 /* -------------------------------------------------------------------------- */
 int
-Printf_init(void);
+Printf_init(struct PrintfModule *self);
 
 void
-Printf_exit(void);
+Printf_exit(struct PrintfModule *self);
 
 /* -------------------------------------------------------------------------- */
 

@@ -34,6 +34,7 @@
 #include "env_.h"
 #include "pidfile_.h"
 #include "timescale_.h"
+#include "process_.h"
 
 #include <unistd.h>
 #include <stdlib.h>

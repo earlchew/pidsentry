@@ -39,6 +39,7 @@
 #include "test_.h"
 #include "error_.h"
 #include "macros_.h"
+#include "process_.h"
 
 #include <stdlib.h>
 #include <unistd.h>

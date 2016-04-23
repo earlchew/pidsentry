@@ -33,25 +33,23 @@
 
 #include <unistd.h>
 
-#undef terminate
-#undef warn
-#undef debug
-#undef breadcrumb
-#undef message
-
 #include "gtest/gtest.h"
 
 class ErrorTest : public ::testing::Test
 {
     void SetUp()
     {
-        ASSERT_EQ(0, Error_init());
+        ASSERT_EQ(0, Error_init(&mModule));
     }
 
     void TearDown()
     {
-        Error_exit();
+        Error_exit(&mModule);
     }
+
+private:
+
+    struct ErrorModule mModule;
 };
 
 TEST_F(ErrorTest, ErrnoText)

@@ -34,6 +34,7 @@
 #include "test_.h"
 #include "thread_.h"
 #include "printf_.h"
+#include "process_.h"
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -655,16 +656,20 @@ terminate_(
 
 /* -------------------------------------------------------------------------- */
 int
-Error_init(void)
+Error_init(struct ErrorModule *self)
 {
     int rc = -1;
 
     struct ProcessAppLock *appLock = 0;
 
-    if (1 == ++moduleInit_)
+    self->mModule       = self;
+    self->mPrintfModule = 0;
+
+    if ( ! moduleInit_)
     {
-        ABORT_IF(
-            Printf_init());
+        ERROR_IF(
+            Printf_init(&self->mPrintfModule_));
+        self->mPrintfModule = &self->mPrintfModule_;
 
         FILE *file;
         ERROR_UNLESS(
@@ -675,6 +680,8 @@ Error_init(void)
         printBuf_.mFile = file;
     }
 
+    ++moduleInit_;
+
     rc = 0;
 
 Finally:
@@ -682,6 +689,23 @@ Finally:
     FINALLY
     ({
         destroyProcessAppLock(appLock);
+
+        if (rc)
+        {
+            FILE *file = printBuf_.mFile;
+
+            if (file)
+            {
+                printBuf_.mFile = 0;
+                printBuf_.mBuf  = 0;
+                printBuf_.mSize = 0;
+
+                ABORT_IF(
+                    fclose(file));
+            }
+
+            Printf_exit(self->mPrintfModule);
+        }
     });
 
     return rc;
@@ -689,25 +713,29 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-Error_exit(void)
+Error_exit(struct ErrorModule *self)
 {
-    if (0 == --moduleInit_)
+    if (self)
     {
-        struct ProcessAppLock *appLock = createProcessAppLock();
+        if (0 == --moduleInit_)
+        {
+            struct ProcessAppLock *appLock = createProcessAppLock();
 
-        FILE *file = printBuf_.mFile;
+            FILE *file = printBuf_.mFile;
 
-        printBuf_.mFile = 0;
-        printBuf_.mBuf  = 0;
-        printBuf_.mSize = 0;
+            printBuf_.mFile = 0;
+            printBuf_.mBuf  = 0;
+            printBuf_.mSize = 0;
 
-        ABORT_IF(fclose(file));
+            ABORT_IF(
+                fclose(file));
 
-        free(printBuf_.mBuf);
+            free(printBuf_.mBuf);
 
-        destroyProcessAppLock(appLock);
+            destroyProcessAppLock(appLock);
 
-        Printf_exit();
+            Printf_exit(self->mPrintfModule);
+        }
     }
 }
 

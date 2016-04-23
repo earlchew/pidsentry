@@ -31,6 +31,8 @@
 
 #include "timekeeping_.h"
 
+#include <limits.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

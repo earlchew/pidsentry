@@ -30,7 +30,6 @@
 #define ERROR_H
 
 #include "options_.h"
-#include "process_.h"
 #include "printf_.h"
 #include "test_.h"
 #include "macros_.h"
@@ -41,6 +40,14 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct ErrorModule
+{
+    struct ErrorModule *mModule;
+
+    struct PrintfModule  mPrintfModule_;
+    struct PrintfModule *mPrintfModule;
+};
 
 /* -------------------------------------------------------------------------- */
 /* Finally Unwinding
@@ -253,11 +260,14 @@ void
 logErrorFrameSequence(void);
 
 /* -------------------------------------------------------------------------- */
+#ifndef __cplusplus
 #define breadcrumb Error_breadcrumb_
+#define debug Error_debug_
+#endif
+
 #define Error_breadcrumb_() \
     debug_(__func__, __FILE__, __LINE__, ".")
 
-#define debug Error_debug_
 #define Error_debug_(aLevel, ...)                                       \
     do                                                                  \
         if ((aLevel) < gOptions.mDebug)                                 \
@@ -271,7 +281,10 @@ debug_(
     __attribute__ ((__format__(__printf__, 4, 5)));
 
 /* -------------------------------------------------------------------------- */
+#ifndef __cplusplus
 #define ensure Error_ensure_
+#endif
+
 #define Error_ensure_(aPredicate)                               \
     do                                                          \
         if ( ! (aPredicate))                                    \
@@ -282,7 +295,10 @@ void
 ensure_(const char *aFunction, const char *aFile, unsigned aLine, ...);
 
 /* -------------------------------------------------------------------------- */
+#ifndef __cplusplus
 #define warn Error_warn_
+#endif
+
 #define Error_warn_(aErrCode, ...) \
     warn_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
@@ -294,7 +310,10 @@ warn_(
     __attribute__ ((__format__(__printf__, 5, 6)));
 
 /* -------------------------------------------------------------------------- */
+#ifndef __cplusplus
 #define message Error_message_
+#endif
+
 #define Error_message_(aErrCode, ...) \
     message_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
@@ -306,8 +325,10 @@ message_(
     __attribute__ ((__format__(__printf__, 5, 6)));
 
 /* -------------------------------------------------------------------------- */
+#ifndef __cplusplus
 #define terminate(aErrCode, ...) \
     terminate(aErrCode, __func__, __FILE__, __LINE__, ## __VA_ARGS__)
+#endif
 
 #define Error_terminate_(aErrCode, ...) \
     terminate_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
@@ -321,10 +342,10 @@ terminate_(
 
 /* -------------------------------------------------------------------------- */
 int
-Error_init(void);
+Error_init(struct ErrorModule *self);
 
 void
-Error_exit(void);
+Error_exit(struct ErrorModule *self);
 
 /* -------------------------------------------------------------------------- */
 

@@ -38,6 +38,11 @@ extern "C" {
 
 struct ErrorFrame;
 
+struct TestModule
+{
+    struct TestModule *mModule;
+};
+
 /* -------------------------------------------------------------------------- */
 #define TEST_RACE(...)                          \
     do                                          \
@@ -74,10 +79,10 @@ testErrorLevel(void);
 
 /* -------------------------------------------------------------------------- */
 int
-Test_init(const char *aErrorEnv);
+Test_init(struct TestModule *self, const char *aErrorEnv);
 
 void
-Test_exit(void);
+Test_exit(struct TestModule *self);
 
 /* -------------------------------------------------------------------------- */
 

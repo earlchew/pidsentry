@@ -425,8 +425,10 @@ Timekeeping_init(struct TimeKeepingModule *self)
 
     self->mModule = self;
 
-    if (++moduleInit_ == 1)
+    if ( ! moduleInit_)
         eventclockTime_init_();
+
+    ++moduleInit_;
 
     rc = 0;
 
@@ -442,9 +444,7 @@ void
 Timekeeping_exit(struct TimeKeepingModule *self)
 {
     if (self)
-    {
         --moduleInit_;
-    }
 }
 
 /* -------------------------------------------------------------------------- */

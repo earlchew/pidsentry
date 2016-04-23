@@ -32,6 +32,7 @@
 #include "error_.h"
 #include "timekeeping_.h"
 #include "test_.h"
+#include "process_.h"
 
 #include <errno.h>
 #include <unistd.h>

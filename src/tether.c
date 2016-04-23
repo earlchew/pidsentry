@@ -33,6 +33,7 @@
 #include "pollfd_.h"
 #include "error_.h"
 #include "thread_.h"
+#include "process_.h"
 
 #include <unistd.h>
 #include <errno.h>

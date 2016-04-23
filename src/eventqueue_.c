@@ -29,7 +29,9 @@
 
 #include "eventqueue_.h"
 #include "error_.h"
+#include "timescale_.h"
 
+#include <limits.h>
 #include <sys/epoll.h>
 
 /* -------------------------------------------------------------------------- */

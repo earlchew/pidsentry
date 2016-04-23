@@ -32,6 +32,7 @@
 #include "timescale_.h"
 #include "method_.h"
 #include "pid_.h"
+#include "error_.h"
 
 #include <limits.h>
 
@@ -47,6 +48,14 @@ struct BootClockTime;
 struct Pipe;
 struct File;
 struct ProcessAppLock;
+
+struct ProcessModule
+{
+    struct ProcessModule *mModule;
+
+    struct ErrorModule  mErrorModule_;
+    struct ErrorModule *mErrorModule;
+};
 
 #define PRId_ExitCode "d"
 #define FMTd_ExitCode(ExitCode) ((ExitCode).mStatus)
@@ -282,10 +291,10 @@ fetchProcessGroupId(struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
 int
-Process_init(const char *aArg0);
+Process_init(struct ProcessModule *self, const char *aArg0);
 
 void
-Process_exit(void);
+Process_exit(struct ProcessModule *self);
 
 /* -------------------------------------------------------------------------- */
 

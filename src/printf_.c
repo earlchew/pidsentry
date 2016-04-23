@@ -255,11 +255,13 @@ printf_method_info_(
 
 /* -------------------------------------------------------------------------- */
 int
-Printf_init(void)
+Printf_init(struct PrintfModule *self)
 {
     int rc = -1;
 
-    if (1 == ++moduleInit_)
+    self->mModule = self;
+
+    if ( ! moduleInit_)
     {
         if ( ! moduleInitPrintf_)
         {
@@ -273,6 +275,8 @@ Printf_init(void)
         }
     }
 
+    ++moduleInit_;
+
     rc = 0;
 
 Finally:
@@ -284,9 +288,12 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-Printf_exit(void)
+Printf_exit(struct PrintfModule *self)
 {
-    --moduleInit_;
+    if (self)
+    {
+        --moduleInit_;
+    }
 }
 
 /* -------------------------------------------------------------------------- */

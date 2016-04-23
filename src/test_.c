@@ -138,13 +138,15 @@ testFinally(const struct ErrorFrame *aFrame)
 
 /* -------------------------------------------------------------------------- */
 int
-Test_init(const char *aErrorEnv)
+Test_init(struct TestModule *self, const char *aErrorEnv)
 {
     int rc = -1;
 
     struct TestState *state = MAP_FAILED;
 
-    if (1 == ++moduleInit_)
+    self->mModule = self;
+
+    if ( ! moduleInit_)
     {
         uint64_t errorTrigger = 0;
 
@@ -162,11 +164,12 @@ Test_init(const char *aErrorEnv)
              MAP_FAILED == state));
 
         testState_ = state;
-        state   = MAP_FAILED;
 
         testState_->mError   = 1;
         testState_->mTrigger = errorTrigger;
     }
+
+    ++moduleInit_;
 
     rc = 0;
 
@@ -174,9 +177,12 @@ Finally:
 
     FINALLY
     ({
-        if (MAP_FAILED != state)
-            ABORT_IF(
-                munmap(state, sizeof(*state)));
+        if (rc)
+        {
+            if (MAP_FAILED != state)
+                ABORT_IF(
+                    munmap(state, sizeof(*state)));
+        }
     });
 
     return rc;
@@ -184,15 +190,18 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-Test_exit(void)
+Test_exit(struct TestModule *self)
 {
-    struct TestState *state = testState_;
-
-    if (state)
+    if (self)
     {
-        testState_ = 0;
-        ABORT_IF(
-            munmap(state, sizeof(*state)));
+        struct TestState *state = testState_;
+
+        if (state)
+        {
+            testState_ = 0;
+            ABORT_IF(
+                munmap(state, sizeof(*state)));
+        }
     }
 }
 

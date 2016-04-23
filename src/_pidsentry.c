@@ -142,28 +142,26 @@ main(int argc, char **argv)
 {
     struct ExitCode exitCode = { EXIT_FAILURE };
 
+    struct TestModule  testModule_;
+    struct TestModule *testModule = 0;
+
     struct TimeKeepingModule  timeKeepingModule_;
     struct TimeKeepingModule *timeKeepingModule = 0;
 
+    struct ProcessModule  processModule_;
+    struct ProcessModule *processModule = 0;
+
     ABORT_IF(
-        Test_init("PIDSENTRY_TEST_ERROR"),
-        {
-            terminate(
-                0,
-                "Unable to initialise test module");
-        });
+        Test_init(&testModule_, "PIDSENTRY_TEST_ERROR"));
+    testModule = &testModule_;
 
     ABORT_IF(
         Timekeeping_init(&timeKeepingModule_));
     timeKeepingModule = &timeKeepingModule_;
 
     ABORT_IF(
-        Process_init(argv[0]),
-        {
-            terminate(
-                errno,
-                "Unable to initialise process state");
-        });
+        Process_init(&processModule_, argv[0]));
+    processModule = &processModule_;
 
     char **args;
     ERROR_IF(
@@ -181,13 +179,13 @@ main(int argc, char **argv)
 
 Finally:
 
-    Process_exit();
+    Process_exit(processModule);
 
     Timekeeping_exit(timeKeepingModule);
 
     if (testMode(TestLevelError))
         dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());
-    Test_exit();
+    Test_exit(testModule);
 
     return exitCode.mStatus;
 }
