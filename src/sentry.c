@@ -35,6 +35,7 @@
 #include "pidfile_.h"
 #include "error_.h"
 #include "fd_.h"
+#include "process_.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -483,7 +484,8 @@ createSentry(struct Sentry *self,
          * received the indication that it can start running. */
 
         ABORT_IF(
-            waitBellSocketPairParent(self->mSyncSocket, 0) && EPIPE != errno,
+            waitBellSocketPairParent(self->mSyncSocket, 0) &&
+            EPIPE != errno && ENOENT != errno,
             {
                 terminate(
                     errno,
