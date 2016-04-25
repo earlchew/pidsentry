@@ -507,7 +507,15 @@ closeTetherThread(struct TetherThread *self)
             unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
         }
 
-        (void) joinThread(&self->mThread);
+        void *tetherReturn;
+        ABORT_IF(
+            (tetherReturn = joinThread(&self->mThread)),
+            {
+                terminate(
+                    0,
+                    "Unexpected return value %p from tether thread",
+                    tetherReturn);
+            });
 
         ABORT_IF(
             unwatchProcessClock(),
