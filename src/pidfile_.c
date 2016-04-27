@@ -56,6 +56,15 @@
 
 /* -------------------------------------------------------------------------- */
 static int
+printPidFile_(const void *self_, FILE *aFile)
+{
+    const struct PidFile *self = self_;
+
+    return fprintf(aFile, "<pidfile %p %s>", self, self->mPathName.mFileName);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
 openPidFile_(struct PidFile *self, const char *aFileName)
 {
     int rc = -1;
@@ -89,7 +98,10 @@ lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
 {
     int rc = -1;
 
-    debug(0, "lock %s '%s'", aLockType, self->mPathName.mFileName);
+    debug(0,
+          "lock %s %" PRIs_Method,
+          aLockType,
+          FMTs_Method(self, printPidFile_));
 
     ensure(aLock);
     ensure(LOCK_UN != aLock);
@@ -271,8 +283,8 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
-releaseLockPidFile(struct PidFile *self)
+static int
+releasePidFileLock_(struct PidFile *self)
 {
     int rc = -1;
 
@@ -284,7 +296,9 @@ releaseLockPidFile(struct PidFile *self)
 
     self->mLock = LOCK_UN;
 
-    debug(0, "unlock '%s'", self->mPathName.mFileName);
+    debug(0,
+          "unlock %" PRIs_Method,
+          FMTs_Method(self, printPidFile_));
 
     rc = 0;
 
@@ -300,13 +314,13 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-acquireWriteLockPidFile_(struct PidFile *self)
+acquirePidFileWriteLock_(struct PidFile *self)
 {
     return lockPidFile_(self, LOCK_EX, "exclusive");
 }
 
 int
-acquireWriteLockPidFile(struct PidFile *self)
+acquirePidFileWriteLock(struct PidFile *self)
 {
     int rc = -1;
 
@@ -319,7 +333,7 @@ acquireWriteLockPidFile(struct PidFile *self)
         O_RDONLY != (flags & O_ACCMODE));
 
     ERROR_IF(
-        acquireWriteLockPidFile_(self));
+        acquirePidFileWriteLock_(self));
 
     rc = 0;
 
@@ -332,7 +346,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-acquireReadLockPidFile(struct PidFile *self)
+acquirePidFileReadLock(struct PidFile *self)
 {
     return lockPidFile_(self, LOCK_SH, "shared");
 }
@@ -375,6 +389,52 @@ destroyPidFile(struct PidFile *self)
 
 /* -------------------------------------------------------------------------- */
 static int
+detectPidFileZombie_(const struct PidFile *self)
+{
+    int rc = -1;
+
+    /* The pidfile has become a zombie if it was deleted, and either
+     * no longer exists, or replaced by a different file in the
+     * same directory.
+     *
+     * Return -1 on error, 0 if the pidfile is not a zombie, or 1 if
+     * the pidfile is zombie.
+     */
+
+    struct stat fileStatus;
+
+    int err;
+    ERROR_IF(
+        (err = fstatPathName(
+            &self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW),
+         err && ENOENT != errno));
+
+    bool zombie;
+
+    if (err)
+        zombie = true;
+    else
+    {
+        struct stat fdStatus;
+
+        ERROR_IF(
+            fstatFile(self->mFile, &fdStatus));
+
+        zombie = ( fdStatus.st_dev != fileStatus.st_dev ||
+                   fdStatus.st_ino != fileStatus.st_ino );
+    }
+
+    rc = zombie;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
 unlinkPidFile_(struct PidFile *self)
 {
     int rc = -1;
@@ -390,7 +450,7 @@ unlinkPidFile_(struct PidFile *self)
 
     int zombie;
     ERROR_IF(
-        (zombie = detectPidFileZombie(self),
+        (zombie = detectPidFileZombie_(self),
          0 > zombie));
 
     /* If the pidfile is a zombie, it is no longer present in its
@@ -469,7 +529,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             self->mFile = &self->mFile_;
 
             ERROR_IF(
-                acquireWriteLockPidFile_(self));
+                acquirePidFileWriteLock_(self));
 
             /* If the pre-existing pidfile names a valid process then give
              * up since it means that the requested name is already taken.
@@ -494,13 +554,12 @@ openPidFile(struct PidFile *self, unsigned aFlags)
                  -1 == unlinked));
 
             if (unlinked)
-                debug(
-                    0,
-                    "removing existing pidfile '%s'",
-                    self->mPathName.mFileName);
+                debug(0,
+                      "removing existing file %" PRIs_Method,
+                      FMTs_Method(self, printPidFile_));
 
             ERROR_IF(
-                releaseLockPidFile(self));
+                releasePidFileLock_(self));
 
             closeFile(self->mFile);
 
@@ -556,52 +615,6 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
-detectPidFileZombie(const struct PidFile *self)
-{
-    int rc = -1;
-
-    /* The pidfile has become a zombie if it was deleted, and either
-     * no longer exists, or replaced by a different file in the
-     * same directory.
-     *
-     * Return -1 on error, 0 if the pidfile is not a zombie, or 1 if
-     * the pidfile is zombie.
-     */
-
-    struct stat fileStatus;
-
-    int err;
-    ERROR_IF(
-        (err = fstatPathName(
-            &self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW),
-         err && ENOENT != errno));
-
-    bool zombie;
-
-    if (err)
-        zombie = true;
-    else
-    {
-        struct stat fdStatus;
-
-        ERROR_IF(
-            fstatFile(self->mFile, &fdStatus));
-
-        zombie = ( fdStatus.st_dev != fileStatus.st_dev ||
-                   fdStatus.st_ino != fileStatus.st_ino );
-    }
-
-    rc = zombie;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 void
 closePidFile(struct PidFile *self)
 {
@@ -622,8 +635,8 @@ closePidFile(struct PidFile *self)
                 {
                     terminate(
                         errno,
-                        "Unable to truncate pid file '%s'",
-                        self->mPathName.mFileName);
+                        "Unable to truncate %" PRIs_Method,
+                        FMTs_Method(self, printPidFile_));
                 });
 
             /* In theory, ENOENT should not occur since the pidfile
@@ -639,8 +652,8 @@ closePidFile(struct PidFile *self)
                 {
                     terminate(
                         errno,
-                        "Unable to unlink pid file '%s'",
-                        self->mPathName.mFileName);
+                        "Unable to unlink %" PRIs_Method,
+                        FMTs_Method(self, printPidFile_));
                 });
         }
 
@@ -652,10 +665,10 @@ closePidFile(struct PidFile *self)
 }
 
 /* -------------------------------------------------------------------------- */
-int
-writePidFile(struct PidFile           *self,
-             struct Pid                aPid,
-             const struct sockaddr_un *aPidServerAddr)
+static int
+writePidFile_(struct PidFile           *self,
+              struct Pid                aPid,
+              const struct sockaddr_un *aPidServerAddr)
 {
     int   rc        = -1;
     char *signature = 0;
@@ -709,6 +722,82 @@ Finally:
     FINALLY
     ({
         free(signature);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+writePidFile(struct PidFile           *self,
+             struct Pid                aPid,
+             const struct sockaddr_un *aPidServerAddr)
+{
+    int rc = -1;
+
+    for (int zombie = -1; zombie; )
+    {
+        if (0 < zombie)
+        {
+            /* If the pidfile has become a zombie, it is possible to
+             * delete it here, but do not attempt to do so, and instead
+             * rely on the correct deletion semantics to be used when
+             * a new attempt is made to open the pidfile. */
+
+            ERROR_IF(
+                releasePidFileLock_(self));
+
+            debug(0,
+                  "disregarding zombie %" PRIs_Method,
+                  FMTs_Method(self, printPidFile_));
+
+            closePidFile(self);
+        }
+
+        ERROR_IF(
+            openPidFile(self, O_CLOEXEC | O_CREAT));
+
+        /* It is not possible to create the pidfile and acquire a flock
+         * as an atomic operation. The flock can only be acquired after
+         * the pidfile exists. Since this newly created pidfile is empty,
+         * it resembles an closed pidfile, and in the intervening time,
+         * another process might have removed it and replaced it with
+         * another, turning the pidfile held by this process into a zombie. */
+
+        ERROR_IF(
+            acquirePidFileWriteLock(self));
+
+        ERROR_IF(
+            (zombie = detectPidFileZombie_(self),
+             0 > zombie));
+    }
+
+    /* At this point, this process has a newly created, empty and locked
+     * pidfile. The pidfile cannot be deleted because a write lock must
+     * be held for deletion to occur. */
+
+    debug(0,
+          "initialised %" PRIs_Method,
+          FMTs_Method(self, printPidFile_));
+
+    ERROR_IF(
+        writePidFile_(self, aPid, aPidServerAddr));
+
+    /* The pidfile was locked on creation, and now that it is completely
+     * initialised, it is ok to release the flock. Any other process will
+     * check and see that the pidfile refers to a live process, and refrain
+     * from deleting it. */
+
+    ERROR_IF(
+        releasePidFileLock_(self));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printPidFile_);
     });
 
     return rc;

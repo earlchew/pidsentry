@@ -48,111 +48,6 @@
 static const struct Type * const sentryType_ = TYPE("Sentry");
 
 /* -------------------------------------------------------------------------- */
-static int
-announceChild_(struct PidFile    *aPidFile,
-               struct Pid         aPid,
-               struct sockaddr_un aPidServerAddr)
-{
-    int rc = -1;
-
-    for (int zombie = -1; zombie; )
-    {
-        if (0 < zombie)
-        {
-            /* If the pidfile has become a zombie, it is possible to
-             * delete it here, but do not attempt to do so, and instead
-             * rely on the correct deletion semantics to be used when
-             * a new attempt is made to open the pidfile. */
-
-            ABORT_IF(
-                releaseLockPidFile(aPidFile),
-                {
-                    terminate(
-                        errno,
-                        "Cannot release lock on pid file '%s'",
-                        aPidFile->mPathName.mFileName);
-                });
-
-            debug(0,
-                  "disregarding zombie pid file '%s'",
-                  aPidFile->mPathName.mFileName);
-
-            closePidFile(aPidFile);
-        }
-
-        ERROR_IF(
-            openPidFile(aPidFile, O_CLOEXEC | O_CREAT),
-            {
-                warn(
-                    errno,
-                    "Cannot create pid file '%s'",
-                    aPidFile->mPathName.mFileName);
-            });
-
-        /* It is not possible to create the pidfile and acquire a flock
-         * as an atomic operation. The flock can only be acquired after
-         * the pidfile exists. Since this newly created pidfile is empty,
-         * it resembles an closed pidfile, and in the intervening time,
-         * another process might have removed it and replaced it with
-         * another, turning the pidfile held by this process into a zombie. */
-
-        ABORT_IF(
-            acquireWriteLockPidFile(aPidFile),
-            {
-                terminate(
-                    errno,
-                    "Cannot acquire write lock on pid file '%s'",
-                    aPidFile->mPathName.mFileName);
-            });
-
-        ABORT_IF(
-            (zombie = detectPidFileZombie(aPidFile),
-             0 > zombie),
-            {
-                terminate(
-                    errno,
-                    "Unable to obtain status of pid file '%s'",
-                    aPidFile->mPathName.mFileName);
-            });
-    }
-
-    /* At this point, this process has a newly created, empty and locked
-     * pidfile. The pidfile cannot be deleted because a write lock must
-     * be held for deletion to occur. */
-
-    debug(0, "initialised pid file '%s'", aPidFile->mPathName.mFileName);
-
-    ABORT_IF(
-        writePidFile(aPidFile, aPid, &aPidServerAddr),
-        {
-            terminate(
-                errno,
-                "Cannot write to pid file '%s'", aPidFile->mPathName.mFileName);
-        });
-
-    /* The pidfile was locked on creation, and now that it is completely
-     * initialised, it is ok to release the flock. Any other process will
-     * check and see that the pidfile refers to a live process, and refrain
-     * from deleting it. */
-
-    ABORT_IF(
-        releaseLockPidFile(aPidFile),
-        {
-            terminate(
-                errno,
-                "Cannot unlock pid file '%s'", aPidFile->mPathName.mFileName);
-        });
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
 static void
 reapSentry_(void *self_)
 {
@@ -389,10 +284,10 @@ createSentry(struct Sentry *self,
     if (self->mPidFile)
     {
         ERROR_IF(
-            announceChild_(
+            writePidFile(
                 self->mPidFile,
                 self->mChildProcess->mPid,
-                self->mPidServer->mSocketAddr));
+                &self->mPidServer->mSocketAddr));
     }
 
     /* Monitor the watchdog using another process so that a failure
@@ -697,7 +592,7 @@ runSentry(struct Sentry   *self,
     if (self->mPidFile)
     {
         ABORT_IF(
-            acquireWriteLockPidFile(self->mPidFile),
+            acquirePidFileWriteLock(self->mPidFile),
             {
                 terminate(
                     errno,

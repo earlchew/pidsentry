@@ -79,7 +79,7 @@ createCommand(struct Command *self,
         });
 
     ERROR_IF(
-        acquireReadLockPidFile(pidFile),
+        acquirePidFileReadLock(pidFile),
         {
             warn(errno,
                  "Unable to acquire read lock on pid file '%s'",

@@ -32,6 +32,8 @@
 #include "pathname_.h"
 #include "pid_.h"
 
+#include <stdio.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -60,25 +62,19 @@ openPidFile(struct PidFile *self, unsigned aFlags);
 void
 closePidFile(struct PidFile *self);
 
-int
-detectPidFileZombie(const struct PidFile *self);
-
 struct Pid
-readPidFile(const struct PidFile *self, struct sockaddr_un *aPidKeeperAddr);
+readPidFile(const struct PidFile *self, struct sockaddr_un *aPidServerAddr);
 
 int
-releaseLockPidFile(struct PidFile *self);
+acquirePidFileWriteLock(struct PidFile *self);
 
 int
-acquireWriteLockPidFile(struct PidFile *self);
-
-int
-acquireReadLockPidFile(struct PidFile *self);
+acquirePidFileReadLock(struct PidFile *self);
 
 int
 writePidFile(struct PidFile           *self,
              struct Pid                aPid,
-             const struct sockaddr_un *aPidKeeperAddr);
+             const struct sockaddr_un *aPidServerAddr);
 
 /* -------------------------------------------------------------------------- */
 
