@@ -510,17 +510,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            closePidServer(self->mPidServer);
-            destroyPidFile(self->mPidFile);
-            closeBellSocketPair(self->mSyncSocket);
-            closeJobControl(self->mJobControl);
-            closeChild(self->mChildProcess);
-            closeSocketPair(self->mUmbilicalSocket);
-            closeStdFdFiller(self->mStdFdFiller);
-
-            self->mType = 0;
-        }
+            closeSentry(self);
     });
 
     return rc;
