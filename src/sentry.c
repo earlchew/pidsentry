@@ -290,6 +290,44 @@ createSentry(struct Sentry *self,
                 &self->mPidServer->mSocketAddr));
     }
 
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            closeSentry(self);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+closeSentry(struct Sentry *self)
+{
+    if (self)
+    {
+        closePidServer(self->mPidServer);
+        destroyPidFile(self->mPidFile);
+        closeBellSocketPair(self->mSyncSocket);
+        closeJobControl(self->mJobControl);
+        closeChild(self->mChildProcess);
+        closeSocketPair(self->mUmbilicalSocket);
+        closeStdFdFiller(self->mStdFdFiller);
+
+        self->mType = 0;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+int
+runSentry(struct Sentry   *self,
+          struct ExitCode *aExitCode)
+{
+    int rc = -1;
+
     /* Monitor the watchdog using another process so that a failure
      * of the watchdog can be detected independently. Only create the
      * umbilical process after all the file descriptors have been
@@ -502,44 +540,6 @@ createSentry(struct Sentry *self,
                     FMTd_Pid(ownProcessId()));
             });
     }
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-            closeSentry(self);
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-void
-closeSentry(struct Sentry *self)
-{
-    if (self)
-    {
-        closePidServer(self->mPidServer);
-        destroyPidFile(self->mPidFile);
-        closeBellSocketPair(self->mSyncSocket);
-        closeJobControl(self->mJobControl);
-        closeChild(self->mChildProcess);
-        closeSocketPair(self->mUmbilicalSocket);
-        closeStdFdFiller(self->mStdFdFiller);
-
-        self->mType = 0;
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-int
-runSentry(struct Sentry   *self,
-          struct ExitCode *aExitCode)
-{
-    int rc = -1;
 
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped
