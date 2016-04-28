@@ -37,7 +37,7 @@
 #include <stdlib.h>
 
 /* -------------------------------------------------------------------------- */
-static void *
+static int
 monitorParent_(void *self_)
 {
     struct ParentProcess *self = self_;
@@ -107,8 +107,9 @@ closeParent(struct ParentProcess *self)
     {
         cancelThread(self->mThread);
 
+        int threadErr;
         ABORT_UNLESS(
-            PTHREAD_CANCELED == joinThread(self->mThread));
+            joinThread(self->mThread, &threadErr) && ECANCELED == errno);
     }
 }
 

@@ -265,7 +265,7 @@ pollFdCompletion_(void *self_)
     return ! self->mPollFds[POLL_FD_TETHER_CONTROL].events;
 }
 
-static void *
+static int
 tetherThreadMain_(void *self_)
 {
     struct TetherThread *self = self_;
@@ -507,14 +507,21 @@ closeTetherThread(struct TetherThread *self)
             unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
         }
 
-        void *tetherReturn;
+        int threadErr;
+        int err;
         ABORT_IF(
-            (tetherReturn = joinThread(&self->mThread)),
+            (err = joinThread(&self->mThread, &threadErr),
+             err || threadErr),
             {
-                terminate(
-                    0,
-                    "Unexpected return value %p from tether thread",
-                    tetherReturn);
+                if (err)
+                    terminate(
+                        errno,
+                        "Unexpected error when joining tether thread");
+                else
+                    terminate(
+                        errno,
+                        "Unexpected error %d from joining tether thread",
+                        threadErr);
             });
 
         ABORT_IF(

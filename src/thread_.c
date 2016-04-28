@@ -36,6 +36,7 @@
 
 #include <errno.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include <sys/syscall.h>
 
@@ -104,34 +105,136 @@ ownThreadId(void)
 }
 
 /* -------------------------------------------------------------------------- */
+struct ThreadFuture_
+{
+    int mReturn;
+    int mErrno;
+};
+
+static struct ThreadFuture_ *
+createThreadFuture_(void)
+{
+    struct ThreadFuture_ *self = malloc(sizeof(*self));
+
+    if (self)
+    {
+        self->mReturn = -1;
+        self->mErrno  = 0;
+    }
+
+    return self;
+}
+
+static void
+destroyThreadFuture_(void *self_)
+{
+    free(self_);
+}
+
+/* -------------------------------------------------------------------------- */
+struct Thread_
+{
+    pthread_mutex_t mMutex;
+    pthread_cond_t  mCond;
+
+    void *mContext;
+    int (*mThread)(void *);
+
+    struct ThreadFuture_ *mFuture;
+};
+
+static void *
+createThread_(void *self_)
+{
+    struct Thread_ *self = self_;
+
+    void *context         = self->mContext;
+    int (*thread)(void *) = self->mThread;
+
+    struct ThreadFuture_ *future = self->mFuture;
+
+    lockMutex(&self->mMutex);
+    unlockMutexSignal(&self->mMutex, &self->mCond);
+
+    pthread_cleanup_push(destroyThreadFuture_, future);
+    {
+        future->mReturn = thread(context);
+        future->mErrno  = errno;
+    }
+    pthread_cleanup_pop(0);
+
+    return future;
+}
+
 void
 createThread(pthread_t      *self,
              pthread_attr_t *aAttr,
-             void           *aThread(void *),
+             int             aThread(void *),
              void           *aContext)
 {
+    struct Thread_ thread =
+    {
+        .mMutex = PTHREAD_MUTEX_INITIALIZER,
+        .mCond  = PTHREAD_COND_INITIALIZER,
+
+        .mContext = aContext,
+        .mThread  = aThread,
+    };
+
+    ABORT_UNLESS(
+        (thread.mFuture = createThreadFuture_()),
+        {
+            terminate(
+                errno,
+                "Unable to create thread future");
+        });
+
+
+    lockMutex(&thread.mMutex);
+
     ABORT_IF(
-        (errno = pthread_create(self, aAttr, aThread, aContext)),
+        (errno = pthread_create(self, aAttr, createThread_, &thread)),
         {
             terminate(
                 errno,
                 "Unable to create thread");
         });
+
+    waitCond(&thread.mCond, &thread.mMutex);
+    unlockMutex(&thread.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
-void *
-joinThread(pthread_t *self)
+int
+joinThread(pthread_t *self, int *aReturn)
 {
-    void *rc = 0;
+    int rc = -1;
 
-    ABORT_IF(
-        (errno = pthread_join(*self, &rc)),
+    struct ThreadFuture_ *future = 0;
+
+    void *future_;
+    ERROR_IF(
+        (errno = pthread_join(*self, &future_)));
+
+    ERROR_IF(
+        PTHREAD_CANCELED == future_,
         {
-            terminate(
-                errno,
-                "Unable to join thread");
+            errno = ECANCELED;
         });
+
+    future = future_;
+
+    *aReturn = future->mReturn;
+    errno    = future->mErrno;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        free(future);
+    });
 
     return rc;
 }

@@ -82,11 +82,11 @@ ownThreadId(void);
 void
 createThread(pthread_t      *self,
              pthread_attr_t *aAttr,
-             void           *aThread(void *),
+             int             aThread(void *),
              void           *aContext);
 
-void *
-joinThread(pthread_t *self);
+int
+joinThread(pthread_t *self, int *aReturn);
 
 void
 cancelThread(pthread_t *self);
