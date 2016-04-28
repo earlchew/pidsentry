@@ -118,11 +118,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            closeSentry(self->mSentry);
-
-            self->mType = 0;
-        }
+            closeAgent(self);
     });
 
     return rc;
