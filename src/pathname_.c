@@ -39,10 +39,12 @@
 #include <unistd.h>
 
 /* -------------------------------------------------------------------------- */
-int
+enum PathNameStatus
 createPathName(struct PathName *self, const char *aFileName)
 {
     int rc = -1;
+
+    enum PathNameStatus status = PathNameStatusOk;
 
     self->mFileName  = 0;
     self->mBaseName_ = 0;
@@ -62,11 +64,19 @@ createPathName(struct PathName *self, const char *aFileName)
     ERROR_UNLESS(
         (self->mBaseName = strdup(basename(self->mBaseName_))));
 
-    ERROR_IF(
-        createFile(
-            &self->mDirFile_,
-            open(self->mDirName, O_RDONLY | O_CLOEXEC)));
-    self->mDirFile = &self->mDirFile_;
+    do
+    {
+        if (createFile(
+                &self->mDirFile_,
+                open(self->mDirName, O_RDONLY | O_CLOEXEC)))
+        {
+            status = PathNameStatusInaccessible;
+            break;
+        }
+
+        self->mDirFile = &self->mDirFile_;
+
+    } while (0);
 
     rc = 0;
 
@@ -75,6 +85,9 @@ Finally:
     FINALLY
     ({
         if (rc)
+            status = PathNameStatusError;
+
+        if (PathNameStatusOk != status)
         {
             free(self->mFileName);
             free(self->mBaseName_);
@@ -86,7 +99,7 @@ Finally:
         }
     });
 
-    return rc;
+    return status;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -64,24 +64,13 @@ printPidFile_(const void *self_, FILE *aFile)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static enum PathNameStatus
 openPidFile_(struct PidFile *self, const char *aFileName)
 {
-    int rc = -1;
-
     self->mFile = 0;
     self->mLock = 0;
 
-    ERROR_IF(
-        createPathName(&self->mPathName, aFileName));
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
+    return createPathName(&self->mPathName, aFileName);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -352,16 +341,20 @@ acquirePidFileReadLock(struct PidFile *self)
 }
 
 /* -------------------------------------------------------------------------- */
-int
+enum PathNameStatus
 initPidFile(struct PidFile *self_, const char *aFileName)
 {
     int rc = -1;
 
     struct PidFile *self = 0;
 
+    enum PathNameStatus status;
     ERROR_IF(
-        openPidFile_(self_, aFileName));
-    self = self_;
+        (status = openPidFile_(self_, aFileName),
+         PathNameStatusError == status));
+
+    if (PathNameStatusOk == status)
+        self = self_;
 
     rc = 0;
 
@@ -370,6 +363,9 @@ Finally:
     FINALLY
     ({
         if (rc)
+            status = PathNameStatusError;
+
+        if (PathNameStatusOk != status)
             closePidFile_(self);
     });
 

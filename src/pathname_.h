@@ -50,8 +50,15 @@ struct PathName
     struct File *mDirFile;
 };
 
+enum PathNameStatus
+{
+    PathNameStatusError        = -1,
+    PathNameStatusOk           = 0,
+    PathNameStatusInaccessible = 1,
+};
+
 /* -------------------------------------------------------------------------- */
-int
+enum PathNameStatus
 createPathName(struct PathName *self, const char *aFileName);
 
 void
