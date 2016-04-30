@@ -48,6 +48,13 @@ struct PidFile
     int              mLock;
 };
 
+enum PidFileStatus
+{
+    PidFileStatusError     = -1,
+    PidFileStatusOk        = 0,
+    PidFileStatusCollision = 1,
+};
+
 /* -------------------------------------------------------------------------- */
 int
 initPidFile(struct PidFile *self, const char *aFileName);
@@ -71,7 +78,7 @@ acquirePidFileWriteLock(struct PidFile *self);
 int
 acquirePidFileReadLock(struct PidFile *self);
 
-int
+enum PidFileStatus
 writePidFile(struct PidFile           *self,
              struct Pid                aPid,
              const struct sockaddr_un *aPidServerAddr);
