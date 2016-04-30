@@ -68,22 +68,50 @@
  */
 
 /* -------------------------------------------------------------------------- */
-static struct ExitCode
-cmdRunCommand(const char *aPidFileName, char **aCmd)
+static int
+cmdRunCommand(const char *aPidFileName, char **aCmd, struct ExitCode *aExitCode)
 {
+    int rc = -1;
+
     struct ExitCode exitCode = { EXIT_FAILURE };
 
     struct Command  command_;
     struct Command *command = 0;
-    ERROR_IF(
-        createCommand(&command_, aPidFileName));
-    command = &command_;
 
+    enum CommandStatus status;
     ERROR_IF(
-        runCommand(command, aCmd));
+        (status = createCommand(&command_, aPidFileName),
+         CommandStatusError == status));
 
-    ERROR_IF(
-        reapCommand(command, &exitCode));
+    if (CommandStatusOk == status)
+        command = &command_;
+
+    switch (status)
+    {
+    default:
+        ERROR_IF(
+            runCommand(command, aCmd));
+
+        ERROR_IF(
+            reapCommand(command, &exitCode));
+        break;
+
+    case CommandStatusUnreachablePidFile:
+        warn(0, "Unable to reach pidfile '%s'", aPidFileName);
+        break;
+
+    case CommandStatusInaccessiblePidFile:
+        warn(0, "Unable to open pidfile '%s'", aPidFileName);
+        break;
+
+    case CommandStatusZombiePidFile:
+        warn(0, "Dead process named in pidfile '%s'", aPidFileName);
+        break;
+    }
+
+    *aExitCode = exitCode;
+
+    rc = 0;
 
 Finally:
 
@@ -92,13 +120,15 @@ Finally:
         closeCommand(command);
     });
 
-    return exitCode;
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-static struct ExitCode
-cmdMonitorChild(char **aCmd)
+static int
+cmdMonitorChild(char **aCmd, struct ExitCode *aExitCode)
 {
+    int rc = -1;
+
     struct ExitCode exitCode = { EXIT_FAILURE };
 
     ensure(aCmd);
@@ -123,8 +153,26 @@ cmdMonitorChild(char **aCmd)
         createAgent(&agent_, aCmd));
     agent = &agent_;
 
+    int pidFileErr;
     ERROR_IF(
-        runAgent(agent, &exitCode));
+        (pidFileErr = announceAgentPidFile(agent),
+         PidFileStatusError == pidFileErr));
+
+    switch (pidFileErr)
+    {
+    default:
+        ERROR_IF(
+            runAgent(agent, &exitCode));
+        break;
+
+    case PidFileStatusCollision:
+        warn(0, "Unable to write pidfile '%s'", ownAgentPidFileName(agent));
+        break;
+    }
+
+    *aExitCode = exitCode;
+
+    rc = 0;
 
 Finally:
 
@@ -133,7 +181,7 @@ Finally:
         closeAgent(agent);
     });
 
-    return exitCode;
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -173,9 +221,11 @@ main(int argc, char **argv)
         });
 
     if (gOptions.mCommand)
-        exitCode = cmdRunCommand(gOptions.mPidFile, args);
+        ABORT_IF(
+            cmdRunCommand(gOptions.mPidFile, args, &exitCode));
     else
-        exitCode = cmdMonitorChild(args);
+        ABORT_IF(
+            cmdMonitorChild(args, &exitCode));
 
 Finally:
 

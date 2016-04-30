@@ -43,11 +43,13 @@
 #include <sys/un.h>
 
 /* -------------------------------------------------------------------------- */
-int
+enum CommandStatus
 createCommand(struct Command *self,
               const char     *aPidFileName)
 {
     int rc = -1;
+
+    enum CommandStatus status = CommandStatusOk;
 
     self->mPid          = Pid(0);
     self->mKeeperTether = 0;
@@ -55,85 +57,73 @@ createCommand(struct Command *self,
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
 
-    ERROR_IF(
-        initPidFile(&pidFile_, aPidFileName),
+    do
+    {
+        enum PathNameStatus pathNameStatus;
+        ERROR_IF(
+            (pathNameStatus = initPidFile(&pidFile_, aPidFileName),
+             PathNameStatusError == pathNameStatus));
+
+        if (PathNameStatusOk != pathNameStatus)
         {
-            warn(errno,
-                 "Unable to find pid file '%s'", aPidFileName);
-        });
-    pidFile = &pidFile_;
+            status = CommandStatusUnreachablePidFile;
+            break;
+        }
+        pidFile = &pidFile_;
 
-    int err;
-    ERROR_IF(
-        (err = openPidFile(&pidFile_, O_CLOEXEC),
-         err && ENOENT != errno),
+        int err;
+        ERROR_IF(
+            (err = openPidFile(&pidFile_, O_CLOEXEC),
+             err && ENOENT != errno && EACCES != errno));
+
+        if (err)
         {
-            warn(errno,
-                "Unable to open pid file '%s'", aPidFileName);
-        });
+            status = CommandStatusInaccessiblePidFile;
+            break;
+        }
 
-    ERROR_IF(
-        err,
+        ERROR_IF(
+            acquirePidFileReadLock(pidFile));
+
+        struct sockaddr_un pidKeeperAddr;
+        struct Pid         pid;
+        ERROR_IF(
+            (pid = readPidFile(pidFile, &pidKeeperAddr),
+             -1 == pid.mPid));
+
+        if ( ! pid.mPid)
         {
-            errno = ECHILD;
-        });
+            status = CommandStatusZombiePidFile;
+            break;
+        }
 
-    ERROR_IF(
-        acquirePidFileReadLock(pidFile),
-        {
-            warn(errno,
-                 "Unable to acquire read lock on pid file '%s'",
-                 aPidFileName);
-        });
+        /* Obtain a reference to the child process group, and do not proceed
+         * until a positive acknowledgement is received to indicate that
+         * the remote keeper has provided a stable reference. */
 
-    struct sockaddr_un pidKeeperAddr;
-    struct Pid         pid;
-    ERROR_IF(
-        (pid = readPidFile(pidFile, &pidKeeperAddr),
-         -1 == pid.mPid),
-        {
-            warn(errno,
-                 "Unable to read pid file '%s'",
-                 aPidFileName);
-        });
+        ERROR_IF(
+            (err = connectUnixSocket(&self->mKeeperTether_,
+                                     pidKeeperAddr.sun_path,
+                                     sizeof(pidKeeperAddr.sun_path)),
+             -1 == err && EINPROGRESS != errno));
+        self->mKeeperTether = &self->mKeeperTether_;
 
-    ERROR_UNLESS(
-        pid.mPid,
-        {
-            errno = ECHILD;
-        });
+        ERROR_IF(
+            (err = waitUnixSocketWriteReady(self->mKeeperTether, 0),
+             -1 == err || (errno = 0, ! err)));
 
-    /* Obtain a reference to the child process group, and do not proceed
-     * until a positive acknowledgement is received to indicate that
-     * the remote keeper has provided a stable reference. */
+        ERROR_IF(
+            (err = waitUnixSocketReadReady(self->mKeeperTether, 0),
+             -1 == err));
 
-    ERROR_IF(
-        (err = connectUnixSocket(&self->mKeeperTether_,
-                                 pidKeeperAddr.sun_path,
-                                 sizeof(pidKeeperAddr.sun_path)),
-         -1 == err && EINPROGRESS != errno));
-    self->mKeeperTether = &self->mKeeperTether_;
+        char buf[1];
+        ERROR_IF(
+            (err = readFile(self->mKeeperTether->mFile, buf, 1),
+             -1 == err || (errno = 0, 1 != err)));
 
-    ERROR_IF(
-        (err = waitUnixSocketWriteReady(self->mKeeperTether, 0),
-         -1 == err));
+        self->mChildPid = pid;
 
-    ERROR_UNLESS(
-        err,
-        {
-            errno = ENOTCONN;
-        });
-
-    ERROR_IF(
-        (err = waitUnixSocketReadReady(self->mKeeperTether, 0),
-         -1 == err));
-
-    char buf[1];
-    ERROR_IF(
-        (err = readFile(self->mKeeperTether->mFile, buf, 1),
-         -1 == err || (errno = EIO, 1 != err)));
-
-    self->mChildPid = pid;
+    } while (0);
 
     rc = 0;
 
@@ -142,6 +132,9 @@ Finally:
     FINALLY
     ({
         if (rc)
+            status = CommandStatusError;
+
+        if (CommandStatusOk != status)
             closeUnixSocket(self->mKeeperTether);
 
         /* There is no further need to hold a lock on the pidfile because
@@ -151,7 +144,7 @@ Finally:
         destroyPidFile(pidFile);
     });
 
-    return rc;
+    return status;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -84,8 +84,14 @@ void
 closeSentry(struct Sentry *self);
 
 int
+announceSentryPidFile(struct Sentry *self);
+
+int
 runSentry(struct Sentry   *self,
           struct ExitCode *aExitCode);
+
+const char *
+ownSentryPidFileName(const struct Sentry *self);
 
 /* -------------------------------------------------------------------------- */
 

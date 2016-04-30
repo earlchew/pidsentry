@@ -276,20 +276,6 @@ createSentry(struct Sentry *self,
                 "Unable to purge orphaned files");
         });
 
-    /* Attempt to create the pidfile, if required, before creating the
-     * umbilical process because it is quite possible for the attempt
-     * to create the file to fail, and it is simpler to avoid having
-     * clean up the umbilical process. */
-
-    if (self->mPidFile)
-    {
-        ERROR_IF(
-            writePidFile(
-                self->mPidFile,
-                self->mChildProcess->mPid,
-                &self->mPidServer->mSocketAddr));
-    }
-
     rc = 0;
 
 Finally:
@@ -319,6 +305,30 @@ closeSentry(struct Sentry *self)
 
         self->mType = 0;
     }
+}
+
+/* -------------------------------------------------------------------------- */
+enum PidFileStatus
+announceSentryPidFile(struct Sentry *self)
+{
+    /* Attempt to create the pidfile, if required, before creating the
+     * umbilical process because it is quite possible for the attempt
+     * to create the file to fail, and it is simpler to avoid having
+     * clean up the umbilical process. */
+
+    return ! self->mPidFile
+        ? PidFileStatusOk
+        : writePidFile(
+            self->mPidFile,
+            self->mChildProcess->mPid,
+            &self->mPidServer->mSocketAddr);
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+ownSentryPidFileName(const struct Sentry *self)
+{
+    return ! self->mPidFile ? 0 : self->mPidFile->mPathName.mFileName;
 }
 
 /* -------------------------------------------------------------------------- */

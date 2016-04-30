@@ -54,9 +54,15 @@ createAgent(struct Agent *self,
 void
 closeAgent(struct Agent *self);
 
+enum PidFileStatus
+announceAgentPidFile(struct Agent *self);
+
 int
 runAgent(struct Agent    *self,
          struct ExitCode *aExitCode);
+
+const char *
+ownAgentPidFileName(const struct Agent *self);
 
 /* -------------------------------------------------------------------------- */
 

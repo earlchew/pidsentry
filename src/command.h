@@ -38,6 +38,15 @@ extern "C" {
 
 struct ExitCode;
 
+enum CommandStatus
+{
+    CommandStatusError = -1,
+    CommandStatusOk    = 0,
+    CommandStatusUnreachablePidFile  = 1,
+    CommandStatusInaccessiblePidFile = 2,
+    CommandStatusZombiePidFile       = 3,
+};
+
 /* -------------------------------------------------------------------------- */
 struct Command
 {
@@ -49,7 +58,7 @@ struct Command
 };
 
 /* -------------------------------------------------------------------------- */
-int
+enum CommandStatus
 createCommand(struct Command *self,
               const char     *aPidFileName);
 

@@ -137,6 +137,20 @@ closeAgent(struct Agent *self)
 }
 
 /* -------------------------------------------------------------------------- */
+enum PidFileStatus
+announceAgentPidFile(struct Agent *self)
+{
+    return announceSentryPidFile(self->mSentry);
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+ownAgentPidFileName(const struct Agent *self)
+{
+    return ownSentryPidFileName(self->mSentry);
+}
+
+/* -------------------------------------------------------------------------- */
 int
 runAgent(struct Agent    *self,
          struct ExitCode *aExitCode)
