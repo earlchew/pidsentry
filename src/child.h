@@ -93,6 +93,7 @@ int
 monitorChild(struct ChildProcess     *self,
              struct UmbilicalProcess *aUmbilicalProcess,
              struct File             *aUmbilicalFile,
+             struct Pid               aParentPid,
              struct Pipe             *aParentPipe);
 
 void

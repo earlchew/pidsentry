@@ -89,6 +89,7 @@ announceSentryPidFile(struct Sentry *self);
 
 int
 runSentry(struct Sentry   *self,
+          struct Pid       aParentPid,
           struct Pipe     *aParentPipe,
           struct ExitCode *aExitCode);
 

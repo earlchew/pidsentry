@@ -28,6 +28,7 @@
 */
 
 #include "agent.h"
+#include "sentry.h"
 #include "parent.h"
 
 #include "type_.h"
@@ -43,20 +44,6 @@
 static const struct Type * const agentType_ = TYPE("Agent");
 
 /* -------------------------------------------------------------------------- */
-#if 0
-static void
-reapAgent_(void *self_)
-{
-    struct Agent *self = self_;
-
-    ensure(agentType_ == self->mType);
-
-    struct Pid umbilicalPid =
-        self->mUmbilicalProcess ? self->mUmbilicalProcess->mPid : Pid(0);
-
-    superviseChildProcess(self->mChildProcess, umbilicalPid);
-}
-
 static void
 raiseAgentSignal_(void *self_, int aSigNum)
 {
@@ -64,12 +51,12 @@ raiseAgentSignal_(void *self_, int aSigNum)
 
     ensure(agentType_ == self->mType);
 
-    /* Propagate the signal to the child. Note that SIGQUIT might cause
-     * the child to terminate and dump core. Dump core in sympathy if this
-     * happens, but do that only if the child actually does so. This is
-     * taken care of in reapFamily_(). */
+    struct Pid agentPid = self->mAgentPid;
 
-    killChild(self->mChildProcess, aSigNum);
+    ensure(agentPid.mPid);
+
+    ABORT_IF(
+        kill(agentPid.mPid, aSigNum));
 }
 
 static void
@@ -79,7 +66,12 @@ raiseAgentStop_(void *self_)
 
     ensure(agentType_ == self->mType);
 
-    pauseChildProcessGroup(self->mChildProcess);
+    struct Pid agentPid = self->mAgentPid;
+
+    ensure(agentPid.mPid);
+
+    ABORT_IF(
+        kill(agentPid.mPid, SIGTSTP));
 }
 
 static void
@@ -89,19 +81,13 @@ raiseAgentResume_(void *self_)
 
     ensure(agentType_ == self->mType);
 
-    resumeChildProcessGroup(self->mChildProcess);
+    struct Pid agentPid = self->mAgentPid;
+
+    ensure(agentPid.mPid);
+
+    ABORT_IF(
+        kill(agentPid.mPid, SIGCONT));
 }
-
-static void
-raiseAgentSigCont_(void *self_)
-{
-    struct Agent *self = self_;
-
-    ensure(agentType_ == self->mType);
-
-    raiseChildSigCont(self->mChildProcess);
-}
-#endif
 
 /* -------------------------------------------------------------------------- */
 int
@@ -112,7 +98,8 @@ createAgent(struct Agent  *self,
 
     self->mType = agentType_;
 
-    self->mCmd = aCmd;
+    self->mCmd      = aCmd;
+    self->mAgentPid = Pid(0);
 
     rc = 0;
 
@@ -147,6 +134,7 @@ closeAgent(struct Agent *self)
 /* -------------------------------------------------------------------------- */
 static int
 runAgentSentry_(struct Agent    *self,
+                struct Pid       aParentPid,
                 struct Pipe     *aParentPipe,
                 struct ExitCode *aExitCode)
 {
@@ -185,7 +173,7 @@ runAgentSentry_(struct Agent    *self,
         }
 
         ERROR_IF(
-            runSentry(sentry, aParentPipe, &exitCode));
+            runSentry(sentry, aParentPid, aParentPipe, &exitCode));
 
     } while (0);
 
@@ -212,6 +200,9 @@ runAgent(struct Agent    *self,
 {
     int rc = -1;
 
+    struct JobControl  jobControl_;
+    struct JobControl *jobControl = 0;
+
     struct ParentProcess  parentProcess_;
     struct ParentProcess *parentProcess = 0;
 
@@ -220,6 +211,10 @@ runAgent(struct Agent    *self,
 
     struct Pipe  parentPipe_;
     struct Pipe *parentPipe = 0;
+
+    ERROR_IF(
+        createJobControl(&jobControl_));
+    jobControl = &jobControl_;
 
     if (gOptions.mOrphaned)
     {
@@ -241,13 +236,19 @@ runAgent(struct Agent    *self,
         stdFdFiller = 0;
     }
 
-    struct Pid agentPid;
-    ERROR_IF(
-        (agentPid = forkProcessChild(
-            ForkProcessSetProcessGroup, Pgid(0)),
-         -1 == agentPid.mPid));
+    struct Pid parentPid = ownProcessId();
 
-    if ( ! agentPid.mPid)
+    {
+        struct Pid agentPid;
+        ERROR_IF(
+            (agentPid = forkProcessChild(
+                ForkProcessSetProcessGroup, Pgid(0)),
+             -1 == agentPid.mPid));
+
+        self->mAgentPid = agentPid;
+    }
+
+    if ( ! self->mAgentPid.mPid)
     {
         debug(
             0,
@@ -259,7 +260,7 @@ runAgent(struct Agent    *self,
         struct ExitCode exitCode = { EXIT_FAILURE };
 
         ABORT_IF(
-            runAgentSentry_(self, parentPipe, &exitCode));
+            runAgentSentry_(self, parentPid, parentPipe, &exitCode));
 
         debug(0, "exit agent status %" PRId_ExitCode, FMTd_ExitCode(exitCode));
 
@@ -267,6 +268,20 @@ runAgent(struct Agent    *self,
     }
 
     closePipeReader(parentPipe);
+
+    /* Be prepared to deliver signals to the agent process only after
+     * the process exists. Before this point, these signals will cause
+     * the watchdog process to terminate, and the new process will
+     * notice via its synchronisation pipe. */
+
+    ERROR_IF(
+        watchJobControlSignals(jobControl,
+                               VoidIntMethod(raiseAgentSignal_, self)));
+
+    ERROR_IF(
+        watchJobControlStop(jobControl,
+                            VoidMethod(raiseAgentStop_, self),
+                            VoidMethod(raiseAgentResume_, self)));
 
     {
         struct ProcessAppLock *appLock = createProcessAppLock();
@@ -286,17 +301,48 @@ runAgent(struct Agent    *self,
         destroyProcessAppLock(appLock);
     }
 
-    int agentStatus;
-    ERROR_IF(
-        reapProcessChild(agentPid, &agentStatus));
+    {
+        struct ChildProcessState agentState;
+        ERROR_IF(
+            (agentState = waitProcessChild(self->mAgentPid),
+             ChildProcessStateError == agentState.mChildState));
 
-    debug(0,
-          "reaped agent pid %" PRId_Pid " status %d",
-          FMTd_Pid(agentPid),
-          agentStatus);
+        /* If the agent process has been killed by SIGQUIT and dumped core,
+         * then dump core in sympathy. */
 
-    *aExitCode =
-        extractProcessExitStatus(agentStatus, agentPid);
+        if (ChildProcessStateDumped == agentState.mChildState &&
+            SIGQUIT == agentState.mChildStatus)
+        {
+            quitProcess();
+        }
+    }
+
+    {
+        /* Capture the pid of the agent process, then reset the data member
+         * so that any signal races can be caught. */
+
+        struct Pid agentPid = self->mAgentPid;
+
+        self->mAgentPid = Pid(0);
+
+        ERROR_IF(
+            unwatchJobControlStop(jobControl));
+
+        ERROR_IF(
+            unwatchJobControlSignals(jobControl));
+
+        int agentStatus;
+        ERROR_IF(
+            reapProcessChild(agentPid, &agentStatus));
+
+        debug(0,
+              "reaped agent pid %" PRId_Pid " status %d",
+              FMTd_Pid(agentPid),
+              agentStatus);
+
+        *aExitCode =
+            extractProcessExitStatus(agentStatus, agentPid);
+    }
 
     rc = 0;
 
@@ -309,6 +355,7 @@ Finally:
         closePipe(parentPipe);
         closeStdFdFiller(stdFdFiller);
         closeParent(parentProcess);
+        closeJobControl(jobControl);
     });
 
     return rc;

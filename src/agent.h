@@ -29,7 +29,7 @@
 #ifndef AGENT_H
 #define AGENT_H
 
-#include "sentry.h"
+#include "pid_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +43,8 @@ struct Agent
     const struct Type *mType;
 
     char **mCmd;
+
+    struct Pid mAgentPid;
 };
 
 /* -------------------------------------------------------------------------- */

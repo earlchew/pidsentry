@@ -36,6 +36,20 @@ pidsentry()
     fi
 }
 
+waitwhile()
+{
+    while eval "$@" ; do
+        sleep 1
+    done
+}
+
+waituntil()
+{
+    until eval "$@" ; do
+        sleep 1
+    done
+}
+
 random()
 {
     printf '%s' $(( 0x$(openssl rand -hex 4) ))
@@ -54,20 +68,22 @@ liveprocess()
 
 stoppedprocess()
 {
-    ( STATE=$(ps -o 'state=' -p "$1") && [ x"$STATE" != xT ] ) || return $?
+    ( STATE=$(ps -o 'state=' -p "$1") && [ x"$STATE" == xT ] ) || return $?
     return 0
 }
 
 testCaseBegin()
 {
     TESTCASE=$1
-    printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$TESTCASE"
+    set -- "$(date +'%Y-%m-%d %H:%M:%S')" "$TESTCASE"
+    printf '\n%s : testCase - %s - BEGIN\n' "$@"
 }
 
 testCaseEnd()
 {
     [ -z "${PIDSENTRY_TEST_FAILED++}" ] || testFail "$TESTCASE"
-    printf '\n%s : testCase - %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$TESTCASE"
+    set -- "$(date +'%Y-%m-%d %H:%M:%S')" "$TESTCASE"
+    printf '\n%s : testCase - %s - END\n' "$@"
 }
 
 testTrace_()
@@ -187,33 +203,39 @@ runTests()
     [ ! -f $PIDFILE ]
     testCaseEnd
 
-    testCaseBegin 'Dead process in pid file'
-    rm -f $PIDFILE
-    pidsentry -i -u -p $PIDFILE -- sh -c 'while : ; do sleep 1 ; done' | {
-        read PARENT UMBILICAL
-        read CHILD
-        kill -9 $PARENT
-        kill -9 $CHILD
-    }
-    [ -s $PIDFILE ]
-    REPLY=$(cksum $PIDFILE)
-    # Ensure that it is not possible to run a command against the child
-    ! pidsentry -p $PIDFILE -c -- true
-    [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
-    # Ensure that it is possible to create a new child
-    testExit 0 pidsentry --test=1 -d -p $PIDFILE -- true
-    [ ! -f $PIDFILE ]
-    testCaseEnd
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Dead process in pid file - $SUPERVISOR"
+        rm -f $PIDFILE
+        pidsentry -i -u -p $PIDFILE -- sh -c 'while : ; do sleep 1 ; done' | {
+            read PARENT SENTRY UMBILICAL
+            read CHILD
+            eval kill -9 \$$SUPERVISOR
+            kill -9 $CHILD
+
+            eval waitwhile liveprocess '$'$SUPERVISOR
+            waitwhile liveprocess $CHILD
+        }
+        [ -s $PIDFILE ]
+        REPLY=$(cksum $PIDFILE)
+        # Ensure that it is not possible to run a command against the child
+        ! pidsentry -p $PIDFILE -c -- true
+        [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
+        # Ensure that it is possible to create a new child
+        testExit 0 pidsentry --test=1 -d -p $PIDFILE -- true
+        [ ! -f $PIDFILE ]
+        testCaseEnd
+    done
 
     testCaseBegin 'Existing process in pid file'
     rm -f $PIDFILE
     testOutput "OK" = '$(
         pidsentry -i -p $PIDFILE -u -- sh -c "
             while : ; do sleep 1 ; done" | {
-                read PARENT UMBILICAL
+                read PARENT SENTRY UMBILICAL
                 read CHILD
                 pidsentry -p $PIDFILE -- true || /bin/echo OK
-             kill -9 $CHILD
+                kill -9 $CHILD
+                waitwhile liveprocess $CHILD
         }
     )'
     [ ! -f $PIDFILE ]
@@ -263,10 +285,10 @@ runTests()
         set -- "$@" ./pidsentry --test=1 -i -- sh -c '\''/bin/echo $$'\'
         exec libtool --mode=execute "$@"
       {
-        read REALPARENT
-        read PARENT UMBILICAL ; read CHILD
+        read REALSENTRY
+        read PARENT SENTRY UMBILICAL ; read CHILD
         read REALCHILD
-        /bin/echo "$REALPARENT/$PARENT $REALCHILD/$CHILD"
+        /bin/echo "$REALSENTRY/$SENTRY $REALCHILD/$CHILD"
       }) ; do
 
       [ x"${REPLY%% *}" = x"${REPLY#* }" ]
@@ -311,22 +333,22 @@ runTests()
 
     testCaseBegin 'Child process group'
     pidsentry -i -- ps -o pid,pgid,cmd | {
-        read PARENT UMBILICAL
+        read PARENT SENTRY UMBILICAL
         read CHILD
         read HEADING
-        PARENTPGID=
+        SENTRYPGID=
         CHILDPGID=
         while read PID PGID CMD ; do
-            /bin/echo "$PARENT - $CHILD - $PID $PGID $CMD" >&2
-            if [ x"$PARENT" = x"$PID" ] ; then
+            /bin/echo "$SENTRY - $CHILD - $PID $PGID $CMD" >&2
+            if [ x"$SENTRY" = x"$PID" ] ; then
                 CHILDPGID=$PGID
             elif [ x"$CHILD" = x"$PID" ] ; then
-                PARENTPGID=$PGID
+                SENTRYPGID=$PGID
             fi
         done
-        [ -n "$PARENTPGID" ]
+        [ -n "$SENTRYPGID" ]
         [ -n "$CHILDPGID" ]
-        [ x"$PARENTPGID" != x"$CHILDPGID" ]
+        [ x"$SENTRYPGID" != x"$CHILDPGID" ]
         [ x"$CHILD" != x"$CHILDPGID" ]
     }
     testCaseEnd
@@ -338,16 +360,16 @@ runTests()
     [ -n "$VALGRIND" ] || testOutput "3" = '$(
         pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
-            read PARENT UMBILICAL
+            read PARENT SENTRY UMBILICAL
             read CHILD
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                 while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
             done
             ls -l /proc/$UMBILICAL/fd |
                 grep -v " -> /proc/$PARENT" |
                 grep "[0-9]-[0-9]" |
                 wc -l
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
             done
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
@@ -365,16 +387,16 @@ runTests()
         pidsentry --test=3 -p $PIDFILE -i -- sh -c "
             while : ; do sleep 1 ; done" |
         {
-            read PARENT UMBILICAL
+            read PARENT SENTRY UMBILICAL
             read CHILD
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                 while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
             done
             ls -l /proc/$UMBILICAL/fd |
                 grep -v " -> /proc/$PARENT" |
                 grep "[0-9]-[0-9]" |
                 wc -l
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
             done
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
@@ -386,20 +408,21 @@ runTests()
     # i.   stdin
     # ii.  stdout
     # iii. stderr
-    # iv.  Umbilical tether
-    [ -n "$VALGRIND" ] || testOutput "4" = '$(
+    # iv.  Agent tether
+    # v.   Umbilical tether
+    [ -n "$VALGRIND" ] || testOutput "5" = '$(
         pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
-            read PARENT UMBILICAL
+            read PARENT SENTRY UMBILICAL
             read CHILD
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                 while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
             done
-            ls -l /proc/$PARENT/fd |
+            ls -l /proc/$SENTRY/fd |
                 grep -v " -> /proc/$PARENT" |
                 grep "[0-9]-[0-9]" |
                 wc -l
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
             done
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
@@ -411,20 +434,21 @@ runTests()
     # i.   stdin
     # ii.  stdout
     # iii. stderr
-    # iv.  Umbilical tether
-    [ -n "$VALGRIND" ] || testOutput "4" = '$(
+    # iv.  Agent tether
+    # v.   Umbilical tether
+    [ -n "$VALGRIND" ] || testOutput "5" = '$(
         pidsentry --test=3 -i -u -- sh -c "while : ; do sleep 1 ; done" |
         {
-            read PARENT UMBILICAL
+            read PARENT SENTRY UMBILICAL
             read CHILD
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                 while ! grep -q " [tT] " /proc/$P/stat ; do sleep 1 ; done
             done
-            ls -l /proc/$PARENT/fd |
+            ls -l /proc/$SENTRY/fd |
                 grep -v " -> /proc/$PARENT" |
                 grep "[0-9]-[0-9]" |
                 wc -l
-            for P in $PARENT $UMBILICAL ; do
+            for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
             done
             kill $CHILD || { /bin/echo NOTOK ; exit 1 ; }
@@ -450,7 +474,7 @@ runTests()
         ls -l /proc/self/fd | grep "[0-9][0-9]" | wc -l)' = '$(
         pidsentry -i -u -p $PIDFILE -- sh -c "while : ; do sleep 1 ; done" |
         {
-            read PARENT UMBILICAL
+            read PARENT SENTRY UMBILICAL
             read CHILD
             pidsentry -p $PIDFILE -c ls -l /proc/self/fd |
                 grep "[0-9][[0-9]" | wc -l
@@ -521,20 +545,26 @@ runTests()
       pidsentry --test=1 -n @tether@ -- /bin/echo x@tether@x | grep "1")'
     testCaseEnd
 
-    testCaseBegin 'Early parent death'
-    pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
-        read PARENT UMBILICAL
-        randomsleep 1
-        kill -9 $PARENT
-        sleep 3
-        testLostWatchdogs
-    }
-    testCaseEnd
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Early parent death - $SUPERVISOR"
+        {
+            set -- sh -cx 'while : pidsentry ; do sleep 1 ; done'
+            pidsentry -i --test=1 -dd "$@"
+        } | {
+            read PARENT SENTRY UMBILICAL
+            randomsleep 1
+            eval kill -9 \$$SUPERVISOR
+            eval waitwhile liveprocess \$$SUPERVISOR
+            sleep 3
+            testLostWatchdogs
+        }
+        testCaseEnd
+    done
 
     testCaseBegin 'Early umbilical death'
     testLostWatchdogs
     pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
-        read PARENT UMBILICAL
+        read PARENT SENTRY UMBILICAL
         randomsleep 1
         kill -9 $UMBILICAL
         SLEPT=0
@@ -549,7 +579,7 @@ runTests()
     testCaseBegin 'Early child death'
     testLostWatchdogs
     pidsentry -i --test=1 -dd sh -cx 'while : pidsentry ; do sleep 1 ; done' | {
-        read PARENT UMBILICAL
+        read PARENT SENTRY UMBILICAL
         read CHILD
         randomsleep 1
         kill -9 $CHILD
@@ -574,7 +604,7 @@ runTests()
         fi
       } | {
         exec >&2
-        read PARENT UMBILICAL ; /bin/echo "Parent $PARENT $UMBILICAL"
+        read PARENT SENTRY UMBILICAL ; /bin/echo "Parent $SENTRY $UMBILICAL"
         read CHILD            ; /bin/echo "Child $CHILD"
         kill -9 -- "$CHILD"
       })
@@ -584,7 +614,7 @@ runTests()
     testCaseBegin 'Stopped child'
     testOutput OK = '"$(
         pidsentry --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
-            read PARENT UMBILICAL
+            read PARENT SENTRY UMBILICAL
             read CHILD
             sleep 8
             kill -CONT $CHILD || { /bin/echo NOTOK ; exit 1 ; }
@@ -592,69 +622,87 @@ runTests()
         })"'
     testCaseEnd
 
-    testCaseBegin 'Stopped parent'
-    testOutput OK = '"$(pidsentry --test=1 -i -d -t 8,2 -- sleep 4 | {
-        read PARENT UMBILICAL
-        read CHILD
-        kill -STOP $PARENT
-        sleep 8
-        kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-        /bin/echo OK
-    })"'
-    testCaseEnd
-
-    testCaseBegin 'Randomly stopped parent'
-    testOutput 'OK' = '$(
-        { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
-            read PARENT UMBILICAL
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Stopped parent - $SUPERVISOR"
+        testOutput OK = '"$(pidsentry --test=1 -i -d -t 8,2 -- sleep 4 | {
+            read PARENT SENTRY UMBILICAL
             read CHILD
-            randomsleep 3
-            if ! kill -STOP $PARENT ; then
-                ! liveprocess $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            else
-                randomsleep 10
-                kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            fi
-            read REPLY
-            /bin/echo $REPLY
-        }
-    )'
-    testCaseEnd
+            eval kill -STOP \$$SUPERVISOR
+            waituntil stoppedprocess \$$SUPERVISOR
+            sleep 8
+            eval kill -CONT \$$SUPERVISOR || { /bin/echo NOTOK ; exit 1 ; }
+            /bin/echo OK
+        })"'
+        testCaseEnd
+    done
 
-    testCaseBegin 'Randomly stopped process family'
-    testOutput 'OK' = '$(
-        { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
-            read PARENT UMBILICAL
-            read CHILD
-            randomsleep 3
-            if ! kill -TSTP $PARENT ; then
-                ! liveprocess $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            else
-                randomsleep 10
-                kill -CONT $PARENT || { /bin/echo NOTOK ; exit 1 ; }
-            fi
-            read REPLY
-            /bin/echo $REPLY
-        }
-    )'
-    testCaseEnd
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Randomly stopped parent - $SUPERVISOR"
+        testOutput 'OK' = '$(
+            { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
+                read PARENT SENTRY UMBILICAL
+                read CHILD
+                randomsleep 3
+                if ! eval kill -STOP \$$SUPERVISOR ; then
+                    ! eval liveprocess \$$SUPERVISOR || {
+                        /bin/echo NOTOK ; exit 1
+                    }
+                else
+                    randomsleep 10
+                    eval kill -CONT \$$SUPERVISOR || {
+                        /bin/echo NOTOK ; exit 1
+                    }
+                fi
+                read REPLY
+                /bin/echo $REPLY
+            }
+        )'
+        testCaseEnd
+    done
 
-    testCaseBegin 'Broken umbilical'
-    testOutput "OK" = '$(
-        exec 3>&1
-        pidsentry -dd -i -- sleep 9 | {
-            read PARENT UMBILICAL
-            read CHILD
-            sleep 3
-            kill -0 $CHILD
-            RC=$?
-            kill -9 $PARENT
-            sleep 3
-            ! kill -0 $CHILD 2>/dev/null || /bin/echo NOTOK
-            [ x"$RC" != x"0" ] || /bin/echo OK
-        }
-    )'
-    testCaseEnd
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Randomly stopped process family - $SUPERVISOR"
+        testOutput 'OK' = '$(
+            { pidsentry -i -dd sleep 3 && /bin/echo OK ; } | {
+                read PARENT SENTRY UMBILICAL
+                read CHILD
+                randomsleep 3
+                if ! eval kill -TSTP \$$SUPERVISOR ; then
+                    ! eval liveprocess \$$SUPERVISOR || {
+                        /bin/echo NOTOK ; exit 1
+                    }
+                else
+                    randomsleep 10
+                    eval kill -CONT \$$SUPERVISOR || {
+                        /bin/echo NOTOK ; exit 1
+                    }
+                fi
+                read REPLY
+                /bin/echo $REPLY
+            }
+        )'
+        testCaseEnd
+    done
+
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Broken umbilical - $SUPERVISOR"
+        testOutput "OK" = '$(
+            exec 3>&1
+            pidsentry -dd -i -- sleep 9 | {
+                read PARENT SENTRY UMBILICAL
+                read CHILD
+                sleep 3
+                kill -0 $CHILD
+                RC=$?
+                eval kill -9 \$$SUPERVISOR
+                eval waitwhile kill -0 \$$SUPERVISOR 2>&-
+                sleep 3
+                ! kill -0 $CHILD 2>&- || /bin/echo NOTOK
+                [ x"$RC" != x"0" ] || /bin/echo OK
+            }
+        )'
+        testCaseEnd
+    done
 
     testCaseBegin 'Competing child processes'
     (
@@ -699,7 +747,7 @@ runTests()
 
                     trap 'trapexit $?' 0
 
-                    { read PARENT UMBILICAL && read CHILD ; } || {
+                    { read PARENT SENTRY UMBILICAL && read CHILD ; } || {
                         /bin/echo "Skipping pidfile from $TASK_PID" >&2
                         /bin/echo X
                         /bin/echo 0
@@ -707,7 +755,7 @@ runTests()
                         exit 0
                     }
 
-                    : PARENT $PARENT UMBILICAL $UMBILICAL
+                    : PARENT $PARENT SENTRY $SENTRY UMBILICAL $UMBILICAL
                     : CHILD $CHILD
 
                     /bin/echo $CHILD
@@ -770,102 +818,108 @@ runTests()
     )
     testCaseEnd
 
-    testCaseBegin 'Fast signal queueing'
-    SIGNALS="1 2 3 15"
-    for SIG in $SIGNALS ; do
-      ( ulimit -c 0
-        pidsentry --test=1 -i -dd -- tail -f /dev/null ||
-            { /bin/echo $? ; exit 0 ; }
-        /bin/echo $? ) |
-      {
-         read PARENT UMBILICAL
-         while kill -"$SIG" "$PARENT" 2>&- ; do
-             date ; /bin/echo kill -"$SIG" "$PARENT"
-             liveprocess $PARENT || break
-             sleep 1
-         done >&2
-         read CHILD
-         liveprocess $CHILD || /bin/echo OK
-         read RC
-         /bin/echo "$RC"
-      } | {
-          set -x
-          read REPLY
-          [ x"$REPLY" = x"OK" ]
-          read RC
-          [ x"$RC" = x"$((128 + SIG))" ]
-      }
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Fast signal queueing - $SUPERVISOR"
+        SIGNALS="1 2 3 15"
+        for SIG in $SIGNALS ; do
+            ( ulimit -c 0
+                pidsentry --test=1 -i -dd -- tail -f /dev/null ||
+                { /bin/echo $? ; exit 0 ; }
+                /bin/echo $? ) |
+            {
+                read PARENT SENTRY UMBILICAL
+                while eval kill -"$SIG" "\$$SUPERVISOR" 2>&- ; do
+                    date ; eval /bin/echo kill -$SIG \$$SUPERVISOR
+                    eval liveprocess \$$SUPERVISOR || break
+                    sleep 1
+                done >&2
+                read CHILD
+                liveprocess $CHILD || /bin/echo OK
+                read RC
+                /bin/echo "$RC"
+            } | {
+                set -x
+                read REPLY
+                [ x"$REPLY" = x"OK" ]
+                read RC
+                [ x"$RC" = x"$((128 + SIG))" ]
+            }
+        done
+        testCaseEnd
     done
-    testCaseEnd
 
-    testCaseBegin 'Slow signal queueing'
-    SIGNALS="1 2 3 15"
-    for SIG in $SIGNALS ; do
-      ( ulimit -c 0
-        pidsentry -i --test=1 -dd -- tail -f /dev/null ||
-            { /bin/echo $? ; exit 0 ; }
-        /bin/echo $? ) |
-      {
-         read PARENT UMBILICAL
-         sleep 1
-         while kill -"$SIG" "$PARENT" 2>&- ; do
-             date ; /bin/echo kill -"$SIG" "$PARENT"
-             liveprocess $PARENT || break
-             sleep 1
-         done >&2
-         read CHILD
-         liveprocess $CHILD || /bin/echo OK
-         read RC
-         /bin/echo "$RC"
-      } | {
-          set -x
-          read REPLY
-          [ x"$REPLY" = x"OK" ]
-          read RC
-          [ x"$RC" = x"$((128 + SIG))" ]
-      }
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Slow signal queueing - $SUPERVISOR"
+        SIGNALS="1 2 3 15"
+        for SIG in $SIGNALS ; do
+            ( ulimit -c 0
+                pidsentry -i --test=1 -dd -- tail -f /dev/null ||
+                { /bin/echo $? ; exit 0 ; }
+                /bin/echo $? ) |
+            {
+                read PARENT SENTRY UMBILICAL
+                sleep 1
+                while eval kill -"$SIG" "\$$SUPERVISOR" 2>&- ; do
+                    date ; eval /bin/echo kill -$SIG \$$SUPERVISOR
+                    eval liveprocess \$$SUPERVISOR || break
+                    sleep 1
+                done >&2
+                read CHILD
+                liveprocess $CHILD || /bin/echo OK
+                read RC
+                /bin/echo "$RC"
+            } | {
+                set -x
+                read REPLY
+                [ x"$REPLY" = x"OK" ]
+                read RC
+                [ x"$RC" = x"$((128 + SIG))" ]
+            }
+        done
+        testCaseEnd
     done
-    testCaseEnd
 
-    testCaseBegin 'Fixed termination deadline'
-    testOutput OK = '$(
-        pidsentry --test=3 -i -dd -t 3,,4 -- sh -cx "
-            trap : 15 6
-            while : \$PPID ; do
-                STATE=\`ps -o state= -p \$PPID\` || break
-                [ x\$STATE != xZ ] || break
-                [ x\$STATE != xT ] || break
-                sleep 1
-            done
-            kill -CONT \$PPID
-            /bin/echo READY
-            while : ; do sleep 2 ; done" |
-        {
-            set -x
-            # t+3s : Watchdog times out child and issues kill -ABRT
-            # t+7s : Watchdog escalates and issues kill -KILL
-            read PARENT UMBILICAL
-            : PARENT $PARENT UMBILICAL $UMBILICAL
-            read CHILD
-            : CHILD $CHILD
-            read READY # Signal handler established
-            [ x"$READY" = xREADY ]
-            while : ; do
-                liveprocess $UMBILICAL || break
-                stoppedprocess $UMBILICAL || break
-                sleep 1
-            done
-            kill -CONT $UMBILICAL
-            while : ; do sleep 1 ; kill $PARENT 2>&- ; done &
-            SLAVE=$!
-            sleep 4 # Wait for watchdog to send first signal
-            read -t 0 && /bin/echo FAIL1
-            sleep 10 # Watchdog should have terminated child and exited
-            read -t 0 && /bin/echo OK || /bin/echo FAIL2
-            kill -9 $SLAVE 2>&-
-        }
-    )'
-    testCaseEnd
+    for SUPERVISOR in PARENT SENTRY ; do
+        testCaseBegin "Fixed termination deadline - $SUPERVISOR"
+        testOutput OK = '$(
+            pidsentry --test=3 -i -dd -t 3,,4 -- sh -cx "
+                trap : 15 6
+                while : \$PPID ; do
+                    STATE=\`ps -o state= -p \$PPID\` || break
+                    [ x\$STATE != xZ ] || break
+                    [ x\$STATE != xT ] || break
+                    sleep 1
+                done
+                kill -CONT \$PPID
+                /bin/echo READY
+                while : ; do sleep 2 ; done" |
+            {
+                set -x
+                # t+3s : Watchdog times out child and issues kill -ABRT
+                # t+7s : Watchdog escalates and issues kill -KILL
+                read PARENT SENTRY UMBILICAL
+                : PARENT $PARENT SENTRY $SENTRY UMBILICAL $UMBILICAL
+                read CHILD
+                : CHILD $CHILD
+                read READY # Signal handler established
+                [ x"$READY" = xREADY ]
+                while : ; do
+                    liveprocess $UMBILICAL || break
+                    ! stoppedprocess $UMBILICAL || break
+                    sleep 1
+                done
+                kill -CONT $UMBILICAL
+                while : ; do sleep 1 ; eval kill \$$SUPERVISOR 2>&- ; done &
+                SLAVE=$!
+                sleep 4 # Wait for watchdog to send first signal
+                read -t 0 && /bin/echo FAIL1
+                sleep 10 # Watchdog should have terminated child and exited
+                read -t 0 && /bin/echo OK || /bin/echo FAIL2
+                kill -9 $SLAVE 2>&-
+            }
+        )'
+        testCaseEnd
+    done
 
     testCaseBegin 'Test SIGPIPE propagates from child'
     testOutput "X-$((128 + 13))" = '$(

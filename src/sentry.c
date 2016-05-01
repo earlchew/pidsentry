@@ -71,7 +71,7 @@ raiseSentrySignal_(void *self_, int aSigNum)
     /* Propagate the signal to the child. Note that SIGQUIT might cause
      * the child to terminate and dump core. Dump core in sympathy if this
      * happens, but do that only if the child actually does so. This is
-     * taken care of in reapFamily_(). */
+     * taken care of in reapSentry_() when it calls superviseChildProcess(). */
 
     killChild(self->mChildProcess, aSigNum);
 }
@@ -334,6 +334,7 @@ ownSentryPidFileName(const struct Sentry *self)
 /* -------------------------------------------------------------------------- */
 int
 runSentry(struct Sentry   *self,
+          struct Pid       aParentPid,
           struct Pipe     *aParentPipe,
           struct ExitCode *aExitCode)
 {
@@ -387,14 +388,18 @@ runSentry(struct Sentry   *self,
             ABORT_IF(
                 -1 == dprintf(STDOUT_FILENO,
                               "%" PRId_Pid " "
+                              "%" PRId_Pid " "
                               "%" PRId_Pid "\n",
+                              FMTd_Pid(aParentPid),
                               FMTd_Pid(ownProcessId()),
                               FMTd_Pid(self->mUmbilicalProcess->mPid)),
                 {
                     terminate(
                         errno,
-                        "Unable to print parent %" PRId_Pid
-                        "and umbilical pid %" PRId_Pid,
+                        "Unable to print parent %" PRId_Pid ", "
+                        "sentry pid %" PRId_Pid " and "
+                        "umbilical pid %" PRId_Pid,
+                        FMTd_Pid(aParentPid),
                         FMTd_Pid(ownProcessId()),
                         FMTd_Pid(self->mUmbilicalProcess->mPid));
                 });
@@ -560,6 +565,7 @@ runSentry(struct Sentry   *self,
         monitorChild(self->mChildProcess,
                      self->mUmbilicalProcess,
                      self->mUmbilicalSocket->mParentFile,
+                     aParentPid,
                      aParentPipe),
         {
             terminate(

@@ -796,6 +796,12 @@ struct ChildMonitor
         struct EventLatch *mUmbilicalLatch;
     } mEvent;
 
+    struct
+    {
+        struct Pid   mPid;
+        struct Pipe *mPipe;
+    } mParent;
+
     struct pollfd            mPollFds[POLL_FD_CHILD_KINDS];
     struct PollFdAction      mPollFdActions[POLL_FD_CHILD_KINDS];
     struct PollFdTimerAction mPollFdTimerActions[POLL_FD_CHILD_TIMER_KINDS];
@@ -898,7 +904,7 @@ Finally:
 /* Maintain Parent Connection
  *
  * This connection allows for monitoring ofthe parent. The child will
- * terminate if the parent terminates. */
+ * terminate immediately if the parent terminates. */
 
 static int
 pollFdParent_(void                        *self_,
@@ -908,12 +914,13 @@ pollFdParent_(void                        *self_,
 
     struct ChildMonitor *self = self_;
 
-    self->mPollFds[POLL_FD_CHILD_PARENT].fd     = -1;
-    self->mPollFds[POLL_FD_CHILD_PARENT].events = 0;
+    warn(0,
+         "Parent pid %" PRId_Pid " has terminated",
+         FMTd_Pid(self->mParent.mPid));
 
-    activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
+    exitProcess(EXIT_FAILURE);
 
-    rc = 0;
+    errno = ENOSYS;
 
 Finally:
 
@@ -1701,6 +1708,7 @@ int
 monitorChild(struct ChildProcess     *self,
              struct UmbilicalProcess *aUmbilicalProcess,
              struct File             *aUmbilicalFile,
+             struct Pid               aParentPid,
              struct Pipe             *aParentPipe)
 {
     int rc = -1;
@@ -1774,6 +1782,12 @@ monitorChild(struct ChildProcess     *self,
         .mTetherThread = tetherThread,
         .mEventPipe    = eventPipe,
         .mContLatch    = contLatch,
+
+        .mParent =
+        {
+            .mPid  = aParentPid,
+            .mPipe = aParentPipe,
+        },
 
         .mEvent =
         {
