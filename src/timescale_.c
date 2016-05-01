@@ -78,8 +78,8 @@ changeTimeScale_(uint64_t aSrcTime, size_t aSrcScale, size_t aDstScale)
             {
                 terminate(
                     0,
-                    "Time scale overflow converting %" PRIu64
-                    " from scale %zu to scale %zu",
+                    "Time scale overflow converting %" PRIu64 " "
+                    "from scale %zu to scale %zu",
                     aSrcTime,
                     aSrcScale,
                     aDstScale);
