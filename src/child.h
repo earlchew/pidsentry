@@ -58,7 +58,7 @@ struct ChildProcess
     struct EventLatch *mUmbilicalLatch;
 
     struct Pipe  mTetherPipe_;
-    struct Pipe* mTetherPipe;
+    struct Pipe *mTetherPipe;
 
     struct
     {
@@ -92,7 +92,8 @@ closeChildTether(struct ChildProcess *self);
 int
 monitorChild(struct ChildProcess     *self,
              struct UmbilicalProcess *aUmbilicalProcess,
-             struct File             *aUmbilicalFile);
+             struct File             *aUmbilicalFile,
+             struct Pipe             *aParentPipe);
 
 void
 raiseChildSigCont(struct ChildProcess *self);

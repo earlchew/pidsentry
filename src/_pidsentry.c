@@ -83,12 +83,13 @@ cmdRunCommand(const char *aPidFileName, char **aCmd, struct ExitCode *aExitCode)
         (status = createCommand(&command_, aPidFileName),
          CommandStatusError == status));
 
-    if (CommandStatusOk == status)
-        command = &command_;
-
     switch (status)
     {
     default:
+        ensure(0);
+
+    case CommandStatusOk:
+        command = &command_;
         ERROR_IF(
             runCommand(command, aCmd));
 
@@ -153,22 +154,8 @@ cmdMonitorChild(char **aCmd, struct ExitCode *aExitCode)
         createAgent(&agent_, aCmd));
     agent = &agent_;
 
-    int pidFileErr;
     ERROR_IF(
-        (pidFileErr = announceAgentPidFile(agent),
-         PidFileStatusError == pidFileErr));
-
-    switch (pidFileErr)
-    {
-    default:
-        ERROR_IF(
-            runAgent(agent, &exitCode));
-        break;
-
-    case PidFileStatusCollision:
-        warn(0, "Unable to write pidfile '%s'", ownAgentPidFileName(agent));
-        break;
-    }
+        runAgent(agent, &exitCode));
 
     *aExitCode = exitCode;
 

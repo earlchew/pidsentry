@@ -44,6 +44,7 @@ extern "C" {
 #endif
 
 struct ExitCode;
+struct Pipe;
 
 /* -------------------------------------------------------------------------- */
 struct Sentry
@@ -83,11 +84,12 @@ createSentry(struct Sentry *self,
 void
 closeSentry(struct Sentry *self);
 
-int
+enum PidFileStatus
 announceSentryPidFile(struct Sentry *self);
 
 int
 runSentry(struct Sentry   *self,
+          struct Pipe     *aParentPipe,
           struct ExitCode *aExitCode);
 
 const char *

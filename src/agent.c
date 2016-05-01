@@ -32,6 +32,13 @@
 
 #include "type_.h"
 #include "error_.h"
+#include "fd_.h"
+#include "stdfdfiller_.h"
+
+#include <unistd.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <stdio.h>
 
 static const struct Type * const agentType_ = TYPE("Agent");
 
@@ -105,11 +112,7 @@ createAgent(struct Agent  *self,
 
     self->mType = agentType_;
 
-    self->mSentry = 0;
-
-    ERROR_IF(
-        createSentry(&self->mSentry_, aCmd));
-    self->mSentry = &self->mSentry_;
+    self->mCmd = aCmd;
 
     rc = 0;
 
@@ -125,29 +128,81 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+printAgent_(const void *self_, FILE *aFile)
+{
+    const struct Agent *self = self_;
+
+    return fprintf(aFile, "<agent %p %s>", self, self->mCmd[0]);
+}
+
+/* -------------------------------------------------------------------------- */
 void
 closeAgent(struct Agent *self)
 {
     if (self)
-    {
-        closeSentry(self->mSentry);
-
         self->mType = 0;
-    }
 }
 
 /* -------------------------------------------------------------------------- */
-enum PidFileStatus
-announceAgentPidFile(struct Agent *self)
+static int
+runAgentSentry_(struct Agent    *self,
+                struct Pipe     *aParentPipe,
+                struct ExitCode *aExitCode)
 {
-    return announceSentryPidFile(self->mSentry);
-}
+    int rc = -1;
 
-/* -------------------------------------------------------------------------- */
-const char *
-ownAgentPidFileName(const struct Agent *self)
-{
-    return ownSentryPidFileName(self->mSentry);
+    struct ExitCode exitCode = { EXIT_FAILURE };
+
+    struct Sentry  sentry_;
+    struct Sentry *sentry = 0;
+
+    do
+    {
+        ERROR_IF(
+            createSentry(&sentry_, self->mCmd));
+        sentry = &sentry_;
+
+        enum PidFileStatus status;
+        ERROR_IF(
+            (status = announceSentryPidFile(sentry),
+             PidFileStatusError == status));
+
+        if (PidFileStatusOk != status)
+        {
+            switch (status)
+            {
+            default:
+                ensure(0);
+
+            case PidFileStatusCollision:
+                warn(0,
+                     "Unable to write pidfile '%s'",
+                     ownSentryPidFileName(sentry));
+                break;
+            }
+            break;
+        }
+
+        ERROR_IF(
+            runSentry(sentry, aParentPipe, &exitCode));
+
+    } while (0);
+
+    *aExitCode = exitCode;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printAgent_);
+
+        closeSentry(sentry);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -160,15 +215,88 @@ runAgent(struct Agent    *self,
     struct ParentProcess  parentProcess_;
     struct ParentProcess *parentProcess = 0;
 
+    struct StdFdFiller  stdFdFiller_;
+    struct StdFdFiller *stdFdFiller = 0;
+
+    struct Pipe  parentPipe_;
+    struct Pipe *parentPipe = 0;
+
     if (gOptions.mOrphaned)
     {
-        ABORT_IF(
+        ERROR_IF(
             createParent(&parentProcess_));
         parentProcess = &parentProcess_;
     }
 
+    {
+        ERROR_IF(
+            createStdFdFiller(&stdFdFiller_));
+        stdFdFiller = &stdFdFiller_;
+
+        ERROR_IF(
+            createPipe(&parentPipe_, O_CLOEXEC | O_NONBLOCK));
+        parentPipe = &parentPipe_;
+
+        closeStdFdFiller(stdFdFiller);
+        stdFdFiller = 0;
+    }
+
+    struct Pid agentPid;
     ERROR_IF(
-        runSentry(self->mSentry, aExitCode));
+        (agentPid = forkProcessChild(
+            ForkProcessSetProcessGroup, Pgid(0)),
+         -1 == agentPid.mPid));
+
+    if ( ! agentPid.mPid)
+    {
+        debug(
+            0,
+            "running agent pid %" PRId_Pid " in pgid %" PRId_Pgid,
+            FMTd_Pid(ownProcessId()), FMTd_Pgid(ownProcessGroupId()));
+
+        closePipeWriter(parentPipe);
+
+        struct ExitCode exitCode = { EXIT_FAILURE };
+
+        ABORT_IF(
+            runAgentSentry_(self, parentPipe, &exitCode));
+
+        debug(0, "exit agent status %" PRId_ExitCode, FMTd_ExitCode(exitCode));
+
+        exitProcess(exitCode.mStatus);
+    }
+
+    closePipeReader(parentPipe);
+
+    {
+        struct ProcessAppLock *appLock = createProcessAppLock();
+
+        int whiteList[] =
+        {
+            STDIN_FILENO,
+            STDOUT_FILENO,
+            STDERR_FILENO,
+            parentPipe->mWrFile->mFd,
+            ownProcessAppLockFile(appLock)->mFd,
+        };
+
+        ERROR_IF(
+            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
+
+        destroyProcessAppLock(appLock);
+    }
+
+    int agentStatus;
+    ERROR_IF(
+        reapProcessChild(agentPid, &agentStatus));
+
+    debug(0,
+          "reaped agent pid %" PRId_Pid " status %d",
+          FMTd_Pid(agentPid),
+          agentStatus);
+
+    *aExitCode =
+        extractProcessExitStatus(agentStatus, agentPid);
 
     rc = 0;
 
@@ -176,6 +304,10 @@ Finally:
 
     FINALLY
     ({
+        finally_warn_if(rc, self, printAgent_);
+
+        closePipe(parentPipe);
+        closeStdFdFiller(stdFdFiller);
         closeParent(parentProcess);
     });
 

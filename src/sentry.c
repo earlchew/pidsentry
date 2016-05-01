@@ -334,6 +334,7 @@ ownSentryPidFileName(const struct Sentry *self)
 /* -------------------------------------------------------------------------- */
 int
 runSentry(struct Sentry   *self,
+          struct Pipe     *aParentPipe,
           struct ExitCode *aExitCode)
 {
     int rc = -1;
@@ -558,7 +559,8 @@ runSentry(struct Sentry   *self,
     ABORT_IF(
         monitorChild(self->mChildProcess,
                      self->mUmbilicalProcess,
-                     self->mUmbilicalSocket->mParentFile),
+                     self->mUmbilicalSocket->mParentFile,
+                     aParentPipe),
         {
             terminate(
                 errno,
@@ -643,8 +645,7 @@ runSentry(struct Sentry   *self,
 
     struct Pid childPid = self->mChildProcess->mPid;
 
-    debug(0,
-          "reaping child pid %" PRId_Pid, FMTd_Pid(childPid));
+    debug(0, "reaping child pid %" PRId_Pid, FMTd_Pid(childPid));
 
     int childStatus;
     reapChild(self->mChildProcess, &childStatus);

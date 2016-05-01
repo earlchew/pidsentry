@@ -43,6 +43,7 @@
 #include "bellsocketpair_.h"
 #include "stdfdfiller_.h"
 #include "eventpipe_.h"
+#include "printf_.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -60,6 +61,7 @@ enum PollFdChildKind
 {
     POLL_FD_CHILD_TETHER,
     POLL_FD_CHILD_UMBILICAL,
+    POLL_FD_CHILD_PARENT,
     POLL_FD_CHILD_EVENT_PIPE,
     POLL_FD_CHILD_KINDS
 };
@@ -68,6 +70,7 @@ static const char *pollFdNames_[POLL_FD_CHILD_KINDS] =
 {
     [POLL_FD_CHILD_TETHER]     = "tether",
     [POLL_FD_CHILD_UMBILICAL]  = "umbilical",
+    [POLL_FD_CHILD_PARENT]     = "parent",
     [POLL_FD_CHILD_EVENT_PIPE] = "event pipe",
 };
 
@@ -147,6 +150,19 @@ Finally:
     });
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+printChild_(const void *self_, FILE *aFile)
+{
+    const struct ChildProcess *self = self_;
+
+    return fprintf(aFile,
+                   "<child %p pid %" PRId_Pid " pgid %" PRId_Pgid ">",
+                   self,
+                   FMTd_Pid(self->mPid),
+                   FMTd_Pgid(self->mPgid));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -651,7 +667,10 @@ forkChild(
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 }
@@ -867,7 +886,41 @@ pollFdTimerTermination_(void                        *self_,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Maintain Parent Connection
+ *
+ * This connection allows for monitoring ofthe parent. The child will
+ * terminate if the parent terminates. */
+
+static int
+pollFdParent_(void                        *self_,
+              const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    struct ChildMonitor *self = self_;
+
+    self->mPollFds[POLL_FD_CHILD_PARENT].fd     = -1;
+    self->mPollFds[POLL_FD_CHILD_PARENT].events = 0;
+
+    activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 }
@@ -994,7 +1047,10 @@ pollFdUmbilical_(void                        *self_,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 }
@@ -1049,6 +1105,8 @@ Finally:
 
     FINALLY
     ({
+        finally_warn_if(rc, self, printChild_);
+
         ABORT_IF(
             fatal,
             {
@@ -1217,7 +1275,10 @@ pollFdTimerUmbilical_(void                        *self_,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 }
@@ -1288,7 +1349,10 @@ pollFdTether_(void                        *self_,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 }
@@ -1404,7 +1468,10 @@ pollFdTimerTether_(void                        *self_,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 }
@@ -1495,7 +1562,10 @@ pollFdTimerChild_(void                        *self_,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 
@@ -1596,7 +1666,10 @@ pollFdEventPipe_(void                        *self_,
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
 
     return rc;
 }
@@ -1627,7 +1700,8 @@ raiseChildSigCont(struct ChildProcess *self)
 int
 monitorChild(struct ChildProcess     *self,
              struct UmbilicalProcess *aUmbilicalProcess,
-             struct File             *aUmbilicalFile)
+             struct File             *aUmbilicalFile,
+             struct Pipe             *aParentPipe)
 {
     int rc = -1;
 
@@ -1771,6 +1845,12 @@ monitorChild(struct ChildProcess     *self,
 
         .mPollFds =
         {
+            [POLL_FD_CHILD_PARENT] =
+            {
+                .fd     = aParentPipe ? aParentPipe->mRdFile->mFd : -1,
+                .events = aParentPipe ? POLL_DISCONNECTEVENT : 0,
+            },
+
             [POLL_FD_CHILD_UMBILICAL] =
             {
                 .fd     = aUmbilicalFile->mFd,
@@ -1793,6 +1873,7 @@ monitorChild(struct ChildProcess     *self,
         .mPollFdActions =
         {
             [POLL_FD_CHILD_UMBILICAL]  = { pollFdUmbilical_ },
+            [POLL_FD_CHILD_PARENT]     = { pollFdParent_ },
             [POLL_FD_CHILD_EVENT_PIPE] = { pollFdEventPipe_ },
             [POLL_FD_CHILD_TETHER]     = { pollFdTether_ },
         },
@@ -1895,6 +1976,8 @@ Finally:
 
     FINALLY
     ({
+        finally_warn_if(rc, self, printChild_);
+
         updateChildMonitor_(self, 0);
 
         if (childMonitor)
