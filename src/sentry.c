@@ -58,7 +58,8 @@ reapSentry_(void *self_)
     struct Pid umbilicalPid =
         self->mUmbilicalProcess ? self->mUmbilicalProcess->mPid : Pid(0);
 
-    superviseChildProcess(self->mChildProcess, umbilicalPid);
+    ABORT_IF(
+        superviseChildProcess(self->mChildProcess, umbilicalPid));
 }
 
 static void
@@ -73,7 +74,8 @@ raiseSentrySignal_(void *self_, int aSigNum)
      * happens, but do that only if the child actually does so. This is
      * taken care of in reapSentry_() when it calls superviseChildProcess(). */
 
-    killChild(self->mChildProcess, aSigNum);
+    ABORT_IF(
+        killChild(self->mChildProcess, aSigNum));
 }
 
 static void
@@ -83,7 +85,8 @@ raiseSentryStop_(void *self_)
 
     ensure(sentryType_ == self->mType);
 
-    pauseChildProcessGroup(self->mChildProcess);
+    ABORT_IF(
+        pauseChildProcessGroup(self->mChildProcess));
 }
 
 static void
@@ -93,7 +96,8 @@ raiseSentryResume_(void *self_)
 
     ensure(sentryType_ == self->mType);
 
-    resumeChildProcessGroup(self->mChildProcess);
+    ABORT_IF(
+        resumeChildProcessGroup(self->mChildProcess));
 }
 
 static void
@@ -103,7 +107,8 @@ raiseSentrySigCont_(void *self_)
 
     ensure(sentryType_ == self->mType);
 
-    raiseChildSigCont(self->mChildProcess);
+    ABORT_IF(
+        raiseChildSigCont(self->mChildProcess));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -266,7 +271,8 @@ createSentry(struct Sentry *self,
      * the only possible references to the tether pipe remain in the
      * child process, if required, and stdin and stdout in this process. */
 
-    closeChildTether(self->mChildProcess);
+    ABORT_IF(
+        closeChildTether(self->mChildProcess));
 
     ABORT_IF(
         purgeProcessOrphanedFds(),
@@ -643,7 +649,8 @@ runSentry(struct Sentry   *self,
      * so killing the child process group will not change its exit
      * status. */
 
-    killChildProcessGroup(self->mChildProcess);
+    ABORT_IF(
+        killChildProcessGroup(self->mChildProcess));
 
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and
@@ -654,7 +661,8 @@ runSentry(struct Sentry   *self,
     debug(0, "reaping child pid %" PRId_Pid, FMTd_Pid(childPid));
 
     int childStatus;
-    reapChild(self->mChildProcess, &childStatus);
+    ABORT_IF(
+        reapChild(self->mChildProcess, &childStatus));
 
     closeChild(self->mChildProcess);
     self->mChildProcess = 0;

@@ -569,7 +569,8 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
              "Killing child pgid %" PRId_Pgid " from umbilical",
              FMTd_Pgid(aChildProcess->mPgid));
 
-    killChildProcessGroup(aChildProcess);
+    ABORT_IF(
+        killChildProcessGroup(aChildProcess));
 }
 
 /* -------------------------------------------------------------------------- */

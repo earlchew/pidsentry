@@ -167,10 +167,15 @@ printChild_(const void *self_, FILE *aFile)
 
 /* -------------------------------------------------------------------------- */
 static struct ChildProcessState
-superviseChildProcess_(const char        *aRole,
-                       struct Pid         aPid,
-                       struct EventLatch *aLatch)
+superviseChildProcess_(const struct ChildProcess *self,
+                       const char                *aRole,
+                       struct Pid                 aPid,
+                       struct EventLatch         *aLatch)
 {
+    int rc = -1;
+
+    struct ChildProcessState processState;
+
     /* Check that the process being monitored is the one
      * is the subject of the signal. Here is a way for a parent
      * to be surprised by the presence of an adopted child:
@@ -180,17 +185,9 @@ superviseChildProcess_(const char        *aRole,
      * The new shell inherits the earlier sleep as a child even
      * though it did not create it. */
 
-    struct ChildProcessState processState;
-    ABORT_IF(
+    ERROR_IF(
         (processState = monitorProcessChild(aPid),
-         ChildProcessStateError == processState.mChildState),
-        {
-            terminate(
-                errno,
-                "Unable to determine state of %s pid %" PRId_Pid,
-                aRole,
-                FMTd_Pid(aPid));
-        });
+         ChildProcessStateError == processState.mChildState));
 
     if (ChildProcessStateRunning == processState.mChildState)
     {
@@ -199,13 +196,8 @@ superviseChildProcess_(const char        *aRole,
               aRole,
               FMTd_Pid(aPid));
 
-        ABORT_IF(
-            EventLatchSettingError == setEventLatch(aLatch),
-            {
-                terminate(
-                    errno,
-                    "Unable to set %s event latch", aRole);
-            });
+        ERROR_IF(
+            EventLatchSettingError == setEventLatch(aLatch));
     }
     else if (ChildProcessStateStopped == processState.mChildState ||
              ChildProcessStateTrapped == processState.mChildState)
@@ -254,28 +246,44 @@ superviseChildProcess_(const char        *aRole,
             break;
         }
 
-        ABORT_IF(
-            EventLatchSettingError == disableEventLatch(aLatch),
-            {
-                terminate(
-                    errno,
-                    "Unable to disable %s event latch", aRole);
-            });
+        ERROR_IF(
+            EventLatchSettingError == disableEventLatch(aLatch));
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc,
+                        self, printChild_,
+                        "role %s pid %" PRId_Pid, aRole, FMTd_Pid(aPid));
+
+        if (rc)
+            processState.mChildStatus = ChildProcessStateError;
+    });
 
     return processState;
 }
 
-void
+int
 superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid)
 {
-    if (aUmbilicalPid.mPid)
-        superviseChildProcess_(
-            "umbilical", aUmbilicalPid, self->mUmbilicalLatch);
+    int rc = -1;
 
-    struct ChildProcessState processState =
-        superviseChildProcess_(
-            "child", self->mPid, self->mChildLatch);
+    struct ChildProcessState processState;
+
+    if (aUmbilicalPid.mPid)
+        ERROR_IF(
+            (processState = superviseChildProcess_(
+                self, "umbilical", aUmbilicalPid, self->mUmbilicalLatch),
+             ChildProcessStateError == processState.mChildStatus));
+
+    ERROR_IF(
+        (processState = superviseChildProcess_(
+            self, "child", self->mPid, self->mChildLatch),
+         ChildProcessStateError == processState.mChildStatus));
 
     /* If the monitored child process has been killed by SIGQUIT and
      * dumped core, then dump core in sympathy. */
@@ -285,114 +293,133 @@ superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid)
     {
         quitProcess();
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 killChild(struct ChildProcess *self, int aSigNum)
 {
+    int rc = -1;
+
     struct ProcessSignalName sigName;
 
-    ABORT_UNLESS(
-        self->mPid.mPid,
-        {
-            terminate(
-                0,
-                "Signal race when trying to deliver %s",
-                formatProcessSignalName(&sigName, aSigNum));
-        });
+    ensure(self->mPid.mPid);
 
     debug(0,
           "sending %s to child pid %" PRId_Pid,
           formatProcessSignalName(&sigName, aSigNum),
           FMTd_Pid(self->mPid));
 
-    ABORT_IF(
-        kill(self->mPid.mPid, aSigNum),
-        {
-            terminate(
-                errno,
-                "Unable to deliver %s to child pid %" PRId_Pid,
-                formatProcessSignalName(&sigName, aSigNum),
-                FMTd_Pid(self->mPid));
-        });
+    ERROR_IF(
+        kill(self->mPid.mPid, aSigNum));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_,
+                        "signal %s",
+                        formatProcessSignalName(&sigName, aSigNum));
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 killChildProcessGroup(struct ChildProcess *self)
 {
+    int rc = -1;
+
     int sigKill = SIGKILL;
 
     struct ProcessSignalName sigName;
 
-    ABORT_UNLESS(
-        self->mPgid.mPgid,
-        {
-            terminate(
-                0,
-                "Signal race when trying to deliver %s",
-                formatProcessSignalName(&sigName, sigKill));
-        });
+    ensure(self->mPgid.mPgid);
 
     debug(0,
           "sending %s to child pgid %" PRId_Pgid,
           formatProcessSignalName(&sigName, sigKill),
           FMTd_Pgid(self->mPgid));
 
-    ABORT_IF(
-        killpg(self->mPgid.mPgid, sigKill),
-        {
-            terminate(
-                errno,
-                "Unable to deliver %s to child pgid %" PRId_Pgid,
-                formatProcessSignalName(&sigName, sigKill),
-                FMTd_Pgid(self->mPgid));
-        });
+    ERROR_IF(
+        killpg(self->mPgid.mPgid, sigKill));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc,
+                        self, printChild_,
+                        "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 pauseChildProcessGroup(struct ChildProcess *self)
 {
-    ABORT_UNLESS(
-        self->mPgid.mPgid,
-        {
-            terminate(
-                0,
-                "Signal race when trying to pause process group");
-        });
+    int rc = -1;
 
-    ABORT_IF(
-        killpg(self->mPgid.mPgid, SIGSTOP),
-        {
-            terminate(
-                errno,
-                "Unable to stop child process group %" PRId_Pgid,
-                FMTd_Pgid(self->mPgid));
-        });
+    ensure(self->mPgid.mPgid);
+
+    ERROR_IF(
+        killpg(self->mPgid.mPgid, SIGSTOP));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc,
+                        self, printChild_,
+                        "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 resumeChildProcessGroup(struct ChildProcess *self)
 {
-    ABORT_UNLESS(
-        self->mPgid.mPgid,
-        {
-            terminate(
-                0,
-                "Signal race when trying to resume process group");
-        });
+    int rc = -1;
 
-    ABORT_IF(
-        killpg(self->mPgid.mPgid, SIGCONT),
-        {
-            terminate(
-                errno,
-                "Unable to continue child process group %" PRId_Pgid,
-                FMTd_Pgid(self->mPgid));
-        });
+    ensure(self->mPgid.mPgid);
+
+    ERROR_IF(
+        killpg(self->mPgid.mPgid, SIGCONT));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc,
+                        self, printChild_,
+                        "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -676,13 +703,26 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 closeChildTether(struct ChildProcess *self)
 {
+    int rc = -1;
+
     ensure(self->mTetherPipe);
 
     closePipe(self->mTetherPipe);
     self->mTetherPipe = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -694,22 +734,29 @@ closeChildFiles_(struct ChildProcess *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 reapChild(struct ChildProcess *self, int *aStatus)
 {
-    ABORT_IF(
-        reapProcessChild(self->mPid, aStatus),
-        {
-            terminate(
-                errno,
-                "Unable to wait for status from child pid %" PRId_Pid,
-                FMTd_Pid(self->mPid));
-        });
+    int rc = -1;
+
+    ERROR_IF(
+        reapProcessChild(self->mPid, aStatus));
 
     /* Once the child process is reaped, the process no longer exists, so
      * the pid should no longer be used to refer to it. */
 
     self->mPid = Pid(0);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1307,16 +1354,24 @@ pollFdContEvent_(struct ChildMonitor         *self,
     pollFdContUmbilical_(self, aPollTime);
 }
 
-static void
+static int
 raiseFdContEvent_(struct ChildMonitor *self)
 {
-    ABORT_IF(
-        EventLatchSettingError == setEventLatch(self->mContLatch),
-        {
-            terminate(
-                errno,
-                "Unable to set continuation event latch");
-        });
+    int rc = -1;
+
+    ERROR_IF(
+        EventLatchSettingError == setEventLatch(self->mContLatch));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1692,15 +1747,31 @@ updateChildMonitor_(struct ChildProcess *self, struct ChildMonitor *aMonitor)
     unlockThreadSigMutex(self->mChildMonitor.mMutex);
 }
 
-void
+int
 raiseChildSigCont(struct ChildProcess *self)
 {
-    lockThreadSigMutex(self->mChildMonitor.mMutex);
+    int rc = -1;
+
+    struct ThreadSigMutex *lock = 0;
+
+    lock = lockThreadSigMutex(self->mChildMonitor.mMutex);
 
     if (self->mChildMonitor.mMonitor)
-        raiseFdContEvent_(self->mChildMonitor.mMonitor);
+        ERROR_IF(
+            raiseFdContEvent_(self->mChildMonitor.mMonitor));
 
-    unlockThreadSigMutex(self->mChildMonitor.mMutex);
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        finally_warn_if(rc, self, printChild_);
+
+        lock = unlockThreadSigMutex(lock);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

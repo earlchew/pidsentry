@@ -72,7 +72,7 @@ struct ChildProcess
 int
 createChild(struct ChildProcess *self);
 
-void
+int
 superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
 
 int
@@ -83,10 +83,10 @@ forkChild(
     struct BellSocketPair *aSyncSocket,
     struct SocketPair     *aUmbilicalSocket);
 
-void
+int
 killChild(struct ChildProcess *self, int aSigNum);
 
-void
+int
 closeChildTether(struct ChildProcess *self);
 
 int
@@ -96,23 +96,23 @@ monitorChild(struct ChildProcess     *self,
              struct Pid               aParentPid,
              struct Pipe             *aParentPipe);
 
-void
+int
 raiseChildSigCont(struct ChildProcess *self);
 
-void
+int
 reapChild(struct ChildProcess *self, int *aStatus);
 
 void
 closeChild(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */
-void
+int
 killChildProcessGroup(struct ChildProcess *self);
 
-void
+int
 pauseChildProcessGroup(struct ChildProcess *self);
 
-void
+int
 resumeChildProcessGroup(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */
