@@ -61,7 +61,7 @@ struct PrintfMethod
 {
     const struct Type * const *mType;
 
-    void *mObject;
+    const void *mObject;
     int (*mMethod)(const void *, FILE *);
 };
 
