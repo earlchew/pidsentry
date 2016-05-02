@@ -154,10 +154,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-printChild_(const void *self_, FILE *aFile)
+printChild_(const struct ChildProcess *self, FILE *aFile)
 {
-    const struct ChildProcess *self = self_;
-
     return fprintf(aFile,
                    "<child %p pid %" PRId_Pid " pgid %" PRId_Pgid ">",
                    self,
@@ -855,6 +853,16 @@ struct ChildMonitor
 };
 
 /* -------------------------------------------------------------------------- */
+static int
+printChildMonitor_(const struct ChildMonitor *self, FILE *aFile)
+{
+    return fprintf(aFile,
+                   "<child monitor %p pid %" PRId_Pid ">",
+                   self,
+                   FMTd_Pid(self->mChildPid));
+}
+
+/* -------------------------------------------------------------------------- */
 /* Child Termination State Machine
  *
  * When it is necessary to terminate the child process, run a state
@@ -941,7 +949,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -973,7 +981,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -1103,7 +1111,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -1159,7 +1167,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
 
         ABORT_IF(
             fatal,
@@ -1331,7 +1339,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -1368,7 +1376,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -1413,7 +1421,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -1532,7 +1540,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -1626,7 +1634,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;
@@ -1730,7 +1738,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, self, printChildMonitor_);
     });
 
     return rc;

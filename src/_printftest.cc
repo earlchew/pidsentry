@@ -59,10 +59,8 @@ private:
 
 public:
 
-    static int print(const void *self_, FILE *aFile)
+    static int print(const TestClass *self, FILE *aFile)
     {
-        const TestClass *self = reinterpret_cast<const TestClass *>(self_);
-
         return self->print_(aFile);
     }
 };

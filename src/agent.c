@@ -116,10 +116,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-printAgent_(const void *self_, FILE *aFile)
+printAgent_(const struct Agent *self, FILE *aFile)
 {
-    const struct Agent *self = self_;
-
     return fprintf(aFile, "<agent %p %s>", self, self->mCmd[0]);
 }
 

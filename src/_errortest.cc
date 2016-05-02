@@ -71,8 +71,12 @@ fail()
     return -1;
 }
 
+struct Class;
+
+static struct Class *nilClass;
+
 static int
-print(const void *self_, FILE *aFile)
+print(const struct Class *self, FILE *aFile)
 {
     return fprintf(aFile, "<Test Print Context>");
 }
@@ -94,7 +98,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, 0, print);
+        finally_warn_if(rc, nilClass, print);
     });
 
     return rc;
@@ -124,7 +128,9 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, 0, print, "Error context at testFinallyIfFail_1");
+        finally_warn_if(rc,
+                        nilClass, print,
+                        "Error context at testFinallyIfFail_1");
 
         ABORT_UNLESS(
             testFinallyIfFail_0());
@@ -150,7 +156,9 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, 0, print, "Error context at testFinallyIfFail_2");
+        finally_warn_if(rc,
+                        nilClass, print,
+                        "Error context at testFinallyIfFail_2");
 
         ABORT_UNLESS(
             testFinallyIfFail_1());

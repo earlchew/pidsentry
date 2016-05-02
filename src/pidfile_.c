@@ -56,10 +56,8 @@
 
 /* -------------------------------------------------------------------------- */
 static int
-printPidFile_(const void *self_, FILE *aFile)
+printPidFile_(const struct PidFile *self, FILE *aFile)
 {
-    const struct PidFile *self = self_;
-
     return fprintf(aFile, "<pidfile %p %s>", self, self->mPathName.mFileName);
 }
 

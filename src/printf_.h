@@ -30,6 +30,7 @@
 #define PRINTF_H
 
 #include "type_.h"
+#include "lambda_.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -44,17 +45,26 @@ struct PrintfModule
 };
 
 #define PRIs_Method "%%p<struct PrintfMethod>%%"
-#define FMTs_Method(Object_, Method_)                   \
-    ({                                                  \
-        const struct PrintfMethod printfMethod_ =       \
-        {                                               \
-            mType : (&printfMethodType_),               \
-                                                        \
-            mObject : (Object_),                        \
-            mMethod : (Method_),                        \
-        };                                              \
-                                                        \
-        &printfMethod_;                                 \
+#define FMTs_Method(Object_, Method_)                           \
+    ({                                                          \
+        typedef __typeof__(*(Object_)) ObjectT_;                \
+                                                                \
+        int (*Validate_)(const ObjectT_ *, FILE *) = Method_;   \
+        (void) Validate_;                                       \
+                                                                \
+        const struct PrintfMethod printfMethod_ =               \
+        {                                                       \
+            mType : (&printfMethodType_),                       \
+                                                                \
+            mObject : (Object_),                                \
+            mMethod :                                           \
+                LAMBDA(                                         \
+                    int, (const void *Self_, FILE *File_),      \
+                    { return Method_(                           \
+                        (const ObjectT_ *) Self_, File_); }),   \
+        };                                                      \
+                                                                \
+        &printfMethod_;                                         \
     })
 
 struct PrintfMethod
