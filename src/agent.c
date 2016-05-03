@@ -315,6 +315,12 @@ runAgent(struct Agent    *self,
         }
     }
 
+    ERROR_IF(
+        unwatchJobControlStop(jobControl));
+
+    ERROR_IF(
+        unwatchJobControlSignals(jobControl));
+
     {
         /* Capture the pid of the agent process, then reset the data member
          * so that any signal races can be caught. */
@@ -322,12 +328,6 @@ runAgent(struct Agent    *self,
         struct Pid agentPid = self->mAgentPid;
 
         self->mAgentPid = Pid(0);
-
-        ERROR_IF(
-            unwatchJobControlStop(jobControl));
-
-        ERROR_IF(
-            unwatchJobControlSignals(jobControl));
 
         int agentStatus;
         ERROR_IF(
