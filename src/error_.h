@@ -292,7 +292,8 @@ debug_(
     while (0)
 
 void
-ensure_(const char *aFunction, const char *aFile, unsigned aLine, ...);
+ensure_(const char *aFunction, const char *aFile, unsigned aLine,
+        const char *aPredicate);
 
 /* -------------------------------------------------------------------------- */
 #ifndef __cplusplus

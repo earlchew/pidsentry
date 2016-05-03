@@ -43,6 +43,8 @@
 #include <unistd.h>
 #include <string.h>
 
+#include <valgrind/valgrind.h>
+
 /* -------------------------------------------------------------------------- */
 static unsigned moduleInit_;
 
@@ -537,16 +539,36 @@ print_(
 }
 
 /* -------------------------------------------------------------------------- */
-void
-ensure_(const char *aFunction, const char *aFile, unsigned aLine, ...)
+static void
+printf_(
+    int aErrCode,
+    const char *aFunction, const char *aFile, unsigned aLine,
+    const char *aFmt, ...)
 {
     FINALLY
     ({
         va_list args;
 
-        va_start(args, aLine);
-        print_(0, aFunction, aFile, aLine, "Assertion failure - %s", args);
+        va_start(args, aFmt);
+        print_(0, aFunction, aFile, aLine, aFmt, args);
         va_end(args);
+    });
+}
+
+/* -------------------------------------------------------------------------- */
+void
+ensure_(const char *aFunction,
+        const char *aFile,
+        unsigned    aLine,
+        const char *aPredicate)
+{
+    FINALLY
+    ({
+        static const char msgFmt[] = "Assertion failure - %s";
+
+        printf_(0, aFunction, aFile, aLine, msgFmt, aPredicate);
+
+        VALGRIND_PRINTF_BACKTRACE(msgFmt, aPredicate);
 
         while (1)
             abort();
