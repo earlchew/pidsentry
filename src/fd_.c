@@ -656,21 +656,29 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-lockFd(int aFd, int aType)
+lockFd(int aFd, struct LockType aLockType)
 {
     int rc = -1;
 
-    ERROR_IF(
-        LOCK_EX != aType && LOCK_SH != aType,
-        {
-            errno = EINVAL;
-        });
+    int lockType;
+    switch (aLockType.mType)
+    {
+    default:
+        ensure(0);
+
+    case LockTypeWrite_:
+        lockType = LOCK_EX;
+        break;
+
+    case LockTypeRead_:
+        lockType = LOCK_SH;
+        break;
+    }
 
     int err;
-
     do
         ERROR_IF(
-            (err = flock(aFd, aType),
+            (err = flock(aFd, lockType),
              -1 == err && EINTR != errno));
     while (err);
 

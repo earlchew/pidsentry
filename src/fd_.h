@@ -41,6 +41,19 @@ extern "C" {
 struct Duration;
 
 /* -------------------------------------------------------------------------- */
+struct LockType
+{
+    enum
+    {
+        LockTypeWrite_,
+        LockTypeRead_,
+    } mType;
+};
+
+#define LockTypeWrite ((struct LockType) { mType : LockTypeWrite_ })
+#define LockTypeRead  ((struct LockType) { mType : LockTypeRead_ })
+
+/* -------------------------------------------------------------------------- */
 void
 closeFd(int *aFd);
 
@@ -81,7 +94,7 @@ ssize_t
 readFdFully(int aFd, char **aBuf, size_t aBufSize);
 
 int
-lockFd(int aFd, int aType);
+lockFd(int aFd, struct LockType aLockType);
 
 int
 unlockFd(int aFd);

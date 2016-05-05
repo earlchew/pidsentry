@@ -235,9 +235,9 @@ ownFileCloseOnExec(const struct File *self)
 
 /* -------------------------------------------------------------------------- */
 int
-lockFile(struct File *self, int aType)
+lockFile(struct File *self, struct LockType aLockType)
 {
-    return lockFd(self->mFd, aType);
+    return lockFd(self->mFd, aLockType);
 }
 
 /* -------------------------------------------------------------------------- */

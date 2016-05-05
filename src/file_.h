@@ -29,6 +29,8 @@
 #ifndef FILE_H
 #define FILE_H
 
+#include "fd_.h"
+
 #include <stdbool.h>
 
 #include <sys/queue.h>
@@ -157,7 +159,7 @@ ownFileSocketPeerCred(const struct File *self, struct ucred *aCred);
 
 /* -------------------------------------------------------------------------- */
 int
-lockFile(struct File *self, int aType);
+lockFile(struct File *self, struct LockType aLockType);
 
 int
 unlockFile(struct File *self);

@@ -56,10 +56,10 @@
 
 struct ProcessLock
 {
-    char        *mFileName;
-    struct File  mFile_;
-    struct File *mFile;
-    int          mLock;
+    char                  *mFileName;
+    struct File            mFile_;
+    struct File           *mFile;
+    const struct LockType *mLock;
 };
 
 struct ProcessAppLock
@@ -1145,7 +1145,7 @@ createProcessLock_(struct ProcessLock *self)
     int rc = -1;
 
     self->mFile     = 0;
-    self->mLock     = LOCK_UN;
+    self->mLock     = 0;
     self->mFileName = 0;
 
     static const char pathFmt[] = "/proc/%" PRId_Pid "/.";
@@ -1189,7 +1189,7 @@ dupProcessLock_(struct ProcessLock       *self,
     int rc = -1;
 
     self->mFile     = 0;
-    self->mLock     = LOCK_UN;
+    self->mLock     = 0;
     self->mFileName = 0;
 
     ERROR_UNLESS(
@@ -1238,12 +1238,12 @@ lockProcessLock_(struct ProcessLock *self)
 
     if (self)
     {
-        ensure(LOCK_UN == self->mLock);
+        ensure( ! self->mLock);
 
         ERROR_IF(
-            lockFile(self->mFile, LOCK_EX));
+            lockFile(self->mFile, LockTypeWrite));
 
-        self->mLock = LOCK_EX;
+        self->mLock = &LockTypeWrite;
     }
 
     rc = 0;
@@ -1261,11 +1261,11 @@ unlockProcessLock_(struct ProcessLock *self)
 {
     if (self)
     {
-        ensure(LOCK_UN != self->mLock);
+        ensure(self->mLock);
 
         ABORT_IF(unlockFile(self->mFile));
 
-        self->mLock = LOCK_UN;
+        self->mLock = 0;
     }
 }
 

@@ -42,10 +42,10 @@ struct sockaddr_un;
 
 struct PidFile
 {
-    struct PathName  mPathName;
-    struct File      mFile_;
-    struct File     *mFile;
-    int              mLock;
+    struct PathName        mPathName;
+    struct File            mFile_;
+    struct File           *mFile;
+    const struct LockType *mLock;
 };
 
 enum PidFileStatus

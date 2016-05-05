@@ -54,6 +54,9 @@
 
 #define PIDFILE_SIZE_ 1024
 
+static const struct LockType * const lockTypeRead_  = &LockTypeRead;
+static const struct LockType * const lockTypeWrite_ = &LockTypeWrite;
+
 /* -------------------------------------------------------------------------- */
 static int
 printPidFile_(const struct PidFile *self, FILE *aFile)
@@ -81,26 +84,27 @@ closePidFile_(struct PidFile *self)
 
 /* -------------------------------------------------------------------------- */
 static int
-lockPidFile_(struct PidFile *self, int aLock, const char *aLockType)
+lockPidFile_(
+    struct PidFile *self,
+    const struct LockType *aLockType, const char *aLockName)
 {
     int rc = -1;
 
     debug(0,
           "lock %s %" PRIs_Method,
-          aLockType,
+          aLockName,
           FMTs_Method(self, printPidFile_));
 
-    ensure(aLock);
-    ensure(LOCK_UN != aLock);
-    ensure(LOCK_UN == self->mLock);
+    ensure(aLockType);
+    ensure( ! self->mLock);
 
     TEST_RACE
     ({
         ERROR_IF(
-            lockFile(self->mFile, aLock));
+            lockFile(self->mFile, *aLockType));
     });
 
-    self->mLock = aLock;
+    self->mLock = aLockType;
 
     rc = 0;
 
@@ -219,7 +223,7 @@ readPidFile(const struct PidFile *self,
 
     char *bufcpy = 0;
 
-    ensure(LOCK_UN != self->mLock);
+    ensure(self->mLock);
 
     do
     {
@@ -276,12 +280,11 @@ releasePidFileLock_(struct PidFile *self)
     int rc = -1;
 
     ensure(self->mLock);
-    ensure(LOCK_UN != self->mLock);
 
     ERROR_IF(
         unlockFile(self->mFile));
 
-    self->mLock = LOCK_UN;
+    self->mLock = 0;
 
     debug(0,
           "unlock %" PRIs_Method,
@@ -303,7 +306,7 @@ Finally:
 static int
 acquirePidFileWriteLock_(struct PidFile *self)
 {
-    return lockPidFile_(self, LOCK_EX, "exclusive");
+    return lockPidFile_(self, lockTypeWrite_, "exclusive");
 }
 
 int
@@ -335,7 +338,7 @@ Finally:
 int
 acquirePidFileReadLock(struct PidFile *self)
 {
-    return lockPidFile_(self, LOCK_SH, "shared");
+    return lockPidFile_(self, lockTypeRead_, "shared");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -433,7 +436,7 @@ unlinkPidFile_(struct PidFile *self)
 {
     int rc = -1;
 
-    ensure(LOCK_EX == self->mLock);
+    ensure(lockTypeWrite_ == self->mLock);
 
     /* The pidfile might already have been unlinked from its enclosing
      * directory by another process, but this code enforces the precondition
@@ -479,7 +482,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
         {
             errno = EALREADY;
         });
-    self->mLock = LOCK_UN;
+    self->mLock = 0;
 
     ERROR_IF(
         aFlags & ~ (O_CLOEXEC | O_CREAT),
@@ -611,7 +614,7 @@ closePidFile(struct PidFile *self)
     {
         ensure(self->mLock);
 
-        if (LOCK_EX == self->mLock)
+        if (lockTypeWrite_ == self->mLock)
         {
             /* The pidfile is still locked at this point. If writable,
              * remove the content from the pidfile first so that any
