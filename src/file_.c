@@ -248,6 +248,21 @@ unlockFile(struct File *self)
 }
 
 /* -------------------------------------------------------------------------- */
+int
+lockFileRegion(
+    struct File *self, struct LockType aLockType, off_t aPos, off_t aLen)
+{
+    return lockFdRegion(self->mFd, aLockType, aPos, aLen);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+unlockFileRegion(struct File *self, off_t aPos, off_t aLen)
+{
+    return unlockFdRegion(self->mFd, aPos, aLen);
+}
+
+/* -------------------------------------------------------------------------- */
 ssize_t
 writeFile(struct File *self, const char *aBuf, size_t aLen)
 {

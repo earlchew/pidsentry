@@ -710,3 +710,74 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+int
+lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen)
+{
+    int rc = -1;
+
+    int lockType;
+    switch (aLockType.mType)
+    {
+    default:
+        ensure(0);
+
+    case LockTypeWrite_:
+        lockType = F_WRLCK;
+        break;
+
+    case LockTypeRead_:
+        lockType = F_RDLCK;
+        break;
+    }
+
+    struct flock lockRegion =
+    {
+        .l_type   = lockType,
+        .l_whence = SEEK_SET,
+        .l_start  = aPos,
+        .l_len    = aLen,
+    };
+
+    int err;
+    do
+        ERROR_IF(
+            (err = fcntl(aFd, F_SETLKW, &lockRegion),
+             -1 == err && EINTR != errno));
+    while (err);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+unlockFdRegion(int aFd, off_t aPos, off_t aLen)
+{
+    int rc = -1;
+
+    struct flock lockRegion =
+    {
+        .l_type   = F_UNLCK,
+        .l_whence = SEEK_SET,
+        .l_start  = aPos,
+        .l_len    = aLen,
+    };
+
+    ERROR_IF(
+        fcntl(aFd, F_SETLK, &lockRegion));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */

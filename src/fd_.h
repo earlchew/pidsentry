@@ -93,11 +93,19 @@ readFd(int aFd, char *aBuf, size_t aLen);
 ssize_t
 readFdFully(int aFd, char **aBuf, size_t aBufSize);
 
+/* -------------------------------------------------------------------------- */
 int
 lockFd(int aFd, struct LockType aLockType);
 
 int
 unlockFd(int aFd);
+
+/* -------------------------------------------------------------------------- */
+int
+lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen);
+
+int
+unlockFdRegion(int aFd, off_t aPos, off_t aLen);
 
 /* -------------------------------------------------------------------------- */
 int

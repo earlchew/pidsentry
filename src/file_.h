@@ -165,6 +165,14 @@ int
 unlockFile(struct File *self);
 
 /* -------------------------------------------------------------------------- */
+int
+lockFileRegion(
+    struct File *self, struct LockType aLockType, off_t aPos, off_t aLen);
+
+int
+unlockFileRegion(struct File *self, off_t aPos, off_t aLen);
+
+/* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 }
