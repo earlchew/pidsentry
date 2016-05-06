@@ -1023,6 +1023,7 @@ for TEST in runTest runTests ; do
     $TEST
     VALGRIND="valgrind"
     VALGRIND="$VALGRIND --error-exitcode=$PIDSENTRY_VALGRIND_ERROR"
+    VALGRIND="$VALGRIND --vgdb=no"
     VALGRIND="$VALGRIND --leak-check=yes"
     VALGRIND="$VALGRIND --suppressions=pidsentry.supp"
     $TEST
