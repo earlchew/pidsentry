@@ -50,6 +50,11 @@ struct LockType
     } mType;
 };
 
+#ifdef __cplusplus
+#define LockTypeWrite_ LockType::LockTypeWrite_
+#define LockTypeRead_  LockType::LockTypeRead_
+#endif
+
 #define LockTypeWrite ((struct LockType) { mType : LockTypeWrite_ })
 #define LockTypeRead  ((struct LockType) { mType : LockTypeRead_ })
 
@@ -63,6 +68,12 @@ struct WhenceType
         WhenceTypeEnd_,
     } mType;
 };
+
+#ifdef __cplusplus
+#define WhenceTypeStart_ WhenceType::WhenceTypeStart_
+#define WhenceTypeHere_  WhenceType::WhenceTypeHere_
+#define WhenceTypeEnd_   WhenceType::WhenceTypeEnd_
+#endif
 
 #define WhenceTypeStart ((struct WhenceType) { mType : WhenceTypeStart_ })
 #define WhenceTypeHere  ((struct WhenceType) { mType : WhenceTypeHere_ })
