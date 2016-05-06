@@ -54,6 +54,9 @@ struct File
 
 /* -------------------------------------------------------------------------- */
 int
+temporaryFile(struct File *self);
+
+int
 createFile(struct File *self, int aFd);
 
 int

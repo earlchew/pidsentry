@@ -34,12 +34,22 @@
 #include "process_.h"
 #include "test_.h"
 #include "thread_.h"
+#include "timekeeping_.h"
 
+#include <stdlib.h>
+#include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
 
 #include <valgrind/valgrind.h>
+
+/* -------------------------------------------------------------------------- */
+#ifdef __linux__
+#ifndef O_TMPFILE
+#define O_TMPFILE 020000000
+#endif
+#endif
 
 /* -------------------------------------------------------------------------- */
 static struct
@@ -87,6 +97,150 @@ Finally:
         if (rc && -1 != self->mFd)
             closeFd(&self->mFd);
     });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct TemporaryFileName_
+{
+    char mName[sizeof("0123456789012345")];
+};
+
+static void
+temporaryFileName_(struct TemporaryFileName_ *self, uint32_t *aRandom)
+{
+    static const char hexDigits[16] = "0123456789abcdef";
+
+    char *bp = self->mName;
+    char *sp = bp + sizeof(self->mName) / 4 * 4;
+    char *ep = bp + sizeof(self->mName);
+
+    while (1)
+    {
+        /* LCG(2^32, 69069, 0, 1)
+         * http://mathforum.org/kb/message.jspa?messageID=1608043 */
+
+        *aRandom = *aRandom * 69069 + 1;
+
+        uint32_t rnd = *aRandom;
+
+        if (bp == sp)
+        {
+            while (bp != ep)
+            {
+                *bp++ = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
+            }
+
+            *--bp = 0;
+
+            break;
+        }
+
+        bp[0] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
+        bp[1] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
+        bp[2] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
+        bp[3] = hexDigits[rnd % sizeof(hexDigits)]; rnd >>= 8;
+
+        bp += 4;
+    }
+}
+
+static int
+temporaryFile_(const char *aDirName)
+{
+    int rc = -1;
+
+    int dirFd;
+    ERROR_IF(
+        (dirFd = open(aDirName, O_RDONLY | O_CLOEXEC),
+         -1 == dirFd));
+
+    uint32_t rnd =
+        ownProcessId().mPid ^ MSECS(monotonicTime().monotonic).ms;
+
+    struct TemporaryFileName_ fileName;
+
+    int fd;
+
+    do
+    {
+        temporaryFileName_(&fileName, &rnd);
+
+        ERROR_IF(
+            (fd = openat(dirFd,
+                         fileName.mName,
+                         O_CREAT | O_EXCL | O_RDWR, 0),
+             -1 == fd && EEXIST != errno));
+
+    } while (-1 == fd);
+
+    ERROR_IF(
+        unlinkat(dirFd, fileName.mName, 0) && ENOENT == errno);
+
+    rc = fd;
+
+Finally:
+
+    FINALLY
+    ({
+        if (-1 == dirFd)
+            ABORT_IF(
+                close(dirFd));
+    });
+
+    return rc;
+}
+
+int
+temporaryFile(struct File *self)
+{
+    int rc = -1;
+
+    const char *tmpDir = getenv("TMPDIR");
+
+#ifdef P_tmpdir
+    if ( ! tmpDir)
+         tmpDir = P_tmpdir;
+#endif
+
+    int fd;
+
+    do
+    {
+
+#ifdef __linux__
+        /* From https://lwn.net/Articles/619146/ for circa Linux 3.18:
+         *
+         * o O_RDWR or O_WRONLY is required otherwise O_TMPFILE will fail.
+         * o O_TMPFILE fails with openat()
+         *
+         * The above is only of passing interest for this use case. */
+
+        ERROR_IF(
+            (fd = open(tmpDir,
+                       O_TMPFILE | O_RDWR | O_DIRECTORY,
+                       S_IWUSR | S_IRUSR),
+             -1 == fd && EISDIR != errno && EOPNOTSUPP != errno));
+
+        if (-1 != fd)
+            break;
+#endif
+
+        ERROR_IF(
+            (fd = temporaryFile_(tmpDir),
+             -1 == fd));
+
+    } while (0);
+
+    ERROR_IF(
+        createFile(self, fd));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
 
     return rc;
 }
