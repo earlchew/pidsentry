@@ -655,6 +655,40 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+off_t
+lseekFd(int aFd, off_t aOffset, struct WhenceType aWhenceType)
+{
+    off_t rc = -1;
+
+    int whenceType;
+    switch (aWhenceType.mType)
+    {
+    default:
+        ensure(0);
+
+    case WhenceTypeStart_:
+        whenceType = SEEK_SET;
+        break;
+
+    case WhenceTypeHere_:
+        whenceType = SEEK_CUR;
+        break;
+
+    case WhenceTypeEnd_:
+        whenceType = SEEK_END;
+        break;
+    }
+
+    rc = lseek(aFd, aOffset, whenceType);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 lockFd(int aFd, struct LockType aLockType)
 {

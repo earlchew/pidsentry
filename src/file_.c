@@ -277,6 +277,13 @@ readFile(struct File *self, char *aBuf, size_t aLen)
 }
 
 /* -------------------------------------------------------------------------- */
+off_t
+lseekFile(struct File *self, off_t aOffset, struct WhenceType aWhenceType)
+{
+    return lseekFd(self->mFd, aOffset, aWhenceType);
+}
+
+/* -------------------------------------------------------------------------- */
 int
 fstatFile(struct File *self, struct stat *aStat)
 {

@@ -91,6 +91,9 @@ writeFile(struct File *self, const char *aBuf, size_t aLen);
 ssize_t
 readFile(struct File *self, char *aBuf, size_t aLen);
 
+off_t
+lseekFile(struct File *self, off_t aOffset, struct WhenceType aWhenceType);
+
 int
 fstatFile(struct File *self, struct stat *aStat);
 

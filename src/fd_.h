@@ -54,6 +54,21 @@ struct LockType
 #define LockTypeRead  ((struct LockType) { mType : LockTypeRead_ })
 
 /* -------------------------------------------------------------------------- */
+struct WhenceType
+{
+    enum
+    {
+        WhenceTypeStart_,
+        WhenceTypeHere_,
+        WhenceTypeEnd_,
+    } mType;
+};
+
+#define WhenceTypeStart ((struct WhenceType) { mType : WhenceTypeStart_ })
+#define WhenceTypeHere  ((struct WhenceType) { mType : WhenceTypeHere_ })
+#define WhenceTypeEnd   ((struct WhenceType) { mType : WhenceTypeEnd_ })
+
+/* -------------------------------------------------------------------------- */
 void
 closeFd(int *aFd);
 
@@ -89,6 +104,9 @@ writeFd(int aFd, const char *aBuf, size_t aLen);
 
 ssize_t
 readFd(int aFd, char *aBuf, size_t aLen);
+
+off_t
+lseekFd(int aFd, off_t aOffset, struct WhenceType aWhenceType);
 
 ssize_t
 readFdFully(int aFd, char **aBuf, size_t aBufSize);
