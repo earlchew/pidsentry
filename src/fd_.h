@@ -45,18 +45,24 @@ struct LockType
 {
     enum
     {
-        LockTypeWrite_,
-        LockTypeRead_,
+        LockTypeError_    = -1,
+        LockTypeUnlocked_ = 0,
+        LockTypeRead_     = 1,
+        LockTypeWrite_    = 2,
     } mType;
 };
 
 #ifdef __cplusplus
-#define LockTypeWrite_ LockType::LockTypeWrite_
-#define LockTypeRead_  LockType::LockTypeRead_
+#define LockTypeError_    LockType::LockTypeError_
+#define LockTypeUnlocked_ LockType::LockTypeUnlocked_
+#define LockTypeRead_     LockType::LockTypeRead_
+#define LockTypeWrite_    LockType::LockTypeWrite_
 #endif
 
-#define LockTypeWrite ((struct LockType) { mType : LockTypeWrite_ })
-#define LockTypeRead  ((struct LockType) { mType : LockTypeRead_ })
+#define LockTypeError    ((struct LockType) { mType : LockTypeError_ })
+#define LockTypeUnlocked ((struct LockType) { mType : LockTypeUnlocked_ })
+#define LockTypeRead     ((struct LockType) { mType : LockTypeRead_ })
+#define LockTypeWrite    ((struct LockType) { mType : LockTypeWrite_ })
 
 /* -------------------------------------------------------------------------- */
 struct WhenceType
@@ -135,6 +141,9 @@ lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen);
 
 int
 unlockFdRegion(int aFd, off_t aPos, off_t aLen);
+
+struct LockType
+ownFdRegionLocked(int aFd, off_t aPos, off_t aLen);
 
 /* -------------------------------------------------------------------------- */
 int

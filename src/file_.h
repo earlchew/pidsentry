@@ -174,6 +174,9 @@ lockFileRegion(
 int
 unlockFileRegion(struct File *self, off_t aPos, off_t aLen);
 
+struct LockType
+ownFileRegionLocked(const struct File *self, off_t aPos, off_t aLen);
+
 /* -------------------------------------------------------------------------- */
 
 #ifdef __cplusplus

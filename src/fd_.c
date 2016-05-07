@@ -770,6 +770,7 @@ lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen)
         .l_whence = SEEK_SET,
         .l_start  = aPos,
         .l_len    = aLen,
+        .l_pid    = getpid(),
     };
 
     int err;
@@ -812,6 +813,57 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct LockType
+ownFdRegionLocked(int aFd, off_t aPos, off_t aLen)
+{
+    int rc = -1;
+
+    struct LockType lockType = LockTypeUnlocked;
+
+    struct flock lockRegion =
+    {
+        .l_type   = F_WRLCK,
+        .l_whence = SEEK_SET,
+        .l_start  = aPos,
+        .l_len    = aLen,
+    };
+
+    ERROR_IF(
+        fcntl(aFd, F_GETLK, &lockRegion));
+
+    switch (lockRegion.l_type)
+    {
+    default:
+        ERROR_IF(
+            true,
+            {
+                errno = EIO;
+            });
+
+    case F_UNLCK:
+        break;
+
+    case F_RDLCK:
+        if (lockRegion.l_pid != ownProcessId().mPid)
+            lockType = LockTypeRead;
+        break;
+
+    case F_WRLCK:
+        if (lockRegion.l_pid != ownProcessId().mPid)
+            lockType = LockTypeWrite;
+        break;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc ? LockTypeError : lockType;
 }
 
 /* -------------------------------------------------------------------------- */

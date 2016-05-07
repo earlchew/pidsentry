@@ -28,6 +28,7 @@
 */
 
 #include "file_.h"
+#include "process_.h"
 
 #include "gtest/gtest.h"
 
@@ -45,6 +46,129 @@ TEST(FileTest, TemporaryFile)
     EXPECT_EQ(1, readFile(&file, buf, 1));
 
     EXPECT_EQ('A', buf[0]);
+
+    closeFile(&file);
+}
+
+struct LockType
+checkLock(struct File *aFile)
+{
+    struct Pid checkPid =
+        forkProcessChild(ForkProcessShareProcessGroup, Pgid(0));
+
+    if (-1 == checkPid.mPid)
+        return LockTypeError;
+
+    if ( ! checkPid.mPid)
+    {
+        struct LockType lockType = ownFileRegionLocked(aFile, 0, 1);
+
+        const char *cmd = "exit 0";
+
+        if (LockTypeUnlocked.mType == lockType.mType)
+            cmd = "exit 1";
+        else if (LockTypeRead.mType == lockType.mType)
+            cmd = "exit 2";
+        else if (LockTypeWrite.mType == lockType.mType)
+            cmd = "exit 3";
+
+        execl("/bin/sh", "sh", "-c", cmd, (char *) 0);
+        _exit(EXIT_SUCCESS);
+    }
+
+    int status;
+    if (reapProcessChild(checkPid, &status))
+        return LockTypeError;
+
+    switch (extractProcessExitStatus(status, checkPid).mStatus)
+    {
+    default:
+        return LockTypeError;
+    case 1:
+        return LockTypeUnlocked;
+    case 2:
+        return LockTypeRead;
+    case 3:
+        return LockTypeWrite;
+    }
+}
+
+TEST(FileTest, LockFileRegion)
+{
+    struct File file;
+
+    ASSERT_EQ(0, temporaryFile(&file));
+
+    // If a process holds a region lock, querying the lock state from
+    // that process will always show the region as unlocked, but another
+    // process will see the region as locked.
+
+    EXPECT_EQ(
+        LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+    EXPECT_EQ(
+        LockTypeUnlocked.mType, checkLock(&file).mType);
+
+    {
+        EXPECT_EQ(0, lockFileRegion(&file, LockTypeWrite, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeWrite.mType, checkLock(&file).mType);
+
+        EXPECT_EQ(0, unlockFileRegion(&file, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, checkLock(&file).mType);
+    }
+
+    {
+        EXPECT_EQ(0, lockFileRegion(&file, LockTypeRead, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeRead.mType, checkLock(&file).mType);
+
+        EXPECT_EQ(0, unlockFileRegion(&file, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, checkLock(&file).mType);
+    }
+
+    {
+        EXPECT_EQ(0, lockFileRegion(&file, LockTypeWrite, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeWrite.mType, checkLock(&file).mType);
+
+        EXPECT_EQ(0, lockFileRegion(&file, LockTypeRead, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeRead.mType, checkLock(&file).mType);
+
+        EXPECT_EQ(0, lockFileRegion(&file, LockTypeWrite, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeWrite.mType, checkLock(&file).mType);
+
+        EXPECT_EQ(0, unlockFileRegion(&file, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, checkLock(&file).mType);
+    }
 
     closeFile(&file);
 }

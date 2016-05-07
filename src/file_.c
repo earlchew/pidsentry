@@ -543,6 +543,13 @@ unlockFileRegion(struct File *self, off_t aPos, off_t aLen)
 }
 
 /* -------------------------------------------------------------------------- */
+struct LockType
+ownFileRegionLocked(const struct File *self, off_t aPos, off_t aLen)
+{
+    return ownFdRegionLocked(self->mFd, aPos, aLen);
+}
+
+/* -------------------------------------------------------------------------- */
 ssize_t
 writeFile(struct File *self, const char *aBuf, size_t aLen)
 {
