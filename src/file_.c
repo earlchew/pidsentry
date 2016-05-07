@@ -343,23 +343,6 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
-closeFilePair(struct File **aFile1, struct File **aFile2)
-{
-    if (*aFile1)
-    {
-        closeFile(*aFile1);
-        *aFile1 = 0;
-    }
-
-    if (*aFile2)
-    {
-        closeFile(*aFile2);
-        *aFile2 = 0;
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 int
 nonBlockingFile(struct File *self)
 {

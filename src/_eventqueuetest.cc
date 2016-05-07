@@ -36,9 +36,9 @@
 
 TEST(EventQueueTest, CreatePushPopClose)
 {
-    struct EventQueue      eventQueue;
-    struct EventQueueFile  eventFile;
-    struct BellSocketPair  testSocket;
+    struct EventQueue     eventQueue;
+    struct EventQueueFile eventFile;
+    struct BellSocketPair testSocket;
 
     EXPECT_EQ(0, createEventQueue(&eventQueue));
 
@@ -47,11 +47,12 @@ TEST(EventQueueTest, CreatePushPopClose)
     /* Create the event queue file, push it but and pop the event queue.
      * This is the expected life cycle of the event file. */
 
-    EXPECT_EQ(0, createEventQueueFile(&eventFile,
-                                      &eventQueue,
-                                      testSocket.mSocketPair->mParentFile,
-                                      EventQueuePollRead,
-                                      EventQueueHandle(&testSocket)));
+    EXPECT_EQ(0, createEventQueueFile(
+                  &eventFile,
+                  &eventQueue,
+                  testSocket.mSocketPair->mParentSocket->mFile,
+                  EventQueuePollRead,
+                  EventQueueHandle(&testSocket)));
 
     struct Duration        zeroDuration = Duration(NanoSeconds(0));
     struct EventQueueFile *polledEvents[2];
@@ -88,11 +89,12 @@ TEST(EventQueueTest, CreatePushPopClose)
     EXPECT_EQ(0, popEventQueue(
         &eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
 
-    EXPECT_EQ(0, createEventQueueFile(&eventFile,
-                                      &eventQueue,
-                                      testSocket.mSocketPair->mParentFile,
-                                      EventQueuePollRead,
-                                      EventQueueHandle(&testSocket)));
+    EXPECT_EQ(0, createEventQueueFile(
+                  &eventFile,
+                  &eventQueue,
+                  testSocket.mSocketPair->mParentSocket->mFile,
+                  EventQueuePollRead,
+                  EventQueueHandle(&testSocket)));
     EXPECT_EQ(0, pushEventQueue(&eventQueue, &eventFile));
     EXPECT_EQ(1, popEventQueue(
         &eventQueue, polledEvents, NUMBEROF(polledEvents), 0));
@@ -120,11 +122,12 @@ TEST(EventQueueTest, CreateCloseEventFile)
     /* Create the event queue file, then immediately close it to
      * verify that it can be cleaned up. */
 
-    EXPECT_EQ(0, createEventQueueFile(&eventFile,
-                                      &eventQueue,
-                                      testSocket.mSocketPair->mParentFile,
-                                      EventQueuePollRead,
-                                      EventQueueHandle(&testSocket)));
+    EXPECT_EQ(0, createEventQueueFile(
+                  &eventFile,
+                  &eventQueue,
+                  testSocket.mSocketPair->mParentSocket->mFile,
+                  EventQueuePollRead,
+                  EventQueueHandle(&testSocket)));
 
     closeEventQueueFile(&eventFile);
     closeBellSocketPair(&testSocket);

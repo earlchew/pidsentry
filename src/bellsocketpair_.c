@@ -79,7 +79,7 @@ closeBellSocketPair(struct BellSocketPair *self)
 
 /* -------------------------------------------------------------------------- */
 static int
-ringBellSocketPair_(struct File *aFile)
+ringBellSocketPair_(struct UnixSocket *aSocket)
 {
     int rc = -1;
 
@@ -89,7 +89,7 @@ ringBellSocketPair_(struct File *aFile)
 
     err = -1;
     ERROR_IF(
-        (err = waitFileWriteReady(aFile, 0),
+        (err = waitUnixSocketWriteReady(aSocket, 0),
          -1 == err || ! err),
         {
             if ( ! err)
@@ -98,7 +98,7 @@ ringBellSocketPair_(struct File *aFile)
 
     err = -1;
     ERROR_IF(
-        (err = writeFile(aFile, buf, 1),
+        (err = sendUnixSocket(aSocket, buf, 1),
          1 != err),
         {
             if ( ! err)
@@ -119,18 +119,18 @@ Finally:
 int
 ringBellSocketPairParent(struct BellSocketPair *self)
 {
-    return ringBellSocketPair_(self->mSocketPair->mParentFile);
+    return ringBellSocketPair_(self->mSocketPair->mParentSocket);
 }
 
 int
 ringBellSocketPairChild(struct BellSocketPair *self)
 {
-    return ringBellSocketPair_(self->mSocketPair->mChildFile);
+    return ringBellSocketPair_(self->mSocketPair->mChildSocket);
 }
 
 /* -------------------------------------------------------------------------- */
 static int
-waitBellSocketPair_(struct File           *aFile,
+waitBellSocketPair_(struct UnixSocket     *aSocket,
                     const struct Duration *aTimeout)
 {
     int rc = -1;
@@ -139,7 +139,7 @@ waitBellSocketPair_(struct File           *aFile,
 
     err = -1;
     ERROR_IF(
-        (err = waitFileReadReady(aFile, aTimeout),
+        (err = waitUnixSocketReadReady(aSocket, aTimeout),
          -1 == err || ! err),
         {
             if ( ! err)
@@ -150,7 +150,7 @@ waitBellSocketPair_(struct File           *aFile,
 
     err = -1;
     ERROR_IF(
-        (err = readFile(aFile, buf, 1),
+        (err = recvUnixSocket(aSocket, buf, 1),
          1 != err),
         {
             if ( ! err)
@@ -172,14 +172,14 @@ int
 waitBellSocketPairParent(struct BellSocketPair *self,
                          const struct Duration *aTimeout)
 {
-    return waitBellSocketPair_(self->mSocketPair->mParentFile, aTimeout);
+    return waitBellSocketPair_(self->mSocketPair->mParentSocket, aTimeout);
 }
 
 int
 waitBellSocketPairChild(struct BellSocketPair *self,
                         const struct Duration *aTimeout)
 {
-    return waitBellSocketPair_(self->mSocketPair->mChildFile, aTimeout);
+    return waitBellSocketPair_(self->mSocketPair->mChildSocket, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */

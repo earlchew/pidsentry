@@ -570,7 +570,7 @@ runSentry(struct Sentry   *self,
     ABORT_IF(
         monitorChild(self->mChildProcess,
                      self->mUmbilicalProcess,
-                     self->mUmbilicalSocket->mParentFile,
+                     self->mUmbilicalSocket->mParentSocket->mFile,
                      aParentPid,
                      aParentPipe),
         {

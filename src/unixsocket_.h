@@ -48,6 +48,11 @@ struct UnixSocket
 
 /* -------------------------------------------------------------------------- */
 int
+createUnixSocketPair(struct UnixSocket *aParent,
+                     struct UnixSocket *aChild,
+                     unsigned           aFlags);
+
+int
 createUnixSocket(struct UnixSocket *self,
                  const char        *aName,
                  size_t             aNameLen,

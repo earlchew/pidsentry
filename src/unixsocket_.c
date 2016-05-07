@@ -275,6 +275,74 @@ closeUnixSocket(struct UnixSocket *self)
 
 /* -------------------------------------------------------------------------- */
 int
+createUnixSocketPair(struct UnixSocket *aParent,
+                     struct UnixSocket *aChild,
+                     unsigned           aFlags)
+{
+    int rc = -1;
+
+    int fd[2] = { -1, -1 };
+
+    aParent->mFile = 0;
+    aChild->mFile  = 0;
+
+    ERROR_IF(
+        aFlags & ~ (O_CLOEXEC | O_NONBLOCK),
+        {
+            errno = EINVAL;
+        });
+
+    int sockFlags = 0;
+
+    if (aFlags & O_NONBLOCK)
+        sockFlags |= SOCK_NONBLOCK;
+
+    if (aFlags & O_CLOEXEC)
+        sockFlags |= SOCK_CLOEXEC;
+
+    ERROR_IF(
+        socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd),
+        {
+            fd[0] = -1;
+            fd[1] = -1;
+        });
+
+    ERROR_IF(
+        -1 == fd[0] || -1 == fd[1]);
+
+    ERROR_IF(
+        createFile(&aParent->mFile_, fd[0]));
+    aParent->mFile = &aParent->mFile_;
+
+    fd[0] = -1;
+
+    ERROR_IF(
+        createFile(&aChild->mFile_, fd[1]));
+    aChild->mFile = &aChild->mFile_;
+
+    fd[1] = -1;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        closeFd(&fd[0]);
+        closeFd(&fd[1]);
+
+        if (rc)
+        {
+            closeFile(aParent->mFile);
+            closeFile(aChild->mFile);
+        }
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 sendUnixSocketFd(struct UnixSocket *self, int aFd)
 {
     int rc = -1;

@@ -72,9 +72,6 @@ walkFileList(void *aOther,
 int
 dupFile(struct File *self, const struct File *aOther);
 
-void
-closeFilePair(struct File **aFile1, struct File **aFile2);
-
 int
 nonBlockingFile(struct File *self);
 

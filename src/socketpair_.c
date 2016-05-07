@@ -41,65 +41,21 @@ createSocketPair(struct SocketPair *self, unsigned aFlags)
 {
     int rc = -1;
 
-    int fd[2] = { -1, -1 };
-
-    self->mParentFile = 0;
-    self->mChildFile  = 0;
+    self->mParentSocket = 0;
+    self->mChildSocket  = 0;
 
     ERROR_IF(
-        aFlags & ~ (O_CLOEXEC | O_NONBLOCK),
-        {
-            errno = EINVAL;
-        });
+        createUnixSocketPair(
+            &self->mParentSocket_, &self->mChildSocket_, aFlags));
 
-    int sockFlags = 0;
-
-    if (aFlags & O_NONBLOCK)
-        sockFlags |= SOCK_NONBLOCK;
-
-    if (aFlags & O_CLOEXEC)
-        sockFlags |= SOCK_CLOEXEC;
-
-    ERROR_IF(
-        socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd),
-        {
-            fd[0] = -1;
-            fd[1] = -1;
-        });
-
-    ERROR_IF(
-        -1 == fd[0] || -1 == fd[1]);
-
-    ensure( ! stdFd(fd[0]));
-    ensure( ! stdFd(fd[1]));
-
-    ERROR_IF(
-        createFile(&self->mParentFile_, fd[0]));
-    self->mParentFile = &self->mParentFile_;
-
-    fd[0] = -1;
-
-    ERROR_IF(
-        createFile(&self->mChildFile_, fd[1]));
-    self->mChildFile = &self->mChildFile_;
-
-    fd[1] = -1;
+    self->mParentSocket = &self->mParentSocket_;
+    self->mChildSocket  = &self->mChildSocket_;
 
     rc = 0;
 
 Finally:
 
-    FINALLY
-    ({
-        closeFd(&fd[0]);
-        closeFd(&fd[1]);
-
-        if (rc)
-        {
-            closeFile(self->mParentFile);
-            closeFile(self->mChildFile);
-        }
-    });
+    FINALLY({});
 
     return rc;
 }
@@ -108,16 +64,16 @@ Finally:
 void
 closeSocketPairParent(struct SocketPair *self)
 {
-    closeFile(self->mParentFile);
-    self->mParentFile = 0;
+    closeUnixSocket(self->mParentSocket);
+    self->mParentSocket = 0;
 }
 
 /* -------------------------------------------------------------------------- */
 void
 closeSocketPairChild(struct SocketPair *self)
 {
-    closeFile(self->mChildFile);
-    self->mChildFile = 0;
+    closeUnixSocket(self->mChildSocket);
+    self->mChildSocket = 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -125,7 +81,10 @@ void
 closeSocketPair(struct SocketPair *self)
 {
     if (self)
-        closeFilePair(&self->mParentFile, &self->mChildFile);
+    {
+        closeSocketPairParent(self);
+        closeSocketPairChild(self);
+    }
 }
 
 /* -------------------------------------------------------------------------- */

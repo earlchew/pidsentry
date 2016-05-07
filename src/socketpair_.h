@@ -29,7 +29,7 @@
 #ifndef SOCKETPAIR_H
 #define SOCKETPAIR_H
 
-#include "file_.h"
+#include "unixsocket_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,10 +37,10 @@ extern "C" {
 
 struct SocketPair
 {
-    struct File  mParentFile_;
-    struct File *mParentFile;
-    struct File  mChildFile_;
-    struct File *mChildFile;
+    struct UnixSocket  mParentSocket_;
+    struct UnixSocket *mParentSocket;
+    struct UnixSocket  mChildSocket_;
+    struct UnixSocket *mChildSocket;
 };
 
 /* -------------------------------------------------------------------------- */

@@ -651,7 +651,7 @@ forkChild(
          * and locks with the parent. */
 
         ensure(
-            ownFileCloseOnExec(aSyncSocket->mSocketPair->mChildFile));
+            ownFileCloseOnExec(aSyncSocket->mSocketPair->mChildSocket->mFile));
 
         debug(0, "child process synchronised");
 

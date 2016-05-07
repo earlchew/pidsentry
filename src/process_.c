@@ -1670,14 +1670,14 @@ forkProcessDaemon(void)
             WIFEXITED(status) && ! WEXITSTATUS(status));
 
         ERROR_UNLESS(
-            sizeof(daemonPid.mPid) == readFile(syncSocket->mParentFile,
-                                               (void *) &daemonPid.mPid,
-                                               sizeof(daemonPid.mPid)));
+            sizeof(daemonPid.mPid) == recvUnixSocket(syncSocket->mParentSocket,
+                                                     (void *) &daemonPid.mPid,
+                                                     sizeof(daemonPid.mPid)));
 
         char buf[1] = { 0 };
         ERROR_UNLESS(
-            sizeof(buf) == writeFile(
-                syncSocket->mParentFile, buf, sizeof(buf)));
+            sizeof(buf) == sendUnixSocket(
+                syncSocket->mParentSocket, buf, sizeof(buf)));
     }
     else
     {
@@ -1772,13 +1772,14 @@ forkProcessDaemon(void)
         debug(0, "daemon orphaned");
 
         ABORT_UNLESS(
-            sizeof(daemonPid.mPid) == writeFile(syncSocket->mChildFile,
-                                                (void *) &daemonPid.mPid,
-                                                sizeof(daemonPid.mPid)));
+            sizeof(daemonPid.mPid) == sendUnixSocket(syncSocket->mChildSocket,
+                                                     (void *) &daemonPid.mPid,
+                                                     sizeof(daemonPid.mPid)));
 
         char buf[1];
         ABORT_UNLESS(
-            sizeof(buf) == readFile(syncSocket->mChildFile, buf, sizeof(buf)));
+            sizeof(buf) == recvUnixSocket(
+                syncSocket->mChildSocket, buf, sizeof(buf)));
 
         daemonPid = Pid(0);
     }

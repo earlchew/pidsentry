@@ -201,7 +201,10 @@ void
 closePipe(struct Pipe *self)
 {
     if (self)
-        closeFilePair(&self->mRdFile, &self->mWrFile);
+    {
+        closePipeReader(self);
+        closePipeWriter(self);
+    }
 }
 
 /* -------------------------------------------------------------------------- */

@@ -471,22 +471,22 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 
     ABORT_IF(
         STDIN_FILENO !=
-        dup2(aUmbilicalSocket->mChildFile->mFd, STDIN_FILENO),
+        dup2(aUmbilicalSocket->mChildSocket->mFile->mFd, STDIN_FILENO),
         {
             terminate(
                 errno,
                 "Unable to dup %d to stdin",
-                aUmbilicalSocket->mChildFile->mFd);
+                aUmbilicalSocket->mChildSocket->mFile->mFd);
         });
 
     ABORT_IF(
         STDOUT_FILENO != dup2(
-            aUmbilicalSocket->mChildFile->mFd, STDOUT_FILENO),
+            aUmbilicalSocket->mChildSocket->mFile->mFd, STDOUT_FILENO),
         {
             terminate(
                 errno,
                 "Unable to dup %d to stdout",
-                aUmbilicalSocket->mChildFile->mFd);
+                aUmbilicalSocket->mChildSocket->mFile->mFd);
         });
 
     closeSocketPair(aUmbilicalSocket);
@@ -663,7 +663,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
 
     ssize_t wrlen;
     ERROR_IF(
-        (wrlen = writeFile(self->mSocket->mParentFile, buf, sizeof(buf)),
+        (wrlen = sendUnixSocket(self->mSocket->mParentSocket, buf, sizeof(buf)),
          -1 == wrlen && EPIPE != errno));
 
     if (-1 != wrlen)
@@ -673,7 +673,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
          * but do not stall here indefinitely. */
 
         ERROR_IF(
-            shutdownFileSocketWriter(self->mSocket->mParentFile));
+            shutdownUnixSocketWriter(self->mSocket->mParentSocket));
 
         struct Duration umbilicalTimeout =
             Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
@@ -707,16 +707,16 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
 
             int ready = 0;
             ERROR_IF(
-                (ready = waitFileReadReady(
-                    self->mSocket->mParentFile, &remaining),
+                (ready = waitUnixSocketReadReady(
+                    self->mSocket->mParentSocket, &remaining),
                  -1 == ready));
 
             if (ready)
             {
                 ssize_t rdlen = 0;
                 ERROR_IF(
-                    (rdlen = readFile(
-                        self->mSocket->mParentFile, buf, 1),
+                    (rdlen = recvUnixSocket(
+                        self->mSocket->mParentSocket, buf, 1),
                      -1 == rdlen && ECONNRESET != errno));
 
                 if (rdlen)
