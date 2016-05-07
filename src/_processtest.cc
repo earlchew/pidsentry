@@ -136,7 +136,7 @@ TEST_F(ProcessTest, ProcessSignature)
         do
         {
             sigset_t childSigMask;
-            if (pthread_sigmask(SIG_BLOCK, 0, &sigMask))
+            if (pthread_sigmask(SIG_BLOCK, 0, &childSigMask))
             {
                 fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
                 break;
