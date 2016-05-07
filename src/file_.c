@@ -171,7 +171,7 @@ temporaryFileCreate_(const char *aDirName)
         ERROR_IF(
             (fd = openat(dirFd,
                          fileName.mName,
-                         O_CREAT | O_EXCL | O_RDWR, 0),
+                         O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0),
              -1 == fd && EEXIST != errno));
 
     } while (-1 == fd);
@@ -282,7 +282,7 @@ temporaryFile_(const char *aDirName)
          * valgrind performing a leak check on the temporary
          * process. */
 
-        if (RUNNING_ON_VALGRIND && 0)
+        if (RUNNING_ON_VALGRIND)
             ABORT_IF(
                 execl(
                     "/bin/true", "true", (char *) 0) || (errno = 0, true));
@@ -362,7 +362,7 @@ temporaryFile(struct File *self)
 
         ERROR_IF(
             (fd = open(tmpDir,
-                       O_TMPFILE | O_RDWR | O_DIRECTORY,
+                       O_TMPFILE | O_RDWR | O_DIRECTORY | O_CLOEXEC,
                        S_IWUSR | S_IRUSR),
              -1 == fd && EISDIR != errno && EOPNOTSUPP != errno));
 
