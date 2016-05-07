@@ -35,6 +35,7 @@
 #include "test_.h"
 #include "thread_.h"
 #include "timekeeping_.h"
+#include "socketpair_.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -147,7 +148,7 @@ temporaryFileName_(struct TemporaryFileName_ *self, uint32_t *aRandom)
 }
 
 static int
-temporaryFile_(const char *aDirName)
+temporaryFileCreate_(const char *aDirName)
 {
     int rc = -1;
 
@@ -175,8 +176,15 @@ temporaryFile_(const char *aDirName)
 
     } while (-1 == fd);
 
-    ERROR_IF(
-        unlinkat(dirFd, fileName.mName, 0) && ENOENT == errno);
+    /* A race here is unavoidable because the creation of the file
+     * and unlinking of the newly created file must be performed
+     * in separate steps. */
+
+    TEST_RACE
+    ({
+        ERROR_IF(
+            unlinkat(dirFd, fileName.mName, 0) && ENOENT == errno);
+    });
 
     rc = fd;
 
@@ -187,6 +195,141 @@ Finally:
         if (-1 == dirFd)
             ABORT_IF(
                 close(dirFd));
+    });
+
+    return rc;
+}
+
+static int
+temporaryFile_(const char *aDirName)
+{
+    int rc = -1;
+
+    struct SocketPair  socketPair_;
+    struct SocketPair *socketPair = 0;
+
+    struct Pid tempPid = Pid(-1);
+
+    ERROR_IF(
+        createSocketPair(&socketPair_, O_CLOEXEC));
+    socketPair = &socketPair_;
+
+    /* Because the of the inherent race in creating an anonymous
+     * temporary file, try to minimise the chance of the littering
+     * the file system with the named temporary file by:
+     *
+     * o Blocking signal delivery in the thread creating the file
+     * o Running that thread in a separate process
+     * o Placing that process in a separate session and process group
+     */
+
+    ERROR_IF(
+        (tempPid = forkProcessChild(ForkProcessSetSessionLeader, Pgid(0)),
+         -1 == tempPid.mPid));
+
+    int err;
+
+    if ( ! tempPid.mPid)
+    {
+        closeSocketPairParent(socketPair);
+
+        {
+            struct ProcessAppLock *appLock = createProcessAppLock();
+
+            const struct File *appLockFile = ownProcessAppLockFile(appLock);
+
+            int whiteList[] =
+                {
+                    STDIN_FILENO,
+                    STDOUT_FILENO,
+                    STDERR_FILENO,
+                    socketPair->mChildSocket->mFile->mFd,
+                    appLockFile ? appLockFile->mFd : -1,
+                };
+
+            ABORT_IF(
+                closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
+
+            destroyProcessAppLock(appLock);
+        }
+
+        int fd;
+        {
+            struct ThreadSigMask  sigMask_;
+            struct ThreadSigMask *sigMask = 0;
+
+            sigMask = pushThreadSigMask(&sigMask_, ThreadSigMaskBlock, 0);
+
+            fd  = temporaryFileCreate_(aDirName);
+
+            sigMask = popThreadSigMask(sigMask);
+        }
+
+        err = -1 != fd ? 0 : (errno ? errno : EIO);
+
+        ssize_t wrlen;
+        ABORT_IF(
+            (wrlen = sendUnixSocket(
+                socketPair->mChildSocket, (void *) &err, sizeof(err)),
+             -1 == wrlen || (errno = 0, sizeof(err) != wrlen)));
+
+        if ( ! err)
+            ABORT_IF(
+                sendUnixSocketFd(
+                    socketPair->mChildSocket, fd));
+
+        /* When running with valgrind, use execl() to prevent
+         * valgrind performing a leak check on the temporary
+         * process. */
+
+        if (RUNNING_ON_VALGRIND && 0)
+            ABORT_IF(
+                execl(
+                    "/bin/true", "true", (char *) 0) || (errno = 0, true));
+
+        exitProcess(EXIT_SUCCESS);
+    }
+
+    closeSocketPairChild(socketPair);
+
+    ssize_t rdlen;
+    ERROR_IF(
+        (rdlen = recvUnixSocket(
+            socketPair->mParentSocket, (void *) &err, sizeof(err)),
+         -1 == rdlen || (errno = 0, sizeof(err) != rdlen)));
+
+    ERROR_IF(
+        err,
+        {
+            errno = err;
+        });
+
+    rc = recvUnixSocketFd(socketPair->mParentSocket, O_CLOEXEC);
+
+Finally:
+
+    FINALLY
+    ({
+        closeSocketPair(socketPair);
+
+        if (-1 != tempPid.mPid)
+        {
+            int status;
+
+            ABORT_IF(
+                reapProcessChild(tempPid, &status));
+
+            struct ExitCode exitCode =
+                extractProcessExitStatus(status, tempPid);
+
+            if (-1 != rc && exitCode.mStatus)
+            {
+                closeFd(&rc);
+                rc = -1;
+
+                errno = ECHILD;
+            }
+        }
     });
 
     return rc;

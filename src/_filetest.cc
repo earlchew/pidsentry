@@ -35,7 +35,7 @@ TEST(FileTest, TemporaryFile)
 {
     struct File file;
 
-    EXPECT_EQ(0, temporaryFile(&file));
+    ASSERT_EQ(0, temporaryFile(&file));
 
     EXPECT_EQ(1, writeFile(&file, "A", 1));
 
