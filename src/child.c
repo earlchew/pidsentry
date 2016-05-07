@@ -959,7 +959,7 @@ Finally:
 /* Maintain Parent Connection
  *
  * This connection allows for monitoring ofthe parent. The child will
- * terminate immediately if the parent terminates. */
+ * terminate if the parent terminates. */
 
 static int
 pollFdParent_(void                        *self_,
@@ -973,9 +973,12 @@ pollFdParent_(void                        *self_,
          "Parent pid %" PRId_Pid " has terminated",
          FMTd_Pid(self->mParent.mPid));
 
-    exitProcess(EXIT_FAILURE);
+    self->mPollFds[POLL_FD_CHILD_PARENT].fd     = -1;
+    self->mPollFds[POLL_FD_CHILD_PARENT].events = 0;
 
-    errno = ENOSYS;
+    activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
+
+    rc = 0;
 
 Finally:
 
