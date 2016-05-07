@@ -1546,7 +1546,10 @@ forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
          * the race that would occur if only the child attempts
          * to set its own process group */
 
-        if (ForkProcessSetProcessGroup == aOption)
+        if (ForkProcessSetSessionLeader == aOption)
+            ERROR_IF(
+                -1 == setsid());
+        else if (ForkProcessSetProcessGroup == aOption)
             ERROR_IF(
                 setpgid(childPid, pgid ? pgid : childPid));
 

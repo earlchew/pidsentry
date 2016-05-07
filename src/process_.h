@@ -68,6 +68,7 @@ enum ForkProcessOption
 {
     ForkProcessShareProcessGroup,
     ForkProcessSetProcessGroup,
+    ForkProcessSetSessionLeader,
 };
 
 #define PRIs_ProcessState "c"
