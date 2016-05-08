@@ -735,16 +735,23 @@ unlockThreadSigMutex(struct ThreadSigMutex *self)
         ensure(self->mLocked);
         ensure(pthread_equal(self->mOwner, pthread_self()));
 
-        lockMutex_(&self->mMutex);
-
-        unsigned             locked        = --self->mLocked;
-        struct ThreadSigMask threadSigMask = self->mMask;
+        unsigned locked = self->mLocked - 1;
 
         if (locked)
-            unlockMutex_(&self->mMutex);
+            self->mLocked = locked;
         else
         {
+            struct ThreadSigMask threadSigMask = self->mMask;
+
+            lockMutex_(&self->mMutex);
+
+            self->mLocked = 0;
+
             unlockMutexSignal_(&self->mMutex, &self->mCond);
+
+            /* Do not reference the mutex instance once it is released
+             * because it might at this point be owned by another
+             * thread. */
 
             popThreadSigMask(&threadSigMask);
         }
