@@ -213,13 +213,13 @@ runTests()
             kill -9 $CHILD
 
             eval waitwhile liveprocess '$'$SUPERVISOR
+            waitwhile liveprocess $SENTRY
             waitwhile liveprocess $CHILD
         }
-        [ -s $PIDFILE ]
-        REPLY=$(cksum $PIDFILE)
+        ! [ -s $PIDFILE ] || REPLY=$(cksum $PIDFILE)
         # Ensure that it is not possible to run a command against the child
         ! pidsentry -p $PIDFILE -c -- true
-        [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
+        ! [ -s $PIDFILE ] || [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
         # Ensure that it is possible to create a new child
         testExit 0 pidsentry --test=1 -d -p $PIDFILE -- true
         [ ! -f $PIDFILE ]
@@ -357,7 +357,7 @@ runTests()
     # i.   stdin
     # ii.  stdout
     # iii. stderr
-    [ -n "$VALGRIND" ] || testOutput "3" = '$(
+    [ -n "$VALGRIND" ] || testOutput "4" = '$(
         pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL
@@ -383,7 +383,7 @@ runTests()
     # iii. stderr
     # iv.  pid server socket
     # v.   pid server poll
-    [ -n "$VALGRIND" ] || testOutput "5" = '$(
+    [ -n "$VALGRIND" ] || testOutput "6" = '$(
         pidsentry --test=3 -p $PIDFILE -i -- sh -c "
             while : ; do sleep 1 ; done" |
         {
@@ -410,7 +410,7 @@ runTests()
     # iii. stderr
     # iv.  Agent tether
     # v.   Umbilical tether
-    [ -n "$VALGRIND" ] || testOutput "5" = '$(
+    [ -n "$VALGRIND" ] || testOutput "6" = '$(
         pidsentry --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL
@@ -436,7 +436,7 @@ runTests()
     # iii. stderr
     # iv.  Agent tether
     # v.   Umbilical tether
-    [ -n "$VALGRIND" ] || testOutput "5" = '$(
+    [ -n "$VALGRIND" ] || testOutput "6" = '$(
         pidsentry --test=3 -i -u -- sh -c "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL

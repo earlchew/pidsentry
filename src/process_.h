@@ -255,9 +255,6 @@ destroyProcessAppLock(struct ProcessAppLock *self);
 unsigned
 ownProcessAppLockCount(void);
 
-const char *
-ownProcessAppLockPath(const struct ProcessAppLock *self);
-
 const struct File *
 ownProcessAppLockFile(const struct ProcessAppLock *self);
 

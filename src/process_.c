@@ -56,7 +56,6 @@
 
 struct ProcessLock
 {
-    char                  *mFileName;
     struct File            mFile_;
     struct File           *mFile;
     const struct LockType *mLock;
@@ -64,7 +63,7 @@ struct ProcessLock
 
 struct ProcessAppLock
 {
-    void *mNull;;
+    void *mNull;
 };
 
 static struct ProcessAppLock processAppLock_;
@@ -75,30 +74,23 @@ static struct ThreadSigMutex processSigMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
 static unsigned processAbort_;
 static unsigned processQuit_;
 
-#define PROCESS_ACTIVELOCK_INIT 0
-
-static unsigned activeProcessLock_ = PROCESS_ACTIVELOCK_INIT;
-
-static struct ThreadSigMutex processLockMutex_[2] =
+static struct
 {
-    [PROCESS_ACTIVELOCK_INIT] = THREAD_SIG_MUTEX_INITIALIZER,
-};
-
-static struct ThreadSigMutex *processLockMutexPtr_[2] =
+    struct ThreadSigMutex  mMutex_;
+    struct ThreadSigMutex *mMutex;
+    struct ProcessLock     mLock_;
+    struct ProcessLock    *mLock;
+} processLock_ =
 {
-    [PROCESS_ACTIVELOCK_INIT] = &processLockMutex_[PROCESS_ACTIVELOCK_INIT],
+    .mMutex_ = THREAD_SIG_MUTEX_INITIALIZER,
+    .mMutex  = &processLock_.mMutex_,
 };
-
-static struct ProcessLock  processLock_[2];
-static struct ProcessLock *processLockPtr_[2];
 
 static struct
 {
     pthread_mutex_t      mMutex;
     struct Pid           mParentPid;
     struct RWMutexWriter mForkLock;
-    unsigned             mActiveProcessLock;
-    unsigned             mInactiveProcessLock;
 } processFork_ =
 {
     .mMutex = PTHREAD_MUTEX_INITIALIZER,
@@ -1144,76 +1136,18 @@ createProcessLock_(struct ProcessLock *self)
 {
     int rc = -1;
 
-    self->mFile     = 0;
-    self->mLock     = 0;
-    self->mFileName = 0;
-
-    static const char pathFmt[] = "/proc/%" PRId_Pid "/.";
-
-    char path[sizeof(pathFmt) + sizeof(pid_t) * CHAR_BIT];
+    self->mFile = 0;
+    self->mLock = 0;
 
     ERROR_IF(
-        0 > sprintf(path, pathFmt, FMTd_Pid(ownProcessId())));
-
-    ERROR_UNLESS(
-        (self->mFileName = strdup(path)));
-
-    ERROR_IF(
-        createFile(
-            &self->mFile_,
-            open(self->mFileName, O_RDONLY | O_CLOEXEC)));
+        temporaryFile(&self->mFile_));
     self->mFile = &self->mFile_;
 
     rc = 0;
 
 Finally:
 
-    FINALLY
-    ({
-        if (rc)
-        {
-            closeFile(self->mFile);
-
-            free(self->mFileName);
-        }
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-dupProcessLock_(struct ProcessLock       *self,
-                const struct ProcessLock *other)
-{
-    int rc = -1;
-
-    self->mFile     = 0;
-    self->mLock     = 0;
-    self->mFileName = 0;
-
-    ERROR_UNLESS(
-        (self->mFileName = strdup(other->mFileName)));
-
-    ERROR_IF(
-        createFile(
-            &self->mFile_,
-            open(self->mFileName, O_RDONLY | O_CLOEXEC)));
-    self->mFile = &self->mFile_;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-        {
-            closeFile(self->mFile);
-
-            free(self->mFileName);
-        }
-    });
+    FINALLY({});
 
     return rc;
 }
@@ -1223,11 +1157,7 @@ static void
 closeProcessLock_(struct ProcessLock *self)
 {
     if (self)
-    {
-        free(self->mFileName);
-
         closeFile(self->mFile);
-    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1241,7 +1171,7 @@ lockProcessLock_(struct ProcessLock *self)
         ensure( ! self->mLock);
 
         ERROR_IF(
-            lockFile(self->mFile, LockTypeWrite));
+            lockFileRegion(self->mFile, LockTypeWrite, 0, 0));
 
         self->mLock = &LockTypeWrite;
     }
@@ -1263,7 +1193,7 @@ unlockProcessLock_(struct ProcessLock *self)
     {
         ensure(self->mLock);
 
-        ABORT_IF(unlockFile(self->mFile));
+        ABORT_IF(unlockFileRegion(self->mFile, 0, 0));
 
         self->mLock = 0;
     }
@@ -1277,14 +1207,13 @@ acquireProcessAppLock(void)
 
     struct ThreadSigMutex *lock = 0;
 
-    lock = lockThreadSigMutex(processLockMutexPtr_[activeProcessLock_]);
+    lock = lockThreadSigMutex(processLock_.mMutex);
 
-    if (1 == ownThreadSigMutexLocked(processLockMutexPtr_[activeProcessLock_]))
+    if (1 == ownThreadSigMutexLocked(processLock_.mMutex))
     {
-        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-
-        ERROR_IF(
-            processLock && lockProcessLock_(processLock));
+        if (processLock_.mLock)
+            ERROR_IF(
+                lockProcessLock_(processLock_.mLock));
     }
 
     rc = 0;
@@ -1306,14 +1235,12 @@ releaseProcessAppLock(void)
 {
     int rc = -1;
 
-    struct ThreadSigMutex *lock = processLockMutexPtr_[activeProcessLock_];
+    struct ThreadSigMutex *lock = processLock_.mMutex;
 
     if (1 == ownThreadSigMutexLocked(lock))
     {
-        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-
-        if (processLock)
-            unlockProcessLock_(processLock);
+        if (processLock_.mLock)
+            unlockProcessLock_(processLock_.mLock);
     }
 
     rc = 0;
@@ -1363,18 +1290,7 @@ destroyProcessAppLock(struct ProcessAppLock *self)
 unsigned
 ownProcessAppLockCount(void)
 {
-    return ownThreadSigMutexLocked(processLockMutexPtr_[activeProcessLock_]);
-}
-
-/* -------------------------------------------------------------------------- */
-const char *
-ownProcessAppLockPath(const struct ProcessAppLock *self)
-{
-    ensure(&processAppLock_ == self);
-
-    struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-
-    return processLock ? processLock->mFileName : 0;
+    return ownThreadSigMutexLocked(processLock_.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1383,9 +1299,7 @@ ownProcessAppLockFile(const struct ProcessAppLock *self)
 {
     ensure(&processAppLock_ == self);
 
-    struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-
-    return processLock ? processLock->mFile : 0;
+    return processLock_.mLock ? processLock_.mLock->mFile : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2267,66 +2181,18 @@ Finally:
 static void
 prepareFork_(void)
 {
-    /* This function is called in the context of the parent process
-     * just before a fork occurs. It prepares to create a new
-     * instance of the application lock to be used by the child process.
-     * The existing instance of the application lock is acquired by
-     * the parent, then held by both parent and child.
-     *
-     * Acquire processFork_.mMutex to allow only one thread to
+    /* Acquire processFork_.mMutex to allow only one thread to
      * use the shared process fork structure instance at a time. */
 
     lockMutex(&processFork_.mMutex);
 
-    /* The following code only manipulates the inactive member of
-     * processLock_, and fork preparation is already serialised within
-     * the context of the current process, so there is no obvious need
-     * to acquire processLockMutex_. The lock is acquired anyway for
-     * robustness since a thread might exist at some future time that
-     * will try to manipulate processLock_[] and processLockPtr_[].
-     *
-     * Note that processLockMutex_ is recursive with the implication
-     * being that it might already be held by this thread on entry
-     * to this function. */
+    /* Note that processLock_.mMutex is recursive, meaning that
+     * it might already be held by this thread on entry to this function. */
 
-    unsigned activeProcessLock   = 0 + activeProcessLock_;
-    unsigned inactiveProcessLock = 1 - activeProcessLock;
-
-    lockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
+    lockThreadSigMutex(processLock_.mMutex);
 
     ensure(
-        0 < ownThreadSigMutexLocked(processLockMutexPtr_[activeProcessLock]));
-
-    processFork_.mActiveProcessLock   = activeProcessLock;
-    processFork_.mInactiveProcessLock = inactiveProcessLock;
-
-    ensure(NUMBEROF(processLock_) > activeProcessLock);
-    ensure(NUMBEROF(processLock_) > inactiveProcessLock);
-
-    ensure( ! processLockPtr_[inactiveProcessLock]);
-    ensure( ! processLockMutexPtr_[inactiveProcessLock]);
-
-    /* The child process needs separate process lock. It cannot share
-     * the process lock with the parent because flock(2) distinguishes
-     * locks by file descriptor table entry. Create the process lock
-     * in the parent first so that the child process is guaranteed to
-     * be able to synchronise its messages. */
-
-    processLockMutexPtr_[inactiveProcessLock] =
-        createThreadSigMutex(&processLockMutex_[inactiveProcessLock]);
-
-    if (processLockPtr_[activeProcessLock])
-    {
-        ensure(
-            processLockPtr_[activeProcessLock] ==
-            &processLock_[activeProcessLock]);
-
-        ABORT_IF(
-            dupProcessLock_(&processLock_[inactiveProcessLock],
-                            &processLock_[activeProcessLock]));
-        processLockPtr_[inactiveProcessLock] =
-            &processLock_[inactiveProcessLock];
-    }
+        0 < ownThreadSigMutexLocked(processLock_.mMutex));
 
     /* Acquire the processSigVecLock_ for writing to ensure that there
      * are no other signal vector activity in progress. The purpose here
@@ -2351,22 +2217,10 @@ completeFork_(void)
 
     destroyRWMutexWriter(&processFork_.mForkLock);
 
-    unsigned activeProcessLock   = processFork_.mActiveProcessLock;
-    unsigned inactiveProcessLock = processFork_.mInactiveProcessLock;
+    /* Both parent and child have an acquired instance of the mutex, but
+     * the recursion count of the mutex held by the child is equal to one. */
 
-    if (processLockPtr_[inactiveProcessLock])
-    {
-        closeProcessLock_(processLockPtr_[inactiveProcessLock]);
-        processLockPtr_[inactiveProcessLock] = 0;
-    }
-
-    /* Only the parent acquired its instance of the processLockMutex_,
-     * while the child has its own pristine instance. */
-
-    destroyThreadSigMutex(processLockMutexPtr_[inactiveProcessLock]);
-    processLockMutexPtr_[inactiveProcessLock] = 0;
-
-    unlockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
+    unlockThreadSigMutex(processLock_.mMutex);
 
     unlockMutex(&processFork_.mMutex);
 }
@@ -2391,30 +2245,17 @@ postForkChild_(void)
      * immediately after the fork completes, at which time it will
      * be the only thread running in the new process.
      *
-     * Switch the process lock first in case the child process needs to
-     * emit diagnostic messages so that the messages will not be garbled. */
-
-    unsigned activeProcessLock   = processFork_.mActiveProcessLock;
-    unsigned inactiveProcessLock = processFork_.mInactiveProcessLock;
-
-    activeProcessLock_  = inactiveProcessLock;
-
-    inactiveProcessLock = activeProcessLock;
-    activeProcessLock   = activeProcessLock_;
-
-    processFork_.mActiveProcessLock   = activeProcessLock;
-    processFork_.mInactiveProcessLock = inactiveProcessLock;
-
-    /* The child process gets its own instance of the processLockMutex_
+     * Groom the process lock first so that the child process can
+     * emit diagnostic messages correctly.
+     *
+     * The child process gets its own instance of the processLockMutex_
      * and that is now the active instance. The instance held by the
      * parent is no longer usable in the context of the child, but take
      * care because the parent lock might have been acquired recursively
      * more than once. */
 
-    while (ownThreadSigMutexLocked(processLockMutexPtr_[inactiveProcessLock]))
-        unlockThreadSigMutex(processLockMutexPtr_[inactiveProcessLock]);
-
-    lockThreadSigMutex(processLockMutexPtr_[activeProcessLock]);
+    while (1 < ownThreadSigMutexLocked(processLock_.mMutex))
+        unlockThreadSigMutex(processLock_.mMutex);
 
     debug(1, "groom forked child");
 
@@ -2504,11 +2345,11 @@ Process_init(struct ProcessModule *self, const char *aArg0)
     ERROR_IF(
         errno = pthread_sigmask(SIG_BLOCK, 0, &processSigMask_));
 
-    ensure( ! processLockPtr_[activeProcessLock_]);
+    ensure( ! processLock_.mLock);
 
     ERROR_IF(
-        createProcessLock_(&processLock_[activeProcessLock_]));
-    processLockPtr_[activeProcessLock_] = &processLock_[activeProcessLock_];
+        createProcessLock_(&processLock_.mLock_));
+    processLock_.mLock = &processLock_.mLock_;
 
     hookProcessSigCont_();
     hookProcessSigStop_();
@@ -2530,9 +2371,8 @@ Finally:
                 unhookProcessSigCont_();
             }
 
-            struct ProcessLock *processLock =
-                processLockPtr_[activeProcessLock_];
-            processLockPtr_[activeProcessLock_] = 0;
+            struct ProcessLock *processLock = processLock_.mLock;
+            processLock_.mLock = 0;
 
             closeProcessLock_(processLock);
 
@@ -2554,8 +2394,8 @@ Process_exit(struct ProcessModule *self)
         unhookProcessSigStop_();
         unhookProcessSigCont_();
 
-        struct ProcessLock *processLock = processLockPtr_[activeProcessLock_];
-        processLockPtr_[activeProcessLock_] = 0;
+        struct ProcessLock *processLock = processLock_.mLock;
+        processLock_.mLock = 0;
 
         ensure(processLock);
         closeProcessLock_(processLock);
