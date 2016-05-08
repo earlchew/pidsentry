@@ -96,11 +96,11 @@ static const char programUsage_[] =
 "        T  timeout in seconds for activity on the tether, zero to disable\n"
 "        U  timeout in seconds for activity on the umbilical, zero to disable\n"
 "        V  delay in seconds between signals to terminate the child\n"
-"        W  timeout in to drain data from the tether, zero to disable\n"
+"        W  timeout in seconds to drain data from the tether, zero to disable\n"
 "      [Default: T,U,V,W = "
-    STRINGIFY(DEFAULT_TETHER_TIMEOUT_S)
-    STRINGIFY(DEFAULT_UMBILICAL_TIMEOUT_S)
-    STRINGIFY(DEFAULT_SIGNAL_PERIOD_S)
+    STRINGIFY(DEFAULT_TETHER_TIMEOUT_S) ","
+    STRINGIFY(DEFAULT_UMBILICAL_TIMEOUT_S) ","
+    STRINGIFY(DEFAULT_SIGNAL_PERIOD_S) ","
     STRINGIFY(DEFAULT_DRAIN_TIMEOUT_S) "]\n"
 "  --untethered | -u\n"
 "      Run child process without a tether and only watch for termination.\n"
