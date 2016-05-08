@@ -49,10 +49,8 @@ static const struct Type * const sentryType_ = TYPE("Sentry");
 
 /* -------------------------------------------------------------------------- */
 static void
-reapSentry_(void *self_)
+reapSentry_(struct Sentry *self)
 {
-    struct Sentry *self = self_;
-
     ensure(sentryType_ == self->mType);
 
     struct Pid umbilicalPid =
@@ -79,10 +77,8 @@ raiseSentrySignal_(void *self_, int aSigNum)
 }
 
 static void
-raiseSentryStop_(void *self_)
+raiseSentryStop_(struct Sentry *self)
 {
-    struct Sentry *self = self_;
-
     ensure(sentryType_ == self->mType);
 
     ABORT_IF(
@@ -90,10 +86,8 @@ raiseSentryStop_(void *self_)
 }
 
 static void
-raiseSentryResume_(void *self_)
+raiseSentryResume_(struct Sentry *self)
 {
-    struct Sentry *self = self_;
-
     ensure(sentryType_ == self->mType);
 
     ABORT_IF(
@@ -101,10 +95,8 @@ raiseSentryResume_(void *self_)
 }
 
 static void
-raiseSentrySigCont_(void *self_)
+raiseSentrySigCont_(struct Sentry *self)
 {
-    struct Sentry *self = self_;
-
     ensure(sentryType_ == self->mType);
 
     ABORT_IF(

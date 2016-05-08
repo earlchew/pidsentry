@@ -40,10 +40,8 @@ static const struct Type * const jobControlType_ = TYPE("JobControl");
 
 /* -------------------------------------------------------------------------- */
 static void
-reapJobControl_(void *self_)
+reapJobControl_(struct JobControl *self)
 {
-    struct JobControl *self = self_;
-
     ensure(jobControlType_ == self->mType);
 
     if ( ! ownVoidMethodNil(self->mReap.mMethod))
@@ -64,10 +62,8 @@ raiseJobControlSignal_(void *self_, int aSigNum)
 
 /* -------------------------------------------------------------------------- */
 static void
-raiseJobControlSigStop_(void *self_)
+raiseJobControlSigStop_(struct JobControl *self)
 {
-    struct JobControl *self = self_;
-
     ensure(jobControlType_ == self->mType);
 
     if ( ! ownVoidMethodNil(self->mStop.mPauseMethod))
@@ -88,10 +84,8 @@ raiseJobControlSigStop_(void *self_)
 
 /* -------------------------------------------------------------------------- */
 static void
-raiseJobControlSigCont_(void *self_)
+raiseJobControlSigCont_(struct JobControl *self)
 {
-    struct JobControl *self = self_;
-
     ensure(jobControlType_ == self->mType);
 
     if ( ! ownVoidMethodNil(self->mContinue.mMethod))

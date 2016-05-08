@@ -60,10 +60,8 @@ raiseAgentSignal_(void *self_, int aSigNum)
 }
 
 static void
-raiseAgentStop_(void *self_)
+raiseAgentStop_(struct Agent *self)
 {
-    struct Agent *self = self_;
-
     ensure(agentType_ == self->mType);
 
     struct Pid agentPid = self->mAgentPid;
@@ -75,10 +73,8 @@ raiseAgentStop_(void *self_)
 }
 
 static void
-raiseAgentResume_(void *self_)
+raiseAgentResume_(struct Agent *self)
 {
-    struct Agent *self = self_;
-
     ensure(agentType_ == self->mType);
 
     struct Pid agentPid = self->mAgentPid;

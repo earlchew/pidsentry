@@ -31,6 +31,8 @@
 
 #include <stdbool.h>
 
+#include "lambda_.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -60,12 +62,27 @@ struct VoidMethod
     VoidMethodT_ mMethod;
 };
 
-#ifndef __cplusplus
-static inline struct VoidMethod
-VoidMethod(VoidMethodT_ aMethod, void *aObject)
-{
-    return VoidMethod_(aMethod, aObject);
-}
+#ifdef __cplusplus
+#define VoidMethod(Method_, Object_) VoidMethod_(Method_, Object_)
+#else
+#define VoidMethod(Method_, Object_)                    \
+({                                                      \
+    typedef __typeof__((Object_)) ObjectT_;             \
+                                                        \
+    void (*Validate_)(ObjectT_) = (Method_);            \
+                                                        \
+    VoidMethod_(                                        \
+        ! Validate_                                     \
+        ? 0                                             \
+        : LAMBDA(                                       \
+            void, (void *Self_),                        \
+            {                                           \
+                void (*method_)(ObjectT_) = (Method_);  \
+                                                        \
+                method_((ObjectT_) Self_);              \
+            }),                                         \
+        (Object_));                                     \
+})
 #endif
 
 void
