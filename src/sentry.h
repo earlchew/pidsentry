@@ -49,8 +49,6 @@ struct Pipe;
 /* -------------------------------------------------------------------------- */
 struct Sentry
 {
-    const struct Type *mType;
-
     struct StdFdFiller  mStdFdFiller_;
     struct StdFdFiller *mStdFdFiller;
 

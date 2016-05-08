@@ -45,14 +45,10 @@
 
 #include <valgrind/valgrind.h>
 
-static const struct Type * const sentryType_ = TYPE("Sentry");
-
 /* -------------------------------------------------------------------------- */
 static void
 reapSentry_(struct Sentry *self)
 {
-    ensure(sentryType_ == self->mType);
-
     struct Pid umbilicalPid =
         self->mUmbilicalProcess ? self->mUmbilicalProcess->mPid : Pid(0);
 
@@ -63,8 +59,6 @@ reapSentry_(struct Sentry *self)
 static void
 raiseSentrySignal_(struct Sentry *self, int aSigNum)
 {
-    ensure(sentryType_ == self->mType);
-
     /* Propagate the signal to the child. Note that SIGQUIT might cause
      * the child to terminate and dump core. Dump core in sympathy if this
      * happens, but do that only if the child actually does so. This is
@@ -77,8 +71,6 @@ raiseSentrySignal_(struct Sentry *self, int aSigNum)
 static void
 raiseSentryStop_(struct Sentry *self)
 {
-    ensure(sentryType_ == self->mType);
-
     ABORT_IF(
         pauseChildProcessGroup(self->mChildProcess));
 }
@@ -86,8 +78,6 @@ raiseSentryStop_(struct Sentry *self)
 static void
 raiseSentryResume_(struct Sentry *self)
 {
-    ensure(sentryType_ == self->mType);
-
     ABORT_IF(
         resumeChildProcessGroup(self->mChildProcess));
 }
@@ -95,8 +85,6 @@ raiseSentryResume_(struct Sentry *self)
 static void
 raiseSentrySigCont_(struct Sentry *self)
 {
-    ensure(sentryType_ == self->mType);
-
     ABORT_IF(
         raiseChildSigCont(self->mChildProcess));
 }
@@ -107,8 +95,6 @@ createSentry(struct Sentry *self,
              char         **aCmd)
 {
     int rc = -1;
-
-    self->mType = sentryType_;
 
     self->mStdFdFiller      = 0;
     self->mUmbilicalSocket  = 0;
@@ -298,8 +284,6 @@ closeSentry(struct Sentry *self)
         closeChild(self->mChildProcess);
         closeSocketPair(self->mUmbilicalSocket);
         closeStdFdFiller(self->mStdFdFiller);
-
-        self->mType = 0;
     }
 }
 
