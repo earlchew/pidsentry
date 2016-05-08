@@ -172,7 +172,7 @@ TEST_F(ProcessTest, ProcessSignature)
 
     if ( ! secondChild.mPid)
     {
-        if (ownProcessAppLockCount())
+        if (1 != ownProcessAppLockCount())
             execl("/bin/false", "false", (char *) 0);
         else
             execl("/bin/true", "true", (char *) 0);

@@ -1166,15 +1166,12 @@ lockProcessLock_(struct ProcessLock *self)
 {
     int rc = -1;
 
-    if (self)
-    {
-        ensure( ! self->mLock);
+    ensure( ! self->mLock);
 
-        ERROR_IF(
-            lockFileRegion(self->mFile, LockTypeWrite, 0, 0));
+    ERROR_IF(
+        lockFileRegion(self->mFile, LockTypeWrite, 0, 0));
 
-        self->mLock = &LockTypeWrite;
-    }
+    self->mLock = &LockTypeWrite;
 
     rc = 0;
 
@@ -1189,13 +1186,24 @@ Finally:
 static void
 unlockProcessLock_(struct ProcessLock *self)
 {
-    if (self)
+    ensure(self->mLock);
+
+    ABORT_IF(
+        unlockFileRegion(self->mFile, 0, 0));
+
+    self->mLock = 0;
+}
+
+/* -------------------------------------------------------------------------- */
+static void
+forkProcessLock_(struct ProcessLock *self)
+{
+    if (self->mLock)
     {
-        ensure(self->mLock);
-
-        ABORT_IF(unlockFileRegion(self->mFile, 0, 0));
-
-        self->mLock = 0;
+        ABORT_IF(
+            unlockFileRegion(self->mFile, 0, 0));
+        ABORT_IF(
+            lockFileRegion(self->mFile, LockTypeWrite, 0, 0));
     }
 }
 
@@ -2210,19 +2218,19 @@ prepareFork_(void)
 static void
 completeFork_(void)
 {
-    /* This function is called in the context of both parent and child
-     * process immediately after the fork completes. Both processes
-     * release the resources acquired when preparations were made
-     * immediately preceding the fork. */
+    TEST_RACE
+    ({
+        /* This function is called in the context of both parent and child
+         * process immediately after the fork completes. Both processes
+         * release the resources acquired when preparations were made
+         * immediately preceding the fork. */
 
-    destroyRWMutexWriter(&processFork_.mForkLock);
+        destroyRWMutexWriter(&processFork_.mForkLock);
 
-    /* Both parent and child have an acquired instance of the mutex, but
-     * the recursion count of the mutex held by the child is equal to one. */
+        unlockThreadSigMutex(processLock_.mMutex);
 
-    unlockThreadSigMutex(processLock_.mMutex);
-
-    unlockMutex(&processFork_.mMutex);
+        unlockMutex(&processFork_.mMutex);
+    });
 }
 
 static void
@@ -2243,19 +2251,14 @@ postForkChild_(void)
 {
     /* This function is called in the context of the child process
      * immediately after the fork completes, at which time it will
-     * be the only thread running in the new process.
-     *
-     * Groom the process lock first so that the child process can
-     * emit diagnostic messages correctly.
-     *
-     * The child process gets its own instance of the processLockMutex_
-     * and that is now the active instance. The instance held by the
-     * parent is no longer usable in the context of the child, but take
-     * care because the parent lock might have been acquired recursively
-     * more than once. */
+     * be the only thread running in the new process. The application
+     * lock is recursive in the parent, and hence also in the child.
+     * The parent holds the application lock, so the child must acquire
+     * the lock to ensure that the recursive semantics in the child
+     * are preserved. */
 
-    while (1 < ownThreadSigMutexLocked(processLock_.mMutex))
-        unlockThreadSigMutex(processLock_.mMutex);
+    if (processLock_.mLock)
+        forkProcessLock_(processLock_.mLock);
 
     debug(1, "groom forked child");
 
