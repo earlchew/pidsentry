@@ -35,7 +35,7 @@
     LAMBDA_1_(__COUNTER__, Return_, Signature_, __VA_ARGS__)
 
 #define LAMBDA_1_(Counter_, Return_, Signature_, ...)  \
-    LAMBDA_2_(__COUNTER__, Return_, Signature_, __VA_ARGS__)
+    LAMBDA_2_(Counter_, Return_, Signature_, __VA_ARGS__)
 
 #define LAMBDA_2_(Counter_, Return_, Signature_, ...)           \
 ({                                                              \
@@ -54,7 +54,7 @@
     LAMBDA_1_(__COUNTER__, Return_, Signature_, __VA_ARGS__)
 
 #define LAMBDA_1_(Counter_, Return_, Signature_, ...)  \
-    LAMBDA_2_(__COUNTER__, Return_, Signature_, __VA_ARGS__)
+    LAMBDA_2_(Counter_, Return_, Signature_, __VA_ARGS__)
 
 #define LAMBDA_2_(Counter_, Return_, Signature_, ...)   \
 ({                                                      \
