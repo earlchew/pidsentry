@@ -40,8 +40,6 @@ struct ExitCode;
 /* -------------------------------------------------------------------------- */
 struct Agent
 {
-    const struct Type *mType;
-
     char **mCmd;
 
     struct Pid mAgentPid;

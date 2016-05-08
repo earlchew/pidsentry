@@ -41,14 +41,10 @@
 #include <fcntl.h>
 #include <stdio.h>
 
-static const struct Type * const agentType_ = TYPE("Agent");
-
 /* -------------------------------------------------------------------------- */
 static void
 raiseAgentSignal_(struct Agent *self, int aSigNum)
 {
-    ensure(agentType_ == self->mType);
-
     struct Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
@@ -60,8 +56,6 @@ raiseAgentSignal_(struct Agent *self, int aSigNum)
 static void
 raiseAgentStop_(struct Agent *self)
 {
-    ensure(agentType_ == self->mType);
-
     struct Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
@@ -73,8 +67,6 @@ raiseAgentStop_(struct Agent *self)
 static void
 raiseAgentResume_(struct Agent *self)
 {
-    ensure(agentType_ == self->mType);
-
     struct Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
@@ -89,8 +81,6 @@ createAgent(struct Agent  *self,
             char         **aCmd)
 {
     int rc = -1;
-
-    self->mType = agentType_;
 
     self->mCmd      = aCmd;
     self->mAgentPid = Pid(0);
@@ -120,7 +110,7 @@ void
 closeAgent(struct Agent *self)
 {
     if (self)
-        self->mType = 0;
+    { }
 }
 
 /* -------------------------------------------------------------------------- */
