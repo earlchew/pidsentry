@@ -61,10 +61,8 @@ reapSentry_(struct Sentry *self)
 }
 
 static void
-raiseSentrySignal_(void *self_, int aSigNum)
+raiseSentrySignal_(struct Sentry *self, int aSigNum)
 {
-    struct Sentry *self = self_;
-
     ensure(sentryType_ == self->mType);
 
     /* Propagate the signal to the child. Note that SIGQUIT might cause

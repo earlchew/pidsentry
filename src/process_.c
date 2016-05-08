@@ -1551,10 +1551,8 @@ struct ForkProcessDaemon
 };
 
 static void
-forkProcessDaemonSignalHandler_(void *self_, int aSigNum)
+forkProcessDaemonSignalHandler_(struct ForkProcessDaemon *self, int aSigNum)
 {
-    struct ForkProcessDaemon *self = self_;
-
     ++self->mHangUp;
 
     struct ProcessSignalName sigName;

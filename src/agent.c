@@ -45,10 +45,8 @@ static const struct Type * const agentType_ = TYPE("Agent");
 
 /* -------------------------------------------------------------------------- */
 static void
-raiseAgentSignal_(void *self_, int aSigNum)
+raiseAgentSignal_(struct Agent *self, int aSigNum)
 {
-    struct Agent *self = self_;
-
     ensure(agentType_ == self->mType);
 
     struct Pid agentPid = self->mAgentPid;

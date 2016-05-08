@@ -50,10 +50,8 @@ reapJobControl_(struct JobControl *self)
 
 /* -------------------------------------------------------------------------- */
 static void
-raiseJobControlSignal_(void *self_, int aSigNum)
+raiseJobControlSignal_(struct JobControl *self, int aSigNum)
 {
-    struct JobControl *self = self_;
-
     ensure(jobControlType_ == self->mType);
 
     if ( ! ownVoidIntMethodNil(self->mRaise.mMethod))

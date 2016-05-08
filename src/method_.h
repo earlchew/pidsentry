@@ -105,12 +105,28 @@ struct VoidIntMethod
     VoidIntMethodT_ mMethod;
 };
 
-#ifndef __cplusplus
-static inline struct VoidIntMethod
-VoidIntMethod(VoidIntMethodT_ aMethod, void *aObject)
-{
-    return VoidIntMethod_(aMethod, aObject);
-}
+#ifdef __cplusplus
+#define VoidIntMethod(Method_, Object_) VoidIntMethod_(Method_, Object_)
+#else
+#define VoidIntMethod(Method_, Object_)                 \
+({                                                      \
+    typedef __typeof__((Object_)) ObjectT_;             \
+                                                        \
+    void (*Validate_)(ObjectT_, int) = (Method_);       \
+                                                        \
+    VoidIntMethod_(                                     \
+        ! Validate_                                     \
+        ? 0                                             \
+        : LAMBDA(                                       \
+            void, (void *Self_, int aArg_),             \
+            {                                           \
+                void (*method_)(                        \
+                  ObjectT_, int) = (Method_);           \
+                                                        \
+                method_((ObjectT_) Self_, aArg_);       \
+            }),                                         \
+        (Object_));                                     \
+})
 #endif
 
 void
