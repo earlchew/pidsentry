@@ -30,9 +30,55 @@
 #define POLLFD_H
 
 #include "timekeeping_.h"
+#include "method_.h"
 
+#include <stdbool.h>
 #include <limits.h>
 
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_PollFdCompletionMethod    bool
+#define METHOD_ARG_LIST_PollFdCompletionMethod  ()
+#define METHOD_CALL_LIST_PollFdCompletionMethod ()
+
+#define METHOD_NAME      PollFdCompletionMethod
+#define METHOD_RETURN    METHOD_RETURN_PollFdCompletionMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_PollFdCompletionMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_PollFdCompletionMethod
+#include "method_.h"
+
+#define PollFdCompletionMethod(Method_, Object_)  \
+    METHOD_TRAMPOLINE(                            \
+        Method_, Object_,                         \
+        PollFdCompletionMethod_,                  \
+        METHOD_RETURN_PollFdCompletionMethod,     \
+        METHOD_ARG_LIST_PollFdCompletionMethod,   \
+        METHOD_CALL_LIST_PollFdCompletionMethod)
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_PollFdCallbackMethod \
+    int
+#define METHOD_ARG_LIST_PollFdCallbackMethod \
+    (const struct EventClockTime *aPollTime_)
+#define METHOD_CALL_LIST_PollFdCallbackMethod \
+    (aPollTime_)
+
+#define METHOD_NAME      PollFdCallbackMethod
+#define METHOD_RETURN    METHOD_RETURN_PollFdCallbackMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_PollFdCallbackMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_PollFdCallbackMethod
+#include "method_.h"
+
+#define PollFdCallbackMethod(Method_, Object_)  \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        PollFdCallbackMethod_,                  \
+        METHOD_RETURN_PollFdCallbackMethod,     \
+        METHOD_ARG_LIST_PollFdCallbackMethod,   \
+        METHOD_CALL_LIST_PollFdCallbackMethod)
+
+/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -42,23 +88,20 @@ struct pollfd;
 /* -------------------------------------------------------------------------- */
 struct PollFdAction
 {
-    int (*mAction)(void                        *self,
-                   const struct EventClockTime *aPollTime);
+    struct PollFdCallbackMethod mAction;
 };
 
 struct PollFdTimerAction
 {
-    int                (*mAction)(void                        *self,
-                                  const struct EventClockTime *aPollTime);
-    struct Duration       mPeriod;
-    struct EventClockTime mSince;
+    struct PollFdCallbackMethod mAction;
+    struct Duration             mPeriod;
+    struct EventClockTime       mSince;
 };
 
 struct PollFd
 {
-    struct pollfd *mPoll;
-    void          *mObserver;
-    bool         (*mCompletionQuery)(void *aObserver);
+    struct pollfd                 *mPoll;
+    struct PollFdCompletionMethod  mCompletionQuery;
 
     struct
     {
@@ -97,16 +140,15 @@ struct PollEventText
 
 /* -------------------------------------------------------------------------- */
 int
-createPollFd(struct PollFd            *self,
-             struct pollfd            *aPoll,
-             struct PollFdAction      *aFdActions,
-             const char * const       *aFdNames,
-             size_t                    aNumFdActions,
-             struct PollFdTimerAction *aTimerActions,
-             const char * const       *aTimerNames,
-             size_t                    aNumTimerActions,
-             bool                      aCompletionQuery(void *aObserver),
-             void                     *aObserver);
+createPollFd(struct PollFd                 *self,
+             struct pollfd                 *aPoll,
+             struct PollFdAction           *aFdActions,
+             const char * const            *aFdNames,
+             size_t                         aNumFdActions,
+             struct PollFdTimerAction      *aTimerActions,
+             const char * const            *aTimerNames,
+             size_t                         aNumTimerActions,
+             struct PollFdCompletionMethod  aCompletionQuery);
 
 int
 runPollFdLoop(struct PollFd *self);

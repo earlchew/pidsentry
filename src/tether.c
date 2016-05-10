@@ -90,12 +90,10 @@ struct TetherPoll
 };
 
 static int
-pollFdControl_(void                        *self_,
+pollFdControl_(struct TetherPoll           *self,
                const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct TetherPoll *self = self_;
 
     char buf[1];
 
@@ -126,12 +124,10 @@ Finally:
 }
 
 static int
-pollFdDrain_(void                        *self_,
+pollFdDrain_(struct TetherPoll           *self,
              const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct TetherPoll *self = self_;
 
     if (self->mPollFds[POLL_FD_TETHER_CONTROL].events)
     {
@@ -233,12 +229,10 @@ Finally:
 }
 
 static int
-pollFdTimerDisconnected_(void                        *self_,
+pollFdTimerDisconnected_(struct TetherPoll           *self,
                          const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct TetherPoll *self = self_;
 
     /* Once the tether drain timeout expires, disable the timer, and
      * force completion of the tether thread. */
@@ -258,10 +252,8 @@ Finally:
 }
 
 static bool
-pollFdCompletion_(void *self_)
+pollFdCompletion_(struct TetherPoll *self)
 {
-    struct TetherPoll *self = self_;
-
     return ! self->mPollFds[POLL_FD_TETHER_CONTROL].events;
 }
 
@@ -317,14 +309,18 @@ tetherThreadMain_(void *self_)
 
         .mPollFdActions =
         {
-            [POLL_FD_TETHER_CONTROL] = { pollFdControl_ },
-            [POLL_FD_TETHER_INPUT]   = { pollFdDrain_ },
-            [POLL_FD_TETHER_OUTPUT]  = { pollFdDrain_ },
+            [POLL_FD_TETHER_CONTROL] = {
+                PollFdCallbackMethod(pollFdControl_, &tetherpoll) },
+            [POLL_FD_TETHER_INPUT]   = {
+                PollFdCallbackMethod(pollFdDrain_, &tetherpoll) },
+            [POLL_FD_TETHER_OUTPUT]  = {
+                PollFdCallbackMethod(pollFdDrain_, &tetherpoll) },
         },
 
         .mPollFdTimerActions =
         {
-            [POLL_FD_TETHER_TIMER_DISCONNECT] = { pollFdTimerDisconnected_ },
+            [POLL_FD_TETHER_TIMER_DISCONNECT] = {
+                PollFdCallbackMethod(pollFdTimerDisconnected_, &tetherpoll) },
         },
     };
 
@@ -337,7 +333,7 @@ tetherThreadMain_(void *self_)
             pollFdNames_, POLL_FD_TETHER_KINDS,
             tetherpoll.mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_TETHER_TIMER_KINDS,
-            pollFdCompletion_, &tetherpoll),
+            PollFdCompletionMethod(pollFdCompletion_, &tetherpoll)),
         {
             terminate(
                 errno,

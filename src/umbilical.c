@@ -73,12 +73,10 @@ static const char *pollFdTimerNames_[POLL_FD_MONITOR_TIMER_KINDS] =
 
 /* -------------------------------------------------------------------------- */
 static int
-pollFdPidServer_(void                        *self_,
+pollFdPidServer_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
 
@@ -104,12 +102,10 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-pollFdPidClient_(void                        *self_,
+pollFdPidClient_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
 
@@ -147,12 +143,10 @@ closeFdUmbilical_(struct UmbilicalMonitor *self)
 }
 
 static int
-pollFdUmbilical_(void                        *self_,
+pollFdUmbilical_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
 
@@ -259,12 +253,10 @@ Finally:
 
 static int
 pollFdTimerUmbilical_(
-    void                        *self_,
+    struct UmbilicalMonitor     *self,
     const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct UmbilicalMonitor *self = self_;
 
     ensure(umbilicalMonitorType_ == self->mType);
 
@@ -302,10 +294,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static bool
-pollFdCompletion_(void *self_)
+pollFdCompletion_(struct UmbilicalMonitor *self)
 {
-    struct UmbilicalMonitor *self = self_;
-
     ensure(umbilicalMonitorType_ == self->mType);
 
     /* The umbilical event loop terminates when the connection to the
@@ -366,16 +356,19 @@ createUmbilicalMonitor(
 
         .mPollFdActions =
         {
-            [POLL_FD_MONITOR_UMBILICAL] = { pollFdUmbilical_ },
-            [POLL_FD_MONITOR_PIDSERVER] = { pollFdPidServer_ },
-            [POLL_FD_MONITOR_PIDCLIENT] = { pollFdPidClient_ },
+            [POLL_FD_MONITOR_UMBILICAL] = {
+                PollFdCallbackMethod(pollFdUmbilical_, self) },
+            [POLL_FD_MONITOR_PIDSERVER] = {
+                PollFdCallbackMethod(pollFdPidServer_, self) },
+            [POLL_FD_MONITOR_PIDCLIENT] = {
+                PollFdCallbackMethod(pollFdPidClient_, self) },
         },
 
         .mPollFdTimerActions =
         {
             [POLL_FD_MONITOR_TIMER_UMBILICAL] =
             {
-                .mAction = pollFdTimerUmbilical_,
+                .mAction = PollFdCallbackMethod(pollFdTimerUmbilical_, self),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(
                     NanoSeconds(
@@ -432,7 +425,7 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
             pollFdNames_, POLL_FD_MONITOR_KINDS,
             self->mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_MONITOR_TIMER_KINDS,
-            pollFdCompletion_, self));
+            PollFdCompletionMethod(pollFdCompletion_, self)));
 
     ERROR_IF(
         runPollFdLoop(&pollfd));

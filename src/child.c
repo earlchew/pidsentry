@@ -904,12 +904,10 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
 }
 
 static int
-pollFdTimerTermination_(void                        *self_,
+pollFdTimerTermination_(struct ChildMonitor         *self,
                         const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
 
@@ -962,12 +960,10 @@ Finally:
  * terminate if the parent terminates. */
 
 static int
-pollFdParent_(void                        *self_,
+pollFdParent_(struct ChildMonitor         *self,
               const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     warn(0,
          "Parent pid %" PRId_Pid " has terminated",
@@ -1031,12 +1027,10 @@ pollFdCloseUmbilical_(struct ChildMonitor         *self,
 }
 
 static int
-pollFdUmbilical_(void                        *self_,
+pollFdUmbilical_(struct ChildMonitor         *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     struct PollFdTimerAction *umbilicalTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
@@ -1246,12 +1240,10 @@ pollFdContUmbilical_(struct ChildMonitor         *self,
 }
 
 static int
-pollFdTimerUmbilical_(void                        *self_,
+pollFdTimerUmbilical_(struct ChildMonitor         *self,
                       const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
 
@@ -1404,12 +1396,10 @@ disconnectPollFdTether_(struct ChildMonitor *self)
 }
 
 static int
-pollFdTether_(void                        *self_,
+pollFdTether_(struct ChildMonitor         *self,
               const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
 
@@ -1449,12 +1439,10 @@ restartFdTimerTether_(struct ChildMonitor         *self,
 }
 
 static int
-pollFdTimerTether_(void                        *self_,
+pollFdTimerTether_(struct ChildMonitor         *self,
                    const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
 
@@ -1551,10 +1539,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static bool
-pollFdCompletion_(void *self_)
+pollFdCompletion_(struct ChildMonitor *self)
 {
-    struct ChildMonitor *self = self_;
-
     ensure(childMonitorType_ == self->mType);
 
     /* Wait until the child process has terminated, and the tether thread
@@ -1618,12 +1604,10 @@ pollFdReapChildEvent_(struct ChildMonitor         *self,
 }
 
 static int
-pollFdTimerChild_(void                        *self_,
+pollFdTimerChild_(struct ChildMonitor         *self,
                   const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
 
@@ -1681,12 +1665,10 @@ pollFdEventLatch_(struct EventLatch **aLatch, const char *aRole)
 }
 
 static int
-pollFdEventPipe_(void                        *self_,
+pollFdEventPipe_(struct ChildMonitor         *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    struct ChildMonitor *self = self_;
 
     ensure(childMonitorType_ == self->mType);
 
@@ -1968,10 +1950,14 @@ monitorChild(struct ChildProcess     *self,
 
         .mPollFdActions =
         {
-            [POLL_FD_CHILD_UMBILICAL]  = { pollFdUmbilical_ },
-            [POLL_FD_CHILD_PARENT]     = { pollFdParent_ },
-            [POLL_FD_CHILD_EVENT_PIPE] = { pollFdEventPipe_ },
-            [POLL_FD_CHILD_TETHER]     = { pollFdTether_ },
+            [POLL_FD_CHILD_UMBILICAL]  = {
+                PollFdCallbackMethod(pollFdUmbilical_, &childMonitor_) },
+            [POLL_FD_CHILD_PARENT]     = {
+                PollFdCallbackMethod(pollFdParent_, &childMonitor_) },
+            [POLL_FD_CHILD_EVENT_PIPE] = {
+                PollFdCallbackMethod(pollFdEventPipe_, &childMonitor_) },
+            [POLL_FD_CHILD_TETHER]     = {
+                PollFdCallbackMethod(pollFdTether_, &childMonitor_) },
         },
 
         .mPollFdTimerActions =
@@ -1983,7 +1969,8 @@ monitorChild(struct ChildProcess     *self,
                  * supervise the child, but not impose any timing requirements
                  * on activity on the tether. */
 
-                .mAction = pollFdTimerTether_,
+                .mAction = PollFdCallbackMethod(
+                    pollFdTimerTether_, &childMonitor_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(
                     NSECS(Seconds(gOptions.mTether
@@ -1993,7 +1980,8 @@ monitorChild(struct ChildProcess     *self,
 
             [POLL_FD_CHILD_TIMER_UMBILICAL] =
             {
-                .mAction = pollFdTimerUmbilical_,
+                .mAction = PollFdCallbackMethod(
+                    pollFdTimerUmbilical_, &childMonitor_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(
                     NanoSeconds(
@@ -2002,14 +1990,16 @@ monitorChild(struct ChildProcess     *self,
 
             [POLL_FD_CHILD_TIMER_TERMINATION] =
             {
-                .mAction = pollFdTimerTermination_,
+                .mAction = PollFdCallbackMethod(
+                    pollFdTimerTermination_, &childMonitor_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(0)),
             },
 
             [POLL_FD_CHILD_TIMER_DISCONNECTION] =
             {
-                .mAction = pollFdTimerChild_,
+                .mAction = PollFdCallbackMethod(
+                    pollFdTimerChild_, &childMonitor_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(0)),
             },
@@ -2058,7 +2048,7 @@ monitorChild(struct ChildProcess     *self,
             childMonitor->mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_CHILD_TIMER_KINDS,
 
-            pollFdCompletion_, childMonitor));
+            PollFdCompletionMethod(pollFdCompletion_, childMonitor)));
     pollfd = &pollfd_;
 
     updateChildMonitor_(self, childMonitor);
