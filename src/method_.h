@@ -29,13 +29,7 @@
 #ifndef METHOD_H
 #define METHOD_H
 
-#include <stdbool.h>
-
 #include "lambda_.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /* -------------------------------------------------------------------------- */
 #ifndef __cplusplus
@@ -106,12 +100,6 @@ extern "C" {
         METHOD_ARG_LIST_VoidIntMethod,          \
         METHOD_CALL_LIST_VoidIntMethod)
 
-/* -------------------------------------------------------------------------- */
-
-#ifdef __cplusplus
-}
-#endif
-
 #endif /* METHOD_H */
 
 /* -------------------------------------------------------------------------- */
@@ -120,6 +108,12 @@ extern "C" {
 
 #include "macros_.h"
 #include "error_.h"
+
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef void (*CONCAT(METHOD_NAME, T_))(void *self
                                         EXPAND(METHOD_ARGS_ METHOD_ARG_LIST));
@@ -161,6 +155,12 @@ CONCAT(CONCAT(own, METHOD_NAME), Nil)(struct METHOD_NAME self)
 {
     return ! self.mMethod;
 }
+
+#ifdef __cplusplus
+}
+#endif
+
+/* -------------------------------------------------------------------------- */
 
 #undef METHOD_NAME
 #undef METHOD_ARG_LIST
