@@ -788,8 +788,6 @@ closeChild(struct ChildProcess *self)
  * termination.
  */
 
-static const struct Type * const childMonitorType_ = TYPE("ChildMonitor");
-
 enum ChildTerminationAction
 {
     ChildTermination_Terminate,
@@ -805,8 +803,6 @@ struct ChildSignalPlan
 
 struct ChildMonitor
 {
-    const struct Type *mType;
-
     struct Pid mChildPid;
 
     struct TetherThread *mTetherThread;
@@ -908,8 +904,6 @@ pollFdTimerTermination_(struct ChildMonitor         *self,
                         const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    ensure(childMonitorType_ == self->mType);
 
     /* Remember that this function races termination of the child process.
      * The child process might have terminated by the time this function
@@ -1245,8 +1239,6 @@ pollFdTimerUmbilical_(struct ChildMonitor         *self,
 {
     int rc = -1;
 
-    ensure(childMonitorType_ == self->mType);
-
     if (self->mUmbilical.mCycleCount != self->mUmbilical.mCycleLimit)
     {
         ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
@@ -1401,8 +1393,6 @@ pollFdTether_(struct ChildMonitor         *self,
 {
     int rc = -1;
 
-    ensure(childMonitorType_ == self->mType);
-
     /* The tether thread control pipe will be closed when the tether
      * between the child process and watchdog is shut down. */
 
@@ -1443,8 +1433,6 @@ pollFdTimerTether_(struct ChildMonitor         *self,
                    const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    ensure(childMonitorType_ == self->mType);
 
     /* The tether timer is only active if there is a tether and it was
      * configured with a timeout. The timeout expires if there was
@@ -1541,8 +1529,6 @@ Finally:
 static bool
 pollFdCompletion_(struct ChildMonitor *self)
 {
-    ensure(childMonitorType_ == self->mType);
-
     /* Wait until the child process has terminated, and the tether thread
      * has completed. */
 
@@ -1609,8 +1595,6 @@ pollFdTimerChild_(struct ChildMonitor         *self,
 {
     int rc = -1;
 
-    ensure(childMonitorType_ == self->mType);
-
     debug(0, "disconnecting tether thread");
 
     pingTetherThread(self->mTetherThread);
@@ -1669,8 +1653,6 @@ pollFdEventPipe_(struct ChildMonitor         *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    ensure(childMonitorType_ == self->mType);
 
     /* There is a race here between receiving the indication that there
      * is an event, and other watchdog actions that might be taking place
@@ -1840,8 +1822,6 @@ monitorChild(struct ChildProcess     *self,
 
     struct ChildMonitor childMonitor_ =
     {
-        .mType = childMonitorType_,
-
         .mChildPid     = self->mPid,
         .mTetherThread = tetherThread,
         .mEventPipe    = eventPipe,
@@ -2065,9 +2045,6 @@ Finally:
         finally_warn_if(rc, self, printChild_);
 
         updateChildMonitor_(self, 0);
-
-        if (childMonitor)
-            childMonitor->mType = 0;
 
         closePollFd(pollfd);
 
