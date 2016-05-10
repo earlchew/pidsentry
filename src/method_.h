@@ -45,22 +45,23 @@
 #define METHOD_ARGS_(...) , ## __VA_ARGS__
 
 /* -------------------------------------------------------------------------- */
-#define METHOD_TRAMPOLINE(Method_, Object_, Name_, ArgList_, CallList_)  \
+#define METHOD_TRAMPOLINE(                                               \
+    Method_, Object_, Name_, Return_, ArgList_, CallList_)               \
 ({                                                                       \
     typedef __typeof__((Object_)) ObjectT_;                              \
                                                                          \
-    void (*Validate_)(ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);       \
+    Return_ (*Validate_)(ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);    \
                                                                          \
     Name_(                                                               \
         ! Validate_                                                      \
         ? 0                                                              \
         : LAMBDA(                                                        \
-            void, (void *Self_ METHOD_ARGS_ ArgList_),                   \
+            Return_, (void *Self_ METHOD_ARGS_ ArgList_),                \
             {                                                            \
-                void (*method_)(                                         \
+                Return_ (*method_)(                                      \
                   ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);           \
                                                                          \
-                method_(                                                 \
+                return method_(                                          \
                     (ObjectT_) Self_ METHOD_ARGS_ CallList_);            \
             }),                                                          \
         (Object_));                                                      \
@@ -68,10 +69,12 @@
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
+#define METHOD_RETURN_VoidMethod    void
 #define METHOD_ARG_LIST_VoidMethod  ()
 #define METHOD_CALL_LIST_VoidMethod ()
 
 #define METHOD_NAME      VoidMethod
+#define METHOD_RETURN    METHOD_RETURN_VoidMethod
 #define METHOD_ARG_LIST  METHOD_ARG_LIST_VoidMethod
 #define METHOD_CALL_LIST METHOD_CALL_LIST_VoidMethod
 #include "method_.h"
@@ -80,15 +83,18 @@
     METHOD_TRAMPOLINE(                          \
         Method_, Object_,                       \
         VoidMethod_,                            \
+        METHOD_RETURN_VoidMethod,               \
         METHOD_ARG_LIST_VoidMethod,             \
         METHOD_CALL_LIST_VoidMethod)
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
+#define METHOD_RETURN_VoidIntMethod    void
 #define METHOD_ARG_LIST_VoidIntMethod  (int aArg_)
 #define METHOD_CALL_LIST_VoidIntMethod (aArg_)
 
 #define METHOD_NAME      VoidIntMethod
+#define METHOD_RETURN    METHOD_RETURN_VoidIntMethod
 #define METHOD_ARG_LIST  METHOD_ARG_LIST_VoidIntMethod
 #define METHOD_CALL_LIST METHOD_CALL_LIST_VoidIntMethod
 #include "method_.h"
@@ -97,6 +103,7 @@
     METHOD_TRAMPOLINE(                          \
         Method_, Object_,                       \
         VoidIntMethod_,                         \
+        METHOD_RETURN_VoidIntMethod,            \
         METHOD_ARG_LIST_VoidIntMethod,          \
         METHOD_CALL_LIST_VoidIntMethod)
 
@@ -115,8 +122,8 @@
 extern "C" {
 #endif
 
-typedef void (*CONCAT(METHOD_NAME, T_))(void *self
-                                        EXPAND(METHOD_ARGS_ METHOD_ARG_LIST));
+typedef METHOD_RETURN (*CONCAT(METHOD_NAME, T_))(
+    void *self EXPAND(METHOD_ARGS_ METHOD_ARG_LIST));
 
 static __inline__ struct METHOD_NAME
 CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject);
@@ -141,13 +148,13 @@ CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject)
     };
 }
 
-static __inline__ void
+static __inline__ METHOD_RETURN
 CONCAT(call, METHOD_NAME) (struct METHOD_NAME self
                            EXPAND(METHOD_ARGS_ METHOD_ARG_LIST))
 {
     Error_ensure_(self.mMethod);
 
-    self.mMethod(self.mObject EXPAND(METHOD_ARGS_ METHOD_CALL_LIST));
+    return self.mMethod(self.mObject EXPAND(METHOD_ARGS_ METHOD_CALL_LIST));
 }
 
 static __inline__ bool
@@ -163,6 +170,7 @@ CONCAT(CONCAT(own, METHOD_NAME), Nil)(struct METHOD_NAME self)
 /* -------------------------------------------------------------------------- */
 
 #undef METHOD_NAME
+#undef METHOD_RETURN
 #undef METHOD_ARG_LIST
 #undef METHOD_CALL_LIST
 
