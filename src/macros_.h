@@ -34,6 +34,9 @@
 #define STRINGIFY_(Text_) #Text_
 #define STRINGIFY(Text_)  STRINGIFY_(Text_)
 
+#define CONCAT_(Lhs_, Rhs_) Lhs_ ## Rhs_
+#define CONCAT(Lhs_, Rhs_)  CONCAT_(Lhs_, Rhs_)
+
 #define AUTO(Var_, Value_) __typeof__((Value_)) Var_ = (Value_)
 
 #define CAR_(Car_, ...) Car_
