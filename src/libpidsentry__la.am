@@ -1,4 +1,4 @@
-libpidsentry__la_SOURCES_CKSUM_1_ = 3924151864 676
+libpidsentry__la_SOURCES_CKSUM_1_ = 2649100461 666
 libpidsentry__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
 libpidsentry__la_SOURCES = \
   bellsocketpair_.c \
@@ -25,7 +25,6 @@ libpidsentry__la_SOURCES = \
   macros_.h \
   malloc_.c \
   malloc_.h \
-  method_.c \
   method_.h \
   options_.c \
   options_.h \

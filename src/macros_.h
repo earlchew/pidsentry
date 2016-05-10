@@ -34,16 +34,17 @@
 #define STRINGIFY_(Text_) #Text_
 #define STRINGIFY(Text_)  STRINGIFY_(Text_)
 
+#define EXPAND(...) __VA_ARGS__
+
 #define CONCAT_(Lhs_, Rhs_) Lhs_ ## Rhs_
 #define CONCAT(Lhs_, Rhs_)  CONCAT_(Lhs_, Rhs_)
 
 #define AUTO(Var_, Value_) __typeof__((Value_)) Var_ = (Value_)
 
-#define CAR_(Car_, ...) Car_
-#define CDR_(Car_, ...) , ## __VA_ARGS__
-
 #define CAR(...)        CAR_(__VA_ARGS__)
 #define CDR(...)        CDR_(__VA_ARGS__)
+#define CAR_(Car_, ...) Car_
+#define CDR_(Car_, ...) , ## __VA_ARGS__
 
 #define IFEMPTY(True_, False_, ...)  IFEMPTY_(True_, False_, __VA_ARGS__)
 #define IFEMPTY_(True_, False_, ...) IFEMPTY_1_(IFEMPTY_COMMA_ \

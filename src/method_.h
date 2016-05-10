@@ -48,78 +48,51 @@ extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-#define METHOD_TRAMPOLINE_ARGS_(...) , ## __VA_ARGS__
+#define METHOD_ARGS_(...) , ## __VA_ARGS__
+
+/* -------------------------------------------------------------------------- */
 #define METHOD_TRAMPOLINE(Method_, Object_, Name_, ArgList_, CallList_)  \
 ({                                                                       \
     typedef __typeof__((Object_)) ObjectT_;                              \
                                                                          \
-    void (*Validate_)(ObjectT_                                           \
-                      METHOD_TRAMPOLINE_ARGS_ ArgList_) = (Method_);     \
+    void (*Validate_)(ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);       \
                                                                          \
     Name_(                                                               \
         ! Validate_                                                      \
         ? 0                                                              \
         : LAMBDA(                                                        \
-            void, (void *Self_ METHOD_TRAMPOLINE_ARGS_ ArgList_),        \
+            void, (void *Self_ METHOD_ARGS_ ArgList_),                   \
             {                                                            \
                 void (*method_)(                                         \
-                  ObjectT_                                               \
-                  METHOD_TRAMPOLINE_ARGS_ ArgList_) = (Method_);         \
+                  ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);           \
                                                                          \
                 method_(                                                 \
-                    (ObjectT_) Self_                                     \
-                    METHOD_TRAMPOLINE_ARGS_ CallList_);                  \
+                    (ObjectT_) Self_ METHOD_ARGS_ CallList_);            \
             }),                                                          \
         (Object_));                                                      \
 })
 
 /* -------------------------------------------------------------------------- */
-typedef void (*VoidMethodT_)(void *self);
+#define METHOD_DEFINITION
+#define METHOD_ARG_LIST_VoidMethod  ()
+#define METHOD_CALL_LIST_VoidMethod ()
 
-struct VoidMethod
-VoidMethod_(VoidMethodT_ aMethod, void *aObject);
+#define METHOD_NAME      VoidMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_VoidMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_VoidMethod
+#include "method_.h"
 
-struct VoidMethod
-{
-    METHOD_CTOR_(VoidMethod)
-
-    void        *mObject;
-    VoidMethodT_ mMethod;
-};
-
-#ifdef __cplusplus
-#define VoidMethod(Method_, Object_) VoidMethod_(Method_, Object_)
-#else
-#define VoidMethod(Method_, Object_)                    \
-({                                                      \
-    typedef __typeof__((Object_)) ObjectT_;             \
-                                                        \
-    void (*Validate_)(ObjectT_) = (Method_);            \
-                                                        \
-    VoidMethod_(                                        \
-        ! Validate_                                     \
-        ? 0                                             \
-        : LAMBDA(                                       \
-            void, (void *Self_),                        \
-            {                                           \
-                void (*method_)(ObjectT_) = (Method_);  \
-                                                        \
-                method_((ObjectT_) Self_);              \
-            }),                                         \
-        (Object_));                                     \
-})
-#endif
-
-void
-callVoidMethod(struct VoidMethod self);
-
-bool
-ownVoidMethodNil(struct VoidMethod self);
+#define VoidMethod(Method_, Object_)            \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        VoidMethod_,                            \
+        METHOD_ARG_LIST_VoidMethod,             \
+        METHOD_CALL_LIST_VoidMethod)
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
-#define METHOD_ARG_LIST_VoidIntMethod  int aArg_
-#define METHOD_CALL_LIST_VoidIntMethod aArg_
+#define METHOD_ARG_LIST_VoidIntMethod  (int aArg_)
+#define METHOD_CALL_LIST_VoidIntMethod (aArg_)
 
 #define METHOD_NAME      VoidIntMethod
 #define METHOD_ARG_LIST  METHOD_ARG_LIST_VoidIntMethod
@@ -130,8 +103,8 @@ ownVoidMethodNil(struct VoidMethod self);
     METHOD_TRAMPOLINE(                          \
         Method_, Object_,                       \
         VoidIntMethod_,                         \
-        (METHOD_ARG_LIST_VoidIntMethod),        \
-        (METHOD_CALL_LIST_VoidIntMethod))
+        METHOD_ARG_LIST_VoidIntMethod,          \
+        METHOD_CALL_LIST_VoidIntMethod)
 
 /* -------------------------------------------------------------------------- */
 
@@ -148,7 +121,8 @@ ownVoidMethodNil(struct VoidMethod self);
 #include "macros_.h"
 #include "error_.h"
 
-typedef void (*CONCAT(METHOD_NAME, T_))(void *self, METHOD_ARG_LIST);
+typedef void (*CONCAT(METHOD_NAME, T_))(void *self
+                                        EXPAND(METHOD_ARGS_ METHOD_ARG_LIST));
 
 static __inline__ struct METHOD_NAME
 CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject);
@@ -174,11 +148,12 @@ CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject)
 }
 
 static __inline__ void
-CONCAT(call, METHOD_NAME) (struct METHOD_NAME self, METHOD_ARG_LIST)
+CONCAT(call, METHOD_NAME) (struct METHOD_NAME self
+                           EXPAND(METHOD_ARGS_ METHOD_ARG_LIST))
 {
     Error_ensure_(self.mMethod);
 
-    self.mMethod(self.mObject, METHOD_CALL_LIST);
+    self.mMethod(self.mObject EXPAND(METHOD_ARGS_ METHOD_CALL_LIST));
 }
 
 static __inline__ bool
