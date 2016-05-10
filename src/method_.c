@@ -61,32 +61,3 @@ ownVoidMethodNil(struct VoidMethod self)
 }
 
 /* -------------------------------------------------------------------------- */
-struct VoidIntMethod
-VoidIntMethod_(VoidIntMethodT_ aMethod, void *aObject)
-{
-    ensure(aMethod || ! aObject);
-
-    return (struct VoidIntMethod)
-    {
-        .mMethod = aMethod,
-        .mObject = aObject,
-    };
-}
-
-/* -------------------------------------------------------------------------- */
-void
-callVoidIntMethod(struct VoidIntMethod self, int aArg)
-{
-    ensure(self.mMethod);
-
-    self.mMethod(self.mObject, aArg);
-}
-
-/* -------------------------------------------------------------------------- */
-bool
-ownVoidIntMethodNil(struct VoidIntMethod self)
-{
-    return ! self.mMethod;
-}
-
-/* -------------------------------------------------------------------------- */

@@ -37,16 +37,41 @@
 extern "C" {
 #endif
 
+/* -------------------------------------------------------------------------- */
 #ifndef __cplusplus
 #define METHOD_CTOR_(Struct_)
 #else
-#define METHOD_CTOR_(Struct_)                              \
+#define METHOD_CTOR_(Struct_) METHOD_CTOR_1_(Struct_)
+#define METHOD_CTOR_1_(Struct_)                            \
     explicit Struct_(Struct_ ## T_ aMethod, void *aObject) \
     { *this = Struct_ ## _(aMethod, aObject); }
 #endif
 
-void
-failMethodCtor_(void);
+/* -------------------------------------------------------------------------- */
+#define METHOD_TRAMPOLINE_ARGS_(...) , ## __VA_ARGS__
+#define METHOD_TRAMPOLINE(Method_, Object_, Name_, ArgList_, CallList_)  \
+({                                                                       \
+    typedef __typeof__((Object_)) ObjectT_;                              \
+                                                                         \
+    void (*Validate_)(ObjectT_                                           \
+                      METHOD_TRAMPOLINE_ARGS_ ArgList_) = (Method_);     \
+                                                                         \
+    Name_(                                                               \
+        ! Validate_                                                      \
+        ? 0                                                              \
+        : LAMBDA(                                                        \
+            void, (void *Self_ METHOD_TRAMPOLINE_ARGS_ ArgList_),        \
+            {                                                            \
+                void (*method_)(                                         \
+                  ObjectT_                                               \
+                  METHOD_TRAMPOLINE_ARGS_ ArgList_) = (Method_);         \
+                                                                         \
+                method_(                                                 \
+                    (ObjectT_) Self_                                     \
+                    METHOD_TRAMPOLINE_ARGS_ CallList_);                  \
+            }),                                                          \
+        (Object_));                                                      \
+})
 
 /* -------------------------------------------------------------------------- */
 typedef void (*VoidMethodT_)(void *self);
@@ -92,48 +117,21 @@ bool
 ownVoidMethodNil(struct VoidMethod self);
 
 /* -------------------------------------------------------------------------- */
-typedef void (*VoidIntMethodT_)(void *self, int aArg);
+#define METHOD_DEFINITION
+#define METHOD_ARG_LIST_VoidIntMethod  int aArg_
+#define METHOD_CALL_LIST_VoidIntMethod aArg_
 
-struct VoidIntMethod
-VoidIntMethod_(VoidIntMethodT_ aMethod, void *aObject);
+#define METHOD_NAME      VoidIntMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_VoidIntMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_VoidIntMethod
+#include "method_.h"
 
-struct VoidIntMethod
-{
-    METHOD_CTOR_(VoidIntMethod)
-
-    void           *mObject;
-    VoidIntMethodT_ mMethod;
-};
-
-#ifdef __cplusplus
-#define VoidIntMethod(Method_, Object_) VoidIntMethod_(Method_, Object_)
-#else
-#define VoidIntMethod(Method_, Object_)                 \
-({                                                      \
-    typedef __typeof__((Object_)) ObjectT_;             \
-                                                        \
-    void (*Validate_)(ObjectT_, int) = (Method_);       \
-                                                        \
-    VoidIntMethod_(                                     \
-        ! Validate_                                     \
-        ? 0                                             \
-        : LAMBDA(                                       \
-            void, (void *Self_, int aArg_),             \
-            {                                           \
-                void (*method_)(                        \
-                  ObjectT_, int) = (Method_);           \
-                                                        \
-                method_((ObjectT_) Self_, aArg_);       \
-            }),                                         \
-        (Object_));                                     \
-})
-#endif
-
-void
-callVoidIntMethod(struct VoidIntMethod self, int aArg);
-
-bool
-ownVoidIntMethodNil(struct VoidIntMethod self);
+#define VoidIntMethod(Method_, Object_)         \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        VoidIntMethod_,                         \
+        (METHOD_ARG_LIST_VoidIntMethod),        \
+        (METHOD_CALL_LIST_VoidIntMethod))
 
 /* -------------------------------------------------------------------------- */
 
@@ -142,3 +140,55 @@ ownVoidIntMethodNil(struct VoidIntMethod self);
 #endif
 
 #endif /* METHOD_H */
+
+/* -------------------------------------------------------------------------- */
+#ifdef METHOD_DEFINITION
+#undef METHOD_DEFINITION
+
+#include "macros_.h"
+#include "error_.h"
+
+typedef void (*CONCAT(METHOD_NAME, T_))(void *self, METHOD_ARG_LIST);
+
+static __inline__ struct METHOD_NAME
+CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject);
+
+struct METHOD_NAME
+{
+    METHOD_CTOR_(METHOD_NAME)
+
+    CONCAT(METHOD_NAME, T_) mMethod;
+    void                   *mObject;
+};
+
+static __inline__ struct METHOD_NAME
+CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject)
+{
+    Error_ensure_(aMethod || ! aObject);
+
+    return (struct METHOD_NAME)
+    {
+        mMethod : aMethod,
+        mObject : aObject,
+    };
+}
+
+static __inline__ void
+CONCAT(call, METHOD_NAME) (struct METHOD_NAME self, METHOD_ARG_LIST)
+{
+    Error_ensure_(self.mMethod);
+
+    self.mMethod(self.mObject, METHOD_CALL_LIST);
+}
+
+static __inline__ bool
+CONCAT(CONCAT(own, METHOD_NAME), Nil)(struct METHOD_NAME self)
+{
+    return ! self.mMethod;
+}
+
+#undef METHOD_NAME
+#undef METHOD_ARG_LIST
+#undef METHOD_CALL_LIST
+
+#endif /* METHOD_DEFINITION */
