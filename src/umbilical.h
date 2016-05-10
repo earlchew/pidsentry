@@ -42,7 +42,6 @@
 extern "C" {
 #endif
 
-struct Type;
 struct SocketPair;
 struct PidFile;
 struct ChildProcess;
@@ -73,8 +72,6 @@ enum PollFdMonitorTimerKind
 
 struct UmbilicalMonitor
 {
-    const struct Type *mType;
-
     struct
     {
         struct File *mFile;

@@ -56,9 +56,6 @@
  * sent by the watchdog, and echoes the messages back to the watchdog.
  */
 
-static const struct Type * const umbilicalMonitorType_ =
-    TYPE("UmbilicalMonitor");
-
 static const char *pollFdNames_[POLL_FD_MONITOR_KINDS] =
 {
     [POLL_FD_MONITOR_UMBILICAL] = "umbilical",
@@ -77,8 +74,6 @@ pollFdPidServer_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    ensure(umbilicalMonitorType_ == self->mType);
 
     ERROR_IF(
         acceptPidServerConnection(self->mPidServer));
@@ -106,8 +101,6 @@ pollFdPidClient_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    ensure(umbilicalMonitorType_ == self->mType);
 
     if (cleanPidServer(self->mPidServer))
     {
@@ -147,8 +140,6 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
-
-    ensure(umbilicalMonitorType_ == self->mType);
 
     char buf[1];
 
@@ -258,8 +249,6 @@ pollFdTimerUmbilical_(
 {
     int rc = -1;
 
-    ensure(umbilicalMonitorType_ == self->mType);
-
     /* If nothing is available from the umbilical connection after the
      * timeout period expires, then assume that the watchdog itself
      * is stuck. */
@@ -296,8 +285,6 @@ Finally:
 static bool
 pollFdCompletion_(struct UmbilicalMonitor *self)
 {
-    ensure(umbilicalMonitorType_ == self->mType);
-
     /* The umbilical event loop terminates when the connection to the
      * watchdog is closed, and when there are no more outstanding
      * child process group references. */
@@ -322,8 +309,6 @@ createUmbilicalMonitor(
 
     *self = (struct UmbilicalMonitor)
     {
-        .mType = umbilicalMonitorType_,
-
         .mUmbilical =
         {
             .mCycleLimit = cycleLimit,
