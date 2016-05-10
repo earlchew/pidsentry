@@ -30,20 +30,15 @@
 #include "jobcontrol_.h"
 
 #include "error_.h"
-#include "type_.h"
 #include "thread_.h"
 #include "process_.h"
 
 #include <sys/signal.h>
 
-static const struct Type * const jobControlType_ = TYPE("JobControl");
-
 /* -------------------------------------------------------------------------- */
 static void
 reapJobControl_(struct JobControl *self)
 {
-    ensure(jobControlType_ == self->mType);
-
     if ( ! ownVoidMethodNil(self->mReap.mMethod))
         callVoidMethod(self->mReap.mMethod);
 }
@@ -52,8 +47,6 @@ reapJobControl_(struct JobControl *self)
 static void
 raiseJobControlSignal_(struct JobControl *self, int aSigNum)
 {
-    ensure(jobControlType_ == self->mType);
-
     if ( ! ownVoidIntMethodNil(self->mRaise.mMethod))
         callVoidIntMethod(self->mRaise.mMethod, aSigNum);
 }
@@ -62,8 +55,6 @@ raiseJobControlSignal_(struct JobControl *self, int aSigNum)
 static void
 raiseJobControlSigStop_(struct JobControl *self)
 {
-    ensure(jobControlType_ == self->mType);
-
     if ( ! ownVoidMethodNil(self->mStop.mPauseMethod))
         callVoidMethod(self->mStop.mPauseMethod);
 
@@ -84,8 +75,6 @@ raiseJobControlSigStop_(struct JobControl *self)
 static void
 raiseJobControlSigCont_(struct JobControl *self)
 {
-    ensure(jobControlType_ == self->mType);
-
     if ( ! ownVoidMethodNil(self->mContinue.mMethod))
         callVoidMethod(self->mContinue.mMethod);
 }
@@ -95,8 +84,6 @@ int
 createJobControl(struct JobControl *self)
 {
     int rc = -1;
-
-    self->mType = jobControlType_;
 
     self->mRaise.mMethod      = VoidIntMethod(0, 0);
     self->mReap.mMethod       = VoidMethod(0, 0);
@@ -123,8 +110,6 @@ closeJobControl(struct JobControl *self)
         ABORT_IF(unwatchProcessSigStop());
         ABORT_IF(unwatchProcessSignals());
         ABORT_IF(unwatchProcessChildren());
-
-        self->mType = 0;
     }
 }
 

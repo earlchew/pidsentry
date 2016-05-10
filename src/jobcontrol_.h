@@ -35,14 +35,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-struct Type;
-
 /* -------------------------------------------------------------------------- */
 struct JobControl
 {
-    const struct Type *mType;
-
     struct
     {
         struct VoidIntMethod mMethod;
