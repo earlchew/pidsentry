@@ -443,7 +443,8 @@ uptime()
                 "sh",
                 "sh",
                 "-c",
-                "set -xe ; read U I < /proc/uptime && echo ${U%%.*}", 0);
+                "set -xe ; read U I < /proc/uptime && echo ${U%%.*}",
+                (char *) 0);
 
         _exit(EXIT_FAILURE);
     }
