@@ -144,7 +144,10 @@ testLostWatchdogs()
     ps -awwo user=,ppid=,pid=,pgid=,command= |
     {
         while read REPLY ; do
-            [ -n "${REPLY##*pidsentry*}" ] || exit 1
+            [ -n "${REPLY##*pidsentry*}" ] || {
+                /bin/echo "$REPLY" >&2
+                exit 1
+            }
         done
         exit 0
     }
@@ -555,6 +558,7 @@ runTests()
             randomsleep 1
             eval kill -9 \$$SUPERVISOR
             eval waitwhile liveprocess \$$SUPERVISOR
+            eval waitwhile liveprocess $SENTRY
             sleep 3
             testLostWatchdogs
         }
