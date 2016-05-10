@@ -31,7 +31,6 @@
 #include "sentry.h"
 #include "parent.h"
 
-#include "type_.h"
 #include "error_.h"
 #include "fd_.h"
 #include "stdfdfiller_.h"

@@ -31,7 +31,6 @@
 #include "pidserver.h"
 #include "umbilical.h"
 
-#include "type_.h"
 #include "pidfile_.h"
 #include "error_.h"
 #include "fd_.h"

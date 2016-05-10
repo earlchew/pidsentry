@@ -34,7 +34,6 @@
 
 #include "thread_.h"
 #include "fd_.h"
-#include "type_.h"
 #include "error_.h"
 #include "process_.h"
 #include "macros_.h"

@@ -31,7 +31,6 @@
 #include "child.h"
 #include "pidserver.h"
 
-#include "type_.h"
 #include "error_.h"
 #include "fd_.h"
 #include "socketpair_.h"
