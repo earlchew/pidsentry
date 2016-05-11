@@ -98,16 +98,16 @@ struct ErrorModule
 
 /* -------------------------------------------------------------------------- */
 #define ALERT_IF(Predicate_, ...) \
-    UNWIND_IF_(warn, warn_, /*!!*/, Predicate_, ## __VA_ARGS__)
+    UNWIND_IF_(warn, errorWarn, /*!!*/, Predicate_, ## __VA_ARGS__)
 
 #define ALERT_UNLESS(Predicate_, ...) \
-    UNWIND_IF_(warn, warn_, !, Predicate_, ## __VA_ARGS__)
+    UNWIND_IF_(warn, errorWarn, !, Predicate_, ## __VA_ARGS__)
 
 #define ABORT_IF(Predicate_, ...) \
-    UNWIND_IF_(terminate, terminate_, /*!!*/, Predicate_, ## __VA_ARGS__)
+    UNWIND_IF_(terminate, errorTerminate, /*!!*/, Predicate_, ## __VA_ARGS__)
 
 #define ABORT_UNLESS(Predicate_, ...) \
-    UNWIND_IF_(terminate, terminate_, !, Predicate_, ## __VA_ARGS__)
+    UNWIND_IF_(terminate, errorTerminate, !, Predicate_, ## __VA_ARGS__)
 
 #define UNWIND_IF_(Action_, Actor_, Sense_, Predicate_, ...)    \
     do                                                          \
@@ -266,16 +266,16 @@ logErrorFrameSequence(void);
 #endif
 
 #define Error_breadcrumb_() \
-    debug_(__func__, __FILE__, __LINE__, ".")
+    errorDebug(__func__, __FILE__, __LINE__, ".")
 
 #define Error_debug_(aLevel, ...)                                       \
     do                                                                  \
         if ((aLevel) < gOptions.mDebug)                                 \
-            debug_(__func__, __FILE__, __LINE__, ## __VA_ARGS__);       \
+            errorDebug(__func__, __FILE__, __LINE__, ## __VA_ARGS__);   \
     while (0)
 
 void
-debug_(
+errorDebug(
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
     __attribute__ ((__format__(__printf__, 4, 5)));
@@ -285,15 +285,16 @@ debug_(
 #define ensure Error_ensure_
 #endif
 
-#define Error_ensure_(aPredicate)                               \
-    do                                                          \
-        if ( ! (aPredicate))                                    \
-            ensure_(__func__, __FILE__, __LINE__, # aPredicate); \
+#define Error_ensure_(aPredicate)                                       \
+    do                                                                  \
+        if ( ! (aPredicate))                                            \
+            errorEnsure(__func__, __FILE__, __LINE__, # aPredicate);    \
     while (0)
 
 void
-ensure_(const char *aFunction, const char *aFile, unsigned aLine,
-        const char *aPredicate);
+errorEnsure(const char *aFunction, const char *aFile, unsigned aLine,
+            const char *aPredicate)
+    __attribute__ ((__noreturn__));
 
 /* -------------------------------------------------------------------------- */
 #ifndef __cplusplus
@@ -301,10 +302,10 @@ ensure_(const char *aFunction, const char *aFile, unsigned aLine,
 #endif
 
 #define Error_warn_(aErrCode, ...) \
-    warn_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
+    errorWarn((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
 void
-warn_(
+errorWarn(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
@@ -316,10 +317,10 @@ warn_(
 #endif
 
 #define Error_message_(aErrCode, ...) \
-    message_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
+    errorMessage((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
 void
-message_(
+errorMessage(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
@@ -327,15 +328,14 @@ message_(
 
 /* -------------------------------------------------------------------------- */
 #ifndef __cplusplus
-#define terminate(aErrCode, ...) \
-    terminate(aErrCode, __func__, __FILE__, __LINE__, ## __VA_ARGS__)
+#define terminate Error_terminate_
 #endif
 
 #define Error_terminate_(aErrCode, ...) \
-    terminate_((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
+    errorTerminate((aErrCode), __func__, __FILE__, __LINE__, ## __VA_ARGS__)
 
 void
-terminate_(
+errorTerminate(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)

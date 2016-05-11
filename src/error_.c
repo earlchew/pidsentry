@@ -172,7 +172,7 @@ logErrorFrameSequence(void)
     {
         unsigned frame = errorStack_.mStack->mSequence + ix;
 
-        warn_(
+        errorWarn(
             errorStack_.mStack->mFrame[frame].mErrno,
             errorStack_.mStack->mFrame[frame].mName,
             errorStack_.mStack->mFrame[frame].mFile,
@@ -557,10 +557,10 @@ printf_(
 
 /* -------------------------------------------------------------------------- */
 void
-ensure_(const char *aFunction,
-        const char *aFile,
-        unsigned    aLine,
-        const char *aPredicate)
+errorEnsure(const char *aFunction,
+            const char *aFile,
+            unsigned    aLine,
+            const char *aPredicate)
 {
     FINALLY
     ({
@@ -577,7 +577,7 @@ ensure_(const char *aFunction,
 
 /* -------------------------------------------------------------------------- */
 void
-debug_(
+errorDebug(
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
 {
@@ -598,7 +598,7 @@ debug_(
 
 /* -------------------------------------------------------------------------- */
 void
-warn_(
+errorWarn(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
@@ -625,7 +625,7 @@ warn_(
 
 /* -------------------------------------------------------------------------- */
 void
-message_(
+errorMessage(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
@@ -647,7 +647,7 @@ message_(
 
 /* -------------------------------------------------------------------------- */
 void
-terminate_(
+errorTerminate(
     int aErrCode,
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, ...)
