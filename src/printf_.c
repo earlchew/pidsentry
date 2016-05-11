@@ -30,6 +30,7 @@
 #include "printf_.h"
 
 #include "error_.h"
+#include "type_.h"
 
 #include <printf.h>
 #include <stdbool.h>
@@ -236,7 +237,7 @@ printf_method_call_(
 
     ensure(self->mType == &printfMethodType_);
 
-    return self->mMethod(self->mObject, aFile);
+    return callPrintfMethod_(self->mMethod, aFile);
 }
 
 /* -------------------------------------------------------------------------- */

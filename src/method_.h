@@ -31,14 +31,18 @@
 
 #include "lambda_.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* -------------------------------------------------------------------------- */
 #ifndef __cplusplus
-#define METHOD_CTOR_(Struct_)
+#define METHOD_CTOR_(Const_, Struct_)
 #else
-#define METHOD_CTOR_(Struct_) METHOD_CTOR_1_(Struct_)
-#define METHOD_CTOR_1_(Struct_)                            \
-    explicit Struct_(Struct_ ## T_ aMethod, void *aObject) \
-    { *this = Struct_ ## _(aMethod, aObject); }
+#define METHOD_CTOR_(Const_, Struct_)             \
+    explicit Struct_(CONCAT(Struct_, T_) aMethod, \
+                     Const_ void        *aObject) \
+    { *this = CONCAT(Struct_,  _)(aMethod, aObject); }
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -46,17 +50,17 @@
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_TRAMPOLINE(                                               \
-    Method_, Object_, Name_, Return_, ArgList_, CallList_)               \
-({                                                                       \
+    Method_, Object_, Name_, Return_, Const_, ArgList_, CallList_)       \
+(*({                                                                     \
     typedef __typeof__((Object_)) ObjectT_;                              \
                                                                          \
     Return_ (*Validate_)(ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);    \
                                                                          \
-    Name_(                                                               \
+    __typeof__(Name_(0,0)) Instance_ = Name_(                            \
         ! Validate_                                                      \
         ? 0                                                              \
         : LAMBDA(                                                        \
-            Return_, (void *Self_ METHOD_ARGS_ ArgList_),                \
+            Return_, (Const_ void *Self_ METHOD_ARGS_ ArgList_),         \
             {                                                            \
                 Return_ (*method_)(                                      \
                   ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);           \
@@ -65,16 +69,32 @@
                     (ObjectT_) Self_ METHOD_ARGS_ CallList_);            \
             }),                                                          \
         (Object_));                                                      \
-})
+                                                                         \
+    &Instance_;                                                          \
+}))
+
+/* -------------------------------------------------------------------------- */
+void
+methodEnsure_(const char *aFunction, const char *aFile, unsigned aLine,
+              const char *aPredicate)
+    __attribute__ ((__noreturn__));
+
+#define METHOD_ENSURE_(aPredicate)                                      \
+    do                                                                  \
+        if ( ! (aPredicate))                                            \
+            methodEnsure_(__func__, __FILE__, __LINE__, # aPredicate);  \
+    while (0);
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
 #define METHOD_RETURN_VoidMethod    void
+#define METHOD_CONST_VoidMethod
 #define METHOD_ARG_LIST_VoidMethod  ()
 #define METHOD_CALL_LIST_VoidMethod ()
 
 #define METHOD_NAME      VoidMethod
 #define METHOD_RETURN    METHOD_RETURN_VoidMethod
+#define METHOD_CONST     METHOD_CONST_VoidMethod
 #define METHOD_ARG_LIST  METHOD_ARG_LIST_VoidMethod
 #define METHOD_CALL_LIST METHOD_CALL_LIST_VoidMethod
 #include "method_.h"
@@ -84,17 +104,20 @@
         Method_, Object_,                       \
         VoidMethod_,                            \
         METHOD_RETURN_VoidMethod,               \
+        METHOD_CONST_VoidMethod,                \
         METHOD_ARG_LIST_VoidMethod,             \
         METHOD_CALL_LIST_VoidMethod)
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
 #define METHOD_RETURN_VoidIntMethod    void
+#define METHOD_CONST_VoidIntMethod
 #define METHOD_ARG_LIST_VoidIntMethod  (int aArg_)
 #define METHOD_CALL_LIST_VoidIntMethod (aArg_)
 
 #define METHOD_NAME      VoidIntMethod
 #define METHOD_RETURN    METHOD_RETURN_VoidIntMethod
+#define METHOD_CONST     METHOD_CONST_VoidIntMethod
 #define METHOD_ARG_LIST  METHOD_ARG_LIST_VoidIntMethod
 #define METHOD_CALL_LIST METHOD_CALL_LIST_VoidIntMethod
 #include "method_.h"
@@ -104,8 +127,13 @@
         Method_, Object_,                       \
         VoidIntMethod_,                         \
         METHOD_RETURN_VoidIntMethod,            \
+        METHOD_CONST_VoidIntMethod,             \
         METHOD_ARG_LIST_VoidIntMethod,          \
         METHOD_CALL_LIST_VoidIntMethod)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* METHOD_H */
 
@@ -114,7 +142,6 @@
 #undef METHOD_DEFINITION
 
 #include "macros_.h"
-#include "error_.h"
 
 #include <stdbool.h>
 
@@ -123,23 +150,25 @@ extern "C" {
 #endif
 
 typedef METHOD_RETURN (*CONCAT(METHOD_NAME, T_))(
-    void *self EXPAND(METHOD_ARGS_ METHOD_ARG_LIST));
+    METHOD_CONST void *self EXPAND(METHOD_ARGS_ METHOD_ARG_LIST));
 
 static __inline__ struct METHOD_NAME
-CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject);
+CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
+                        METHOD_CONST void      *aObject);
 
 struct METHOD_NAME
 {
-    METHOD_CTOR_(METHOD_NAME)
+    METHOD_CTOR_(METHOD_CONST, METHOD_NAME)
 
     CONCAT(METHOD_NAME, T_) mMethod;
-    void                   *mObject;
+    METHOD_CONST void      *mObject;
 };
 
 static __inline__ struct METHOD_NAME
-CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod, void *aObject)
+CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
+                        METHOD_CONST void      *aObject)
 {
-    Error_ensure_(aMethod || ! aObject);
+    METHOD_ENSURE_(aMethod || ! aObject);
 
     return (struct METHOD_NAME)
     {
@@ -152,7 +181,7 @@ static __inline__ METHOD_RETURN
 CONCAT(call, METHOD_NAME) (struct METHOD_NAME self
                            EXPAND(METHOD_ARGS_ METHOD_ARG_LIST))
 {
-    Error_ensure_(self.mMethod);
+    METHOD_ENSURE_(self.mMethod);
 
     return self.mMethod(self.mObject EXPAND(METHOD_ARGS_ METHOD_CALL_LIST));
 }
@@ -171,6 +200,7 @@ CONCAT(CONCAT(own, METHOD_NAME), Nil)(struct METHOD_NAME self)
 
 #undef METHOD_NAME
 #undef METHOD_RETURN
+#undef METHOD_CONST
 #undef METHOD_ARG_LIST
 #undef METHOD_CALL_LIST
 

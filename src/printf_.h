@@ -29,53 +29,70 @@
 #ifndef PRINTF_H
 #define PRINTF_H
 
-#include "type_.h"
-#include "lambda_.h"
+#include "method_.h"
 
 #include <stdio.h>
 #include <stdarg.h>
 
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_PrintfMethod    int
+#define METHOD_CONST_PrintfMethod     const
+#define METHOD_ARG_LIST_PrintfMethod  (FILE *aFile_)
+#define METHOD_CALL_LIST_PrintfMethod (aFile_)
+
+#define METHOD_NAME      PrintfMethod_
+#define METHOD_RETURN    METHOD_RETURN_PrintfMethod
+#define METHOD_CONST     METHOD_CONST_PrintfMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_PrintfMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_PrintfMethod
+#include "method_.h"
+
+#define PrintfMethod_(Method_, Object_)                         \
+    METHOD_TRAMPOLINE(                                          \
+        Method_, ((const __typeof__(*(Object_)) *) Object_),    \
+        PrintfMethod__,                                         \
+        METHOD_RETURN_PrintfMethod,                             \
+        METHOD_CONST_PrintfMethod,                              \
+        METHOD_ARG_LIST_PrintfMethod,                           \
+        METHOD_CALL_LIST_PrintfMethod)
+
+/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct Type;
 
 struct PrintfModule
 {
     struct PrintfModule *mModule;
 };
 
-#define PRIs_Method "%%p<struct PrintfMethod>%%"
-#define FMTs_Method(Object_, Method_)                           \
-    ({                                                          \
-        typedef __typeof__(*(Object_)) ObjectT_;                \
-                                                                \
-        int (*Validate_)(const ObjectT_ *, FILE *) = Method_;   \
-        (void) Validate_;                                       \
-                                                                \
-        const struct PrintfMethod printfMethod_ =               \
-        {                                                       \
-            mType : (&printfMethodType_),                       \
-                                                                \
-            mObject : (Object_),                                \
-            mMethod :                                           \
-                LAMBDA(                                         \
-                    int, (const void *Self_, FILE *File_),      \
-                    { return Method_(                           \
-                        (const ObjectT_ *) Self_, File_); }),   \
-        };                                                      \
-                                                                \
-        &printfMethod_;                                         \
-    })
+/* -------------------------------------------------------------------------- */
+extern const struct Type * const printfMethodType_;
+
+#define PrintfMethod(Object_, Method_)                  \
+({                                                      \
+    struct PrintfMethod printfMethod_ =                 \
+    {                                                   \
+        mType   : &printfMethodType_,                   \
+        mMethod : PrintfMethod_((Method_), (Object_)),  \
+    };                                                  \
+                                                        \
+    &printfMethod_;                                     \
+})
 
 struct PrintfMethod
 {
     const struct Type * const *mType;
 
-    const void *mObject;
-    int (*mMethod)(const void *, FILE *);
+    struct PrintfMethod_ mMethod;
 };
 
-extern const struct Type * const printfMethodType_;
+/* -------------------------------------------------------------------------- */
+#define PRIs_Method "%%p<struct PrintfMethod>%%"
+#define FMTs_Method(Object_, Method_) ( PrintfMethod((Object_), (Method_)) )
 
 /* -------------------------------------------------------------------------- */
 int
