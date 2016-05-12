@@ -1430,6 +1430,27 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static void
+callForkMethod_(struct ForkProcessMethod aForkMethod)
+{
+    if ( ! ownForkProcessMethodNil(aForkMethod))
+    {
+        int status;
+        ABORT_IF(
+            (status = callForkProcessMethod(aForkMethod, ownProcessId()),
+             -1 == status || (errno = 0, 0 > status || 255 < status)),
+            {
+                if (-1 != status)
+                    terminate(
+                        0,
+                        "Out of range exit status %d", status);
+            });
+
+        exitProcess(status);
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 struct Pid
 forkProcessChild(enum ForkProcessOption   aOption,
                  struct Pgid              aPgid,
@@ -1524,6 +1545,8 @@ forkProcessChild(enum ForkProcessOption   aOption,
             {
                 err = "Unable to reset signal handlers";
             });
+
+        callForkMethod_(aForkMethod);
 
         break;
     }
@@ -1646,8 +1669,8 @@ forkProcessDaemon(struct ForkProcessMethod aForkMethod)
          * So no SIGHUP is sent for the first reason.
          *
          * To avoid ambiguity, the child is always placed into its own
-         * process group so that it will always receive a SIGHUP signal
-         * when orphaned. */
+         * process group and stopped, so that when it is orphaned it is
+         * guaranteed to receive a SIGHUP signal. */
 
         if (daemonPid.mPid)
         {
@@ -1714,6 +1737,8 @@ forkProcessDaemon(struct ForkProcessMethod aForkMethod)
         ABORT_UNLESS(
             sizeof(buf) == recvUnixSocket(
                 syncSocket->mChildSocket, buf, sizeof(buf)));
+
+        callForkMethod_(aForkMethod);
 
         daemonPid = Pid(0);
     }
