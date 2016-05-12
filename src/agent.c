@@ -175,6 +175,43 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+struct RunAgentProcess_
+{
+    struct Agent *mAgent;
+    struct Pid    mParentPid;
+    struct Pipe  *mParentPipe;
+};
+
+static int
+runAgent_(struct RunAgentProcess_ *self, struct Pid aPid)
+{
+    int rc = -1;
+
+    debug(
+        0,
+        "running agent pid %" PRId_Pid " in pgid %" PRId_Pgid,
+        FMTd_Pid(ownProcessId()), FMTd_Pgid(ownProcessGroupId()));
+
+    closePipeWriter(self->mParentPipe);
+
+    struct ExitCode exitCode = { EXIT_FAILURE };
+
+    ERROR_IF(
+        runAgentSentry_(
+            self->mAgent, self->mParentPid, self->mParentPipe, &exitCode));
+
+    debug(0, "exit agent status %" PRId_ExitCode, FMTd_ExitCode(exitCode));
+
+    rc = exitCode.mStatus;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 runAgent(struct Agent    *self,
          struct ExitCode *aExitCode)
@@ -217,36 +254,23 @@ runAgent(struct Agent    *self,
         stdFdFiller = 0;
     }
 
-    struct Pid parentPid = ownProcessId();
-
     {
+        struct RunAgentProcess_ agentChild =
+        {
+            .mAgent      = self,
+            .mParentPid  = ownProcessId(),
+            .mParentPipe = parentPipe,
+        };
+
         struct Pid agentPid;
         ERROR_IF(
-            (agentPid = forkProcessChild(ForkProcessSetProcessGroup,
-                                         Pgid(0),
-                                         ForkProcessMethodNil()),
+            (agentPid = forkProcessChild(
+                ForkProcessSetProcessGroup,
+                Pgid(0),
+                ForkProcessMethod(runAgent_, &agentChild)),
              -1 == agentPid.mPid));
 
         self->mAgentPid = agentPid;
-    }
-
-    if ( ! self->mAgentPid.mPid)
-    {
-        debug(
-            0,
-            "running agent pid %" PRId_Pid " in pgid %" PRId_Pgid,
-            FMTd_Pid(ownProcessId()), FMTd_Pgid(ownProcessGroupId()));
-
-        closePipeWriter(parentPipe);
-
-        struct ExitCode exitCode = { EXIT_FAILURE };
-
-        ABORT_IF(
-            runAgentSentry_(self, parentPid, parentPipe, &exitCode));
-
-        debug(0, "exit agent status %" PRId_ExitCode, FMTd_ExitCode(exitCode));
-
-        exitProcess(exitCode.mStatus);
     }
 
     closePipeReader(parentPipe);
