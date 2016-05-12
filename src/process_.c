@@ -1431,7 +1431,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 struct Pid
-forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid)
+forkProcessChild(enum ForkProcessOption   aOption,
+                 struct Pgid              aPgid,
+                 struct ForkProcessMethod aForkMethod)
 {
     pid_t rc = -1;
 
@@ -1562,7 +1564,7 @@ forkProcessDaemonSignalHandler_(struct ForkProcessDaemon *self, int aSigNum)
 }
 
 struct Pid
-forkProcessDaemon(void)
+forkProcessDaemon(struct ForkProcessMethod aForkMethod)
 {
     pid_t rc = -1;
 
@@ -1581,7 +1583,9 @@ forkProcessDaemon(void)
 
     struct Pid serverPid;
     ERROR_IF(
-        (serverPid = forkProcessChild(ForkProcessShareProcessGroup, Pgid(0)),
+        (serverPid = forkProcessChild(ForkProcessShareProcessGroup,
+                                      Pgid(0),
+                                      ForkProcessMethodNil()),
          -1 == serverPid.mPid));
 
     struct Pid daemonPid;
@@ -1617,7 +1621,9 @@ forkProcessDaemon(void)
             createBellSocketPair(&bellSocket, 0));
 
         ABORT_IF(
-            (daemonPid = forkProcessChild(ForkProcessSetProcessGroup, Pgid(0)),
+            (daemonPid = forkProcessChild(ForkProcessSetProcessGroup,
+                                          Pgid(0),
+                                          ForkProcessMethodNil()),
              -1 == daemonPid.mPid));
 
         /* Terminate the server to make the child an orphan. The child

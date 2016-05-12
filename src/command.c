@@ -165,7 +165,9 @@ runCommand(struct Command *self,
     syncPipe = &syncPipe_;
 
     ERROR_IF(
-        (pid = forkProcessChild(ForkProcessShareProcessGroup, Pgid(0)),
+        (pid = forkProcessChild(ForkProcessShareProcessGroup,
+                                Pgid(0),
+                                ForkProcessMethodNil()),
          -1 == pid.mPid));
 
     if (pid.mPid)

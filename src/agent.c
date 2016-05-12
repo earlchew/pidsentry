@@ -222,8 +222,9 @@ runAgent(struct Agent    *self,
     {
         struct Pid agentPid;
         ERROR_IF(
-            (agentPid = forkProcessChild(
-                ForkProcessSetProcessGroup, Pgid(0)),
+            (agentPid = forkProcessChild(ForkProcessSetProcessGroup,
+                                         Pgid(0),
+                                         ForkProcessMethodNil()),
              -1 == agentPid.mPid));
 
         self->mAgentPid = agentPid;

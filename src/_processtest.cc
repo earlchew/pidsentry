@@ -127,8 +127,9 @@ TEST_F(ProcessTest, ProcessSignature)
     sigset_t sigMask;
     EXPECT_EQ(0, pthread_sigmask(SIG_BLOCK, 0, &sigMask));
 
-    struct Pid firstChild = forkProcessChild(
-        ForkProcessShareProcessGroup, Pgid(0));
+    struct Pid firstChild = forkProcessChild(ForkProcessShareProcessGroup,
+                                             Pgid(0),
+                                             ForkProcessMethodNil());
     EXPECT_NE(-1, firstChild.mPid);
 
     if ( ! firstChild.mPid)
@@ -166,8 +167,9 @@ TEST_F(ProcessTest, ProcessSignature)
     EXPECT_EQ(0, acquireProcessAppLock());
     EXPECT_EQ(1u, ownProcessAppLockCount());
 
-    struct Pid secondChild = forkProcessChild(
-        ForkProcessShareProcessGroup, Pgid(0));
+    struct Pid secondChild = forkProcessChild(ForkProcessShareProcessGroup,
+                                              Pgid(0),
+                                              ForkProcessMethodNil());
     EXPECT_NE(-1, secondChild.mPid);
 
     if ( ! secondChild.mPid)
@@ -289,7 +291,7 @@ TEST_F(ProcessTest, ProcessDaemon)
 
     daemonState->mErrno = ENOSYS;
 
-    struct Pid daemonPid = forkProcessDaemon();
+    struct Pid daemonPid = forkProcessDaemon(ForkProcessMethodNil());
 
     if ( ! daemonPid.mPid)
     {

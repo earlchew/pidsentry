@@ -33,11 +33,36 @@
 #include "method_.h"
 #include "pid_.h"
 #include "error_.h"
+#include "method_.h"
 
 #include <limits.h>
 
 #include <sys/types.h>
 
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_ForkProcessMethod    int
+#define METHOD_CONST_ForkProcessMethod
+#define METHOD_ARG_LIST_ForkProcessMethod  (struct Pid aPid_)
+#define METHOD_CALL_LIST_ForkProcessMethod (aPid_)
+
+#define METHOD_NAME      ForkProcessMethod
+#define METHOD_RETURN    METHOD_RETURN_ForkProcessMethod
+#define METHOD_CONST     METHOD_CONST_ForkProcessMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_ForkProcessMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_ForkProcessMethod
+#include "method_.h"
+
+#define ForkProcessMethod(Method_, Object_)     \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        ForkProcessMethod_,                     \
+        METHOD_RETURN_ForkProcessMethod,        \
+        METHOD_CONST_ForkProcessMethod,         \
+        METHOD_ARG_LIST_ForkProcessMethod,      \
+        METHOD_CALL_LIST_ForkProcessMethod)
+
+/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -210,10 +235,12 @@ checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
 struct Pid
-forkProcessChild(enum ForkProcessOption aOption, struct Pgid aPgid);
+forkProcessChild(enum ForkProcessOption   aOption,
+                 struct Pgid              aPgid,
+                 struct ForkProcessMethod aForkMethod);
 
 struct Pid
-forkProcessDaemon(void);
+forkProcessDaemon(struct ForkProcessMethod aForkMethod);
 
 int
 reapProcessChild(struct Pid aPid, int *aStatus);

@@ -224,7 +224,9 @@ temporaryFile_(const char *aDirName)
      */
 
     ERROR_IF(
-        (tempPid = forkProcessChild(ForkProcessSetSessionLeader, Pgid(0)),
+        (tempPid = forkProcessChild(ForkProcessSetSessionLeader,
+                                    Pgid(0),
+                                    ForkProcessMethodNil()),
          -1 == tempPid.mPid));
 
     int err;
