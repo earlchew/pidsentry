@@ -482,7 +482,7 @@ resetProcessSigCont_(void)
     int rc = -1;
 
     ERROR_IF(
-        updateProcessSigContMethod_(VoidMethod(0, 0)));
+        updateProcessSigContMethod_(VoidMethodNil()));
 
     rc = 0;
 
@@ -639,7 +639,7 @@ resetProcessSigStop_(void)
     int rc = -1;
 
     ERROR_IF(
-        updateProcessSigStopMethod_(VoidMethod(0, 0)));
+        updateProcessSigStopMethod_(VoidMethodNil()));
 
     rc = 0;
 
@@ -697,7 +697,7 @@ resetProcessChildrenWatch_(void)
             (struct sigaction) { .sa_handler = SIG_DFL },
             0));
 
-    processSigChldMethod_ = VoidMethod(0, 0);
+    processSigChldMethod_ = VoidMethodNil();
 
     rc = 0;
 
@@ -782,7 +782,7 @@ resetProcessClockWatch_(void)
         ERROR_IF(
             changeSigAction_(SIGALRM, processClockTickSigAction_, 0));
 
-        processClockMethod_ = VoidMethod(0, 0);
+        processClockMethod_ = VoidMethodNil();
 
         processClockTickSigAction_.sa_handler = SIG_ERR;
         processClockTickSigAction_.sa_flags = 0;
@@ -950,7 +950,7 @@ Finally:
                 }
             }
 
-            processWatchedSignalMethod_ = VoidIntMethod(0, 0);
+            processWatchedSignalMethod_ = VoidIntMethodNil();
         }
     });
 
@@ -983,7 +983,7 @@ resetProcessSignalsWatch_(void)
         }
     }
 
-    processWatchedSignalMethod_ = VoidIntMethod(0, 0);
+    processWatchedSignalMethod_ = VoidIntMethodNil();
 
     if (rc)
         errno = err;

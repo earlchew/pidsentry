@@ -85,11 +85,11 @@ createJobControl(struct JobControl *self)
 {
     int rc = -1;
 
-    self->mRaise.mMethod      = VoidIntMethod(0, 0);
-    self->mReap.mMethod       = VoidMethod(0, 0);
-    self->mStop.mPauseMethod  = VoidMethod(0, 0);
-    self->mStop.mResumeMethod = VoidMethod(0, 0);
-    self->mContinue.mMethod   = VoidMethod(0, 0);
+    self->mRaise.mMethod      = VoidIntMethodNil();
+    self->mReap.mMethod       = VoidMethodNil();
+    self->mStop.mPauseMethod  = VoidMethodNil();
+    self->mStop.mResumeMethod = VoidMethodNil();
+    self->mContinue.mMethod   = VoidMethodNil();
 
     rc = 0;
 
@@ -137,7 +137,7 @@ watchJobControlSignals(struct JobControl   *self,
     ERROR_IF(
         watchProcessSignals(VoidIntMethod(raiseJobControlSignal_, self)),
         {
-            self->mRaise.mMethod = VoidIntMethod(0, 0);
+            self->mRaise.mMethod = VoidIntMethodNil();
         });
 
     rc = 0;
@@ -164,7 +164,7 @@ unwatchJobControlSignals(struct JobControl *self)
     ERROR_IF(
         unwatchProcessSignals());
 
-    self->mRaise.mMethod = VoidIntMethod(0, 0);
+    self->mRaise.mMethod = VoidIntMethodNil();
 
     rc = 0;
 
@@ -199,7 +199,7 @@ watchJobControlDone(struct JobControl *self,
     ERROR_IF(
         watchProcessChildren(VoidMethod(reapJobControl_, self)),
         {
-            self->mReap.mMethod = VoidMethod(0, 0);
+            self->mReap.mMethod = VoidMethodNil();
         });
 
     rc = 0;
@@ -226,7 +226,7 @@ unwatchJobControlDone(struct JobControl *self)
     ERROR_IF(
         unwatchProcessChildren());
 
-    self->mReap.mMethod = VoidMethod(0, 0);
+    self->mReap.mMethod = VoidMethodNil();
 
     rc = 0;
 
@@ -265,8 +265,8 @@ watchJobControlStop(struct JobControl *self,
     ERROR_IF(
         watchProcessSigStop(VoidMethod(raiseJobControlSigStop_, self)),
         {
-            self->mStop.mPauseMethod  = VoidMethod(0, 0);
-            self->mStop.mResumeMethod = VoidMethod(0, 0);
+            self->mStop.mPauseMethod  = VoidMethodNil();
+            self->mStop.mResumeMethod = VoidMethodNil();
         });
 
     rc = 0;
@@ -294,8 +294,8 @@ unwatchJobControlStop(struct JobControl *self)
     ERROR_IF(
         unwatchProcessSigStop());
 
-    self->mStop.mPauseMethod  = VoidMethod(0, 0);
-    self->mStop.mResumeMethod = VoidMethod(0, 0);
+    self->mStop.mPauseMethod  = VoidMethodNil();
+    self->mStop.mResumeMethod = VoidMethodNil();
 
     rc = 0;
 
@@ -330,7 +330,7 @@ watchJobControlContinue(struct JobControl *self,
     ERROR_IF(
         watchProcessSigCont(VoidMethod(raiseJobControlSigCont_, self)),
         {
-            self->mContinue.mMethod = VoidMethod(0, 0);
+            self->mContinue.mMethod = VoidMethodNil();
         });
 
     rc = 0;
@@ -357,7 +357,7 @@ unwatchJobControlContinue(struct JobControl *self)
     ERROR_IF(
         unwatchProcessSigCont());
 
-    self->mContinue.mMethod  = VoidMethod(0, 0);
+    self->mContinue.mMethod  = VoidMethodNil();
 
     rc = 0;
 

@@ -48,13 +48,13 @@
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PrintfMethod
 #include "method_.h"
 
-#define PrintfMethod_(Method_, Object_)                         \
-    METHOD_TRAMPOLINE(                                          \
-        Method_, ((const __typeof__(*(Object_)) *) Object_),    \
-        PrintfMethod__,                                         \
-        METHOD_RETURN_PrintfMethod,                             \
-        METHOD_CONST_PrintfMethod,                              \
-        METHOD_ARG_LIST_PrintfMethod,                           \
+#define PrintfMethod_(Method_, Object_)         \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        PrintfMethod__,                         \
+        METHOD_RETURN_PrintfMethod,             \
+        METHOD_CONST_PrintfMethod,              \
+        METHOD_ARG_LIST_PrintfMethod,           \
         METHOD_CALL_LIST_PrintfMethod)
 
 /* -------------------------------------------------------------------------- */

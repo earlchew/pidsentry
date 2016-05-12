@@ -54,7 +54,7 @@ extern "C" {
 #define METHOD_TRAMPOLINE(                                               \
     Method_, Object_, Name_, Return_, Const_, ArgList_, CallList_)       \
 (*({                                                                     \
-    typedef __typeof__((Object_)) ObjectT_;                              \
+    typedef Const_ __typeof__(*(Object_)) *ObjectT_;                     \
                                                                          \
     Return_ (*Validate_)(ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);    \
                                                                          \
@@ -196,6 +196,12 @@ static __inline__ bool
 CONCAT(CONCAT(own, METHOD_NAME), Nil)(struct METHOD_NAME self)
 {
     return ! self.mMethod;
+}
+
+static __inline__ struct METHOD_NAME
+CONCAT(METHOD_NAME, Nil)(void)
+{
+    return CONCAT(METHOD_NAME, _)(0, 0);
 }
 
 #ifdef __cplusplus
