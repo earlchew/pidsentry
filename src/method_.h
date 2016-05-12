@@ -39,10 +39,12 @@ extern "C" {
 #ifndef __cplusplus
 #define METHOD_CTOR_(Const_, Struct_)
 #else
-#define METHOD_CTOR_(Const_, Struct_)             \
-    explicit Struct_(CONCAT(Struct_, T_) aMethod, \
-                     Const_ void        *aObject) \
-    { *this = CONCAT(Struct_,  _)(aMethod, aObject); }
+#define METHOD_CTOR_(Const_, Struct_)                   \
+    explicit Struct_(CONCAT(Struct_, T_) aMethod,       \
+                     Const_ void        *aObject)       \
+    : mMethod(aMethod),                                 \
+      mObject(aObject)                                  \
+    { }
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -169,6 +171,10 @@ CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
                         METHOD_CONST void      *aObject)
 {
     METHOD_ENSURE_(aMethod || ! aObject);
+
+    /* In C++ programs, this initialiser will use the struct ctor, so
+     * the struct ctor must not use this function to avoid death
+     * by recursion. */
 
     return (struct METHOD_NAME)
     {
