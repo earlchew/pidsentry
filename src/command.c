@@ -148,9 +148,74 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+struct RunCommandProcess_
+{
+    struct Command *mCommand;
+    struct Pipe    *mSyncPipe;
+    char          **mCmd;
+};
+
+static int
+runCommand_(struct RunCommandProcess_ *self, struct Pid aPid)
+{
+    int rc = -1;
+
+    self->mCommand->mPid = aPid;
+
+    debug(0,
+          "starting command process pid %" PRId_Pid,
+          FMTd_Pid(self->mCommand->mPid));
+
+    /* Populate the environment of the command process to
+     * provide the attributes of the monitored process. */
+
+    const char *watchdogChildPid;
+    ERROR_UNLESS(
+        (watchdogChildPid = setEnvPid(
+            "PIDSENTRY_CHILD_PID", self->mCommand->mChildPid)));
+
+    debug(0, "PIDSENTRY_CHILD_PID=%s", watchdogChildPid);
+
+    /* Wait here until the parent process has completed its
+     * initialisation, and sends a positive acknowledgement. */
+
+    closePipeWriter(self->mSyncPipe);
+
+    char buf[1];
+
+    ssize_t rdlen;
+    ERROR_IF(
+        (rdlen = readFile(self->mSyncPipe->mRdFile, buf, 1),
+         -1 == rdlen));
+
+    closePipe(self->mSyncPipe);
+    self->mSyncPipe = 0;
+
+    debug(0, "command process synchronised");
+
+    /* Exit in sympathy if the parent process did not indicate
+     * that it intialised successfully. Otherwise attempt to
+     * execute the specified program. */
+
+    if (1 == rdlen)
+    {
+        execProcess(self->mCmd[0], self->mCmd);
+        warn(errno, "Unable to execute '%s'", self->mCmd[0]);
+    }
+
+    rc = EXIT_FAILURE;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 runCommand(struct Command *self,
-           char           **aCmd)
+           char          **aCmd)
 
 {
     int rc = -1;
@@ -164,74 +229,21 @@ runCommand(struct Command *self,
         createPipe(&syncPipe_, O_CLOEXEC));
     syncPipe = &syncPipe_;
 
+    struct RunCommandProcess_ commandProcess =
+    {
+        .mCommand  = self,
+        .mSyncPipe = syncPipe,
+        .mCmd      = aCmd,
+    };
+
     ERROR_IF(
         (pid = forkProcessChild(ForkProcessShareProcessGroup,
                                 Pgid(0),
-                                ForkProcessMethodNil()),
+                                ForkProcessMethod(
+                                    runCommand_, &commandProcess)),
          -1 == pid.mPid));
 
-    if (pid.mPid)
-        self->mPid = pid;
-    else
-    {
-        self->mPid = ownProcessId();
-
-        debug(0,
-              "starting command process pid %" PRId_Pid,
-              FMTd_Pid(self->mPid));
-
-        /* Populate the environment of the command process to
-         * provide the attributes of the monitored process. */
-
-        const char *watchdogChildPid;
-        ABORT_UNLESS(
-            (watchdogChildPid = setEnvPid(
-                "PIDSENTRY_CHILD_PID", self->mChildPid)),
-            {
-                terminate(
-                    errno,
-                    "Unable to set PIDSENTRY_CHILD_PID %" PRId_Pid,
-                    FMTd_Pid(self->mChildPid));
-            });
-        debug(0, "PIDSENTRY_CHILD_PID=%s", watchdogChildPid);
-
-        /* Wait here until the parent process has completed its
-         * initialisation, and sends a positive acknowledgement. */
-
-        closePipeWriter(syncPipe);
-
-        char buf[1];
-
-        ssize_t rdlen;
-        ABORT_IF(
-            (rdlen = readFile(syncPipe->mRdFile, buf, 1),
-             -1 == rdlen),
-            {
-                terminate(
-                    errno,
-                    "Unable to synchronise");
-            });
-
-        closePipe(syncPipe);
-        syncPipe = 0;
-
-        debug(0, "command process synchronised");
-
-        /* Exit in sympathy if the parent process did not indicate
-         * that it intialised successfully. Otherwise attempt to
-         * execute the specified program. */
-
-        if (1 == rdlen)
-            ABORT_IF(
-                execProcess(aCmd[0], aCmd) || (errno = 0, true),
-                {
-                    terminate(
-                        errno,
-                        "Unable to execute '%s'", aCmd[0]);
-                });
-
-        exitProcess(EXIT_FAILURE);
-    }
+    self->mPid = pid;
 
     debug(0,
           "running command pid %" PRId_Pid,
@@ -254,8 +266,6 @@ runCommand(struct Command *self,
             (wrlen = writeFile(syncPipe->mWrFile, buf, 1),
              -1 == wrlen || (errno = EIO, 1 != wrlen)));
     }
-
-    self->mPid = pid;
 
     rc = 0;
 
