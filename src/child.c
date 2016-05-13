@@ -420,50 +420,28 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
-forkChild(
-    struct ChildProcess   *self,
-    char                 **aCmd,
-    struct StdFdFiller    *aStdFdFiller,
-    struct BellSocketPair *aSyncSocket,
-    struct SocketPair     *aUmbilicalSocket)
+struct ForkChildProcess_
+{
+    struct ChildProcess   *mChildProcess;
+    char                 **mCmd;
+    struct StdFdFiller    *mStdFdFiller;
+    struct BellSocketPair *mSyncSocket;
+    struct SocketPair     *mUmbilicalSocket;
+};
+
+static int
+forkChild_(struct ForkChildProcess_ *self, struct Pid aPid)
 {
     int rc = -1;
 
-    /* Both the parent and child share the same signal handler configuration.
-     * In particular, no custom signal handlers are configured, so
-     * signals delivered to either will likely caused them to terminate.
-     *
-     * This is safe because that would cause one of end the synchronisation
-     * pipe to close, and the other end will eventually notice. */
+    debug(
+        0,
+        "starting child process pid %" PRId_Pid, FMTd_Pid(aPid));
 
-    struct Pid childPid;
-    ERROR_IF(
-        (childPid = forkProcessChild(ForkProcessSetProcessGroup,
-                                     Pgid(0),
-                                     ForkProcessMethodNil()),
-         -1 == childPid.mPid));
+    int err;
 
-    /* Do not try to place the watchdog in the process group of the child.
-     * This allows the parent to supervise the watchdog, and the watchdog
-     * to monitor the child process group.
-     *
-     * Trying to force the watchdog into the new process group of the child
-     * will likely cause a race in an inattentive parent of the watchdog.
-     * For example upstart(8) has:
-     *
-     *    pgid = getpgid(pid);
-     *    kill(pgid > 0 ? -pgid : pid, signal);
-     */
-
-    if ( ! childPid.mPid)
+    do
     {
-        childPid = ownProcessId();
-
-        debug(0,
-              "starting child process pid %" PRId_Pid,
-              FMTd_Pid(childPid));
-
         /* The forked child has all its signal handlers reset, but
          * note that the parent will wait for the child to synchronise
          * before sending it signals, so that there is no race here.
@@ -472,7 +450,7 @@ forkChild(
          * stderr. The remaining operations will close the remaining
          * unwanted file descriptors. */
 
-        closeStdFdFiller(aStdFdFiller);
+        closeStdFdFiller(self->mStdFdFiller);
 
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
@@ -481,36 +459,23 @@ forkChild(
 
         debug(0, "synchronising child process");
 
-        closeBellSocketPairParent(aSyncSocket);
+        closeBellSocketPairParent(self->mSyncSocket);
 
+        err = 0;
         TEST_RACE
         ({
-            ABORT_IF(
-                ! waitBellSocketPairChild(aSyncSocket, 0)
-                ? 0
-                : (EPIPE != errno && ENOENT != errno)
-                ? -1
-                : (exitProcess(EXIT_FAILURE), -1),
-                {
-                    terminate(
-                        errno,
-                        "Unable to synchronise with watchdog before "
-                        "pid file creation");
-                });
+            if ( ! err)
+                ERROR_IF(
+                    (err = waitBellSocketPairChild(self->mSyncSocket, 0),
+                     err && EPIPE != errno && ENOENT != errno));
 
-            ABORT_IF(
-                ! ringBellSocketPairChild(aSyncSocket)
-                ? 0
-                : EPIPE != errno
-                ? -1
-                : (exitProcess(EXIT_FAILURE), -1),
-                {
-                    terminate(
-                        errno,
-                        "Unable to synchronise with watchdog after "
-                        "pid file creation");
-                });
+            if ( ! err)
+                ERROR_IF(
+                    (err = ringBellSocketPairChild(self->mSyncSocket),
+                     err && EPIPE != errno));
         });
+        if (err)
+            break;
 
         do
         {
@@ -518,17 +483,17 @@ forkChild(
              * because it might turn out that the writing end
              * will not need to be duplicated. */
 
-            closePipeReader(self->mTetherPipe);
+            closePipeReader(self->mChildProcess->mTetherPipe);
 
-            closeSocketPair(aUmbilicalSocket);
-            aUmbilicalSocket = 0;
+            closeSocketPair(self->mUmbilicalSocket);
+            self->mUmbilicalSocket = 0;
 
             if (gOptions.mTether)
             {
                 int tetherFd = *gOptions.mTether;
 
                 if (0 > tetherFd)
-                    tetherFd = self->mTetherPipe->mWrFile->mFd;
+                    tetherFd = self->mChildProcess->mTetherPipe->mWrFile->mFd;
 
                 char tetherArg[sizeof(int) * CHAR_BIT + 1];
 
@@ -548,14 +513,8 @@ forkChild(
 
                     if (useEnv)
                     {
-                        ABORT_IF(
-                            setenv(gOptions.mName, tetherArg, 1),
-                            {
-                                terminate(
-                                    errno,
-                                    "Unable to set environment variable '%s'",
-                                    gOptions.mName);
-                            });
+                        ERROR_IF(
+                            setenv(gOptions.mName, tetherArg, 1));
                     }
                     else
                     {
@@ -564,28 +523,28 @@ forkChild(
 
                         char *matchArg = 0;
 
-                        for (unsigned ix = 1; aCmd[ix]; ++ix)
+                        for (unsigned ix = 1; self->mCmd[ix]; ++ix)
                         {
-                            matchArg = strstr(aCmd[ix], gOptions.mName);
+                            matchArg = strstr(self->mCmd[ix], gOptions.mName);
 
                             if (matchArg)
                             {
                                 char replacedArg[
-                                    strlen(aCmd[ix])       -
+                                    strlen(self->mCmd[ix]) -
                                     strlen(gOptions.mName) +
                                     strlen(tetherArg)      + 1];
 
                                 sprintf(replacedArg,
                                         "%.*s%s%s",
-                                        matchArg - aCmd[ix],
-                                        aCmd[ix],
+                                        matchArg - self->mCmd[ix],
+                                        self->mCmd[ix],
                                         tetherArg,
                                         matchArg + strlen(gOptions.mName));
 
-                                aCmd[ix] = strdup(replacedArg);
+                                self->mCmd[ix] = strdup(replacedArg);
 
-                                ABORT_UNLESS(
-                                    aCmd[ix],
+                                ERROR_UNLESS(
+                                    self->mCmd[ix],
                                     {
                                         terminate(
                                             errno,
@@ -596,7 +555,7 @@ forkChild(
                             }
                         }
 
-                        ABORT_UNLESS(
+                        ERROR_UNLESS(
                             matchArg,
                             {
                                 terminate(
@@ -607,21 +566,16 @@ forkChild(
                     }
                 }
 
-                if (tetherFd == self->mTetherPipe->mWrFile->mFd)
+                if (tetherFd == self->mChildProcess->mTetherPipe->mWrFile->mFd)
                     break;
 
-                ABORT_IF(
-                    dup2(self->mTetherPipe->mWrFile->mFd, tetherFd) != tetherFd,
-                    {
-                        terminate(
-                            errno,
-                            "Unable to dup tether pipe fd %d to fd %d",
-                            self->mTetherPipe->mWrFile->mFd,
-                            tetherFd);
-                    });
+                ERROR_IF(
+                    dup2(self->mChildProcess->mTetherPipe->mWrFile->mFd,
+                         tetherFd) != tetherFd);
             }
 
-            closePipe(self->mTetherPipe);
+            closePipe(self->mChildProcess->mTetherPipe);
+            self->mChildProcess->mTetherPipe = 0;
 
         } while (0);
 
@@ -632,19 +586,12 @@ forkChild(
 
         TEST_RACE
         ({
-            ABORT_IF(
-                ! waitBellSocketPairChild(aSyncSocket, 0)
-                ? 0
-                : (EPIPE != errno && ENOENT != errno)
-                ? -1
-                : (exitProcess(EXIT_FAILURE), -1),
-                {
-                    terminate(
-                        errno,
-                        "Unable to synchronise with watchdog after "
-                        "pid announcement");
-                });
+            ERROR_IF(
+                (err = waitBellSocketPairChild(self->mSyncSocket, 0),
+                 err && EPIPE != errno && ENOENT != errno));
         });
+        if (err)
+            break;
 
         /* Rely on the upcoming exec() to provide the final synchronisation
          * indication to the waiting watchdog. The watchdog relies on this
@@ -652,7 +599,8 @@ forkChild(
          * and locks with the parent. */
 
         ensure(
-            ownFileCloseOnExec(aSyncSocket->mSocketPair->mChildSocket->mFile));
+            ownFileCloseOnExec(
+                self->mSyncSocket->mSocketPair->mChildSocket->mFile));
 
         debug(0, "child process synchronised");
 
@@ -660,14 +608,67 @@ forkChild(
          * might need to emit a diagnostic if execProcess() fails. Rely on
          * O_CLOEXEC to close the underlying file descriptors. */
 
-        ABORT_IF(
-            execProcess(aCmd[0], aCmd) || (errno = 0, true),
-            {
-                terminate(
-                    errno,
-                    "Unable to execute '%s'", aCmd[0]);
-            });
-    }
+        execProcess(self->mCmd[0], self->mCmd);
+        warn(errno, "Unable to execute '%s'", self->mCmd[0]);
+
+    } while (0);
+
+    rc = EXIT_FAILURE;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+forkChild(
+    struct ChildProcess   *self,
+    char                 **aCmd,
+    struct StdFdFiller    *aStdFdFiller,
+    struct BellSocketPair *aSyncSocket,
+    struct SocketPair     *aUmbilicalSocket)
+{
+    int rc = -1;
+
+    /* Both the parent and child share the same signal handler configuration.
+     * In particular, no custom signal handlers are configured, so
+     * signals delivered to either will likely caused them to terminate.
+     *
+     * This is safe because that would cause one of end the synchronisation
+     * pipe to close, and the other end will eventually notice. */
+
+    struct ForkChildProcess_ childProcess =
+    {
+        .mChildProcess    = self,
+        .mCmd             = aCmd,
+        .mStdFdFiller     = aStdFdFiller,
+        .mSyncSocket      = aSyncSocket,
+        .mUmbilicalSocket = aUmbilicalSocket,
+    };
+
+    struct Pid childPid;
+    ERROR_IF(
+        (childPid = forkProcessChild(ForkProcessSetProcessGroup,
+                                     Pgid(0),
+                                     ForkProcessMethod(
+                                         forkChild_, &childProcess)),
+         -1 == childPid.mPid));
+
+    /* Do not try to place the watchdog in the process group of the child.
+     * This allows the parent to supervise the watchdog, and the watchdog
+     * to monitor the child process group.
+     *
+     * Trying to force the watchdog into the new process group of the child
+     * will likely cause a race in an inattentive parent of the watchdog.
+     * For example upstart(8) has:
+     *
+     *    pgid = getpgid(pid);
+     *    kill(pgid > 0 ? -pgid : pid, signal);
+     */
+
 
     /* Even if the child has terminated, it remains a zombie until reaped,
      * so it is safe to query it to determine its process group. */
