@@ -1794,6 +1794,33 @@ exitProcess(int aStatus)
 }
 
 /* -------------------------------------------------------------------------- */
+int
+signalProcessGroup(struct Pgid aPgid, int aSignal)
+{
+    int rc = -1;
+
+    struct ProcessSignalName sigName;
+
+    ensure(aPgid.mPgid);
+
+    debug(0,
+          "sending %s to process group pgid %" PRId_Pgid,
+          formatProcessSignalName(&sigName, aSignal),
+          FMTd_Pgid(aPgid));
+
+    ERROR_IF(
+        killpg(aPgid.mPgid, aSignal));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 killProcess_(int aSigNum, unsigned *aSigTrigger) __attribute__((__noreturn__));
 

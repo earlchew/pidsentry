@@ -257,6 +257,9 @@ extractProcessExitStatus(int aStatus, struct Pid aPid);
 int
 execProcess(const char *aCmd, char **aArgv);
 
+int
+signalProcessGroup(struct Pgid aPgid, int aSignal);
+
 void
 exitProcess(int aStatus) __attribute__((__noreturn__));
 
