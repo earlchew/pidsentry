@@ -72,7 +72,7 @@ struct PrintfModule
 /* -------------------------------------------------------------------------- */
 extern const struct Type * const printfMethodType_;
 
-#define PrintfMethod(Object_, Method_)                  \
+#define PrintfMethod(Method_, Object_)                  \
 ({                                                      \
     struct PrintfMethod printfMethod_ =                 \
     {                                                   \
@@ -92,7 +92,7 @@ struct PrintfMethod
 
 /* -------------------------------------------------------------------------- */
 #define PRIs_Method "%%p<struct PrintfMethod>%%"
-#define FMTs_Method(Object_, Method_) ( PrintfMethod((Object_), (Method_)) )
+#define FMTs_Method(Method_, Object_) ( PrintfMethod((Method_), (Object_)) )
 
 /* -------------------------------------------------------------------------- */
 int

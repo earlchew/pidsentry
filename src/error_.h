@@ -180,7 +180,7 @@ struct ErrorModule
             Error_warn_(0,                                                    \
                  "%" PRIs_Method                                              \
                  IFEMPTY("", " ", CAR(__VA_ARGS__)) CAR(__VA_ARGS__),         \
-                 FMTs_Method(Self_, PrintfMethod_) CDR(__VA_ARGS__));         \
+                 FMTs_Method(PrintfMethod_, Self_) CDR(__VA_ARGS__));         \
         }                                                                     \
     } while (0)
 

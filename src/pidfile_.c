@@ -93,7 +93,7 @@ lockPidFile_(
     debug(0,
           "lock %s %" PRIs_Method,
           aLockName,
-          FMTs_Method(self, printPidFile_));
+          FMTs_Method(printPidFile_, self));
 
     ensure(aLockType);
     ensure( ! self->mLock);
@@ -288,7 +288,7 @@ releasePidFileLock_(struct PidFile *self)
 
     debug(0,
           "unlock %" PRIs_Method,
-          FMTs_Method(self, printPidFile_));
+          FMTs_Method(printPidFile_, self));
 
     rc = 0;
 
@@ -553,7 +553,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             if (unlinked)
                 debug(0,
                       "removing existing file %" PRIs_Method,
-                      FMTs_Method(self, printPidFile_));
+                      FMTs_Method(printPidFile_, self));
 
             ERROR_IF(
                 releasePidFileLock_(self));
@@ -628,7 +628,7 @@ closePidFile(struct PidFile *self)
                     terminate(
                         errno,
                         "Unable to truncate %" PRIs_Method,
-                        FMTs_Method(self, printPidFile_));
+                        FMTs_Method(printPidFile_, self));
                 });
 
             /* In theory, ENOENT should not occur since the pidfile
@@ -645,7 +645,7 @@ closePidFile(struct PidFile *self)
                     terminate(
                         errno,
                         "Unable to unlink %" PRIs_Method,
-                        FMTs_Method(self, printPidFile_));
+                        FMTs_Method(printPidFile_, self));
                 });
         }
 
@@ -743,7 +743,7 @@ writePidFile(struct PidFile           *self,
 
             debug(0,
                   "disregarding zombie %" PRIs_Method,
-                  FMTs_Method(self, printPidFile_));
+                  FMTs_Method(printPidFile_, self));
 
             closePidFile(self);
         }
@@ -782,7 +782,7 @@ writePidFile(struct PidFile           *self,
 
         debug(0,
               "initialised %" PRIs_Method,
-              FMTs_Method(self, printPidFile_));
+              FMTs_Method(printPidFile_, self));
 
         ERROR_IF(
             writePidFile_(self, aPid, aPidServerAddr));

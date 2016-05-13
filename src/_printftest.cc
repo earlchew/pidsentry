@@ -80,7 +80,7 @@ TEST_F(PrintfTest, PrintfMethod)
     xfprintf(
         fp,
         "%" PRIs_Method,
-        FMTs_Method(&test, TestClass::print));
+        FMTs_Method(TestClass::print, &test));
 
     EXPECT_EQ(0, fflush(fp));
     EXPECT_NE(0u, bufLen);
@@ -90,7 +90,7 @@ TEST_F(PrintfTest, PrintfMethod)
     xfprintf(
         fp,
         "-%" PRIs_Method "-",
-        FMTs_Method(&test, TestClass::print));
+        FMTs_Method(TestClass::print, &test));
 
     EXPECT_EQ(0, fflush(fp));
     EXPECT_NE(0u, bufLen);
@@ -100,8 +100,8 @@ TEST_F(PrintfTest, PrintfMethod)
     xfprintf(
         fp,
         "%" PRIs_Method "%" PRIs_Method,
-        FMTs_Method(&test, TestClass::print),
-        FMTs_Method(&test, TestClass::print));
+        FMTs_Method(TestClass::print, &test),
+        FMTs_Method(TestClass::print, &test));
 
     EXPECT_EQ(0, fflush(fp));
     EXPECT_NE(0u, bufLen);
@@ -111,8 +111,8 @@ TEST_F(PrintfTest, PrintfMethod)
     xfprintf(
         fp,
         "%" PRIs_Method "-%" PRIs_Method,
-        FMTs_Method(&test, TestClass::print),
-        FMTs_Method(&test, TestClass::print));
+        FMTs_Method(TestClass::print, &test),
+        FMTs_Method(TestClass::print, &test));
 
     EXPECT_EQ(0, fflush(fp));
     EXPECT_NE(0u, bufLen);
