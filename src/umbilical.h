@@ -52,6 +52,8 @@ struct UmbilicalProcess
 {
     struct Pid         mPid;
     struct Pid         mChildAnchor;
+    struct Pid         mWatchdogAnchor;
+    struct Pgid        mWatchdogPgid;
     struct SocketPair *mSocket;
 };
 
