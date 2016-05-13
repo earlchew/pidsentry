@@ -200,6 +200,84 @@ Finally:
     return rc;
 }
 
+struct TemporaryFileProcess_
+{
+    int                mErr;
+    struct SocketPair *mSocketPair;
+    const char        *mDirName;
+};
+
+static int
+temporaryFileProcess_(struct TemporaryFileProcess_ *self, struct Pid aPid)
+{
+    int rc = -1;
+
+    closeSocketPairParent(self->mSocketPair);
+
+    {
+        struct ProcessAppLock *appLock = createProcessAppLock();
+
+        const struct File *appLockFile = ownProcessAppLockFile(appLock);
+
+        int whiteList[] =
+        {
+            STDIN_FILENO,
+            STDOUT_FILENO,
+            STDERR_FILENO,
+            self->mSocketPair->mChildSocket->mFile->mFd,
+            appLockFile ? appLockFile->mFd : -1,
+        };
+
+        ERROR_IF(
+            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
+
+        destroyProcessAppLock(appLock);
+    }
+
+    int fd;
+    {
+        struct ThreadSigMask  sigMask_;
+        struct ThreadSigMask *sigMask = 0;
+
+        sigMask = pushThreadSigMask(&sigMask_, ThreadSigMaskBlock, 0);
+
+        fd  = temporaryFileCreate_(self->mDirName);
+
+        sigMask = popThreadSigMask(sigMask);
+    }
+
+    self->mErr = -1 != fd ? 0 : (errno ? errno : EIO);
+
+    ssize_t wrlen;
+    ERROR_IF(
+        (wrlen = sendUnixSocket(
+            self->mSocketPair->mChildSocket,
+            (void *) &self->mErr, sizeof(self->mErr)),
+         -1 == wrlen || (errno = 0, sizeof(self->mErr) != wrlen)));
+
+    if ( ! self->mErr)
+        ERROR_IF(
+            sendUnixSocketFd(
+                self->mSocketPair->mChildSocket, fd));
+
+    /* When running with valgrind, use execl() to prevent
+     * valgrind performing a leak check on the temporary
+     * process. */
+
+    if (RUNNING_ON_VALGRIND)
+        ERROR_IF(
+            execl(
+                "/bin/true", "true", (char *) 0) || (errno = 0, true));
+
+    rc = EXIT_SUCCESS;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
 static int
 temporaryFile_(const char *aDirName)
 {
@@ -223,87 +301,35 @@ temporaryFile_(const char *aDirName)
      * o Placing that process in a separate session and process group
      */
 
-    ERROR_IF(
-        (tempPid = forkProcessChild(ForkProcessSetSessionLeader,
-                                    Pgid(0),
-                                    ForkProcessMethodNil()),
-         -1 == tempPid.mPid));
-
-    int err;
-
-    if ( ! tempPid.mPid)
+    struct TemporaryFileProcess_ temporaryFileProcess =
     {
-        closeSocketPairParent(socketPair);
+        .mSocketPair = socketPair,
+        .mDirName    = aDirName,
+    };
 
-        {
-            struct ProcessAppLock *appLock = createProcessAppLock();
-
-            const struct File *appLockFile = ownProcessAppLockFile(appLock);
-
-            int whiteList[] =
-                {
-                    STDIN_FILENO,
-                    STDOUT_FILENO,
-                    STDERR_FILENO,
-                    socketPair->mChildSocket->mFile->mFd,
-                    appLockFile ? appLockFile->mFd : -1,
-                };
-
-            ABORT_IF(
-                closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
-
-            destroyProcessAppLock(appLock);
-        }
-
-        int fd;
-        {
-            struct ThreadSigMask  sigMask_;
-            struct ThreadSigMask *sigMask = 0;
-
-            sigMask = pushThreadSigMask(&sigMask_, ThreadSigMaskBlock, 0);
-
-            fd  = temporaryFileCreate_(aDirName);
-
-            sigMask = popThreadSigMask(sigMask);
-        }
-
-        err = -1 != fd ? 0 : (errno ? errno : EIO);
-
-        ssize_t wrlen;
-        ABORT_IF(
-            (wrlen = sendUnixSocket(
-                socketPair->mChildSocket, (void *) &err, sizeof(err)),
-             -1 == wrlen || (errno = 0, sizeof(err) != wrlen)));
-
-        if ( ! err)
-            ABORT_IF(
-                sendUnixSocketFd(
-                    socketPair->mChildSocket, fd));
-
-        /* When running with valgrind, use execl() to prevent
-         * valgrind performing a leak check on the temporary
-         * process. */
-
-        if (RUNNING_ON_VALGRIND)
-            ABORT_IF(
-                execl(
-                    "/bin/true", "true", (char *) 0) || (errno = 0, true));
-
-        exitProcess(EXIT_SUCCESS);
-    }
+    ERROR_IF(
+        (tempPid = forkProcessChild(
+            ForkProcessSetSessionLeader,
+            Pgid(0),
+            ForkProcessMethod(
+                temporaryFileProcess_, &temporaryFileProcess)),
+         -1 == tempPid.mPid));
 
     closeSocketPairChild(socketPair);
 
     ssize_t rdlen;
     ERROR_IF(
         (rdlen = recvUnixSocket(
-            socketPair->mParentSocket, (void *) &err, sizeof(err)),
-         -1 == rdlen || (errno = 0, sizeof(err) != rdlen)));
+            socketPair->mParentSocket,
+            (void *) &temporaryFileProcess.mErr,
+            sizeof(temporaryFileProcess.mErr)),
+         -1 == rdlen ||
+         (errno = 0, sizeof(temporaryFileProcess.mErr) != rdlen)));
 
     ERROR_IF(
-        err,
+        temporaryFileProcess.mErr,
         {
-            errno = err;
+            errno = temporaryFileProcess.mErr;
         });
 
     rc = recvUnixSocketFd(socketPair->mParentSocket, O_CLOEXEC);
