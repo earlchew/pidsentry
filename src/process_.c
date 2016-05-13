@@ -1606,7 +1606,7 @@ forkProcessDaemon(struct ForkProcessMethod aForkMethod)
 
     struct Pid serverPid;
     ERROR_IF(
-        (serverPid = forkProcessChild(ForkProcessShareProcessGroup,
+        (serverPid = forkProcessChild(ForkProcessInheritProcessGroup,
                                       Pgid(0),
                                       ForkProcessMethodNil()),
          -1 == serverPid.mPid));

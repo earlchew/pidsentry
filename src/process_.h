@@ -91,7 +91,7 @@ struct ExitCode
 
 enum ForkProcessOption
 {
-    ForkProcessShareProcessGroup,
+    ForkProcessInheritProcessGroup,
     ForkProcessSetProcessGroup,
     ForkProcessSetSessionLeader,
 };

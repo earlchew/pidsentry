@@ -54,7 +54,7 @@ struct LockType
 checkLock(struct File *aFile)
 {
     struct Pid checkPid =
-        forkProcessChild(ForkProcessShareProcessGroup,
+        forkProcessChild(ForkProcessInheritProcessGroup,
                          Pgid(0),
                          ForkProcessMethodNil());
 

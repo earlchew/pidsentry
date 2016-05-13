@@ -237,7 +237,7 @@ runCommand(struct Command *self,
     };
 
     ERROR_IF(
-        (pid = forkProcessChild(ForkProcessShareProcessGroup,
+        (pid = forkProcessChild(ForkProcessInheritProcessGroup,
                                 Pgid(0),
                                 ForkProcessMethod(
                                     runCommand_, &commandProcess)),
