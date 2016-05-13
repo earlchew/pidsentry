@@ -166,7 +166,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printAgent_);
+        finally_warn_if(rc, printAgent_, self);
 
         closeSentry(sentry);
     });
@@ -356,7 +356,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printAgent_);
+        finally_warn_if(rc, printAgent_, self);
 
         closePipe(parentPipe);
         closeStdFdFiller(stdFdFiller);

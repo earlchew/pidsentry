@@ -802,7 +802,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printPidFile_);
+        finally_warn_if(rc, printPidFile_, self);
 
         if (rc)
             status = PidFileStatusError;

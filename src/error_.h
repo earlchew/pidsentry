@@ -172,7 +172,7 @@ struct ErrorModule
         goto Error_;                            \
     Error_
 
-#define finally_warn_if_(Sense_, Predicate_, Self_, PrintfMethod_, ...) \
+#define finally_warn_if_(Sense_, Predicate_, PrintfMethod_, Self_, ...)       \
     do                                                                        \
     {                                                                         \
         if ( Sense_ (Predicate_))                                             \
@@ -184,13 +184,13 @@ struct ErrorModule
         }                                                                     \
     } while (0)
 
-#define finally_warn_if(Predicate_, Self_, PrintfMethod_, ...)          \
+#define finally_warn_if(Predicate_, PrintfMethod_, Self_, ...)          \
     finally_warn_if_(                                                   \
-        /*!!*/, Predicate_, Self_, PrintfMethod_, ## __VA_ARGS__)
+        /*!!*/, Predicate_, PrintfMethod_, Self_, ## __VA_ARGS__)
 
-#define finally_warn_unless(Predicate_, Self_, PrintfMethod_, ...)       \
+#define finally_warn_unless(Predicate_, PrintfMethod_, Self_, ...)       \
     finally_warn_if_(                                                    \
-        !, Predicate_, Self_, PrintfMethod_, ## __VA_ARGS__)
+        !, Predicate_, PrintfMethod_, Self_, ## __VA_ARGS__)
 
 /* -------------------------------------------------------------------------- */
 struct ErrorUnwindFrame_

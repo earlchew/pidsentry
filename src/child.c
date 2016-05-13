@@ -254,7 +254,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        self, printChild_,
+                        printChild_, self,
                         "role %s pid %" PRId_Pid, aRole, FMTd_Pid(aPid));
 
         if (rc)
@@ -297,7 +297,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, printChild_, self);
     });
 
     return rc;
@@ -327,7 +327,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_,
+        finally_warn_if(rc, printChild_, self,
                         "signal %s",
                         formatProcessSignalName(&sigName, aSigNum));
     });
@@ -362,7 +362,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        self, printChild_,
+                        printChild_, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -387,7 +387,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        self, printChild_,
+                        printChild_, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -412,7 +412,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        self, printChild_,
+                        printChild_, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -696,7 +696,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, printChild_, self);
     });
 
     return rc;
@@ -719,7 +719,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, printChild_, self);
     });
 
     return rc;
@@ -753,7 +753,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, printChild_, self);
     });
 
     return rc;
@@ -943,7 +943,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -976,7 +976,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1104,7 +1104,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1160,7 +1160,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
 
         ABORT_IF(
             fatal,
@@ -1328,7 +1328,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1365,7 +1365,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1406,7 +1406,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1521,7 +1521,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1607,7 +1607,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1707,7 +1707,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChildMonitor_);
+        finally_warn_if(rc, printChildMonitor_, self);
     });
 
     return rc;
@@ -1743,7 +1743,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, printChild_, self);
 
         lock = unlockThreadSigMutex(lock);
     });
@@ -2044,7 +2044,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, self, printChild_);
+        finally_warn_if(rc, printChild_, self);
 
         updateChildMonitor_(self, 0);
 
