@@ -341,19 +341,8 @@ killChildProcessGroup(struct ChildProcess *self)
 {
     int rc = -1;
 
-    int sigKill = SIGKILL;
-
-    struct ProcessSignalName sigName;
-
-    ensure(self->mPgid.mPgid);
-
-    debug(0,
-          "sending %s to child pgid %" PRId_Pgid,
-          formatProcessSignalName(&sigName, sigKill),
-          FMTd_Pgid(self->mPgid));
-
     ERROR_IF(
-        killpg(self->mPgid.mPgid, sigKill));
+        signalProcessGroup(self->mPgid, SIGKILL));
 
     rc = 0;
 
