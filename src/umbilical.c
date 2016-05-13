@@ -602,11 +602,14 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
             (self->mChildAnchor = forkProcessChild(
                 ForkProcessSetProcessGroup,
                 aChildProcess->mPgid,
-                ForkProcessMethodNil()),
+                ForkProcessMethod(
+                    LAMBDA(
+                        int, (void *this, struct Pid aPid),
+                        {
+                            return EXIT_SUCCESS;
+                        }),
+                    (void *) 0)),
              -1 == self->mChildAnchor.mPid));
-
-        if ( ! self->mChildAnchor.mPid)
-            exitProcess(EXIT_SUCCESS);
 
         runUmbilicalProcess_(self,
                              watchdogPid,
