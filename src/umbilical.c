@@ -143,14 +143,14 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
     char buf[1];
 
     ssize_t rdlen;
-    ABORT_IF(
+    ERROR_IF(
         (rdlen = read(
             self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno
          : (errno = 0, rdlen && sizeof(buf) != rdlen)),
         {
-            terminate(
+            warn(
                 errno,
                 "Unable to read umbilical connection");
         });
@@ -195,7 +195,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
             debug(1, "umbilical connection echo request");
 
             ssize_t wrlen;
-            ABORT_IF(
+            ERROR_IF(
                 (wrlen = writeFd(
                     self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
                     buf, rdlen),
@@ -207,7 +207,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
                      * has been closed. Rely on the umbilical connection
                      * reader to reactivate and detect the closed connection. */
 
-                    terminate(
+                    warn(
                         errno,
                         "Unable to echo activity into umbilical connection");
                 });
