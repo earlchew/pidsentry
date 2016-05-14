@@ -50,11 +50,14 @@ struct PidServer;
 /* -------------------------------------------------------------------------- */
 struct UmbilicalProcess
 {
-    struct Pid         mPid;
-    struct Pid         mChildAnchor;
-    struct Pid         mWatchdogAnchor;
-    struct Pgid        mWatchdogPgid;
-    struct SocketPair *mSocket;
+    struct Pid           mPid;
+    struct Pid           mChildAnchor;
+    struct Pid           mWatchdogAnchor;
+    struct Pid           mWatchdogPid;
+    struct Pgid          mWatchdogPgid;
+    struct ChildProcess *mChildProcess;
+    struct SocketPair   *mSocket;
+    struct PidServer    *mPidServer;
 };
 
 /* -------------------------------------------------------------------------- */

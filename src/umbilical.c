@@ -558,6 +558,61 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+createUmbilicalProcess_(struct UmbilicalProcess *self, struct Pid aPid)
+{
+    int rc = -1;
+
+    self->mPid = ownProcessId();
+
+    /* The umbilical process will create an anchor in the process
+     * group of the child and the watchdog so that the pids will uniquely
+     * identify those process groups while the umbilical exists. */
+
+    ERROR_IF(
+        (self->mChildAnchor = forkProcessChild(
+            ForkProcessSetProcessGroup,
+            self->mChildProcess->mPgid,
+            ForkProcessMethod(
+                LAMBDA(
+                    int, (void *this, struct Pid aForkedPid),
+                    {
+                        return EXIT_SUCCESS;
+                    }),
+                (void *) 0)),
+         -1 == self->mChildAnchor.mPid));
+
+    ERROR_IF(
+        (self->mWatchdogAnchor = forkProcessChild(
+            ForkProcessSetProcessGroup,
+            self->mWatchdogPgid,
+            ForkProcessMethod(
+                LAMBDA(
+                    int, (void *this, struct Pid aForkedPid),
+                    {
+                        return EXIT_SUCCESS;
+                    }),
+                (void *) 0)),
+         -1 == self->mWatchdogAnchor.mPid));
+
+    runUmbilicalProcess_(self,
+                         self->mWatchdogPid,
+                         self->mChildProcess,
+                         self->mSocket,
+                         self->mPidServer);
+
+    debug(0, "exit umbilical");
+
+    rc = EXIT_SUCCESS;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
@@ -572,8 +627,11 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     self->mPid            = Pid(0);
     self->mChildAnchor    = Pid(0);
     self->mWatchdogAnchor = Pid(0);
+    self->mWatchdogPid    = ownProcessId();
     self->mWatchdogPgid   = ownProcessGroupId();
+    self->mChildProcess   = aChildProcess;
     self->mSocket         = aUmbilicalSocket;
+    self->mPidServer      = aPidServer;
 
     /* Ensure that SIGHUP is blocked so that the umbilical process
      * will not terminate should it be orphaned when the parent process
@@ -586,63 +644,14 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     sigMask = pushThreadSigMask(
         &sigMask_, ThreadSigMaskBlock, (const int []) { SIGHUP, 0 });
 
-    struct Pid watchdogPid = ownProcessId();
-
     struct Pid umbilicalPid;
     ERROR_IF(
         (umbilicalPid = forkProcessChild(ForkProcessSetProcessGroup,
                                          Pgid(0),
-                                         ForkProcessMethodNil()),
+                                         ForkProcessMethod(
+                                             createUmbilicalProcess_, self)),
          -1 == umbilicalPid.mPid));
-
-    if (umbilicalPid.mPid)
-    {
-        self->mPid = umbilicalPid;
-    }
-    else
-    {
-        self->mPid = ownProcessId();
-
-        /* The umbilical process will create an anchor in the process
-         * group of the child and the watchdog so that the pids will uniquely
-         * identify those process groups while the umbilical exists. */
-
-        ABORT_IF(
-            (self->mChildAnchor = forkProcessChild(
-                ForkProcessSetProcessGroup,
-                aChildProcess->mPgid,
-                ForkProcessMethod(
-                    LAMBDA(
-                        int, (void *this, struct Pid aPid),
-                        {
-                            return EXIT_SUCCESS;
-                        }),
-                    (void *) 0)),
-             -1 == self->mChildAnchor.mPid));
-
-        ABORT_IF(
-            (self->mWatchdogAnchor = forkProcessChild(
-                ForkProcessSetProcessGroup,
-                self->mWatchdogPgid,
-                ForkProcessMethod(
-                    LAMBDA(
-                        int, (void *this, struct Pid aPid),
-                        {
-                            return EXIT_SUCCESS;
-                        }),
-                    (void *) 0)),
-             -1 == self->mWatchdogAnchor.mPid));
-
-        runUmbilicalProcess_(self,
-                             watchdogPid,
-                             aChildProcess,
-                             aUmbilicalSocket,
-                             aPidServer);
-
-        debug(0, "exit umbilical");
-
-        exitProcess(EXIT_SUCCESS);
-    }
+    self->mPid = umbilicalPid;
 
     rc = 0;
 
