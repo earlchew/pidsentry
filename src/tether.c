@@ -275,7 +275,7 @@ tetherThreadMain_(void *self_)
 
     int srcFd     = STDIN_FILENO;
     int dstFd     = STDOUT_FILENO;
-    int controlFd = self->mControlPipe.mRdFile->mFd;
+    int controlFd = self->mControlPipe->mRdFile->mFd;
 
     /* The file descriptor for stdin is a pipe created by the watchdog
      * so it is known to be nonblocking. The file descriptor for stdout
@@ -391,23 +391,35 @@ tetherThreadMain_(void *self_)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+static void
+closeTetherThread_(struct TetherThread *self)
+{
+    closePipe(self->mControlPipe);
+
+    destroyCond(&self->mState.mCond);
+    destroyMutex(&self->mState.mMutex);
+    destroyMutex(&self->mActivity.mMutex);
+}
+
+/* -------------------------------------------------------------------------- */
+int
 createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 {
-    ABORT_IF(
-        createPipe(&self->mControlPipe, O_CLOEXEC | O_NONBLOCK),
-        {
-            terminate(errno, "Unable to create tether control pipe");
-        });
+    int rc = -1;
 
     createMutex(&self->mActivity.mMutex);
     createMutex(&self->mState.mMutex);
     createCond(&self->mState.mCond);
 
+    self->mControlPipe     = 0;
     self->mNullPipe        = aNullPipe;
     self->mActivity.mSince = eventclockTime();
     self->mState.mValue    = TETHER_THREAD_STOPPED;
     self->mFlushed         = false;
+
+    ERROR_IF(
+        createPipe(&self->mControlPipe_, O_CLOEXEC | O_NONBLOCK));
+    self->mControlPipe = &self->mControlPipe_;
 
     {
         struct ThreadSigMask threadSigMask;
@@ -427,6 +439,18 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 
         unlockMutex(&self->mState.mMutex);
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            closeTetherThread_(self);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -462,7 +486,7 @@ flushTetherThread(struct TetherThread *self)
 
     ssize_t wrlen;
     ABORT_IF(
-        (wrlen = writeFile(self->mControlPipe.mWrFile, buf, sizeof(buf)),
+        (wrlen = writeFile(self->mControlPipe->mWrFile, buf, sizeof(buf)),
          -1 == wrlen
          ? EPIPE != errno
          : (errno = 0, sizeof(buf) != wrlen)),
@@ -528,11 +552,7 @@ closeTetherThread(struct TetherThread *self)
                     "Unable to reset synchronisation clock");
             });
 
-        destroyCond(&self->mState.mCond);
-        destroyMutex(&self->mState.mMutex);
-        destroyMutex(&self->mActivity.mMutex);
-
-        closePipe(&self->mControlPipe);
+        closeTetherThread_(self);
     }
 }
 

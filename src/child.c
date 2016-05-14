@@ -1783,7 +1783,8 @@ monitorChild(struct ChildProcess     *self,
      * the main monitoring thread deals exclusively with non-blocking
      * file descriptors. */
 
-    createTetherThread(&tetherThread_, nullPipe);
+    ERROR_IF(
+        createTetherThread(&tetherThread_, nullPipe));
     tetherThread = &tetherThread_;
 
     ERROR_IF(
@@ -1914,7 +1915,7 @@ monitorChild(struct ChildProcess     *self,
 
             [POLL_FD_CHILD_TETHER] =
             {
-                .fd     = tetherThread->mControlPipe.mWrFile->mFd,
+                .fd     = tetherThread->mControlPipe->mWrFile->mFd,
                 .events = POLL_DISCONNECTEVENT,
             },
         },

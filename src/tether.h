@@ -46,10 +46,12 @@ enum TetherThreadState
 
 struct TetherThread
 {
-    pthread_t    mThread;
-    struct Pipe  mControlPipe;
+    struct Pipe  mControlPipe_;
+    struct Pipe *mControlPipe;
+
     struct Pipe *mNullPipe;
     bool         mFlushed;
+    pthread_t    mThread;
 
     struct {
         pthread_mutex_t       mMutex;
@@ -64,7 +66,7 @@ struct TetherThread
 };
 
 /* -------------------------------------------------------------------------- */
-void
+int
 createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe);
 
 void
