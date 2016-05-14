@@ -1279,7 +1279,7 @@ createProcessAppLock(void)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ProcessAppLock *
 destroyProcessAppLock(struct ProcessAppLock *self)
 {
     if (self)
@@ -1292,6 +1292,8 @@ destroyProcessAppLock(struct ProcessAppLock *self)
                 terminate(errno, "Unable to release application lock");
             });
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

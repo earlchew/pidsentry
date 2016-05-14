@@ -279,7 +279,7 @@ releaseProcessAppLock(void);
 struct ProcessAppLock *
 createProcessAppLock(void);
 
-void
+struct ProcessAppLock *
 destroyProcessAppLock(struct ProcessAppLock *self);
 
 unsigned
