@@ -62,7 +62,7 @@ struct ErrorModule
  * be used on the error return path. Destructors should have void
  * returns to avoid inadvertentl having an error return. */
 
-#define ERROR_IF_(Sense_, Predicate_, ...)           \
+#define ERROR_IF_(Sense_, Predicate_, Message_, ...) \
     do                                               \
     {                                                \
         /* Do not allow error management within      \
@@ -72,7 +72,7 @@ struct ErrorModule
         __attribute__((__unused__)) = 0;             \
                                                      \
         struct ErrorFrame frame_ =                   \
-            ERRORFRAME_INIT( # Predicate_ );         \
+            ERRORFRAME_INIT( (Message_) );           \
                                                      \
         /* Stack unwinding restarts if a new frame   \
          * sequence is started. */                   \
@@ -91,25 +91,34 @@ struct ErrorModule
     while (0)
 
 #define ERROR_IF(Predicate_, ...)                  \
-    ERROR_IF_(/*!!*/, Predicate_, ## __VA_ARGS__)
+    ERROR_IF_(/*!!*/, Predicate_, # Predicate_, ## __VA_ARGS__)
 
 #define ERROR_UNLESS(Predicate_, ...)              \
-    ERROR_IF_(!, Predicate_, ##  __VA_ARGS__)
+    ERROR_IF_(!, Predicate_, # Predicate_, ##  __VA_ARGS__)
 
 /* -------------------------------------------------------------------------- */
-#define ALERT_IF(Predicate_, ...) \
-    UNWIND_IF_(warn, errorWarn, /*!!*/, Predicate_, ## __VA_ARGS__)
+#define ALERT_IF(Predicate_, ...)                       \
+    UNWIND_IF_(                                         \
+        warn, errorWarn, /*!!*/,                        \
+        Predicate_, # Predicate_, ## __VA_ARGS__)
 
-#define ALERT_UNLESS(Predicate_, ...) \
-    UNWIND_IF_(warn, errorWarn, !, Predicate_, ## __VA_ARGS__)
+#define ALERT_UNLESS(Predicate_, ...)                   \
+    UNWIND_IF_(                                         \
+        warn, errorWarn, !,                             \
+        Predicate_, # Predicate_, ## __VA_ARGS__)
 
-#define ABORT_IF(Predicate_, ...) \
-    UNWIND_IF_(terminate, errorTerminate, /*!!*/, Predicate_, ## __VA_ARGS__)
+#define ABORT_IF(Predicate_, ...)                       \
+    UNWIND_IF_(                                         \
+        terminate, errorTerminate, /*!!*/,              \
+        Predicate_, # Predicate_, ## __VA_ARGS__)
 
-#define ABORT_UNLESS(Predicate_, ...) \
-    UNWIND_IF_(terminate, errorTerminate, !, Predicate_, ## __VA_ARGS__)
+#define ABORT_UNLESS(Predicate_, ...)                   \
+    UNWIND_IF_(                                         \
+        terminate, errorTerminate, !,                   \
+        Predicate_, # Predicate_, ## __VA_ARGS__)
 
-#define UNWIND_IF_(Action_, Actor_, Sense_, Predicate_, ...)    \
+#define UNWIND_IF_(                                             \
+    Action_, Actor_, Sense_, Predicate_, Message_, ...)         \
     do                                                          \
     {                                                           \
         /* Stack unwinding restarts if a new frame              \
@@ -140,7 +149,7 @@ struct ErrorModule
                     (Action_)(                                  \
                         errno,                                  \
                         __func__, __FILE__, __LINE__,           \
-                        "%s", # Predicate_);                    \
+                        "%s", (Message_));                      \
                 while (0);                                      \
             }                                                   \
                                                                 \
