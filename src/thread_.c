@@ -107,8 +107,7 @@ ownThreadId(void)
 /* -------------------------------------------------------------------------- */
 struct ThreadFuture_
 {
-    int mReturn;
-    int mErrno;
+    int mStatus;
 };
 
 static struct ThreadFuture_ *
@@ -117,10 +116,7 @@ createThreadFuture_(void)
     struct ThreadFuture_ *self = malloc(sizeof(*self));
 
     if (self)
-    {
-        self->mReturn = -1;
-        self->mErrno  = 0;
-    }
+        self->mStatus = -1;
 
     return self;
 }
@@ -137,8 +133,7 @@ struct Thread_
     pthread_mutex_t mMutex;
     pthread_cond_t  mCond;
 
-    void *mContext;
-    int (*mThread)(void *);
+    struct ThreadMethod mMethod;
 
     struct ThreadFuture_ *mFuture;
 };
@@ -148,8 +143,7 @@ createThread_(void *self_)
 {
     struct Thread_ *self = self_;
 
-    void *context         = self->mContext;
-    int (*thread)(void *) = self->mThread;
+    struct ThreadMethod method = self->mMethod;
 
     struct ThreadFuture_ *future = self->mFuture;
 
@@ -158,8 +152,13 @@ createThread_(void *self_)
 
     pthread_cleanup_push(destroyThreadFuture_, future);
     {
-        future->mReturn = thread(context);
-        future->mErrno  = errno;
+        int rc;
+
+        ABORT_IF(
+            (rc = callThreadMethod(method),
+             -1 == rc));
+
+        future->mStatus = rc;
     }
     pthread_cleanup_pop(0);
 
@@ -167,18 +166,15 @@ createThread_(void *self_)
 }
 
 void
-createThread(pthread_t      *self,
-             pthread_attr_t *aAttr,
-             int             aThread(void *),
-             void           *aContext)
+createThread(
+    pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod)
 {
     struct Thread_ thread =
     {
         .mMutex = PTHREAD_MUTEX_INITIALIZER,
         .mCond  = PTHREAD_COND_INITIALIZER,
 
-        .mContext = aContext,
-        .mThread  = aThread,
+        .mMethod = aMethod,
     };
 
     ABORT_UNLESS(
@@ -206,7 +202,7 @@ createThread(pthread_t      *self,
 
 /* -------------------------------------------------------------------------- */
 int
-joinThread(pthread_t *self, int *aReturn)
+joinThread(pthread_t *self)
 {
     int rc = -1;
 
@@ -224,10 +220,7 @@ joinThread(pthread_t *self, int *aReturn)
 
     future = future_;
 
-    *aReturn = future->mReturn;
-    errno    = future->mErrno;
-
-    rc = 0;
+    rc = future->mStatus;
 
 Finally:
 

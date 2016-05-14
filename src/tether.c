@@ -258,9 +258,13 @@ pollFdCompletion_(struct TetherPoll *self)
 }
 
 static int
-tetherThreadMain_(void *self_)
+tetherThreadMain_(struct TetherThread *self)
 {
-    struct TetherThread *self = self_;
+    int rc = -1;
+
+    struct PollFd *pollfd = 0;
+
+    struct ThreadSigMask *threadSigMask = 0;
 
     {
         lockMutex(&self->mState.mMutex);
@@ -287,9 +291,9 @@ tetherThreadMain_(void *self_)
      * these signals are not delivered until the thread is
      * flushed after the child process has terminated. */
 
-    struct ThreadSigMask threadSigMask;
-    pushThreadSigMask(
-        &threadSigMask, ThreadSigMaskUnblock, (const int []) { SIGALRM, 0 });
+    struct ThreadSigMask threadSigMask_;
+    threadSigMask = pushThreadSigMask(
+        &threadSigMask_, ThreadSigMaskUnblock, (const int []) { SIGALRM, 0 });
 
     struct TetherPoll tetherpoll =
     {
@@ -324,57 +328,39 @@ tetherThreadMain_(void *self_)
         },
     };
 
-    struct PollFd pollfd;
-    ABORT_IF(
+    struct PollFd pollfd_;
+    ERROR_IF(
         createPollFd(
-            &pollfd,
+            &pollfd_,
             tetherpoll.mPollFds,
             tetherpoll.mPollFdActions,
             pollFdNames_, POLL_FD_TETHER_KINDS,
             tetherpoll.mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_TETHER_TIMER_KINDS,
-            PollFdCompletionMethod(pollFdCompletion_, &tetherpoll)),
-        {
-            terminate(
-                errno,
-                "Unable to initialise polling loop");
-        });
+            PollFdCompletionMethod(pollFdCompletion_, &tetherpoll)));
+    pollfd = &pollfd_;
 
-    ABORT_IF(
-        runPollFdLoop(&pollfd),
-        {
-            terminate(
-                errno,
-                "Unable to run polling loop");
-        });
+    ERROR_IF(
+        runPollFdLoop(pollfd));
 
-    closePollFd(&pollfd);
+    closePollFd(pollfd);
+    pollfd = 0;
 
-    popThreadSigMask(&threadSigMask);
+    threadSigMask = popThreadSigMask(threadSigMask);
 
     /* Close the input file descriptor so that there is a chance
      * to propagte SIGPIPE to the child process. */
 
-    ABORT_IF(
-        dup2(self->mNullPipe->mRdFile->mFd, srcFd) != srcFd,
-        {
-            terminate(
-                errno,
-                "Unable to dup fd %d to fd %d",
-                self->mNullPipe->mRdFile->mFd,
-                srcFd);
-        });
+    ERROR_IF(
+        dup2(self->mNullPipe->mRdFile->mFd, srcFd) != srcFd);
 
     /* Shut down the end of the control pipe controlled by this thread,
      * without closing the control pipe file descriptor itself. The
      * monitoring loop is waiting for the control pipe to close before
      * exiting the event loop. */
 
-    ABORT_IF(
-        dup2(self->mNullPipe->mRdFile->mFd, controlFd) != controlFd,
-        {
-            terminate(errno, "Unable to shut down tether thread control");
-        });
+    ERROR_IF(
+        dup2(self->mNullPipe->mRdFile->mFd, controlFd) != controlFd);
 
     debug(0, "tether emptied");
 
@@ -387,7 +373,18 @@ tetherThreadMain_(void *self_)
         unlockMutex(&self->mState.mMutex);
     }
 
-    return 0;
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        closePollFd(pollfd);
+
+        threadSigMask = popThreadSigMask(threadSigMask);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -426,7 +423,8 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 
         pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
 
-        createThread(&self->mThread, 0, tetherThreadMain_, self);
+        createThread(&self->mThread, 0,
+                     ThreadMethod(tetherThreadMain_, self));
 
         popThreadSigMask(&threadSigMask);
     }
@@ -527,30 +525,11 @@ closeTetherThread(struct TetherThread *self)
             unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
         }
 
-        int threadErr;
-        int err;
         ABORT_IF(
-            (err = joinThread(&self->mThread, &threadErr),
-             err || threadErr),
-            {
-                if (err)
-                    terminate(
-                        errno,
-                        "Unexpected error when joining tether thread");
-                else
-                    terminate(
-                        errno,
-                        "Unexpected error %d from joining tether thread",
-                        threadErr);
-            });
+            joinThread(&self->mThread));
 
         ABORT_IF(
-            unwatchProcessClock(),
-            {
-                terminate(
-                    errno,
-                    "Unable to reset synchronisation clock");
-            });
+            unwatchProcessClock());
 
         closeTetherThread_(self);
     }

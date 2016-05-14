@@ -29,10 +29,36 @@
 #ifndef THREAD_H
 #define THREAD_H
 
+#include "method_.h"
+
 #include <stdbool.h>
 #include <pthread.h>
 #include <signal.h>
 
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_ThreadMethod    int
+#define METHOD_CONST_ThreadMethod
+#define METHOD_ARG_LIST_ThreadMethod  ()
+#define METHOD_CALL_LIST_ThreadMethod ()
+
+#define METHOD_NAME      ThreadMethod
+#define METHOD_RETURN    METHOD_RETURN_ThreadMethod
+#define METHOD_CONST     METHOD_CONST_ThreadMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_ThreadMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_ThreadMethod
+#include "method_.h"
+
+#define ThreadMethod(Method_, Object_)          \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        ThreadMethod_,                          \
+        METHOD_RETURN_ThreadMethod,             \
+        METHOD_CONST_ThreadMethod,              \
+        METHOD_ARG_LIST_ThreadMethod,           \
+        METHOD_CALL_LIST_ThreadMethod)
+
+/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -80,13 +106,11 @@ ownThreadId(void);
 
 /* -------------------------------------------------------------------------- */
 void
-createThread(pthread_t      *self,
-             pthread_attr_t *aAttr,
-             int             aThread(void *),
-             void           *aContext);
+createThread(
+    pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod);
 
 int
-joinThread(pthread_t *self, int *aReturn);
+joinThread(pthread_t *self);
 
 void
 cancelThread(pthread_t *self);

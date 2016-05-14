@@ -38,9 +38,9 @@
 
 /* -------------------------------------------------------------------------- */
 static int
-monitorParent_(void *self_)
+monitorParent_(struct ParentProcess *self)
 {
-    struct ParentProcess *self = self_;
+    int rc = -1;
 
     debug(0,
           "watching parent pid %" PRId_Pid,
@@ -70,6 +70,12 @@ monitorParent_(void *self_)
         }
     }
 
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
     return 0;
 }
 
@@ -87,7 +93,8 @@ createParent(struct ParentProcess *self)
     if (1 == self->mParentPid.mPid)
         self->mParentPid = Pid(0);
 
-    createThread(&self->mThread_, 0, &monitorParent_, self);
+    createThread(&self->mThread_, 0,
+                 ThreadMethod(monitorParent_, self));
     self->mThread = &self->mThread_;
 
     rc = 0;
@@ -107,9 +114,8 @@ closeParent(struct ParentProcess *self)
     {
         cancelThread(self->mThread);
 
-        int threadErr;
         ABORT_UNLESS(
-            joinThread(self->mThread, &threadErr) && ECANCELED == errno);
+            joinThread(self->mThread) && ECANCELED == errno);
     }
 }
 
