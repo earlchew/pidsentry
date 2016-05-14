@@ -192,6 +192,8 @@ runAgent_(struct RunAgentProcess_ *self, struct Pid aPid)
         "running agent pid %" PRId_Pid " in pgid %" PRId_Pgid,
         FMTd_Pid(ownProcessId()), FMTd_Pgid(ownProcessGroupId()));
 
+    ensure(ownProcessId().mPid == ownProcessGroupId().mPgid);
+
     closePipeWriter(self->mParentPipe);
 
     struct ExitCode exitCode = { EXIT_FAILURE };
@@ -212,9 +214,8 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
-runAgent(struct Agent    *self,
-         struct ExitCode *aExitCode)
+static int
+runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
 {
     int rc = -1;
 
@@ -363,6 +364,34 @@ Finally:
         closeParent(parentProcess);
         closeJobControl(jobControl);
     });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+runAgent(struct Agent    *self,
+         struct ExitCode *aExitCode)
+{
+    int rc = -1;
+
+    if (testAction(TestLevelRace) ||
+        ownProcessId().mPid != ownProcessGroupId().mPgid)
+    {
+        ERROR_IF(
+            runAgentProcess_(self, aExitCode));
+    }
+    else
+    {
+        ERROR_IF(
+            runAgentSentry_(self, ownProcessId(), 0, aExitCode));
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
 
     return rc;
 }
