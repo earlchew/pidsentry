@@ -148,12 +148,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
             self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno
-         : (errno = 0, rdlen && sizeof(buf) != rdlen)),
-        {
-            warn(
-                errno,
-                "Unable to read umbilical connection");
-        });
+         : (errno = 0, rdlen && sizeof(buf) != rdlen)));
 
     /* If the far end did not read the previous echo, and simply closed its
      * end of the connection (likely because it detected the child
@@ -194,6 +189,10 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
         {
             debug(1, "umbilical connection echo request");
 
+            /* Receiving EPIPE means that the umbilical connection
+             * has been closed. Rely on the umbilical connection
+             * reader to reactivate and detect the closed connection. */
+
             ssize_t wrlen;
             ERROR_IF(
                 (wrlen = writeFd(
@@ -201,16 +200,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
                     buf, rdlen),
                  -1 == wrlen
                  ? EPIPE != errno
-                 : (errno = 0, wrlen != rdlen)),
-                {
-                    /* Receiving EPIPE means that the umbilical connection
-                     * has been closed. Rely on the umbilical connection
-                     * reader to reactivate and detect the closed connection. */
-
-                    warn(
-                        errno,
-                        "Unable to echo activity into umbilical connection");
-                });
+                 : (errno = 0, wrlen != rdlen)));
         }
 
         /* Once activity is detected on the umbilical, reset the
@@ -433,43 +423,34 @@ ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 runUmbilicalProcess_(struct UmbilicalProcess *self,
                      struct Pid               aWatchdogPid,
                      struct ChildProcess     *aChildProcess,
                      struct SocketPair       *aUmbilicalSocket,
                      struct PidServer        *aPidServer)
 {
+    int rc = -1;
+
+    struct ProcessAppLock *appLock = 0;
 
     debug(0,
           "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
           FMTd_Pid(ownProcessId()),
           FMTd_Pgid(ownProcessGroupId()));
 
-    ABORT_IF(
+    ERROR_IF(
         STDIN_FILENO !=
-        dup2(aUmbilicalSocket->mChildSocket->mFile->mFd, STDIN_FILENO),
-        {
-            terminate(
-                errno,
-                "Unable to dup %d to stdin",
-                aUmbilicalSocket->mChildSocket->mFile->mFd);
-        });
+        dup2(aUmbilicalSocket->mChildSocket->mFile->mFd, STDIN_FILENO));
 
-    ABORT_IF(
+    ERROR_IF(
         STDOUT_FILENO != dup2(
-            aUmbilicalSocket->mChildSocket->mFile->mFd, STDOUT_FILENO),
-        {
-            terminate(
-                errno,
-                "Unable to dup %d to stdout",
-                aUmbilicalSocket->mChildSocket->mFile->mFd);
-        });
+            aUmbilicalSocket->mChildSocket->mFile->mFd, STDOUT_FILENO));
 
     closeSocketPair(aUmbilicalSocket);
 
     {
-        struct ProcessAppLock *appLock = createProcessAppLock();
+        appLock = createProcessAppLock();
 
         int whiteList[] =
         {
@@ -481,26 +462,16 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
             aPidServer ? aPidServer->mEventQueue->mFile->mFd : -1,
         };
 
-        ABORT_IF(
-            closeFdDescriptors(whiteList, NUMBEROF(whiteList)),
-            {
-                terminate(
-                    errno,
-                    "Unable to close extraneous file descriptors");
-            });
+        ERROR_IF(
+            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
 
-        destroyProcessAppLock(appLock);
+        appLock = destroyProcessAppLock(appLock);
     }
 
     if (testMode(TestLevelSync))
     {
-        ABORT_IF(
-            raise(SIGSTOP),
-            {
-                terminate(
-                    errno,
-                    "Unable to stop process");
-            });
+        ERROR_IF(
+            raise(SIGSTOP));
     }
 
     /* The umbilical process is not the parent of the child process being
@@ -511,31 +482,22 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
      * a means of controlling the cild process. */
 
     struct UmbilicalMonitor monitorpoll;
-    ABORT_IF(
+    ERROR_IF(
         createUmbilicalMonitor(
-            &monitorpoll, STDIN_FILENO, aWatchdogPid, aPidServer),
-        {
-            terminate(errno, "Unable to create umbilical monitor");
-        });
+            &monitorpoll, STDIN_FILENO, aWatchdogPid, aPidServer));
 
     /* Synchronise with the watchdog to avoid timing races. The watchdog
      * writes to the umbilical when it is ready to start timing. */
 
     debug(0, "synchronising umbilical");
 
-    ABORT_IF(
-        synchroniseUmbilicalMonitor(&monitorpoll),
-        {
-            terminate(errno, "Unable to synchronise umbilical monitor");
-        });
+    ERROR_IF(
+        synchroniseUmbilicalMonitor(&monitorpoll));
 
     debug(0, "synchronised umbilical");
 
-    ABORT_IF(
-        runUmbilicalMonitor(&monitorpoll),
-        {
-            terminate(errno, "Unable to run umbilical monitor");
-        });
+    ERROR_IF(
+        runUmbilicalMonitor(&monitorpoll));
 
     /* The umbilical monitor returns when the connection to the watchdog
      * is either lost or no longer active. Only issue a diagnostic if
@@ -546,15 +508,26 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
              "Killing child pgid %" PRId_Pgid " from umbilical",
              FMTd_Pgid(aChildProcess->mPgid));
 
-    ABORT_IF(
+    ERROR_IF(
         killChildProcessGroup(aChildProcess));
 
     /* If the shutdown was not orderly, assume the worst and attempt to
      * clean up the watchdog process group. */
 
     if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
-        ABORT_IF(
+        ERROR_IF(
             signalProcessGroup(self->mWatchdogPgid, SIGKILL));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        appLock = destroyProcessAppLock(appLock);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -595,11 +568,12 @@ createUmbilicalProcess_(struct UmbilicalProcess *self, struct Pid aPid)
                 (void *) 0)),
          -1 == self->mWatchdogAnchor.mPid));
 
-    runUmbilicalProcess_(self,
-                         self->mWatchdogPid,
-                         self->mChildProcess,
-                         self->mSocket,
-                         self->mPidServer);
+    ERROR_IF(
+        runUmbilicalProcess_(self,
+                             self->mWatchdogPid,
+                             self->mChildProcess,
+                             self->mSocket,
+                             self->mPidServer));
 
     debug(0, "exit umbilical");
 
