@@ -545,7 +545,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-createUmbilicalProcess_(struct UmbilicalProcess *self, struct Pid aPid)
+createUmbilicalProcess_(struct UmbilicalProcess *self)
 {
     int rc = -1;
 
@@ -559,26 +559,26 @@ createUmbilicalProcess_(struct UmbilicalProcess *self, struct Pid aPid)
         (self->mChildAnchor = forkProcessChild(
             ForkProcessSetProcessGroup,
             self->mChildProcess->mPgid,
-            ForkProcessMethod(
+            IntMethod(
                 LAMBDA(
-                    int, (void *this, struct Pid aForkedPid),
+                    int, (char *this),
                     {
                         return EXIT_SUCCESS;
                     }),
-                (void *) 0)),
+                "")),
          -1 == self->mChildAnchor.mPid));
 
     ERROR_IF(
         (self->mWatchdogAnchor = forkProcessChild(
             ForkProcessSetProcessGroup,
             self->mWatchdogPgid,
-            ForkProcessMethod(
+            IntMethod(
                 LAMBDA(
-                    int, (void *this, struct Pid aForkedPid),
+                    int, (char *this),
                     {
                         return EXIT_SUCCESS;
                     }),
-                (void *) 0)),
+                "")),
          -1 == self->mWatchdogAnchor.mPid));
 
     ERROR_IF(
@@ -633,10 +633,10 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     struct Pid umbilicalPid;
     ERROR_IF(
-        (umbilicalPid = forkProcessChild(ForkProcessSetProcessGroup,
-                                         Pgid(0),
-                                         ForkProcessMethod(
-                                             createUmbilicalProcess_, self)),
+        (umbilicalPid = forkProcessChild(
+            ForkProcessSetProcessGroup,
+            Pgid(0),
+            IntMethod(createUmbilicalProcess_, self)),
          -1 == umbilicalPid.mPid));
     self->mPid = umbilicalPid;
 

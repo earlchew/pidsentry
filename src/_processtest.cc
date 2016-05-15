@@ -129,7 +129,7 @@ TEST_F(ProcessTest, ProcessSignature)
 
     struct Pid firstChild = forkProcessChild(ForkProcessInheritProcessGroup,
                                              Pgid(0),
-                                             ForkProcessMethodNil());
+                                             IntMethodNil());
     EXPECT_NE(-1, firstChild.mPid);
 
     if ( ! firstChild.mPid)
@@ -169,7 +169,7 @@ TEST_F(ProcessTest, ProcessSignature)
 
     struct Pid secondChild = forkProcessChild(ForkProcessInheritProcessGroup,
                                               Pgid(0),
-                                              ForkProcessMethodNil());
+                                              IntMethodNil());
     EXPECT_NE(-1, secondChild.mPid);
 
     if ( ! secondChild.mPid)
@@ -291,7 +291,7 @@ TEST_F(ProcessTest, ProcessDaemon)
 
     daemonState->mErrno = ENOSYS;
 
-    struct Pid daemonPid = forkProcessDaemon(ForkProcessMethodNil());
+    struct Pid daemonPid = forkProcessDaemon(IntMethodNil());
 
     if ( ! daemonPid.mPid)
     {

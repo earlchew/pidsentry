@@ -419,13 +419,13 @@ struct ForkChildProcess_
 };
 
 static int
-forkChild_(struct ForkChildProcess_ *self, struct Pid aPid)
+forkChild_(struct ForkChildProcess_ *self)
 {
     int rc = -1;
 
     debug(
         0,
-        "starting child process pid %" PRId_Pid, FMTd_Pid(aPid));
+        "starting child process pid %" PRId_Pid, FMTd_Pid(ownProcessId()));
 
     int err;
 
@@ -642,8 +642,7 @@ forkChild(
     ERROR_IF(
         (childPid = forkProcessChild(ForkProcessSetProcessGroup,
                                      Pgid(0),
-                                     ForkProcessMethod(
-                                         forkChild_, &childProcess)),
+                                     IntMethod(forkChild_, &childProcess)),
          -1 == childPid.mPid));
 
     /* Do not try to place the watchdog in the process group of the child.

@@ -208,7 +208,7 @@ struct TemporaryFileProcess_
 };
 
 static int
-temporaryFileProcess_(struct TemporaryFileProcess_ *self, struct Pid aPid)
+temporaryFileProcess_(struct TemporaryFileProcess_ *self)
 {
     int rc = -1;
 
@@ -311,8 +311,7 @@ temporaryFile_(const char *aDirName)
         (tempPid = forkProcessChild(
             ForkProcessSetSessionLeader,
             Pgid(0),
-            ForkProcessMethod(
-                temporaryFileProcess_, &temporaryFileProcess)),
+            IntMethod(temporaryFileProcess_, &temporaryFileProcess)),
          -1 == tempPid.mPid));
 
     closeSocketPairChild(socketPair);

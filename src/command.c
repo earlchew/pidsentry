@@ -156,11 +156,11 @@ struct RunCommandProcess_
 };
 
 static int
-runCommand_(struct RunCommandProcess_ *self, struct Pid aPid)
+runCommand_(struct RunCommandProcess_ *self)
 {
     int rc = -1;
 
-    self->mCommand->mPid = aPid;
+    self->mCommand->mPid = ownProcessId();
 
     debug(0,
           "starting command process pid %" PRId_Pid,
@@ -239,8 +239,7 @@ runCommand(struct Command *self,
     ERROR_IF(
         (pid = forkProcessChild(ForkProcessInheritProcessGroup,
                                 Pgid(0),
-                                ForkProcessMethod(
-                                    runCommand_, &commandProcess)),
+                                IntMethod(runCommand_, &commandProcess)),
          -1 == pid.mPid));
 
     self->mPid = pid;

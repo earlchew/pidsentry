@@ -1437,13 +1437,13 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static void
-callForkMethod_(struct ForkProcessMethod aForkMethod)
+callForkMethod_(struct IntMethod aMethod)
 {
-    if ( ! ownForkProcessMethodNil(aForkMethod))
+    if ( ! ownIntMethodNil(aMethod))
     {
         int status;
         ABORT_IF(
-            (status = callForkProcessMethod(aForkMethod, ownProcessId()),
+            (status = callIntMethod(aMethod),
              -1 == status || (errno = 0, 0 > status || 255 < status)),
             {
                 if (-1 != status)
@@ -1458,9 +1458,9 @@ callForkMethod_(struct ForkProcessMethod aForkMethod)
 
 /* -------------------------------------------------------------------------- */
 struct Pid
-forkProcessChild(enum ForkProcessOption   aOption,
-                 struct Pgid              aPgid,
-                 struct ForkProcessMethod aForkMethod)
+forkProcessChild(enum ForkProcessOption aOption,
+                 struct Pgid            aPgid,
+                 struct IntMethod       aMethod)
 {
     pid_t rc = -1;
 
@@ -1552,7 +1552,7 @@ forkProcessChild(enum ForkProcessOption   aOption,
                 err = "Unable to reset signal handlers";
             });
 
-        callForkMethod_(aForkMethod);
+        callForkMethod_(aMethod);
 
         break;
     }
@@ -1595,7 +1595,7 @@ forkProcessDaemonSignalHandler_(struct ForkProcessDaemon *self, int aSigNum)
 }
 
 struct Pid
-forkProcessDaemon(struct ForkProcessMethod aForkMethod)
+forkProcessDaemon(struct IntMethod aForkMethod)
 {
     pid_t rc = -1;
 
@@ -1616,7 +1616,7 @@ forkProcessDaemon(struct ForkProcessMethod aForkMethod)
     ERROR_IF(
         (serverPid = forkProcessChild(ForkProcessInheritProcessGroup,
                                       Pgid(0),
-                                      ForkProcessMethodNil()),
+                                      IntMethodNil()),
          -1 == serverPid.mPid));
 
     struct Pid daemonPid;
@@ -1654,7 +1654,7 @@ forkProcessDaemon(struct ForkProcessMethod aForkMethod)
         ABORT_IF(
             (daemonPid = forkProcessChild(ForkProcessSetProcessGroup,
                                           Pgid(0),
-                                          ForkProcessMethodNil()),
+                                          IntMethodNil()),
              -1 == daemonPid.mPid));
 
         /* Terminate the server to make the child an orphan. The child
