@@ -45,7 +45,7 @@ struct StdFdFiller
 int
 createStdFdFiller(struct StdFdFiller *self);
 
-void
+struct StdFdFiller *
 closeStdFdFiller(struct StdFdFiller *self);
 
 /* -------------------------------------------------------------------------- */

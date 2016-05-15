@@ -281,11 +281,16 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ParseArgList *
 closeParseArgList(struct ParseArgList *self)
 {
-    free(self->mArgs);
-    free(self->mArgv);
+    if (self)
+    {
+        free(self->mArgs);
+        free(self->mArgv);
+    }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

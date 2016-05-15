@@ -77,7 +77,7 @@ struct PidServer
 int
 createPidServer(struct PidServer *self);
 
-void
+struct PidServer *
 closePidServer(struct PidServer *self);
 
 int

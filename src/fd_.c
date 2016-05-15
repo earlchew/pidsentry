@@ -50,17 +50,16 @@
 static const char devNullPath_[] = DEVNULLPATH;
 
 /* -------------------------------------------------------------------------- */
-void
-closeFd(int *aFd)
+int
+closeFd(int aFd)
 {
-    int fd = *aFd;
-
-    if (-1 != fd)
+    if (-1 != aFd)
     {
-        *aFd = -1;
         ABORT_IF(
-            close(fd));
+            close(aFd));
     }
+
+    return -1;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -123,11 +122,7 @@ closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
                          -1 == valid));
 
                     if (valid)
-                    {
-                        int closedFd = fd;
-
-                        closeFd(&closedFd);
-                    }
+                        closeFd(fd);
                 }
                 else
                 {
@@ -208,7 +203,8 @@ int
 nullifyFd(int aFd)
 {
     int rc = -1;
-    int fd;
+
+    int fd = -1;
 
     /* Take a process lock to avoid the possibility of a concurrent
      * fork() ending up with more file descriptors than it anticipated. */
@@ -241,7 +237,7 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd);
+        fd = closeFd(fd);
 
         destroyProcessAppLock(appLock);
     });

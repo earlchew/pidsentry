@@ -1068,8 +1068,8 @@ fetchProcessState(struct Pid aPid)
 {
     struct ProcessState rc = { .mState = ProcessStateError };
 
-    int   statfd  = -1;
-    char *statbuf = 0;
+    int   statFd  = -1;
+    char *statBuf = 0;
 
     struct ProcessDirName processDirName;
 
@@ -1084,17 +1084,17 @@ fetchProcessState(struct Pid aPid)
             processStatFileNameFmt_, processDirName.mDirName);
 
     ERROR_IF(
-        (statfd = open(processStatFileName, O_RDONLY),
-         -1 == statfd));
+        (statFd = open(processStatFileName, O_RDONLY),
+         -1 == statFd));
 
     ssize_t statlen;
     ERROR_IF(
-        (statlen = readFdFully(statfd, &statbuf, 0),
+        (statlen = readFdFully(statFd, &statBuf, 0),
          -1 == statlen));
 
-    char *statend = statbuf + statlen;
+    char *statend = statBuf + statlen;
 
-    for (char *bufptr = statend; bufptr != statbuf; --bufptr)
+    for (char *bufptr = statend; bufptr != statBuf; --bufptr)
     {
         if (')' == bufptr[-1])
         {
@@ -1126,9 +1126,9 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&statfd);
+        statFd = closeFd(statFd);
 
-        free(statbuf);
+        free(statBuf);
     });
 
     return rc;
@@ -2152,7 +2152,7 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd);
+        fd = closeFd(fd);
 
         free(buf);
         free(signature);

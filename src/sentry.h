@@ -79,7 +79,7 @@ int
 createSentry(struct Sentry *self,
              char         **aCmd);
 
-void
+struct Sentry *
 closeSentry(struct Sentry *self);
 
 enum PidFileStatus

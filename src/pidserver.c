@@ -146,7 +146,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct PidServer *
 closePidServer(struct PidServer *self)
 {
     if (self)
@@ -164,6 +164,8 @@ closePidServer(struct PidServer *self)
         closeEventQueue(self->mEventQueue);
         closeUnixSocket(self->mSocket);
    }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

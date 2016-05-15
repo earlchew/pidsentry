@@ -75,7 +75,7 @@ pingTetherThread(struct TetherThread *self);
 void
 flushTetherThread(struct TetherThread *self);
 
-void
+struct TetherThread *
 closeTetherThread(struct TetherThread *self);
 
 /* -------------------------------------------------------------------------- */

@@ -102,7 +102,7 @@ raiseChildSigCont(struct ChildProcess *self);
 int
 reapChild(struct ChildProcess *self, int *aStatus);
 
-void
+struct ChildProcess *
 closeChild(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */

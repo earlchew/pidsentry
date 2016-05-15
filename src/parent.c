@@ -107,7 +107,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ParentProcess *
 closeParent(struct ParentProcess *self)
 {
     if (self)
@@ -117,6 +117,8 @@ closeParent(struct ParentProcess *self)
         ABORT_UNLESS(
             joinThread(self->mThread) && ECANCELED == errno);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

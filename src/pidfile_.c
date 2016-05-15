@@ -217,9 +217,8 @@ struct Pid
 readPidFile(const struct PidFile *self,
             struct sockaddr_un   *aPidKeeperAddr)
 {
-    int        rc    = -1;
-    struct Pid pid   = Pid(0);
-    int        pidfd = -1;
+    int        rc  = -1;
+    struct Pid pid = Pid(0);
 
     char *bufcpy = 0;
 
@@ -265,8 +264,6 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&pidfd);
-
         free(bufcpy);
     });
 
@@ -607,7 +604,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct PidFile *
 closePidFile(struct PidFile *self)
 {
     if (self && self->mFile)
@@ -654,6 +651,8 @@ closePidFile(struct PidFile *self)
         self->mFile = 0;
         self->mLock = 0;
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

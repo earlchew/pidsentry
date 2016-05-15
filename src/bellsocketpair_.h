@@ -47,7 +47,7 @@ struct BellSocketPair
 int
 createBellSocketPair(struct BellSocketPair *self, unsigned aFlags);
 
-void
+struct BellSocketPair *
 closeBellSocketPair(struct BellSocketPair *self);
 
 void

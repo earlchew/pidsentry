@@ -267,7 +267,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct Sentry *
 closeSentry(struct Sentry *self)
 {
     if (self)
@@ -280,6 +280,8 @@ closeSentry(struct Sentry *self)
         closeSocketPair(self->mUmbilicalSocket);
         closeStdFdFiller(self->mStdFdFiller);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -70,11 +70,13 @@ closeBellSocketPairChild(struct BellSocketPair *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct BellSocketPair *
 closeBellSocketPair(struct BellSocketPair *self)
 {
     if (self)
         closeSocketPair(self->mSocketPair);
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

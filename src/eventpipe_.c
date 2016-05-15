@@ -67,7 +67,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct EventPipe *
 closeEventPipe(struct EventPipe *self)
 {
     if (self)
@@ -76,6 +76,8 @@ closeEventPipe(struct EventPipe *self)
 
         self->mMutex = destroyThreadSigMutex(self->mMutex);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -57,7 +57,7 @@ enum EventLatchSetting
 int
 createEventLatch(struct EventLatch *self);
 
-void
+struct EventLatch *
 closeEventLatch(struct EventLatch *self);
 
 enum EventLatchSetting

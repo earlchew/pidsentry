@@ -87,7 +87,7 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd);
+        fd = closeFd(fd);
 
         free(buf);
     });

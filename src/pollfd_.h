@@ -159,7 +159,7 @@ createPollFd(struct PollFd                 *self,
 int
 runPollFdLoop(struct PollFd *self);
 
-void
+struct PollFd *
 closePollFd(struct PollFd *self);
 
 /* -------------------------------------------------------------------------- */

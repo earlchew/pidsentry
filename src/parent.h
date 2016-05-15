@@ -50,7 +50,7 @@ struct ParentProcess
 int
 createParent(struct ParentProcess *self);
 
-void
+struct ParentProcess *
 closeParent(struct ParentProcess *self);
 
 /* -------------------------------------------------------------------------- */

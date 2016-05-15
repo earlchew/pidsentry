@@ -321,13 +321,15 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct Command *
 closeCommand(struct Command *self)
 {
     if (self)
     {
         closeUnixSocket(self->mKeeperTether);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

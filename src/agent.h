@@ -50,7 +50,7 @@ int
 createAgent(struct Agent *self,
             char         **aCmd);
 
-void
+struct Agent *
 closeAgent(struct Agent *self);
 
 int

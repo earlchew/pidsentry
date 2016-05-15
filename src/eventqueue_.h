@@ -88,7 +88,7 @@ struct EventQueueFile
 int
 createEventQueue(struct EventQueue *self);
 
-void
+struct EventQueue *
 closeEventQueue(struct EventQueue *self);
 
 int
@@ -109,7 +109,7 @@ createEventQueueFile(struct EventQueueFile     *self,
                      enum EventQueuePollTrigger aTrigger,
                      struct EventQueueHandle    aSubject);
 
-void
+struct EventQueueFile *
 closeEventQueueFile(struct EventQueueFile *self);
 
 /* -------------------------------------------------------------------------- */

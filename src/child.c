@@ -749,7 +749,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ChildProcess *
 closeChild(struct ChildProcess *self)
 {
     if (self)
@@ -770,6 +770,8 @@ closeChild(struct ChildProcess *self)
         closeEventLatch(self->mUmbilicalLatch);
         closeEventLatch(self->mChildLatch);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

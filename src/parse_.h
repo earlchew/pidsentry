@@ -50,7 +50,7 @@ struct ParseArgList
 int
 createParseArgListCSV(struct ParseArgList *self, const char *aArg);
 
-void
+struct ParseArgList *
 closeParseArgList(struct ParseArgList *self);
 
 /* -------------------------------------------------------------------------- */

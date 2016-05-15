@@ -66,7 +66,7 @@ struct JobControl
 int
 createJobControl(struct JobControl *self);
 
-void
+struct JobControl *
 closeJobControl(struct JobControl *self);
 
 int

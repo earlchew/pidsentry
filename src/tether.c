@@ -502,7 +502,7 @@ flushTetherThread(struct TetherThread *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct TetherThread *
 closeTetherThread(struct TetherThread *self)
 {
     if (self)
@@ -533,6 +533,8 @@ closeTetherThread(struct TetherThread *self)
 
         closeTetherThread_(self);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

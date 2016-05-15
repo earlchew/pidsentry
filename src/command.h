@@ -70,7 +70,7 @@ int
 reapCommand(struct Command  *self,
             struct ExitCode *aExitCode);
 
-void
+struct Command *
 closeCommand(struct Command *self);
 
 /* -------------------------------------------------------------------------- */

@@ -77,13 +77,13 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct EventQueue *
 closeEventQueue(struct EventQueue *self)
 {
     if (self)
-    {
         closeFile(self->mFile);
-    }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -194,7 +194,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct EventQueueFile *
 closeEventQueueFile(struct EventQueueFile *self)
 {
     if (self)
@@ -204,6 +204,8 @@ closeEventQueueFile(struct EventQueueFile *self)
                 self->mQueue->mFile->mFd, EPOLL_CTL_DEL, self->mFile->mFd, 0) &&
             ENOENT != errno);
     }
+
+    return 0;
 }
 
 

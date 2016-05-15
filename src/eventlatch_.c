@@ -53,7 +53,7 @@ createEventLatch(struct EventLatch *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct EventLatch *
 closeEventLatch(struct EventLatch *self)
 {
     if (self)
@@ -64,6 +64,8 @@ closeEventLatch(struct EventLatch *self)
 
         self->mMutex = destroyThreadSigMutex(self->mMutex);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

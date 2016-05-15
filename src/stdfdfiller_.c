@@ -63,9 +63,7 @@ createStdFdFiller(struct StdFdFiller *self)
      * end of the pipe. Any attempt to write will fail, and any
      * attempt to read will yield EOF. */
 
-    closeFd(&fd[1]);
-
-    fd[1] = -1;
+    fd[1] = closeFd(fd[1]);
 
     ERROR_IF(
         createFile(&self->mFile_[0], fd[0]));
@@ -87,8 +85,8 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd[0]);
-        closeFd(&fd[1]);
+        fd[0] = closeFd(fd[0]);
+        fd[1] = closeFd(fd[1]);
 
         if (rc)
         {
@@ -104,17 +102,18 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct StdFdFiller *
 closeStdFdFiller(struct StdFdFiller *self)
 {
     if (self)
     {
         for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
         {
-            closeFile(self->mFile[ix]);
-            self->mFile[ix] = 0;
+            self->mFile[ix] = closeFile(self->mFile[ix]);
         }
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

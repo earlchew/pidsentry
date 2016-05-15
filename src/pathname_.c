@@ -103,7 +103,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct PathName *
 closePathName(struct PathName *self)
 {
     if (self)
@@ -123,6 +123,8 @@ closePathName(struct PathName *self)
         self->mDirName   = 0;
         self->mDirFile   = 0;
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

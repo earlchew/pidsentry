@@ -61,7 +61,7 @@ enum PathNameStatus
 enum PathNameStatus
 createPathName(struct PathName *self, const char *aFileName);
 
-void
+struct PathName *
 closePathName(struct PathName *self);
 
 int

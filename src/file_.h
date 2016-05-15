@@ -62,7 +62,7 @@ createFile(struct File *self, int aFd);
 int
 detachFile(struct File *self);
 
-void
+struct File *
 closeFile(struct File *self);
 
 void

@@ -47,7 +47,7 @@ struct Pipe
 int
 createPipe(struct Pipe *self, unsigned aFlags);
 
-void
+struct Pipe *
 closePipe(struct Pipe *self);
 
 int

@@ -96,7 +96,7 @@ Finally:
     FINALLY
     ({
         if (rc && -1 != self->mFd)
-            closeFd(&self->mFd);
+            self->mFd = closeFd(self->mFd);
     });
 
     return rc;
@@ -351,9 +351,7 @@ Finally:
 
             if (-1 != rc && exitCode.mStatus)
             {
-                closeFd(&rc);
-                rc = -1;
-
+                rc    = closeFd(rc);
                 errno = ECHILD;
             }
         }
@@ -445,21 +443,21 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct File *
 closeFile(struct File *self)
 {
     if (self && -1 != self->mFd)
     {
-        closeFd(&self->mFd);
-
         lockMutex(&fileList_.mMutex);
         {
             LIST_REMOVE(self, mList);
         }
         unlockMutex(&fileList_.mMutex);
 
-        self->mFd = -1;
+        self->mFd = closeFd(self->mFd);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -685,7 +683,7 @@ Finally:
     FINALLY
     ({
         if (-1 == rc)
-            closeFd(&fd);
+            fd = closeFd(fd);
         destroyProcessAppLock(appLock);
     });
 

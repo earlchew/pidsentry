@@ -87,8 +87,8 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd[0]);
-        closeFd(&fd[1]);
+        fd[0] = closeFd(fd[0]);
+        fd[1] = closeFd(fd[1]);
 
         if (rc)
         {
@@ -197,7 +197,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct Pipe *
 closePipe(struct Pipe *self)
 {
     if (self)
@@ -205,6 +205,8 @@ closePipe(struct Pipe *self)
         closePipeReader(self);
         closePipeWriter(self);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

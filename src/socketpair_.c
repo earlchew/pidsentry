@@ -77,7 +77,7 @@ closeSocketPairChild(struct SocketPair *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct SocketPair *
 closeSocketPair(struct SocketPair *self)
 {
     if (self)
@@ -85,6 +85,8 @@ closeSocketPair(struct SocketPair *self)
         closeSocketPairParent(self);
         closeSocketPairChild(self);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

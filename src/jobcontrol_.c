@@ -146,7 +146,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct JobControl *
 closeJobControl(struct JobControl *self)
 {
     if (self)
@@ -156,6 +156,8 @@ closeJobControl(struct JobControl *self)
         ABORT_IF(unwatchProcessSignals());
         ABORT_IF(unwatchProcessChildren());
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -86,8 +86,8 @@ struct WhenceType
 #define WhenceTypeEnd   ((struct WhenceType) { mType : WhenceTypeEnd_ })
 
 /* -------------------------------------------------------------------------- */
-void
-closeFd(int *aFd);
+int
+closeFd(int aFd);
 
 int
 closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen);

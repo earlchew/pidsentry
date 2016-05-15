@@ -102,11 +102,10 @@ printAgent_(const struct Agent *self, FILE *aFile)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct Agent *
 closeAgent(struct Agent *self)
 {
-    if (self)
-    { }
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

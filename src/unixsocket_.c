@@ -263,14 +263,15 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct UnixSocket *
 closeUnixSocket(struct UnixSocket *self)
 {
     if (self)
     {
-        closeFile(self->mFile);
-        self->mFile = 0;
+        self->mFile = closeFile(self->mFile);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -328,8 +329,8 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd[0]);
-        closeFd(&fd[1]);
+        fd[0] = closeFd(fd[0]);
+        fd[1] = closeFd(fd[1]);
 
         if (rc)
         {
@@ -469,7 +470,7 @@ Finally:
             if (fdPtr)
             {
                 for (size_t ix = 0; fdLen > ix; ++ix)
-                    closeFd(&fdPtr[ix]);
+                    fdPtr[ix] = closeFd(fdPtr[ix]);
             }
         }
     });
@@ -536,7 +537,7 @@ Finally:
 
     FINALLY
     ({
-        closeFd(&fd);
+        fd = closeFd(fd);
     });
 
     return rc;

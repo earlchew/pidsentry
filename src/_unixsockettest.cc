@@ -129,7 +129,7 @@ TEST(UnixSocketTest, AbstractServer)
     EXPECT_EQ(1, readFd(fd, buf, sizeof(buf)));
     EXPECT_EQ('A', buf[0]);
 
-    closeFd(&fd);
+    closeFd(fd);
     closePipe(&pipe);
     closeUnixSocket(&clientsock);
     closeUnixSocket(&peersock);

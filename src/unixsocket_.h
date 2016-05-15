@@ -67,7 +67,7 @@ connectUnixSocket(struct UnixSocket *self,
                  const char         *aName,
                  size_t              aNameLen);
 
-void
+struct UnixSocket *
 closeUnixSocket(struct UnixSocket *self);
 
 int

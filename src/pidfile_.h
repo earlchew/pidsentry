@@ -66,7 +66,7 @@ destroyPidFile(struct PidFile *self);
 int
 openPidFile(struct PidFile *self, unsigned aFlags);
 
-void
+struct PidFile *
 closePidFile(struct PidFile *self);
 
 struct Pid
