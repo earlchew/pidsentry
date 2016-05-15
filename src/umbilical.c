@@ -424,130 +424,11 @@ ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 
 /* -------------------------------------------------------------------------- */
 static int
-runUmbilicalProcess_(struct UmbilicalProcess *self,
-                     struct Pid               aWatchdogPid,
-                     struct ChildProcess     *aChildProcess,
-                     struct SocketPair       *aUmbilicalSocket,
-                     struct PidServer        *aPidServer)
+runUmbilicalProcessChild_(struct UmbilicalProcess *self)
 {
     int rc = -1;
 
     struct ProcessAppLock *appLock = 0;
-
-    debug(0,
-          "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
-          FMTd_Pid(ownProcessId()),
-          FMTd_Pgid(ownProcessGroupId()));
-
-    debug(0, "marking umbilical ready");
-
-    /* Indicate to the watchdog that the umbilical monitor has
-     * started successfully. */
-
-    char buf[1] = { 0 };
-
-    ssize_t wrLen;
-    ERROR_IF(
-        (wrLen = sendUnixSocket(
-            aUmbilicalSocket->mChildSocket, buf, sizeof(buf)),
-         -1 == wrLen || (errno = 0, sizeof(buf) != wrLen)));
-
-    ERROR_IF(
-        STDIN_FILENO !=
-        dup2(aUmbilicalSocket->mChildSocket->mFile->mFd, STDIN_FILENO));
-
-    ERROR_IF(
-        STDOUT_FILENO != dup2(
-            aUmbilicalSocket->mChildSocket->mFile->mFd, STDOUT_FILENO));
-
-    closeSocketPair(aUmbilicalSocket);
-
-    {
-        appLock = createProcessAppLock();
-
-        int whiteList[] =
-        {
-            STDIN_FILENO,
-            STDOUT_FILENO,
-            STDERR_FILENO,
-            ownProcessAppLockFile(appLock)->mFd,
-            aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
-            aPidServer ? aPidServer->mEventQueue->mFile->mFd : -1,
-        };
-
-        ERROR_IF(
-            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
-
-        appLock = destroyProcessAppLock(appLock);
-    }
-
-    if (testMode(TestLevelSync))
-    {
-        ERROR_IF(
-            raise(SIGSTOP));
-    }
-
-    /* The umbilical process is not the parent of the child process being
-     * watched, so that there is no reliable way to send a signal to that
-     * process alone because the pid might be recycled by the time the signal
-     * is sent. Instead rely on the umbilical monitor being in the same
-     * process group as the child process and use the process group as
-     * a means of controlling the cild process. */
-
-    struct UmbilicalMonitor monitorpoll;
-    ERROR_IF(
-        createUmbilicalMonitor(
-            &monitorpoll, STDIN_FILENO, aWatchdogPid, aPidServer));
-
-    /* Synchronise with the watchdog to avoid timing races. The watchdog
-     * writes to the umbilical when it is ready to start timing. */
-
-    debug(0, "synchronising umbilical");
-
-    ERROR_IF(
-        synchroniseUmbilicalMonitor(&monitorpoll));
-
-    debug(0, "synchronised umbilical");
-
-    ERROR_IF(
-        runUmbilicalMonitor(&monitorpoll));
-
-    /* The umbilical monitor returns when the connection to the watchdog
-     * is either lost or no longer active. Only issue a diagnostic if
-     * the shutdown was not orderly. */
-
-    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
-        warn(0,
-             "Killing child pgid %" PRId_Pgid " from umbilical",
-             FMTd_Pgid(aChildProcess->mPgid));
-
-    ERROR_IF(
-        killChildProcessGroup(aChildProcess));
-
-    /* If the shutdown was not orderly, assume the worst and attempt to
-     * clean up the watchdog process group. */
-
-    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
-        ERROR_IF(
-            signalProcessGroup(self->mWatchdogPgid, SIGKILL));
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        appLock = destroyProcessAppLock(appLock);
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static int
-createUmbilicalProcess_(struct UmbilicalProcess *self)
-{
-    int rc = -1;
 
     self->mPid = ownProcessId();
 
@@ -581,12 +462,101 @@ createUmbilicalProcess_(struct UmbilicalProcess *self)
                 "")),
          -1 == self->mWatchdogAnchor.mPid));
 
+    debug(0,
+          "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
+          FMTd_Pid(ownProcessId()),
+          FMTd_Pgid(ownProcessGroupId()));
+
+    /* Indicate to the watchdog that the umbilical monitor has
+     * started successfully and bound itself to process group
+     * of the watchdog and child. */
+
+    char buf[1] = { 0 };
+
+    ssize_t wrLen;
     ERROR_IF(
-        runUmbilicalProcess_(self,
-                             self->mWatchdogPid,
-                             self->mChildProcess,
-                             self->mSocket,
-                             self->mPidServer));
+        (wrLen = sendUnixSocket(
+            self->mSocket->mChildSocket, buf, sizeof(buf)),
+         -1 == wrLen || (errno = 0, sizeof(buf) != wrLen)));
+
+    ERROR_IF(
+        STDIN_FILENO !=
+        dup2(self->mSocket->mChildSocket->mFile->mFd, STDIN_FILENO));
+
+    ERROR_IF(
+        STDOUT_FILENO != dup2(
+            self->mSocket->mChildSocket->mFile->mFd, STDOUT_FILENO));
+
+    closeSocketPair(self->mSocket);
+
+    {
+        appLock = createProcessAppLock();
+
+        int whiteList[] =
+        {
+            STDIN_FILENO,
+            STDOUT_FILENO,
+            STDERR_FILENO,
+            ownProcessAppLockFile(appLock)->mFd,
+            self->mPidServer ? self->mPidServer->mSocket->mFile->mFd : -1,
+            self->mPidServer ? self->mPidServer->mEventQueue->mFile->mFd : -1,
+        };
+
+        ERROR_IF(
+            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
+
+        appLock = destroyProcessAppLock(appLock);
+    }
+
+    if (testMode(TestLevelSync))
+    {
+        ERROR_IF(
+            raise(SIGSTOP));
+    }
+
+    /* The umbilical process is not the parent of the child process being
+     * watched, so that there is no reliable way to send a signal to that
+     * process alone because the pid might be recycled by the time the signal
+     * is sent. Instead rely on the umbilical monitor being in the same
+     * process group as the child process and use the process group as
+     * a means of controlling the cild process. */
+
+    struct UmbilicalMonitor monitorpoll;
+    ERROR_IF(
+        createUmbilicalMonitor(
+            &monitorpoll, STDIN_FILENO, self->mWatchdogPid, self->mPidServer));
+
+    /* Synchronise with the watchdog to avoid timing races. The watchdog
+     * writes to the umbilical when it is ready to start timing. */
+
+    debug(0, "synchronising umbilical");
+
+    ERROR_IF(
+        synchroniseUmbilicalMonitor(&monitorpoll));
+
+    debug(0, "synchronised umbilical");
+
+    ERROR_IF(
+        runUmbilicalMonitor(&monitorpoll));
+
+    /* The umbilical monitor returns when the connection to the watchdog
+     * is either lost or no longer active. Only issue a diagnostic if
+     * the shutdown was not orderly. */
+
+    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
+        warn(0,
+             "Killing child pgid %" PRId_Pgid " from umbilical",
+             FMTd_Pgid(self->mChildProcess->mPgid));
+
+    ERROR_IF(
+        killChildProcessGroup(self->mChildProcess));
+
+    /* If the shutdown was not orderly, assume the worst and attempt to
+     * clean up the watchdog process group. */
+
+    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
+        ERROR_IF(
+            signalProcessGroup(self->mWatchdogPgid, SIGKILL));
 
     debug(0, "exit umbilical");
 
@@ -594,7 +564,10 @@ createUmbilicalProcess_(struct UmbilicalProcess *self)
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        appLock = destroyProcessAppLock(appLock);
+    });
 
     return rc;
 }
@@ -636,7 +609,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
         (umbilicalPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
-            IntMethod(createUmbilicalProcess_, self)),
+            IntMethod(runUmbilicalProcessChild_, self)),
          -1 == umbilicalPid.mPid));
     self->mPid = umbilicalPid;
 
