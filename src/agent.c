@@ -282,13 +282,14 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
      * notice via its synchronisation pipe. */
 
     ERROR_IF(
-        watchJobControlSignals(jobControl,
-                               VoidIntMethod(raiseAgentSignal_, self)));
+        watchJobControlSignals(
+            jobControl,
+            JobControlSignalMethod(raiseAgentSignal_, self)));
 
     ERROR_IF(
         watchJobControlStop(jobControl,
-                            VoidMethod(raiseAgentStop_, self),
-                            VoidMethod(raiseAgentResume_, self)));
+                            JobControlMethod(raiseAgentStop_, self),
+                            JobControlMethod(raiseAgentResume_, self)));
 
     {
         struct ProcessAppLock *appLock = createProcessAppLock();

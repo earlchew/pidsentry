@@ -126,7 +126,7 @@ createSentry(struct Sentry *self,
 
     ERROR_IF(
         watchJobControlDone(self->mJobControl,
-                            VoidMethod(reapSentry_, self)));
+                            JobControlMethod(reapSentry_, self)));
 
     ERROR_IF(
         createBellSocketPair(&self->mSyncSocket_, O_CLOEXEC));
@@ -149,8 +149,9 @@ createSentry(struct Sentry *self,
      * notice via its synchronisation pipe. */
 
     ABORT_IF(
-        watchJobControlSignals(self->mJobControl,
-                               VoidIntMethod(raiseSentrySignal_, self)),
+        watchJobControlSignals(
+            self->mJobControl,
+            JobControlSignalMethod(raiseSentrySignal_, self)),
         {
             terminate(
                 errno,
@@ -159,8 +160,8 @@ createSentry(struct Sentry *self,
 
     ABORT_IF(
         watchJobControlStop(self->mJobControl,
-                            VoidMethod(raiseSentryStop_, self),
-                            VoidMethod(raiseSentryResume_, self)),
+                            JobControlMethod(raiseSentryStop_, self),
+                            JobControlMethod(raiseSentryResume_, self)),
         {
             terminate(
                 errno,
@@ -169,7 +170,7 @@ createSentry(struct Sentry *self,
 
     ABORT_IF(
         watchJobControlContinue(self->mJobControl,
-                                VoidMethod(raiseSentrySigCont_, self)),
+                                JobControlMethod(raiseSentrySigCont_, self)),
         {
             terminate(
                 errno,
