@@ -371,7 +371,7 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self)
      * umbilical monitor should proceed. */
 
     ERROR_IF(
-        -1 == waitFdReadReady(STDIN_FILENO, 0));
+        -1 == waitFdReadReady(self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, 0));
 
     pollFdUmbilical_(self, 0);
 
@@ -438,6 +438,19 @@ runUmbilicalProcess_(struct UmbilicalProcess *self,
           "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
           FMTd_Pid(ownProcessId()),
           FMTd_Pgid(ownProcessGroupId()));
+
+    debug(0, "marking umbilical ready");
+
+    /* Indicate to the watchdog that the umbilical monitor has
+     * started successfully. */
+
+    char buf[1] = { 0 };
+
+    ssize_t wrLen;
+    ERROR_IF(
+        (wrLen = sendUnixSocket(
+            aUmbilicalSocket->mChildSocket, buf, sizeof(buf)),
+         -1 == wrLen || (errno = 0, sizeof(buf) != wrLen)));
 
     ERROR_IF(
         STDIN_FILENO !=
@@ -627,6 +640,17 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
          -1 == umbilicalPid.mPid));
     self->mPid = umbilicalPid;
 
+    ERROR_IF(
+        -1 == waitUnixSocketReadReady(self->mSocket->mParentSocket, 0));
+
+    char buf[1];
+
+    ssize_t rdLen;
+    ERROR_IF(
+        (rdLen = recvUnixSocket(
+            self->mSocket->mParentSocket, buf, sizeof(buf)),
+         -1 == rdLen || (errno = 0, sizeof(buf) != rdLen)));
+
     rc = 0;
 
 Finally:
@@ -634,6 +658,19 @@ Finally:
     FINALLY
     ({
         popThreadSigMask(sigMask);
+
+        if (rc)
+        {
+            if (self->mPid.mPid)
+            {
+                ABORT_IF(
+                    signalProcessGroup(Pgid(self->mPid.mPid), SIGKILL));
+
+                int status;
+                ABORT_IF(
+                    reapProcessChild(self->mPid, &status));
+            }
+        }
     });
 
     return rc;
