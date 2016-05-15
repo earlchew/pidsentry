@@ -1163,11 +1163,13 @@ Finally:
     return rc;
 }
 
-static void
+static int
 pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
                           int                          aEvent,
                           const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     if (aEvent)
     {
         /* The umbilical process is running again after being stopped for
@@ -1189,12 +1191,22 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
               "umbilical pid %" PRId_Pid " has terminated",
               FMTd_Pid(self->mUmbilical.mPid));
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
-static void
+static int
 pollFdContUmbilical_(struct ChildMonitor         *self,
                      const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     /* This function is called after the process receives SIGCONT and
      * processes the event in the context of the event loop. The
      * function must indicate to the umbilical monitor that the
@@ -1224,6 +1236,14 @@ pollFdContUmbilical_(struct ChildMonitor         *self,
 
         self->mUmbilical.mPreempt = true;
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static int
@@ -1332,14 +1352,25 @@ Finally:
  * stopped to alert the monitoring loop that timers must be re-synchronised
  * to compensate for the outage. */
 
-static void
+static int
 pollFdContEvent_(struct ChildMonitor         *self,
                  int                          aEvent,
                  const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     ensure(aEvent);
 
-    pollFdContUmbilical_(self, aPollTime);
+    ERROR_IF(
+        pollFdContUmbilical_(self, aPollTime));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static int
@@ -1539,11 +1570,13 @@ pollFdCompletion_(struct ChildMonitor *self)
  * event loop on a pipe, at which point the child process is known
  * to be dead. */
 
-static void
+static int
 pollFdReapChildEvent_(struct ChildMonitor         *self,
                       int                          aEvent,
                       const struct EventClockTime *aPollTime)
 {
+    int rc = -1;
+
     if (aEvent)
     {
         /* The child process is running again after being stopped for
@@ -1580,6 +1613,14 @@ pollFdReapChildEvent_(struct ChildMonitor         *self,
             POLL_FD_CHILD_TIMER_DISCONNECTION].mPeriod = Duration(
                 NSECS(Seconds(1)));
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static int
@@ -1613,20 +1654,21 @@ Finally:
  * multiple events. */
 
 static int
-pollFdEventLatch_(struct EventLatch **aLatch, const char *aRole)
+pollFdEventLatch_(
+    struct EventLatch **aLatch, const char *aRole, int *aSignalled)
 {
+    int rc = -1;
+
     int signalled = 0;
 
     if (*aLatch)
     {
         enum EventLatchSetting setting;
-        ABORT_IF(
+        ERROR_IF(
             (setting = resetEventLatch(*aLatch),
              EventLatchSettingError == setting),
             {
-                terminate(
-                    errno,
-                    "Unable to reset %s event latch", aRole);
+                warn(errno, "Unable to reset %s event latch", aRole);
             });
 
         if (EventLatchSettingOn == setting)
@@ -1638,7 +1680,15 @@ pollFdEventLatch_(struct EventLatch **aLatch, const char *aRole)
         }
     }
 
-    return signalled;
+    *aSignalled = signalled;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static int
@@ -1676,18 +1726,46 @@ pollFdEventPipe_(struct ChildMonitor         *self,
             if ( ! err)
                 continue;
 
-            int event;
+            struct
+            {
+                const char         *mRole;
+                struct EventLatch **mLatch;
+                int               (*mPoll)(
+                    struct ChildMonitor *,
+                    int,
+                    const struct EventClockTime *);
+            }
+            eventLatches[] =
+            {
+                { "child",
+                  &self->mEvent.mChildLatch, pollFdReapChildEvent_ },
 
-            if ((event = pollFdEventLatch_(&self->mEvent.mChildLatch,
-                                           "child")))
-                pollFdReapChildEvent_(self, event > 0, aPollTime);
+                { "umbilical",
+                  &self->mEvent.mUmbilicalLatch, pollFdReapUmbilicalEvent_ },
 
-            if ((event = pollFdEventLatch_(&self->mEvent.mUmbilicalLatch,
-                                           "umbilical")))
-                pollFdReapUmbilicalEvent_(self, event > 0, aPollTime);
-            if ((event = pollFdEventLatch_(&self->mContLatch,
-                                           "continuation")))
-                pollFdContEvent_(self, event > 0, aPollTime);
+                { "continuation",
+                  &self->mContLatch, pollFdContEvent_ },
+            };
+
+            for (unsigned ix = 0; NUMBEROF(eventLatches) > ix; ++ix)
+            {
+                AUTO(eventLatch, &eventLatches[ix]);
+
+                int signalled;
+
+                ERROR_IF(
+                    pollFdEventLatch_(
+                        eventLatch->mLatch, eventLatch->mRole, &signalled));
+
+                if (signalled)
+                    ERROR_IF(
+                        eventLatch->mPoll(self, signalled > 0, aPollTime),
+                        {
+                            warn(errno,
+                                 "Unable to poll %s event latch",
+                                 eventLatch->mRole);
+                        });
+            }
         }
         while (0);
     }
