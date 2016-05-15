@@ -41,37 +41,34 @@
 #include <stdio.h>
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 raiseAgentSignal_(struct Agent *self, int aSigNum)
 {
     struct Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
 
-    ABORT_IF(
-        kill(agentPid.mPid, aSigNum));
+    return kill(agentPid.mPid, aSigNum);
 }
 
-static void
+static int
 raiseAgentStop_(struct Agent *self)
 {
     struct Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
 
-    ABORT_IF(
-        kill(agentPid.mPid, SIGTSTP));
+    return kill(agentPid.mPid, SIGTSTP);
 }
 
-static void
+static int
 raiseAgentResume_(struct Agent *self)
 {
     struct Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
 
-    ABORT_IF(
-        kill(agentPid.mPid, SIGCONT));
+    return kill(agentPid.mPid, SIGCONT);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -284,12 +281,12 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
     ERROR_IF(
         watchJobControlSignals(
             jobControl,
-            JobControlSignalMethod(raiseAgentSignal_, self)));
+            IntIntMethod(raiseAgentSignal_, self)));
 
     ERROR_IF(
         watchJobControlStop(jobControl,
-                            JobControlMethod(raiseAgentStop_, self),
-                            JobControlMethod(raiseAgentResume_, self)));
+                            IntMethod(raiseAgentStop_, self),
+                            IntMethod(raiseAgentResume_, self)));
 
     {
         struct ProcessAppLock *appLock = createProcessAppLock();

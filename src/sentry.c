@@ -45,17 +45,16 @@
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 reapSentry_(struct Sentry *self)
 {
     struct Pid umbilicalPid =
         self->mUmbilicalProcess ? self->mUmbilicalProcess->mPid : Pid(0);
 
-    ABORT_IF(
-        superviseChildProcess(self->mChildProcess, umbilicalPid));
+    return superviseChildProcess(self->mChildProcess, umbilicalPid);
 }
 
-static void
+static int
 raiseSentrySignal_(struct Sentry *self, int aSigNum)
 {
     /* Propagate the signal to the child. Note that SIGQUIT might cause
@@ -63,29 +62,25 @@ raiseSentrySignal_(struct Sentry *self, int aSigNum)
      * happens, but do that only if the child actually does so. This is
      * taken care of in reapSentry_() when it calls superviseChildProcess(). */
 
-    ABORT_IF(
-        killChild(self->mChildProcess, aSigNum));
+    return killChild(self->mChildProcess, aSigNum);
 }
 
-static void
+static int
 raiseSentryStop_(struct Sentry *self)
 {
-    ABORT_IF(
-        pauseChildProcessGroup(self->mChildProcess));
+    return pauseChildProcessGroup(self->mChildProcess);
 }
 
-static void
+static int
 raiseSentryResume_(struct Sentry *self)
 {
-    ABORT_IF(
-        resumeChildProcessGroup(self->mChildProcess));
+    return resumeChildProcessGroup(self->mChildProcess);
 }
 
-static void
+static int
 raiseSentrySigCont_(struct Sentry *self)
 {
-    ABORT_IF(
-        raiseChildSigCont(self->mChildProcess));
+    return raiseChildSigCont(self->mChildProcess);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -126,7 +121,7 @@ createSentry(struct Sentry *self,
 
     ERROR_IF(
         watchJobControlDone(self->mJobControl,
-                            JobControlMethod(reapSentry_, self)));
+                            IntMethod(reapSentry_, self)));
 
     ERROR_IF(
         createBellSocketPair(&self->mSyncSocket_, O_CLOEXEC));
@@ -151,7 +146,7 @@ createSentry(struct Sentry *self,
     ABORT_IF(
         watchJobControlSignals(
             self->mJobControl,
-            JobControlSignalMethod(raiseSentrySignal_, self)),
+            IntIntMethod(raiseSentrySignal_, self)),
         {
             terminate(
                 errno,
@@ -160,8 +155,8 @@ createSentry(struct Sentry *self,
 
     ABORT_IF(
         watchJobControlStop(self->mJobControl,
-                            JobControlMethod(raiseSentryStop_, self),
-                            JobControlMethod(raiseSentryResume_, self)),
+                            IntMethod(raiseSentryStop_, self),
+                            IntMethod(raiseSentryResume_, self)),
         {
             terminate(
                 errno,
@@ -170,7 +165,7 @@ createSentry(struct Sentry *self,
 
     ABORT_IF(
         watchJobControlContinue(self->mJobControl,
-                                JobControlMethod(raiseSentrySigCont_, self)),
+                                IntMethod(raiseSentrySigCont_, self)),
         {
             terminate(
                 errno,

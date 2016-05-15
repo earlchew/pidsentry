@@ -33,52 +33,6 @@
 #include "thread_.h"
 
 /* -------------------------------------------------------------------------- */
-#define METHOD_DEFINITION
-#define METHOD_RETURN_JobControlMethod    void
-#define METHOD_CONST_JobControlMethod
-#define METHOD_ARG_LIST_JobControlMethod  ()
-#define METHOD_CALL_LIST_JobControlMethod ()
-
-#define METHOD_NAME      JobControlMethod
-#define METHOD_RETURN    METHOD_RETURN_JobControlMethod
-#define METHOD_CONST     METHOD_CONST_JobControlMethod
-#define METHOD_ARG_LIST  METHOD_ARG_LIST_JobControlMethod
-#define METHOD_CALL_LIST METHOD_CALL_LIST_JobControlMethod
-#include "method_.h"
-
-#define JobControlMethod(Method_, Object_)     \
-    METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
-        JobControlMethod_,                     \
-        METHOD_RETURN_JobControlMethod,        \
-        METHOD_CONST_JobControlMethod,         \
-        METHOD_ARG_LIST_JobControlMethod,      \
-        METHOD_CALL_LIST_JobControlMethod)
-
-/* -------------------------------------------------------------------------- */
-#define METHOD_DEFINITION
-#define METHOD_RETURN_JobControlSignalMethod    void
-#define METHOD_CONST_JobControlSignalMethod
-#define METHOD_ARG_LIST_JobControlSignalMethod  (int aSignal_)
-#define METHOD_CALL_LIST_JobControlSignalMethod (aSignal_)
-
-#define METHOD_NAME      JobControlSignalMethod
-#define METHOD_RETURN    METHOD_RETURN_JobControlSignalMethod
-#define METHOD_CONST     METHOD_CONST_JobControlSignalMethod
-#define METHOD_ARG_LIST  METHOD_ARG_LIST_JobControlSignalMethod
-#define METHOD_CALL_LIST METHOD_CALL_LIST_JobControlSignalMethod
-#include "method_.h"
-
-#define JobControlSignalMethod(Method_, Object_)     \
-    METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
-        JobControlSignalMethod_,                     \
-        METHOD_RETURN_JobControlSignalMethod,        \
-        METHOD_CONST_JobControlSignalMethod,         \
-        METHOD_ARG_LIST_JobControlSignalMethod,      \
-        METHOD_CALL_LIST_JobControlSignalMethod)
-
-/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -88,23 +42,23 @@ struct JobControl
 {
     struct
     {
-        struct JobControlSignalMethod mMethod;
+        struct IntIntMethod mMethod;
     } mRaise;
 
     struct
     {
-        struct JobControlMethod mMethod;
+        struct IntMethod mMethod;
     } mReap;
 
     struct
     {
-        struct JobControlMethod mPauseMethod;
-        struct JobControlMethod mResumeMethod;
+        struct IntMethod mPauseMethod;
+        struct IntMethod mResumeMethod;
     } mStop;
 
     struct
     {
-        struct JobControlMethod mMethod;
+        struct IntMethod mMethod;
     } mContinue;
 };
 
@@ -116,30 +70,30 @@ void
 closeJobControl(struct JobControl *self);
 
 int
-watchJobControlSignals(struct JobControl            *self,
-                       struct JobControlSignalMethod aRaiseMethod);
+watchJobControlSignals(struct JobControl  *self,
+                       struct IntIntMethod aRaiseMethod);
 
 int
 unwatchJobControlSignals(struct JobControl *self);
 
 int
-watchJobControlDone(struct JobControl      *self,
-                    struct JobControlMethod aReapMethod);
+watchJobControlDone(struct JobControl *self,
+                    struct IntMethod   aReapMethod);
 
 int
 unwatchJobControlDone(struct JobControl *self);
 
 int
-watchJobControlStop(struct JobControl      *self,
-                    struct JobControlMethod aPauseMethod,
-                    struct JobControlMethod aResumeMethod);
+watchJobControlStop(struct JobControl *self,
+                    struct IntMethod   aPauseMethod,
+                    struct IntMethod   aResumeMethod);
 
 int
 unwatchJobControlStop(struct JobControl *self);
 
 int
-watchJobControlContinue(struct JobControl      *self,
-                        struct JobControlMethod aContinueMethod);
+watchJobControlContinue(struct JobControl *self,
+                        struct IntMethod   aContinueMethod);
 
 int
 unwatchJobControlContinue(struct JobControl *self);
