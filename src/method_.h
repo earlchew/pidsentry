@@ -133,6 +133,52 @@ methodEnsure_(const char *aFunction, const char *aFile, unsigned aLine,
         METHOD_ARG_LIST_VoidIntMethod,          \
         METHOD_CALL_LIST_VoidIntMethod)
 
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_IntMethod    int
+#define METHOD_CONST_IntMethod
+#define METHOD_ARG_LIST_IntMethod  ()
+#define METHOD_CALL_LIST_IntMethod ()
+
+#define METHOD_NAME      IntMethod
+#define METHOD_RETURN    METHOD_RETURN_IntMethod
+#define METHOD_CONST     METHOD_CONST_IntMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_IntMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_IntMethod
+#include "method_.h"
+
+#define IntMethod(Method_, Object_)            \
+    METHOD_TRAMPOLINE(                         \
+        Method_, Object_,                      \
+        IntMethod_,                            \
+        METHOD_RETURN_IntMethod,               \
+        METHOD_CONST_IntMethod,                \
+        METHOD_ARG_LIST_IntMethod,             \
+        METHOD_CALL_LIST_IntMethod)
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_IntIntMethod    int
+#define METHOD_CONST_IntIntMethod
+#define METHOD_ARG_LIST_IntIntMethod  (int aArg_)
+#define METHOD_CALL_LIST_IntIntMethod (aArg_)
+
+#define METHOD_NAME      IntIntMethod
+#define METHOD_RETURN    METHOD_RETURN_IntIntMethod
+#define METHOD_CONST     METHOD_CONST_IntIntMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_IntIntMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_IntIntMethod
+#include "method_.h"
+
+#define IntIntMethod(Method_, Object_)         \
+    METHOD_TRAMPOLINE(                         \
+        Method_, Object_,                      \
+        IntIntMethod_,                         \
+        METHOD_RETURN_IntIntMethod,            \
+        METHOD_CONST_IntIntMethod,             \
+        METHOD_ARG_LIST_IntIntMethod,          \
+        METHOD_CALL_LIST_IntIntMethod)
+
 #ifdef __cplusplus
 }
 #endif
