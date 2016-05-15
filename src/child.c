@@ -1603,7 +1603,8 @@ pollFdReapChildEvent_(struct ChildMonitor         *self,
          * child terminated, no further input can be produced so indicate
          * to the tether thread that it should start flushing data now. */
 
-        flushTetherThread(self->mTetherThread);
+        ERROR_IF(
+            flushTetherThread(self->mTetherThread));
 
         /* Once the child process has terminated, start the disconnection
          * timer that sends a periodic signal to the tether thread

@@ -467,38 +467,38 @@ pingTetherThread(struct TetherThread *self)
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 flushTetherThread(struct TetherThread *self)
 {
+    int rc = -1;
+
     debug(0, "flushing tether thread");
 
-    ABORT_IF(
-        watchProcessClock(IntMethodNil(), Duration(NanoSeconds(0))),
-        {
-            terminate(
-                errno,
-                "Unable to configure synchronisation clock");
-        });
+    ERROR_IF(
+        watchProcessClock(IntMethodNil(), Duration(NanoSeconds(0))));
+
+    /* This code will race the tether thread which might finished
+     * because it already has detected that the child process has
+     * terminated and closed its file descriptors. */
 
     char buf[1] = { 0 };
 
     ssize_t wrlen;
-    ABORT_IF(
+    ERROR_IF(
         (wrlen = writeFile(self->mControlPipe->mWrFile, buf, sizeof(buf)),
          -1 == wrlen
          ? EPIPE != errno
-         : (errno = 0, sizeof(buf) != wrlen)),
-        {
-            /* This code will race the tether thread which might finished
-             * because it already has detected that the child process has
-             * terminated and closed its file descriptors. */
-
-            terminate(
-                errno,
-                "Unable to flush tether thread");
-        });
+         : (errno = 0, sizeof(buf) != wrlen)));
 
     self->mFlushed = true;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

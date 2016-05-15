@@ -72,7 +72,7 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe);
 void
 pingTetherThread(struct TetherThread *self);
 
-void
+int
 flushTetherThread(struct TetherThread *self);
 
 struct TetherThread *
