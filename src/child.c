@@ -1635,7 +1635,8 @@ pollFdTimerChild_(struct ChildMonitor         *self,
 
     debug(0, "disconnecting tether thread");
 
-    pingTetherThread(self->mTetherThread);
+    ERROR_IF(
+        pingTetherThread(self->mTetherThread));
 
     rc = 0;
 

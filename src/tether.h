@@ -70,7 +70,7 @@ struct TetherThread
 INT
 createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe);
 
-void
+INT
 pingTetherThread(struct TetherThread *self);
 
 INT

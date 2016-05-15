@@ -97,14 +97,9 @@ pollFdControl_(struct TetherPoll           *self,
 
     char buf[1];
 
-    ABORT_IF(
+    ERROR_IF(
         -1 == readFd(
-            self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf)),
-        {
-            terminate(
-                errno,
-                "Unable to read tether control");
-        });
+            self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf)));
 
     debug(0, "tether disconnection request received");
 
@@ -150,14 +145,8 @@ pollFdDrain_(struct TetherPoll           *self,
 
             int available;
 
-            ABORT_IF(
-                ioctl(self->mSrcFd, FIONREAD, &available),
-                {
-                    terminate(
-                        errno,
-                        "Unable to find amount of readable data in fd %d",
-                        self->mSrcFd);
-                });
+            ERROR_IF(
+                ioctl(self->mSrcFd, FIONREAD, &available));
 
             if ( ! available)
             {
@@ -452,18 +441,23 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 pingTetherThread(struct TetherThread *self)
 {
+    int rc = -1;
+
     debug(0, "ping tether thread");
 
-    ABORT_IF(
-        (errno = pthread_kill(self->mThread, SIGALRM)),
-        {
-            terminate(
-                errno,
-                "Unable to signal tether thread");
-        });
+    ERROR_IF(
+        (errno = pthread_kill(self->mThread, SIGALRM)));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
