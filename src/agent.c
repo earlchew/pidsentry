@@ -180,7 +180,7 @@ struct RunAgentProcess_
 };
 
 static int
-runAgent_(struct RunAgentProcess_ *self)
+runAgentChildProcess_(struct RunAgentProcess_ *self)
 {
     int rc = -1;
 
@@ -265,7 +265,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
             (agentPid = forkProcessChild(
                 ForkProcessSetProcessGroup,
                 Pgid(0),
-                IntMethod(runAgent_, &agentChild)),
+                IntMethod(runAgentChildProcess_, &agentChild)),
              -1 == agentPid.mPid));
 
         self->mAgentPid = agentPid;
