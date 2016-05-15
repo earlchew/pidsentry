@@ -29,6 +29,7 @@
 #ifndef EVENTPIPE_H
 #define EVENTPIPE_H
 
+#include "int_.h"
 #include "pipe_.h"
 #include "thread_.h"
 
@@ -48,16 +49,16 @@ struct EventPipe
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createEventPipe(struct EventPipe *self, unsigned aFlags);
 
 struct EventPipe *
 closeEventPipe(struct EventPipe *self);
 
-int
+INT
 setEventPipe(struct EventPipe *self);
 
-int
+INT
 resetEventPipe(struct EventPipe *self);
 
 /* -------------------------------------------------------------------------- */

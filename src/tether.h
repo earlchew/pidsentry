@@ -29,6 +29,7 @@
 #ifndef TETHER_H
 #define TETHER_H
 
+#include "int_.h"
 #include "pipe_.h"
 #include "timekeeping_.h"
 
@@ -66,13 +67,13 @@ struct TetherThread
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe);
 
 void
 pingTetherThread(struct TetherThread *self);
 
-int
+INT
 flushTetherThread(struct TetherThread *self);
 
 struct TetherThread *

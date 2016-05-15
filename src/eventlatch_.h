@@ -29,6 +29,7 @@
 #ifndef EVENTLATCH_H
 #define EVENTLATCH_H
 
+#include "int_.h"
 #include "thread_.h"
 
 #ifdef __cplusplus
@@ -54,7 +55,7 @@ enum EventLatchSetting
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createEventLatch(struct EventLatch *self);
 
 struct EventLatch *

@@ -1766,11 +1766,9 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+void
 execProcess(const char *aCmd, char **aArgv)
 {
-    int rc = -1;
-
     /* Call resetProcessSigPipe_() here to ensure that SIGPIPE will be
      * delivered to the new program. Note that it is possible that there
      * was no previous call to forkProcess(), though this is normally
@@ -1787,8 +1785,6 @@ execProcess(const char *aCmd, char **aArgv)
 Finally:
 
     FINALLY({});
-
-    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

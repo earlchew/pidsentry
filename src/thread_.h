@@ -29,6 +29,7 @@
 #ifndef THREAD_H
 #define THREAD_H
 
+#include "int_.h"
 #include "method_.h"
 
 #include <stdbool.h>
@@ -109,7 +110,7 @@ void
 createThread(
     pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod);
 
-int
+INT
 joinThread(pthread_t *self);
 
 void
@@ -209,7 +210,7 @@ pushThreadSigMask(
 struct ThreadSigMask *
 popThreadSigMask(struct ThreadSigMask *self);
 
-int
+INT
 waitThreadSigMask(const int *aSigList);
 
 /* -------------------------------------------------------------------------- */

@@ -29,6 +29,7 @@
 #ifndef ENV_H
 #define ENV_H
 
+#include "int_.h"
 #include "pid_.h"
 
 #include <inttypes.h>
@@ -40,37 +41,37 @@ extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 deleteEnv(const char *aName);
 
 const char *
 setEnvInt(const char *aName, int aValue);
 
-int
+INT
 getEnvInt(const char *aName, int *aValue);
 
 const char *
 setEnvUInt(const char *aName, unsigned aValue);
 
-int
+INT
 getEnvUInt(const char *aName, unsigned *aValue);
 
 const char *
 setEnvUInt64(const char *aName, uint64_t aValue);
 
-int
+INT
 getEnvUInt64(const char *aName, uint64_t *aValue);
 
 const char *
 setEnvString(const char *aName, const char *aValue);
 
-int
+INT
 getEnvString(const char *aName, const char **aValue);
 
 const char *
 setEnvPid(const char *aName, struct Pid aValue);
 
-int
+INT
 getEnvPid(const char *aName, struct Pid *aValue);
 
 /* -------------------------------------------------------------------------- */

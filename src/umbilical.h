@@ -29,6 +29,7 @@
 #ifndef UMBILICAL_H
 #define UMBILICAL_H
 
+#include "int_.h"
 #include "pollfd_.h"
 #include "pid_.h"
 
@@ -94,30 +95,30 @@ struct UmbilicalMonitor
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createUmbilicalMonitor(
     struct UmbilicalMonitor *self,
     int                      aStdinFd,
     struct Pid               aParentPid,
     struct PidServer        *aPidServer);
 
-int
+INT
 synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self);
 
-int
+INT
 runUmbilicalMonitor(struct UmbilicalMonitor *self);
 
 bool
 ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
                        struct SocketPair       *aUmbilicalSocket,
                        struct PidServer        *aPidServer);
 
-int
+INT
 stopUmbilicalProcess(struct UmbilicalProcess *self);
 
 /* -------------------------------------------------------------------------- */

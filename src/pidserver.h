@@ -29,6 +29,7 @@
 #ifndef PIDSERVER_H
 #define PIDSERVER_H
 
+#include "int_.h"
 #include "unixsocket_.h"
 #include "eventqueue_.h"
 
@@ -74,16 +75,16 @@ struct PidServer
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createPidServer(struct PidServer *self);
 
 struct PidServer *
 closePidServer(struct PidServer *self);
 
-int
+INT
 acceptPidServerConnection(struct PidServer *self);
 
-int
+INT
 cleanPidServer(struct PidServer *self);
 
 /* -------------------------------------------------------------------------- */

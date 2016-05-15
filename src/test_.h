@@ -29,6 +29,8 @@
 #ifndef TEST_H
 #define TEST_H
 
+#include "int_.h"
+
 #include <inttypes.h>
 #include <stdbool.h>
 
@@ -78,7 +80,7 @@ uint64_t
 testErrorLevel(void);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 Test_init(struct TestModule *self, const char *aErrorEnv);
 
 void

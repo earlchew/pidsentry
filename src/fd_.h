@@ -29,6 +29,7 @@
 #ifndef FD_H
 #define FD_H
 
+#include "int_.h"
 
 #include <stdbool.h>
 
@@ -86,31 +87,31 @@ struct WhenceType
 #define WhenceTypeEnd   ((struct WhenceType) { mType : WhenceTypeEnd_ })
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 closeFd(int aFd);
 
-int
+INT
 closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen);
 
 bool
 stdFd(int aFd);
 
-int
+INT
 nullifyFd(int aFd);
 
-int
+INT
 nonBlockingFd(int aFd);
 
-int
+INT
 ownFdNonBlocking(int aFd);
 
-int
+INT
 ownFdValid(int aFd);
 
-int
+INT
 closeFdOnExec(int aFd, unsigned aCloseOnExec);
 
-int
+INT
 ownFdCloseOnExec(int aFd);
 
 ssize_t
@@ -129,27 +130,27 @@ ssize_t
 readFdFully(int aFd, char **aBuf, size_t aBufSize);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 lockFd(int aFd, struct LockType aLockType);
 
-int
+INT
 unlockFd(int aFd);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen);
 
-int
+INT
 unlockFdRegion(int aFd, off_t aPos, off_t aLen);
 
 struct LockType
 ownFdRegionLocked(int aFd, off_t aPos, off_t aLen);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 waitFdWriteReady(int aFd, const struct Duration *aTimeout);
 
-int
+INT
 waitFdReadReady(int aFd, const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */

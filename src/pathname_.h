@@ -29,8 +29,8 @@
 #ifndef PATHNAME_H
 #define PATHNAME_H
 
+#include "int_.h"
 #include "file_.h"
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,13 +64,13 @@ createPathName(struct PathName *self, const char *aFileName);
 struct PathName *
 closePathName(struct PathName *self);
 
-int
+INT
 openPathName(struct PathName *self, int aFlags, mode_t aMode);
 
-int
+INT
 unlinkPathName(struct PathName *self, int aFlags);
 
-int
+INT
 fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags);
 
 /* -------------------------------------------------------------------------- */

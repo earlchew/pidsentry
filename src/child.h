@@ -29,6 +29,7 @@
 #ifndef CHILD_H
 #define CHILD_H
 
+#include "int_.h"
 #include "pid_.h"
 #include "pipe_.h"
 #include "thread_.h"
@@ -69,13 +70,13 @@ struct ChildProcess
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createChild(struct ChildProcess *self);
 
-int
+INT
 superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
 
-int
+INT
 forkChild(
     struct ChildProcess   *self,
     char                 **aCmd,
@@ -83,36 +84,36 @@ forkChild(
     struct BellSocketPair *aSyncSocket,
     struct SocketPair     *aUmbilicalSocket);
 
-int
+INT
 killChild(struct ChildProcess *self, int aSigNum);
 
-int
+INT
 closeChildTether(struct ChildProcess *self);
 
-int
+INT
 monitorChild(struct ChildProcess     *self,
              struct UmbilicalProcess *aUmbilicalProcess,
              struct File             *aUmbilicalFile,
              struct Pid               aParentPid,
              struct Pipe             *aParentPipe);
 
-int
+INT
 raiseChildSigCont(struct ChildProcess *self);
 
-int
+INT
 reapChild(struct ChildProcess *self, int *aStatus);
 
 struct ChildProcess *
 closeChild(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 killChildProcessGroup(struct ChildProcess *self);
 
-int
+INT
 pauseChildProcessGroup(struct ChildProcess *self);
 
-int
+INT
 resumeChildProcessGroup(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */

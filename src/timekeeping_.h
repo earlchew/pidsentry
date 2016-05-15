@@ -29,6 +29,7 @@
 #ifndef TIMEKEEPING_H
 #define TIMEKEEPING_H
 
+#include "int_.h"
 #include "timescale_.h"
 
 #include <stdbool.h>
@@ -93,7 +94,7 @@ bootclockTime(void);
 
 /* -------------------------------------------------------------------------- */
 #ifdef __linux__
-int
+INT
 procUptime(struct Duration *aUptime, const char *aFileName);
 #endif
 
@@ -125,7 +126,7 @@ deadlineTimeExpired(
     const struct EventClockTime *aTime);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 Timekeeping_init(struct TimeKeepingModule *self);
 
 void

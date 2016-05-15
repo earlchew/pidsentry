@@ -29,6 +29,7 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
+#include "int_.h"
 #include "timescale_.h"
 #include "method_.h"
 #include "pid_.h"
@@ -155,47 +156,47 @@ void
 initProcessDirName(struct ProcessDirName *self, struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 purgeProcessOrphanedFds(void);
 
 /* -------------------------------------------------------------------------- */
 unsigned
 ownProcessSignalContext(void);
 
-int
+INT
 watchProcessChildren(struct IntMethod aMethod);
 
-int
+INT
 unwatchProcessChildren(void);
 
-int
+INT
 watchProcessSignals(struct IntIntMethod aMethod);
 
-int
+INT
 unwatchProcessSignals(void);
 
-int
+INT
 ignoreProcessSigPipe(void);
 
-int
+INT
 resetProcessSigPipe(void);
 
-int
+INT
 watchProcessSigCont(struct IntMethod aMethod);
 
-int
+INT
 unwatchProcessSigCont(void);
 
-int
+INT
 watchProcessSigStop(struct IntMethod aMethod);
 
-int
+INT
 unwatchProcessSigStop(void);
 
-int
+INT
 watchProcessClock(struct IntMethod aMethod, struct Duration aPeriod);
 
-int
+INT
 unwatchProcessClock(void);
 
 /* -------------------------------------------------------------------------- */
@@ -219,7 +220,7 @@ forkProcessChild(enum ForkProcessOption aOption,
 struct Pid
 forkProcessDaemon(struct IntMethod aMethod);
 
-int
+INT
 reapProcessChild(struct Pid aPid, int *aStatus);
 
 struct ChildProcessState
@@ -231,10 +232,10 @@ monitorProcessChild(struct Pid aPid);
 struct ExitCode
 extractProcessExitStatus(int aStatus, struct Pid aPid);
 
-int
+void
 execProcess(const char *aCmd, char **aArgv);
 
-int
+INT
 signalProcessGroup(struct Pgid aPgid, int aSignal);
 
 void
@@ -247,10 +248,10 @@ void
 quitProcess(void) __attribute__((__noreturn__));
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 acquireProcessAppLock(void);
 
-int
+INT
 releaseProcessAppLock(void);
 
 struct ProcessAppLock *
@@ -285,7 +286,7 @@ struct Pgid
 ownProcessGroupId(void);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 fetchProcessSignature(struct Pid aPid, char **aSignature);
 
 struct ProcessState
@@ -295,7 +296,7 @@ struct Pgid
 fetchProcessGroupId(struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 Process_init(struct ProcessModule *self, const char *aArg0);
 
 void

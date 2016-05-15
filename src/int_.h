@@ -26,52 +26,20 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef PARSE_H
-#define PARSE_H
-
-#include "int_.h"
-
-#include <inttypes.h>
-
-#include <sys/types.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-struct Pid;
-
-struct ParseArgList
-{
-    unsigned mArgc;
-    char   **mArgv;
-    char    *mArgs;
-};
+#ifndef INT_H
+#define INT_H
 
 /* -------------------------------------------------------------------------- */
-INT
-createParseArgListCSV(struct ParseArgList *self, const char *aArg);
+/* Return Codes
+ *
+ * Idiomatically functions use an integer as a return code, with -1 as a
+ * non-zero value to indicate an error, and zero to indicate success. On error,
+ * errno contains the error code. */
 
-struct ParseArgList *
-closeParseArgList(struct ParseArgList *self);
-
-/* -------------------------------------------------------------------------- */
-INT
-parseInt(const char *aArg, int *aValue);
-
-INT
-parseUInt(const char *aArg, unsigned *aValue);
-
-INT
-parseUInt64(const char *aArg, uint64_t *aValue);
-
-INT
-parsePid(const char *aArg, struct Pid *aValue);
-
-/* -------------------------------------------------------------------------- */
+#define INT __attribute__((__warn_unused_result__)) int
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* PARSE_H */
+#endif /* INT_H */

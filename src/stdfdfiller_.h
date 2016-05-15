@@ -29,6 +29,7 @@
 #ifndef STDFDFILLER_H
 #define STDFDFILLER_H
 
+#include "int_.h"
 #include "file_.h"
 
 #ifdef __cplusplus
@@ -42,7 +43,7 @@ struct StdFdFiller
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createStdFdFiller(struct StdFdFiller *self);
 
 struct StdFdFiller *

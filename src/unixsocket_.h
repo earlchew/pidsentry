@@ -29,6 +29,7 @@
 #ifndef UNIXSOCKET_H
 #define UNIXSOCKET_H
 
+#include "int_.h"
 #include "file_.h"
 
 #ifdef __cplusplus
@@ -47,22 +48,22 @@ struct UnixSocket
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createUnixSocketPair(struct UnixSocket *aParent,
                      struct UnixSocket *aChild,
                      unsigned           aFlags);
 
-int
+INT
 createUnixSocket(struct UnixSocket *self,
                  const char        *aName,
                  size_t             aNameLen,
                  unsigned           aQueueLen);
 
-int
+INT
 acceptUnixSocket(struct UnixSocket       *self,
                  const struct UnixSocket *aServer);
 
-int
+INT
 connectUnixSocket(struct UnixSocket *self,
                  const char         *aName,
                  size_t              aNameLen);
@@ -70,41 +71,41 @@ connectUnixSocket(struct UnixSocket *self,
 struct UnixSocket *
 closeUnixSocket(struct UnixSocket *self);
 
-int
+INT
 sendUnixSocketFd(struct UnixSocket *self, int aFd);
 
-int
+INT
 recvUnixSocketFd(struct UnixSocket *self, unsigned aFlags);
 
 bool
 ownUnixSocketValid(const struct UnixSocket *self);
 
-int
+INT
 shutdownUnixSocketReader(struct UnixSocket *self);
 
-int
+INT
 shutdownUnixSocketWriter(struct UnixSocket *self);
 
-int
+INT
 waitUnixSocketWriteReady(const struct UnixSocket *self,
                          const struct Duration   *aTimeout);
 
-int
+INT
 waitUnixSocketReadReady(const struct UnixSocket *self,
                         const struct Duration   *aTimeout);
 
-int
+INT
 ownUnixSocketPeerName(const struct UnixSocket *self,
                       struct sockaddr_un      *aAddr);
 
-int
+INT
 ownUnixSocketName(const struct UnixSocket *self,
                   struct sockaddr_un      *aAddr);
 
-int
+INT
 ownUnixSocketError(const struct UnixSocket *self, int *aError);
 
-int
+INT
 ownUnixSocketPeerCred(const struct UnixSocket *self, struct ucred *aCred);
 
 ssize_t

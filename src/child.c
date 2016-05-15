@@ -677,7 +677,8 @@ forkChild(
      * case that the child might have terminated before the child pid
      * is recorded, force a supervision run after the pid is recorded. */
 
-    superviseChildProcess(self, Pid(0));
+    ERROR_IF(
+        superviseChildProcess(self, Pid(0)));
 
     rc = 0;
 
@@ -756,10 +757,12 @@ closeChild(struct ChildProcess *self)
     {
         if (self->mPid.mPid)
         {
-            killChild(self, SIGKILL);
+            ABORT_IF(
+                killChild(self, SIGKILL));
 
             int status;
-            reapChild(self, &status);
+            ABORT_IF(
+                reapChild(self, &status));
         }
 
         ensure( ! self->mChildMonitor.mMonitor);

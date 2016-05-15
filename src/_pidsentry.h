@@ -29,12 +29,14 @@
 #ifndef PIDSENTRY_H
 #define PIDSENTRY_H
 
+#include "int_.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 main(int, char **);
 
 /* -------------------------------------------------------------------------- */

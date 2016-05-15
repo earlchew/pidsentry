@@ -29,6 +29,7 @@
 #ifndef PIPE_H
 #define PIPE_H
 
+#include "int_.h"
 #include "file_.h"
 
 #ifdef __cplusplus
@@ -44,16 +45,16 @@ struct Pipe
 };
 
 /* -------------------------------------------------------------------------- */
-int
+INT
 createPipe(struct Pipe *self, unsigned aFlags);
 
 struct Pipe *
 closePipe(struct Pipe *self);
 
-int
+INT
 detachPipeReader(struct Pipe *self);
 
-int
+INT
 detachPipeWriter(struct Pipe *self);
 
 void
@@ -62,10 +63,10 @@ closePipeReader(struct Pipe *self);
 void
 closePipeWriter(struct Pipe *self);
 
-int
+INT
 closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec);
 
-int
+INT
 nonBlockingPipe(struct Pipe *self);
 
 /* -------------------------------------------------------------------------- */
