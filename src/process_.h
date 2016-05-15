@@ -186,13 +186,13 @@ unsigned
 ownProcessSignalContext(void);
 
 int
-watchProcessChildren(struct VoidMethod aMethod);
+watchProcessChildren(struct IntMethod aMethod);
 
 int
 unwatchProcessChildren(void);
 
 int
-watchProcessSignals(struct VoidIntMethod aMethod);
+watchProcessSignals(struct IntIntMethod aMethod);
 
 int
 unwatchProcessSignals(void);
@@ -204,19 +204,19 @@ int
 resetProcessSigPipe(void);
 
 int
-watchProcessSigCont(struct VoidMethod aMethod);
+watchProcessSigCont(struct IntMethod aMethod);
 
 int
 unwatchProcessSigCont(void);
 
 int
-watchProcessSigStop(struct VoidMethod aMethod);
+watchProcessSigStop(struct IntMethod aMethod);
 
 int
 unwatchProcessSigStop(void);
 
 int
-watchProcessClock(struct VoidMethod aMethod, struct Duration aPeriod);
+watchProcessClock(struct IntMethod aMethod, struct Duration aPeriod);
 
 int
 unwatchProcessClock(void);

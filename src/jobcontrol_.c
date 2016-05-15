@@ -36,25 +36,47 @@
 #include <sys/signal.h>
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 reapJobControl_(struct JobControl *self)
 {
+    int rc = -1;
+
     if ( ! ownJobControlMethodNil(self->mReap.mMethod))
         callJobControlMethod(self->mReap.mMethod);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 raiseJobControlSignal_(struct JobControl *self, int aSigNum)
 {
+    int rc = -1;
+
     if ( ! ownJobControlSignalMethodNil(self->mRaise.mMethod))
         callJobControlSignalMethod(self->mRaise.mMethod, aSigNum);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 raiseJobControlSigStop_(struct JobControl *self)
 {
+    int rc = -1;
+
     if ( ! ownJobControlMethodNil(self->mStop.mPauseMethod))
         callJobControlMethod(self->mStop.mPauseMethod);
 
@@ -69,14 +91,32 @@ raiseJobControlSigStop_(struct JobControl *self)
 
     if ( ! ownJobControlMethodNil(self->mStop.mResumeMethod))
         callJobControlMethod(self->mStop.mResumeMethod);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 raiseJobControlSigCont_(struct JobControl *self)
 {
+    int rc = -1;
+
     if ( ! ownJobControlMethodNil(self->mContinue.mMethod))
         callJobControlMethod(self->mContinue.mMethod);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -135,7 +175,7 @@ watchJobControlSignals(struct JobControl            *self,
     self->mRaise.mMethod = aRaiseMethod;
 
     ERROR_IF(
-        watchProcessSignals(VoidIntMethod(raiseJobControlSignal_, self)),
+        watchProcessSignals(IntIntMethod(raiseJobControlSignal_, self)),
         {
             self->mRaise.mMethod = JobControlSignalMethodNil();
         });
@@ -197,7 +237,7 @@ watchJobControlDone(struct JobControl       *self,
     self->mReap.mMethod = aReapMethod;
 
     ERROR_IF(
-        watchProcessChildren(VoidMethod(reapJobControl_, self)),
+        watchProcessChildren(IntMethod(reapJobControl_, self)),
         {
             self->mReap.mMethod = JobControlMethodNil();
         });
@@ -263,7 +303,7 @@ watchJobControlStop(struct JobControl      *self,
     self->mStop.mResumeMethod = aResumeMethod;
 
     ERROR_IF(
-        watchProcessSigStop(VoidMethod(raiseJobControlSigStop_, self)),
+        watchProcessSigStop(IntMethod(raiseJobControlSigStop_, self)),
         {
             self->mStop.mPauseMethod  = JobControlMethodNil();
             self->mStop.mResumeMethod = JobControlMethodNil();
@@ -328,7 +368,7 @@ watchJobControlContinue(struct JobControl      *self,
     self->mContinue.mMethod  = aContinueMethod;
 
     ERROR_IF(
-        watchProcessSigCont(VoidMethod(raiseJobControlSigCont_, self)),
+        watchProcessSigCont(IntMethod(raiseJobControlSigCont_, self)),
         {
             self->mContinue.mMethod = JobControlMethodNil();
         });

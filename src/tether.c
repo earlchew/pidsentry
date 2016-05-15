@@ -473,7 +473,7 @@ flushTetherThread(struct TetherThread *self)
     debug(0, "flushing tether thread");
 
     ABORT_IF(
-        watchProcessClock(VoidMethodNil(), Duration(NanoSeconds(0))),
+        watchProcessClock(IntMethodNil(), Duration(NanoSeconds(0))),
         {
             terminate(
                 errno,
