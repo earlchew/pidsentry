@@ -127,50 +127,30 @@ createSentry(struct Sentry *self,
         createBellSocketPair(&self->mSyncSocket_, O_CLOEXEC));
     self->mSyncSocket = &self->mSyncSocket_;
 
-    ABORT_IF(
+    ERROR_IF(
         forkChild(
             self->mChildProcess,
             aCmd,
-            self->mStdFdFiller, self->mSyncSocket, self->mUmbilicalSocket),
-        {
-            terminate(
-                errno,
-                "Unable to fork child process");
-        });
+            self->mStdFdFiller, self->mSyncSocket, self->mUmbilicalSocket));
 
     /* Be prepared to deliver signals to the child process only after
      * the child exists. Before this point, these signals will cause
      * the watchdog to terminate, and the new child process will
      * notice via its synchronisation pipe. */
 
-    ABORT_IF(
+    ERROR_IF(
         watchJobControlSignals(
             self->mJobControl,
-            IntIntMethod(raiseSentrySignal_, self)),
-        {
-            terminate(
-                errno,
-                "Unable to add watch on signals");
-        });
+            IntIntMethod(raiseSentrySignal_, self)));
 
-    ABORT_IF(
+    ERROR_IF(
         watchJobControlStop(self->mJobControl,
                             IntMethod(raiseSentryStop_, self),
-                            IntMethod(raiseSentryResume_, self)),
-        {
-            terminate(
-                errno,
-                "Unable to add watch on process stop");
-        });
+                            IntMethod(raiseSentryResume_, self)));
 
-    ABORT_IF(
+    ERROR_IF(
         watchJobControlContinue(self->mJobControl,
-                                IntMethod(raiseSentrySigCont_, self)),
-        {
-            terminate(
-                errno,
-                "Unable to add watch on process continuation");
-        });
+                                IntMethod(raiseSentrySigCont_, self)));
 
     /* If a pidfile is required, create it now so that it can
      * be anchored to its directory before changing the current
@@ -179,22 +159,17 @@ createSentry(struct Sentry *self,
 
     if (gOptions.mPidFile)
     {
-        ABORT_IF(
+        ERROR_IF(
             initPidFile(&self->mPidFile_, gOptions.mPidFile),
             {
-                terminate(
+                warn(
                     errno,
                     "Cannot initialise pid file '%s'", gOptions.mPidFile);
             });
         self->mPidFile = &self->mPidFile_;
 
-        ABORT_IF(
-            createPidServer(&self->mPidServer_),
-            {
-                terminate(
-                    errno,
-                    "Cannot create pid server for '%s'", gOptions.mPidFile);
-            });
+        ERROR_IF(
+            createPidServer(&self->mPidServer_));
         self->mPidServer = &self->mPidServer_;
     }
 
@@ -207,10 +182,10 @@ createSentry(struct Sentry *self,
     {
         static const char rootDir[] = "/";
 
-        ABORT_IF(
+        ERROR_IF(
             chdir("/"),
             {
-                terminate(
+                warn(
                     errno,
                     "Unable to change directory to %s", rootDir);
             });
@@ -228,30 +203,20 @@ createSentry(struct Sentry *self,
      * watchdog does not contribute any more references to the
      * original stdin file table entry. */
 
-    ABORT_IF(
+    ERROR_IF(
         STDIN_FILENO != dup2(
-            self->mChildProcess->mTetherPipe->mRdFile->mFd, STDIN_FILENO),
-        {
-            terminate(
-                errno,
-                "Unable to dup tether pipe to stdin");
-        });
+            self->mChildProcess->mTetherPipe->mRdFile->mFd, STDIN_FILENO));
 
     /* Now that the tether has been duplicated onto stdin and stdout
      * as required, it is important to close the tether to ensure that
      * the only possible references to the tether pipe remain in the
      * child process, if required, and stdin and stdout in this process. */
 
-    ABORT_IF(
+    ERROR_IF(
         closeChildTether(self->mChildProcess));
 
-    ABORT_IF(
-        purgeProcessOrphanedFds(),
-        {
-            terminate(
-                errno,
-                "Unable to purge orphaned files");
-        });
+    ERROR_IF(
+        purgeProcessOrphanedFds());
 
     rc = 0;
 
@@ -323,7 +288,7 @@ runSentry(struct Sentry   *self,
      * purged so that the umbilical does not inadvertently hold file
      * descriptors that should only be held by the child process. */
 
-    ABORT_IF(
+    ERROR_IF(
         createUmbilicalProcess(&self->mUmbilicalProcess_,
                                self->mChildProcess,
                                self->mUmbilicalSocket,
@@ -362,7 +327,7 @@ runSentry(struct Sentry   *self,
 
         TEST_RACE
         ({
-            ABORT_IF(
+            ERROR_IF(
                 -1 == dprintf(STDOUT_FILENO,
                               "%" PRId_Pid " "
                               "%" PRId_Pid " "
@@ -397,27 +362,15 @@ runSentry(struct Sentry   *self,
          * watchdog which will have propagated it to the child, causing
          * the child to terminate. */
 
-        ABORT_IF(
-            ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno,
-            {
-                terminate(
-                    errno,
-                    "Unable to synchronise child process with "
-                    "pid file creation");
-            });
+        ERROR_IF(
+            ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno);
 
         /* Now wait for the child to respond to know that it has
          * received the indication that it can start running. */
 
-        ABORT_IF(
+        ERROR_IF(
             waitBellSocketPairParent(self->mSyncSocket, 0) &&
-            EPIPE != errno && ENOENT != errno,
-            {
-                terminate(
-                    errno,
-                    "Unable synchronise with child process after "
-                    "pid file creation");
-            });
+            EPIPE != errno && ENOENT != errno);
     });
 
     /* With the child acknowledging that it is ready to start
@@ -430,15 +383,10 @@ runSentry(struct Sentry   *self,
     {
         TEST_RACE
         ({
-            ABORT_IF(
+            ERROR_IF(
                 -1 == dprintf(STDOUT_FILENO,
                               "%" PRId_Pid "\n",
-                              FMTd_Pid(self->mChildProcess->mPid)),
-                {
-                    terminate(
-                        errno,
-                        "Unable to print child pid");
-                });
+                              FMTd_Pid(self->mChildProcess->mPid)));
         });
     }
 
@@ -448,14 +396,8 @@ runSentry(struct Sentry   *self,
          * been announced. Indicate to the child process that this has
          * been done. */
 
-        ABORT_IF(
-            ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno,
-            {
-                terminate(
-                    errno,
-                    "Unable to synchronise child process with "
-                    "pid announcement");
-            });
+        ERROR_IF(
+            ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno);
     });
 
     /* Avoid closing the original stdout file descriptor only if
@@ -471,26 +413,17 @@ runSentry(struct Sentry   *self,
     else
     {
         int valid;
-        ABORT_IF(
-            (valid = ownFdValid(STDOUT_FILENO), -1 == valid),
-            {
-                terminate(
-                    errno,
-                    "Unable to check validity of stdout");
-            });
+        ERROR_IF(
+            (valid = ownFdValid(STDOUT_FILENO),
+             -1 == valid));
         if ( ! valid)
             discardStdout = true;
     }
 
     if (discardStdout)
     {
-        ABORT_IF(
-            nullifyFd(STDOUT_FILENO),
-            {
-                terminate(
-                    errno,
-                    "Unable to nullify stdout");
-            });
+        ERROR_IF(
+            nullifyFd(STDOUT_FILENO));
     }
 
     TEST_RACE
@@ -503,15 +436,11 @@ runSentry(struct Sentry   *self,
          * stopped by SIGSTOP, especially as part of test. */
 
         int err;
-        ABORT_IF(
+        ERROR_IF(
             (err = waitBellSocketPairParent(self->mSyncSocket, 0),
-             ! err || (ENOENT != errno && EPIPE != errno)),
-            {
-                terminate(
-                    err ? errno : 0,
-                    "Unable synchronise with child process after "
-                    "program execution");
-            });
+             err
+             ? (ENOENT != errno && EPIPE != errno)
+             : (errno = 0, true)));
     });
 
     closeBellSocketPair(self->mSyncSocket);
@@ -524,66 +453,34 @@ runSentry(struct Sentry   *self,
 
     if (testMode(TestLevelSync))
     {
-        ABORT_IF(
-            raise(SIGSTOP),
-            {
-                terminate(
-                    errno,
-                    "Unable to stop process pid %" PRId_Pid,
-                    FMTd_Pid(ownProcessId()));
-            });
+        ERROR_IF(
+            raise(SIGSTOP));
     }
 
     /* Monitor the running child until it has either completed of
      * its own accord, or terminated. Once the child has stopped
      * running, release the pid file if one was allocated. */
 
-    ABORT_IF(
+    ERROR_IF(
         monitorChild(self->mChildProcess,
                      self->mUmbilicalProcess,
                      self->mUmbilicalSocket->mParentSocket->mFile,
                      aParentPid,
-                     aParentPipe),
-        {
-            terminate(
-                errno,
-                "Unable to monitor child process");
-        });
+                     aParentPipe));
 
-    ABORT_IF(
-        unwatchJobControlContinue(self->mJobControl),
-        {
-            terminate(
-                errno,
-                "Unable to remove watch from process continuation");
-        });
+    ERROR_IF(
+        unwatchJobControlContinue(self->mJobControl));
 
-    ABORT_IF(
-        unwatchJobControlSignals(self->mJobControl),
-        {
-            terminate(
-                errno,
-                "Unable to remove watch from signals");
-        });
+    ERROR_IF(
+        unwatchJobControlSignals(self->mJobControl));
 
-    ABORT_IF(
-        unwatchJobControlDone(self->mJobControl),
-        {
-            terminate(
-                errno,
-                "Unable to remove watch on child process termination");
-        });
+    ERROR_IF(
+        unwatchJobControlDone(self->mJobControl));
 
     if (self->mPidFile)
     {
-        ABORT_IF(
-            acquirePidFileWriteLock(self->mPidFile),
-            {
-                terminate(
-                    errno,
-                    "Cannot lock pid file '%s'",
-                    self->mPidFile->mPathName.mFileName);
-            });
+        ERROR_IF(
+            acquirePidFileWriteLock(self->mPidFile));
 
         destroyPidFile(self->mPidFile);
         self->mPidFile = 0;
@@ -599,11 +496,11 @@ runSentry(struct Sentry   *self,
           "stopping umbilical pid %" PRId_Pid, FMTd_Pid(umbilicalPid));
 
     int notStopped;
-    ABORT_IF(
+    ERROR_IF(
         (notStopped = stopUmbilicalProcess(self->mUmbilicalProcess),
          notStopped && ETIMEDOUT != errno),
         {
-            terminate(
+            warn(
                 errno,
                 "Unable to stop umbilical process pid %" PRId_Pid,
                 FMTd_Pid(umbilicalPid));
@@ -620,7 +517,7 @@ runSentry(struct Sentry   *self,
      * so killing the child process group will not change its exit
      * status. */
 
-    ABORT_IF(
+    ERROR_IF(
         killChildProcessGroup(self->mChildProcess));
 
     /* Reap the child only after the pid file is released. This ensures
@@ -632,7 +529,7 @@ runSentry(struct Sentry   *self,
     debug(0, "reaping child pid %" PRId_Pid, FMTd_Pid(childPid));
 
     int childStatus;
-    ABORT_IF(
+    ERROR_IF(
         reapChild(self->mChildProcess, &childStatus));
 
     closeChild(self->mChildProcess);
@@ -646,13 +543,8 @@ runSentry(struct Sentry   *self,
     closeSocketPair(self->mUmbilicalSocket);
     self->mUmbilicalSocket = 0;
 
-    ABORT_IF(
-        resetProcessSigPipe(),
-        {
-            terminate(
-                errno,
-                "Unable to reset SIGPIPE");
-        });
+    ERROR_IF(
+        resetProcessSigPipe());
 
     *aExitCode = extractProcessExitStatus(childStatus, childPid);
 
@@ -664,14 +556,8 @@ runSentry(struct Sentry   *self,
     if (RUNNING_ON_VALGRIND)
     {
         int umbilicalStatus;
-        ABORT_IF(
-            reapProcessChild(umbilicalPid, &umbilicalStatus),
-            {
-                terminate(
-                    errno,
-                    "Unable to reap umbilical process pid %" PRId_Pid "status",
-                    FMTd_Pid(umbilicalPid));
-            });
+        ERROR_IF(
+            reapProcessChild(umbilicalPid, &umbilicalStatus));
 
         debug(0,
               "reaped umbilical pid %" PRId_Pid " status %d",
@@ -681,10 +567,12 @@ runSentry(struct Sentry   *self,
         struct ExitCode umbilicalExitCode =
             extractProcessExitStatus(umbilicalStatus, umbilicalPid);
 
-        ABORT_IF(
+        ERROR_IF(
             umbilicalExitCode.mStatus,
             {
-                terminate(
+                errno = 0;
+
+                warn(
                     0,
                     "Umbilical process pid %" PRId_Pid " "
                     "exit code %" PRId_ExitCode,
