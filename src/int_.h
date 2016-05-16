@@ -38,8 +38,4 @@
 
 #define INT __attribute__((__warn_unused_result__)) int
 
-#ifdef __cplusplus
-}
-#endif
-
 #endif /* INT_H */
