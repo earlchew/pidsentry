@@ -87,7 +87,7 @@ struct WhenceType
 #define WhenceTypeEnd   ((struct WhenceType) { mType : WhenceTypeEnd_ })
 
 /* -------------------------------------------------------------------------- */
-INT
+int
 closeFd(int aFd);
 
 INT

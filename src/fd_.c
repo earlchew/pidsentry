@@ -122,8 +122,7 @@ closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
                          -1 == valid));
 
                     if (valid)
-                        ERROR_IF(
-                            closeFd(fd));
+                        closeFd(fd);
                 }
                 else
                 {
