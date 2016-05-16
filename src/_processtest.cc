@@ -308,11 +308,17 @@ TEST_F(ProcessTest, ProcessDaemon)
         }
 
         closeBellSocketPairParent(&bellSocket);
-        ringBellSocketPairChild(&bellSocket);
-        waitBellSocketPairChild(&bellSocket, 0);
+        if (ringBellSocketPairChild(&bellSocket) ||
+            waitBellSocketPairChild(&bellSocket, 0))
+        {
+            execl("/bin/false", "false", (char *) 0);
+        }
+        else
+        {
+            execl("/bin/true", "true", (char *) 0);
+        }
 
-        execl("/bin/true", "true", (char *) 0);
-        _exit(EXIT_SUCCESS);
+        _exit(EXIT_FAILURE);
     }
 
     closeBellSocketPairChild(&bellSocket);
@@ -321,7 +327,7 @@ TEST_F(ProcessTest, ProcessDaemon)
     EXPECT_EQ(daemonPid.mPid, getpgid(daemonPid.mPid));
     EXPECT_EQ(getsid(0), getsid(daemonPid.mPid));
 
-    waitBellSocketPairParent(&bellSocket, 0);
+    EXPECT_EQ(1, waitBellSocketPairParent(&bellSocket, 0));
 
     EXPECT_EQ(0, daemonState->mErrno);
 
