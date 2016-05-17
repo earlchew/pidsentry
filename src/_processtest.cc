@@ -327,7 +327,7 @@ TEST_F(ProcessTest, ProcessDaemon)
     EXPECT_EQ(daemonPid.mPid, getpgid(daemonPid.mPid));
     EXPECT_EQ(getsid(0), getsid(daemonPid.mPid));
 
-    EXPECT_EQ(1, waitBellSocketPairParent(&bellSocket, 0));
+    EXPECT_EQ(0, waitBellSocketPairParent(&bellSocket, 0));
 
     EXPECT_EQ(0, daemonState->mErrno);
 

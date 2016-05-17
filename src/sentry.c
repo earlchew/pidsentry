@@ -270,7 +270,7 @@ announceSentryPidFile(struct Sentry *self)
 const char *
 ownSentryPidFileName(const struct Sentry *self)
 {
-    return ! self->mPidFile ? 0 : self->mPidFile->mPathName.mFileName;
+    return ! self->mPidFile ? 0 : ownPidFileName(self->mPidFile);
 }
 
 /* -------------------------------------------------------------------------- */

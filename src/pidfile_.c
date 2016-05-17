@@ -61,17 +61,30 @@ static const struct LockType * const lockTypeWrite_ = &LockTypeWrite;
 static int
 printPidFile_(const struct PidFile *self, FILE *aFile)
 {
-    return fprintf(aFile, "<pidfile %p %s>", self, self->mPathName.mFileName);
+    return fprintf(aFile, "<pidfile %p %s>", self, self->mPathName->mFileName);
 }
 
 /* -------------------------------------------------------------------------- */
-static enum PathNameStatus
+static int
 openPidFile_(struct PidFile *self, const char *aFileName)
 {
-    self->mFile = 0;
-    self->mLock = 0;
+    int rc = -1;
 
-    return createPathName(&self->mPathName, aFileName);
+    self->mFile     = 0;
+    self->mLock     = 0;
+    self->mPathName = 0;
+
+    ERROR_IF(
+        PathNameStatusOk != createPathName(&self->mPathName_, aFileName));
+    self->mPathName = &self->mPathName_;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -79,7 +92,7 @@ static void
 closePidFile_(struct PidFile *self)
 {
     if (self)
-        closePathName(&self->mPathName);
+        closePathName(self->mPathName);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -339,20 +352,16 @@ acquirePidFileReadLock(struct PidFile *self)
 }
 
 /* -------------------------------------------------------------------------- */
-enum PathNameStatus
+int
 initPidFile(struct PidFile *self_, const char *aFileName)
 {
     int rc = -1;
 
     struct PidFile *self = 0;
 
-    enum PathNameStatus status;
     ERROR_IF(
-        (status = openPidFile_(self_, aFileName),
-         PathNameStatusError == status));
-
-    if (PathNameStatusOk == status)
-        self = self_;
+        openPidFile_(self_, aFileName));
+    self = self_;
 
     rc = 0;
 
@@ -361,9 +370,6 @@ Finally:
     FINALLY
     ({
         if (rc)
-            status = PathNameStatusError;
-
-        if (PathNameStatusOk != status)
             closePidFile_(self);
     });
 
@@ -377,7 +383,7 @@ destroyPidFile(struct PidFile *self)
     if (self)
     {
         closePidFile(self);
-        closePathName(&self->mPathName);
+        closePidFile_(self);
     }
 }
 
@@ -400,7 +406,7 @@ detectPidFileZombie_(const struct PidFile *self)
     int err;
     ERROR_IF(
         (err = fstatPathName(
-            &self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW),
+            self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW),
          err && ENOENT != errno));
 
     bool zombie;
@@ -454,7 +460,7 @@ unlinkPidFile_(struct PidFile *self)
     if ( ! zombie)
     {
         ERROR_IF(
-            unlinkPathName(&self->mPathName, 0) && ENOENT != errno);
+            unlinkPathName(self->mPathName, 0) && ENOENT != errno);
 
         deleted = 1;
     }
@@ -494,7 +500,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
         ERROR_IF(
             createFile(
                 &self->mFile_,
-                openPathName(&self->mPathName,
+                openPathName(self->mPathName,
                              O_RDONLY | O_NOFOLLOW | openFlags, 0)));
         self->mFile = &self->mFile_;
     }
@@ -514,7 +520,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
         ERROR_IF(
             (err = createFile(
                 &self->mFile_,
-                openPathName(&self->mPathName,
+                openPathName(self->mPathName,
                              O_RDONLY | O_NOFOLLOW | openFlags, 0)),
              err && ENOENT != errno));
 
@@ -577,7 +583,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
                 createFile(
                     &self->mFile_,
                     openPathName(
-                        &self->mPathName,
+                        self->mPathName,
                         O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | openFlags,
                         S_IRUSR)));
         });
@@ -808,6 +814,13 @@ Finally:
     });
 
     return status;
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
+ownPidFileName(const struct PidFile *self)
+{
+    return self->mPathName->mFileName;
 }
 
 /* -------------------------------------------------------------------------- */

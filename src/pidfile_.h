@@ -43,7 +43,8 @@ struct sockaddr_un;
 
 struct PidFile
 {
-    struct PathName        mPathName;
+    struct PathName        mPathName_;
+    struct PathName       *mPathName;
     struct File            mFile_;
     struct File           *mFile;
     const struct LockType *mLock;
@@ -83,6 +84,9 @@ enum PidFileStatus
 writePidFile(struct PidFile           *self,
              struct Pid                aPid,
              const struct sockaddr_un *aPidServerAddr);
+
+const char *
+ownPidFileName(const struct PidFile *self);
 
 /* -------------------------------------------------------------------------- */
 
