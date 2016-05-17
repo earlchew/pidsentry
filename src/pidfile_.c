@@ -66,37 +66,6 @@ printPidFile_(const struct PidFile *self, FILE *aFile)
 
 /* -------------------------------------------------------------------------- */
 static int
-openPidFile_(struct PidFile *self, const char *aFileName)
-{
-    int rc = -1;
-
-    self->mFile     = 0;
-    self->mLock     = 0;
-    self->mPathName = 0;
-
-    ERROR_IF(
-        PathNameStatusOk != createPathName(&self->mPathName_, aFileName));
-    self->mPathName = &self->mPathName_;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static void
-closePidFile_(struct PidFile *self)
-{
-    if (self)
-        closePathName(self->mPathName);
-}
-
-/* -------------------------------------------------------------------------- */
-static int
 lockPidFile_(
     struct PidFile *self,
     const struct LockType *aLockType, const char *aLockName)
@@ -352,42 +321,6 @@ acquirePidFileReadLock(struct PidFile *self)
 }
 
 /* -------------------------------------------------------------------------- */
-int
-initPidFile(struct PidFile *self_, const char *aFileName)
-{
-    int rc = -1;
-
-    struct PidFile *self = 0;
-
-    ERROR_IF(
-        openPidFile_(self_, aFileName));
-    self = self_;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc)
-            closePidFile_(self);
-    });
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-void
-destroyPidFile(struct PidFile *self)
-{
-    if (self)
-    {
-        closePidFile(self);
-        closePidFile_(self);
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 static int
 detectPidFileZombie_(const struct PidFile *self)
 {
@@ -481,7 +414,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
     int rc = -1;
 
     ERROR_IF(
-        self->mLock,
+        self->mFile || self->mLock,
         {
             errno = EALREADY;
         });
@@ -610,13 +543,11 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-struct PidFile *
+void
 closePidFile(struct PidFile *self)
 {
     if (self && self->mFile)
     {
-        ensure(self->mLock);
-
         if (lockTypeWrite_ == self->mLock)
         {
             /* The pidfile is still locked at this point. If writable,
@@ -626,13 +557,7 @@ closePidFile(struct PidFile *self)
              * able to find the file. */
 
             ABORT_IF(
-                ftruncateFile(self->mFile, 0),
-                {
-                    terminate(
-                        errno,
-                        "Unable to truncate %" PRIs_Method,
-                        FMTs_Method(printPidFile_, self));
-                });
+                ftruncateFile(self->mFile, 0));
 
             /* In theory, ENOENT should not occur since the pidfile
              * is locked, and competing processes need to hold the
@@ -643,19 +568,51 @@ closePidFile(struct PidFile *self)
             int unlinked;
             ABORT_IF(
                 (unlinked = unlinkPidFile_(self),
-                 -1 == unlinked || (errno = 0, ! unlinked)),
-                {
-                    terminate(
-                        errno,
-                        "Unable to unlink %" PRIs_Method,
-                        FMTs_Method(printPidFile_, self));
-                });
+                 -1 == unlinked || (errno = 0, ! unlinked)));
         }
 
         closeFile(self->mFile);
 
         self->mFile = 0;
         self->mLock = 0;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+int
+initPidFile(struct PidFile *self, const char *aFileName)
+{
+    int rc = -1;
+
+    self->mFile     = 0;
+    self->mLock     = 0;
+    self->mPathName = 0;
+
+    ERROR_IF(
+        PathNameStatusOk != createPathName(&self->mPathName_, aFileName));
+    self->mPathName = &self->mPathName_;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            destroyPidFile(self);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct PidFile *
+destroyPidFile(struct PidFile *self)
+{
+    if (self)
+    {
+        closePidFile(self);
+        closePathName(self->mPathName);
     }
 
     return 0;
@@ -733,6 +690,12 @@ writePidFile(struct PidFile           *self,
     int rc = -1;
 
     enum PidFileStatus status = PidFileStatusOk;
+
+    ERROR_IF(
+        self->mFile || self->mLock,
+        {
+            errno = EALREADY;
+        });
 
     for (int zombie = -1; zombie; )
     {

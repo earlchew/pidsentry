@@ -61,14 +61,14 @@ enum PidFileStatus
 INT
 initPidFile(struct PidFile *self, const char *aFileName);
 
-void
+struct PidFile *
 destroyPidFile(struct PidFile *self);
 
 /* -------------------------------------------------------------------------- */
 INT
 openPidFile(struct PidFile *self, unsigned aFlags);
 
-struct PidFile *
+void
 closePidFile(struct PidFile *self);
 
 struct Pid
