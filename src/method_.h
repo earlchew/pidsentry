@@ -30,6 +30,7 @@
 #define METHOD_H
 
 #include "lambda_.h"
+#include "macros_.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,27 +49,24 @@ extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-#define METHOD_ARGS_(...) , ## __VA_ARGS__
-
-/* -------------------------------------------------------------------------- */
 #define METHOD_TRAMPOLINE(                                               \
     Method_, Object_, Name_, Return_, Const_, ArgList_, CallList_)       \
 (*({                                                                     \
     typedef Const_ __typeof__(*(Object_)) *ObjectT_;                     \
                                                                          \
-    Return_ (*Validate_)(ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);    \
+    Return_ (*Validate_)(ObjectT_ ARGS ArgList_) = (Method_);            \
                                                                          \
     __typeof__(Name_(0,0)) Instance_ = Name_(                            \
         ! Validate_                                                      \
         ? 0                                                              \
         : LAMBDA(                                                        \
-            Return_, (Const_ void *Self_ METHOD_ARGS_ ArgList_),         \
+            Return_, (Const_ void *Self_ ARGS ArgList_),                 \
             {                                                            \
                 Return_ (*method_)(                                      \
-                  ObjectT_ METHOD_ARGS_ ArgList_) = (Method_);           \
+                  ObjectT_ ARGS ArgList_) = (Method_);                   \
                                                                          \
                 return method_(                                          \
-                    (ObjectT_) Self_ METHOD_ARGS_ CallList_);            \
+                    (ObjectT_) Self_ ARGS CallList_);                    \
             }),                                                          \
         (Object_));                                                      \
                                                                          \
@@ -189,8 +187,6 @@ methodEnsure_(const char *aFunction, const char *aFile, unsigned aLine,
 #ifdef METHOD_DEFINITION
 #undef METHOD_DEFINITION
 
-#include "macros_.h"
-
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -198,7 +194,7 @@ extern "C" {
 #endif
 
 typedef METHOD_RETURN (*CONCAT(METHOD_NAME, T_))(
-    METHOD_CONST void *self EXPAND(METHOD_ARGS_ METHOD_ARG_LIST));
+    METHOD_CONST void *self EXPAND(ARGS METHOD_ARG_LIST));
 
 static __inline__ struct METHOD_NAME
 CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
@@ -231,11 +227,11 @@ CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
 
 static __inline__ METHOD_RETURN
 CONCAT(call, METHOD_NAME) (struct METHOD_NAME self
-                           EXPAND(METHOD_ARGS_ METHOD_ARG_LIST))
+                           EXPAND(ARGS METHOD_ARG_LIST))
 {
     METHOD_ENSURE_(self.mMethod);
 
-    return self.mMethod(self.mObject EXPAND(METHOD_ARGS_ METHOD_CALL_LIST));
+    return self.mMethod(self.mObject EXPAND(ARGS METHOD_CALL_LIST));
 }
 
 static __inline__ bool
