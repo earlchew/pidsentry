@@ -35,6 +35,7 @@
 #include "thread_.h"
 #include "eventlatch_.h"
 
+#include <stdio.h>
 #include <sys/types.h>
 
 #ifdef __cplusplus
@@ -105,6 +106,9 @@ reapChild(struct ChildProcess *self, int *aStatus);
 
 struct ChildProcess *
 closeChild(struct ChildProcess *self);
+
+int
+printChild(const struct ChildProcess *self, FILE *aFile);
 
 /* -------------------------------------------------------------------------- */
 INT

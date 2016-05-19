@@ -152,8 +152,8 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-printChild_(const struct ChildProcess *self, FILE *aFile)
+int
+printChild(const struct ChildProcess *self, FILE *aFile)
 {
     return fprintf(aFile,
                    "<child %p pid %" PRId_Pid " pgid %" PRId_Pgid ">",
@@ -254,7 +254,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild_, self,
+                        printChild, self,
                         "role %s pid %" PRId_Pid, aRole, FMTd_Pid(aPid));
 
         if (rc)
@@ -297,7 +297,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild_, self);
+        finally_warn_if(rc, printChild, self);
     });
 
     return rc;
@@ -327,7 +327,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild_, self,
+        finally_warn_if(rc, printChild, self,
                         "signal %s",
                         formatProcessSignalName(&sigName, aSigNum));
     });
@@ -351,7 +351,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild_, self,
+                        printChild, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -376,7 +376,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild_, self,
+                        printChild, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -401,7 +401,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild_, self,
+                        printChild, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -686,7 +686,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild_, self);
+        finally_warn_if(rc, printChild, self);
     });
 
     return rc;
@@ -709,7 +709,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild_, self);
+        finally_warn_if(rc, printChild, self);
     });
 
     return rc;
@@ -743,7 +743,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild_, self);
+        finally_warn_if(rc, printChild, self);
     });
 
     return rc;
@@ -1794,7 +1794,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild_, self);
+        finally_warn_if(rc, printChild, self);
 
         lock = unlockThreadSigMutex(lock);
     });
@@ -2096,7 +2096,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild_, self);
+        finally_warn_if(rc, printChild, self);
 
         updateChildMonitor_(self, 0);
 
