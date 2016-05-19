@@ -72,13 +72,13 @@ struct ChildProcess
 
 /* -------------------------------------------------------------------------- */
 INT
-createChild(struct ChildProcess *self);
+createChildProcess(struct ChildProcess *self);
 
 INT
 superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
 
 INT
-forkChild(
+forkChildProcess(
     struct ChildProcess   *self,
     char                 **aCmd,
     struct StdFdFiller    *aStdFdFiller,
@@ -86,29 +86,29 @@ forkChild(
     struct SocketPair     *aUmbilicalSocket);
 
 INT
-killChild(struct ChildProcess *self, int aSigNum);
+killChildProcess(struct ChildProcess *self, int aSigNum);
 
 INT
-closeChildTether(struct ChildProcess *self);
+closeChildProcessTether(struct ChildProcess *self);
 
 INT
-monitorChild(struct ChildProcess     *self,
-             struct UmbilicalProcess *aUmbilicalProcess,
-             struct File             *aUmbilicalFile,
-             struct Pid               aParentPid,
-             struct Pipe             *aParentPipe);
+monitorChildProcess(struct ChildProcess     *self,
+                    struct UmbilicalProcess *aUmbilicalProcess,
+                    struct File             *aUmbilicalFile,
+                    struct Pid               aParentPid,
+                    struct Pipe             *aParentPipe);
 
 INT
-raiseChildSigCont(struct ChildProcess *self);
+raiseChildProcessSigCont(struct ChildProcess *self);
 
 INT
-reapChild(struct ChildProcess *self, int *aStatus);
+reapChildProcess(struct ChildProcess *self, int *aStatus);
 
 struct ChildProcess *
-closeChild(struct ChildProcess *self);
+closeChildProcess(struct ChildProcess *self);
 
 int
-printChild(const struct ChildProcess *self, FILE *aFile);
+printChildProcess(const struct ChildProcess *self, FILE *aFile);
 
 /* -------------------------------------------------------------------------- */
 INT
@@ -126,4 +126,4 @@ resumeChildProcessGroup(struct ChildProcess *self);
 }
 #endif
 
-#endif /* CHILD_H */
+#endif /* CHILDPROCESS_H */

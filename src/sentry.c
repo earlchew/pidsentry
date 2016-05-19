@@ -62,7 +62,7 @@ raiseSentrySignal_(struct Sentry *self, int aSigNum)
      * happens, but do that only if the child actually does so. This is
      * taken care of in reapSentry_() when it calls superviseChildProcess(). */
 
-    return killChild(self->mChildProcess, aSigNum);
+    return killChildProcess(self->mChildProcess, aSigNum);
 }
 
 static int
@@ -80,7 +80,7 @@ raiseSentryResume_(struct Sentry *self)
 static int
 raiseSentrySigCont_(struct Sentry *self)
 {
-    return raiseChildSigCont(self->mChildProcess);
+    return raiseChildProcessSigCont(self->mChildProcess);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -112,7 +112,7 @@ createSentry(struct Sentry *self,
     self->mUmbilicalSocket = &self->mUmbilicalSocket_;
 
     ERROR_IF(
-        createChild(&self->mChildProcess_));
+        createChildProcess(&self->mChildProcess_));
     self->mChildProcess = &self->mChildProcess_;
 
     ERROR_IF(
@@ -128,7 +128,7 @@ createSentry(struct Sentry *self,
     self->mSyncSocket = &self->mSyncSocket_;
 
     ERROR_IF(
-        forkChild(
+        forkChildProcess(
             self->mChildProcess,
             aCmd,
             self->mStdFdFiller, self->mSyncSocket, self->mUmbilicalSocket));
@@ -213,7 +213,7 @@ createSentry(struct Sentry *self,
      * child process, if required, and stdin and stdout in this process. */
 
     ERROR_IF(
-        closeChildTether(self->mChildProcess));
+        closeChildProcessTether(self->mChildProcess));
 
     ERROR_IF(
         purgeProcessOrphanedFds());
@@ -241,7 +241,7 @@ closeSentry(struct Sentry *self)
         destroyPidFile(self->mPidFile);
         closeBellSocketPair(self->mSyncSocket);
         closeJobControl(self->mJobControl);
-        closeChild(self->mChildProcess);
+        closeChildProcess(self->mChildProcess);
         closeSocketPair(self->mUmbilicalSocket);
         closeStdFdFiller(self->mStdFdFiller);
     }
@@ -462,11 +462,11 @@ runSentry(struct Sentry   *self,
      * running, release the pid file if one was allocated. */
 
     ERROR_IF(
-        monitorChild(self->mChildProcess,
-                     self->mUmbilicalProcess,
-                     self->mUmbilicalSocket->mParentSocket->mFile,
-                     aParentPid,
-                     aParentPipe));
+        monitorChildProcess(self->mChildProcess,
+                            self->mUmbilicalProcess,
+                            self->mUmbilicalSocket->mParentSocket->mFile,
+                            aParentPid,
+                            aParentPipe));
 
     ERROR_IF(
         unwatchJobControlContinue(self->mJobControl));
@@ -530,9 +530,9 @@ runSentry(struct Sentry   *self,
 
     int childStatus;
     ERROR_IF(
-        reapChild(self->mChildProcess, &childStatus));
+        reapChildProcess(self->mChildProcess, &childStatus));
 
-    closeChild(self->mChildProcess);
+    closeChildProcess(self->mChildProcess);
     self->mChildProcess = 0;
 
     debug(0,

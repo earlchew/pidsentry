@@ -93,7 +93,7 @@ static const char *pollFdTimerNames_[POLL_FD_CHILD_TIMER_KINDS] =
 
 /* -------------------------------------------------------------------------- */
 int
-createChild(struct ChildProcess *self)
+createChildProcess(struct ChildProcess *self)
 {
     int rc = - 1;
 
@@ -153,7 +153,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-printChild(const struct ChildProcess *self, FILE *aFile)
+printChildProcess(const struct ChildProcess *self, FILE *aFile)
 {
     return fprintf(aFile,
                    "<child %p pid %" PRId_Pid " pgid %" PRId_Pgid ">",
@@ -254,7 +254,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild, self,
+                        printChildProcess, self,
                         "role %s pid %" PRId_Pid, aRole, FMTd_Pid(aPid));
 
         if (rc)
@@ -297,7 +297,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild, self);
+        finally_warn_if(rc, printChildProcess, self);
     });
 
     return rc;
@@ -305,7 +305,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-killChild(struct ChildProcess *self, int aSigNum)
+killChildProcess(struct ChildProcess *self, int aSigNum)
 {
     int rc = -1;
 
@@ -327,7 +327,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild, self,
+        finally_warn_if(rc, printChildProcess, self,
                         "signal %s",
                         formatProcessSignalName(&sigName, aSigNum));
     });
@@ -351,7 +351,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild, self,
+                        printChildProcess, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -376,7 +376,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild, self,
+                        printChildProcess, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -401,7 +401,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChild, self,
+                        printChildProcess, self,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -613,7 +613,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-forkChild(
+forkChildProcess(
     struct ChildProcess   *self,
     char                 **aCmd,
     struct StdFdFiller    *aStdFdFiller,
@@ -686,7 +686,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild, self);
+        finally_warn_if(rc, printChildProcess, self);
     });
 
     return rc;
@@ -694,7 +694,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-closeChildTether(struct ChildProcess *self)
+closeChildProcessTether(struct ChildProcess *self)
 {
     int rc = -1;
 
@@ -709,7 +709,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild, self);
+        finally_warn_if(rc, printChildProcess, self);
     });
 
     return rc;
@@ -725,7 +725,7 @@ closeChildFiles_(struct ChildProcess *self)
 
 /* -------------------------------------------------------------------------- */
 int
-reapChild(struct ChildProcess *self, int *aStatus)
+reapChildProcess(struct ChildProcess *self, int *aStatus)
 {
     int rc = -1;
 
@@ -743,7 +743,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild, self);
+        finally_warn_if(rc, printChildProcess, self);
     });
 
     return rc;
@@ -751,18 +751,18 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 struct ChildProcess *
-closeChild(struct ChildProcess *self)
+closeChildProcess(struct ChildProcess *self)
 {
     if (self)
     {
         if (self->mPid.mPid)
         {
             ABORT_IF(
-                killChild(self, SIGKILL));
+                killChildProcess(self, SIGKILL));
 
             int status;
             ABORT_IF(
-                reapChild(self, &status));
+                reapChildProcess(self, &status));
         }
 
         ensure( ! self->mChildMonitor.mMonitor);
@@ -846,7 +846,7 @@ struct ChildMonitor
 
 /* -------------------------------------------------------------------------- */
 static int
-printChildMonitor_(const struct ChildMonitor *self, FILE *aFile)
+printChildProcessMonitor_(const struct ChildMonitor *self, FILE *aFile)
 {
     return fprintf(aFile,
                    "<child monitor %p pid %" PRId_Pid ">",
@@ -930,7 +930,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -963,7 +963,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1086,7 +1086,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1154,7 +1154,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1330,7 +1330,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1378,7 +1378,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1419,7 +1419,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1528,7 +1528,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1626,7 +1626,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1758,7 +1758,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor_, self);
     });
 
     return rc;
@@ -1766,7 +1766,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static void
-updateChildMonitor_(struct ChildProcess *self, struct ChildMonitor *aMonitor)
+updateChildProcessMonitor_(
+    struct ChildProcess *self, struct ChildMonitor *aMonitor)
 {
     lockThreadSigMutex(self->mChildMonitor.mMutex);
 
@@ -1776,7 +1777,7 @@ updateChildMonitor_(struct ChildProcess *self, struct ChildMonitor *aMonitor)
 }
 
 int
-raiseChildSigCont(struct ChildProcess *self)
+raiseChildProcessSigCont(struct ChildProcess *self)
 {
     int rc = -1;
 
@@ -1794,7 +1795,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild, self);
+        finally_warn_if(rc, printChildProcess, self);
 
         lock = unlockThreadSigMutex(lock);
     });
@@ -1804,11 +1805,11 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-monitorChild(struct ChildProcess     *self,
-             struct UmbilicalProcess *aUmbilicalProcess,
-             struct File             *aUmbilicalFile,
-             struct Pid               aParentPid,
-             struct Pipe             *aParentPipe)
+monitorChildProcess(struct ChildProcess     *self,
+                    struct UmbilicalProcess *aUmbilicalProcess,
+                    struct File             *aUmbilicalFile,
+                    struct Pid               aParentPid,
+                    struct Pipe             *aParentPipe)
 {
     int rc = -1;
 
@@ -2085,7 +2086,7 @@ monitorChild(struct ChildProcess     *self,
             PollFdCompletionMethod(pollFdCompletion_, childMonitor)));
     pollfd = &pollfd_;
 
-    updateChildMonitor_(self, childMonitor);
+    updateChildProcessMonitor_(self, childMonitor);
 
     ERROR_IF(
         runPollFdLoop(pollfd));
@@ -2096,9 +2097,9 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChild, self);
+        finally_warn_if(rc, printChildProcess, self);
 
-        updateChildMonitor_(self, 0);
+        updateChildProcessMonitor_(self, 0);
 
         closePollFd(pollfd);
 
