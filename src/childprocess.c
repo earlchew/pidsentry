@@ -27,7 +27,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "child.h"
+#include "childprocess.h"
 #include "umbilical.h"
 #include "tether.h"
 #include "pidserver.h"

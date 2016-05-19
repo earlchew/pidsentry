@@ -29,7 +29,7 @@
 #ifndef SENTRY_H
 #define SENTRY_H
 
-#include "child.h"
+#include "childprocess.h"
 #include "umbilical.h"
 #include "pidserver.h"
 

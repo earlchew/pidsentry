@@ -28,7 +28,7 @@
 */
 
 #include "umbilical.h"
-#include "child.h"
+#include "childprocess.h"
 #include "pidserver.h"
 
 #include "error_.h"
