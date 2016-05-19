@@ -34,6 +34,7 @@
 #define STRINGIFY_(Text_) #Text_
 #define STRINGIFY(Text_)  STRINGIFY_(Text_)
 
+#define ARGS(...)   , ## __VA_ARGS__
 #define EXPAND(...) __VA_ARGS__
 
 #define CONCAT_(Lhs_, Rhs_) Lhs_ ## Rhs_
