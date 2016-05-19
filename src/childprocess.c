@@ -2101,7 +2101,7 @@ Finally:
 
         updateChildProcessMonitor_(self, 0);
 
-        closePollFd(pollfd);
+        pollfd = closePollFd(pollfd);
 
         ABORT_IF(
             EventLatchSettingError == bindEventLatchPipe(
@@ -2111,12 +2111,12 @@ Finally:
             EventLatchSettingError == bindEventLatchPipe(
                 self->mChildLatch, 0));
 
-        closeEventPipe(eventPipe);
-        closeEventLatch(contLatch);
+        eventPipe = closeEventPipe(eventPipe);
+        contLatch = closeEventLatch(contLatch);
 
-        closeTetherThread(tetherThread);
+        tetherThread = closeTetherThread(tetherThread);
 
-        closePipe(nullPipe);
+        nullPipe = closePipe(nullPipe);
     });
 
     debug(0, "stop monitoring child");

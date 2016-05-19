@@ -237,13 +237,13 @@ closeSentry(struct Sentry *self)
 {
     if (self)
     {
-        closePidServer(self->mPidServer);
-        destroyPidFile(self->mPidFile);
-        closeBellSocketPair(self->mSyncSocket);
-        closeJobControl(self->mJobControl);
-        closeChildProcess(self->mChildProcess);
-        closeSocketPair(self->mUmbilicalSocket);
-        closeStdFdFiller(self->mStdFdFiller);
+        self->mPidServer       = closePidServer(self->mPidServer);
+        self->mPidFile         = destroyPidFile(self->mPidFile);
+        self->mSyncSocket      = closeBellSocketPair(self->mSyncSocket);
+        self->mJobControl      = closeJobControl(self->mJobControl);
+        self->mChildProcess    = closeChildProcess(self->mChildProcess);
+        self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
+        self->mStdFdFiller     = closeStdFdFiller(self->mStdFdFiller);
     }
 
     return 0;
@@ -313,8 +313,7 @@ runSentry(struct Sentry   *self,
        so the instance that was created in the watchdog is no longer
        required. */
 
-    closePidServer(self->mPidServer);
-    self->mPidServer = 0;
+    self->mPidServer = closePidServer(self->mPidServer);
 
     if (gOptions.mIdentify)
     {
@@ -532,8 +531,7 @@ runSentry(struct Sentry   *self,
     ERROR_IF(
         reapChildProcess(self->mChildProcess, &childStatus));
 
-    closeChildProcess(self->mChildProcess);
-    self->mChildProcess = 0;
+    self->mChildProcess = closeChildProcess(self->mChildProcess);
 
     debug(0,
           "reaped child pid %" PRId_Pid " status %d",

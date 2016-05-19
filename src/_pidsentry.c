@@ -117,7 +117,7 @@ Finally:
 
     FINALLY
     ({
-        closeCommand(command);
+        command = closeCommand(command);
     });
 
     return rc;
@@ -159,7 +159,7 @@ Finally:
 
     FINALLY
     ({
-        closeAgent(agent);
+        agent = closeAgent(agent);
     });
 
     return rc;

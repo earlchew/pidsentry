@@ -94,7 +94,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static struct PidServerClient_ *
 closePidServerClient_(struct PidServerClient_ *self)
 {
     if (self)
@@ -102,6 +102,8 @@ closePidServerClient_(struct PidServerClient_ *self)
         closeEventQueueFile(self->mEvent);
         closeUnixSocket(self->mSocket);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -158,11 +160,11 @@ closePidServer(struct PidServer *self)
 
             TAILQ_REMOVE(&self->mClients, client, mList);
 
-            closePidServerClient_(client);
+            client = closePidServerClient_(client);
         }
 
-        closeEventQueue(self->mEventQueue);
-        closeUnixSocket(self->mSocket);
+        self->mEventQueue = closeEventQueue(self->mEventQueue);
+        self->mSocket     = closeUnixSocket(self->mSocket);
    }
 
     return 0;
@@ -225,7 +227,7 @@ Finally:
 
     FINALLY
     ({
-        closePidServerClient_(client);
+        client = closePidServerClient_(client);
         free(client_);
     });
 

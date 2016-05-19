@@ -164,7 +164,7 @@ Finally:
     ({
         finally_warn_if(rc, printAgent_, self);
 
-        closeSentry(sentry);
+        sentry = closeSentry(sentry);
     });
 
     return rc;
@@ -356,10 +356,10 @@ Finally:
     ({
         finally_warn_if(rc, printAgent_, self);
 
-        closePipe(parentPipe);
-        closeStdFdFiller(stdFdFiller);
-        closeParentProcess(parentProcess);
-        closeJobControl(jobControl);
+        parentPipe    = closePipe(parentPipe);
+        stdFdFiller   = closeStdFdFiller(stdFdFiller);
+        parentProcess = closeParentProcess(parentProcess);
+        jobControl    = closeJobControl(jobControl);
     });
 
     return rc;
