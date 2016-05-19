@@ -921,15 +921,8 @@ pollFdTimerTermination_(struct ChildMonitor         *self,
         FMTd_Pid(pidNum),
         formatProcessSignalName(&sigName, sigNum));
 
-    ABORT_IF(
-        kill(pidNum.mPid, sigNum),
-        {
-            terminate(
-                errno,
-                "Unable to kill child pid %" PRId_Pid " with %s",
-                FMTd_Pid(pidNum),
-                formatProcessSignalName(&sigName, sigNum));
-        });
+    ERROR_IF(
+        kill(pidNum.mPid, sigNum));
 
     rc = 0;
 
@@ -1035,17 +1028,12 @@ pollFdUmbilical_(struct ChildMonitor         *self,
      * is equivalent to encountering the end of file. */
 
     ssize_t rdlen;
-    ABORT_IF(
+    ERROR_IF(
         (rdlen = read(
             self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno
-         : (errno = 0, rdlen && sizeof(buf) != rdlen)),
-        {
-            terminate(
-                errno,
-                "Unable to read umbilical connection");
-        });
+         : (errno = 0, rdlen && sizeof(buf) != rdlen)));
 
     bool umbilicalClosed = false;
 
@@ -1104,11 +1092,40 @@ Finally:
     return rc;
 }
 
+static bool
+pollFdWriteUmbilicalError_(int aErrno)
+{
+    bool error = false;
+
+    FINALLY
+    ({
+        switch (aErrno)
+        {
+        default:
+            error = true;
+            break;
+
+        case EPIPE:
+            warn(1, "Umbilical connection closed");
+            break;
+
+        case EWOULDBLOCK:
+            debug(1, "writing to umbilical blocked");
+            break;
+
+        case EINTR:
+            debug(1, "umbilical write interrupted");
+            break;
+        }
+    });
+
+    return error;
+}
+
 static int
 pollFdWriteUmbilical_(struct ChildMonitor *self)
 {
-    int  rc    = -1;
-    bool fatal = false;
+    int rc = -1;
 
     ensure(self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit);
 
@@ -1118,35 +1135,18 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
     ERROR_IF(
         (wrlen = write(
             self->mUmbilical.mFile->mFd, buf, sizeof(buf)),
-         -1 == wrlen),
-        {
-            switch (errno)
-            {
-            default:
-                fatal = true;
-                break;
+         -1 == wrlen && pollFdWriteUmbilicalError_(errno)));
 
-            case EPIPE:
-                warn(1, "Umbilical connection closed");
-                break;
+    if (-1 != wrlen)
+    {
+        debug(1, "sent umbilical ping %zd", wrlen);
+        ensure(sizeof(buf) == wrlen);
 
-            case EWOULDBLOCK:
-                debug(1, "writing to umbilical blocked");
-                break;
+        /* Once a message is written on the umbilical connection, expect
+         * an echo to be returned from the umbilical monitor. */
 
-            case EINTR:
-                debug(1, "umbilical write interrupted");
-                break;
-            }
-        });
-
-    debug(1, "sent umbilical ping %zd", wrlen);
-    ensure(sizeof(buf) == wrlen);
-
-    /* Once a message is written on the umbilical connection, expect
-     * an echo to be returned from the umbilical monitor. */
-
-    self->mUmbilical.mCycleCount = 0;
+        self->mUmbilical.mCycleCount = 0;
+    }
 
     rc = 0;
 
@@ -1155,12 +1155,6 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc, printChildMonitor_, self);
-
-        ABORT_IF(
-            fatal,
-            {
-                terminate(errno, "Unable to write to umbilical");
-            });
     });
 
     return rc;
@@ -1264,16 +1258,10 @@ pollFdTimerUmbilical_(struct ChildMonitor         *self,
          * child process. */
 
         struct ChildProcessState umbilicalState;
-        ABORT_IF(
+        ERROR_IF(
             (umbilicalState = monitorProcessChild(self->mUmbilical.mPid),
              ChildProcessStateError == umbilicalState.mChildState &&
-             ECHILD != errno),
-            {
-                terminate(
-                    errno,
-                    "Unable to check for status of umbilical pid %" PRId_Pid,
-                    FMTd_Pid(self->mUmbilical.mPid));
-            });
+             ECHILD != errno));
 
         /* Beware that the umbilical process might no longer be active.
          * If so, do nothing here, and rely on subsequent brokn umbilical
@@ -1473,16 +1461,10 @@ pollFdTimerTether_(struct ChildMonitor         *self,
 
         struct ChildProcessState childState;
 
-        ABORT_IF(
+        ERROR_IF(
             (childState = monitorProcessChild(self->mChildPid),
              ChildProcessStateError == childState.mChildState &&
-             ECHILD != errno),
-            {
-                terminate(
-                    errno,
-                    "Unable to check for status of child pid %" PRId_Pid,
-                    FMTd_Pid(self->mChildPid));
-            });
+             ECHILD != errno));
 
         /* Be aware if the child process is no longer active, it makes
          * sense to proceed as if the child process should be terminated. */
@@ -1719,14 +1701,9 @@ pollFdEventPipe_(struct ChildMonitor         *self,
             debug(0, "checking event pipe");
 
             int err;
-            ABORT_IF(
+            ERROR_IF(
                 (err = resetEventPipe(self->mEventPipe),
-                 -1 == err && EINTR != errno),
-                {
-                    terminate(
-                        errno,
-                        "Unable to reset event pipe");
-                });
+                 -1 == err && EINTR != errno));
 
             if ( ! err)
                 continue;
