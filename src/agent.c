@@ -234,7 +234,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
     if (gOptions.mOrphaned)
     {
         ERROR_IF(
-            createParent(&parentProcess_));
+            createParentProcess(&parentProcess_));
         parentProcess = &parentProcess_;
     }
 
@@ -358,7 +358,7 @@ Finally:
 
         closePipe(parentPipe);
         closeStdFdFiller(stdFdFiller);
-        closeParent(parentProcess);
+        closeParentProcess(parentProcess);
         closeJobControl(jobControl);
     });
 

@@ -49,10 +49,10 @@ struct ParentProcess
 
 /* -------------------------------------------------------------------------- */
 INT
-createParent(struct ParentProcess *self);
+createParentProcess(struct ParentProcess *self);
 
 struct ParentProcess *
-closeParent(struct ParentProcess *self);
+closeParentProcess(struct ParentProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
@@ -60,4 +60,4 @@ closeParent(struct ParentProcess *self);
 }
 #endif
 
-#endif /* PARENT_H */
+#endif /* PARENTPROCESS_H */

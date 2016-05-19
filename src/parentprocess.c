@@ -81,7 +81,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-createParent(struct ParentProcess *self)
+createParentProcess(struct ParentProcess *self)
 {
     int rc = - 1;
 
@@ -108,7 +108,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 struct ParentProcess *
-closeParent(struct ParentProcess *self)
+closeParentProcess(struct ParentProcess *self)
 {
     if (self)
     {
