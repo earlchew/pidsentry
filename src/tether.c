@@ -163,21 +163,13 @@ pollFdDrain_(struct TetherPoll           *self,
 
             ssize_t bytes;
 
-            ABORT_IF(
+            ERROR_IF(
                 (bytes = spliceFd(
                     self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE),
                  -1 == bytes &&
                  EPIPE       != errno &&
                  EWOULDBLOCK != errno &&
-                 EINTR       != errno),
-                {
-                    terminate(
-                        errno,
-                        "Unable to splice %d bytes from fd %d to fd %d",
-                        available,
-                        self->mSrcFd,
-                        self->mDstFd);
-                });
+                 EINTR       != errno));
 
             if ( ! bytes)
             {
