@@ -138,13 +138,8 @@ cmdMonitorChild(char **aCmd, struct ExitCode *aExitCode)
           FMTd_Pid(ownProcessId()),
           FMTd_Pgid(ownProcessGroupId()));
 
-    ABORT_IF(
-        ignoreProcessSigPipe(),
-        {
-            terminate(
-                errno,
-                "Unable to ignore SIGPIPE");
-        });
+    ERROR_IF(
+        ignoreProcessSigPipe());
 
     struct Agent  agent_;
     struct Agent *agent = 0;
