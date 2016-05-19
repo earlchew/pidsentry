@@ -29,7 +29,7 @@
 
 #include "agent.h"
 #include "sentry.h"
-#include "parent.h"
+#include "parentprocess.h"
 
 #include "error_.h"
 #include "fd_.h"
