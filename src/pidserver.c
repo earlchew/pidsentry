@@ -49,11 +49,30 @@
     FMTd_Pid(Pid((Ucred).pid))
 
 /* -------------------------------------------------------------------------- */
-static int
-createPidServerClient_(struct PidServerClient_ *self,
-                       struct PidServer        *aServer)
+static struct PidServerClient_ *
+closePidServerClient_(struct PidServerClient_ *self)
+{
+    if (self)
+    {
+        closeEventQueueFile(self->mEvent);
+        closeUnixSocket(self->mSocket);
+
+        free(self);
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+static struct PidServerClient_ *
+createPidServerClient_(struct PidServer *aServer)
 {
     int rc = -1;
+
+    struct PidServerClient_ *self = 0;
+
+    ERROR_UNLESS(
+        (self = malloc(sizeof(*self))));
 
     self->mServer = aServer;
     self->mEvent  = 0;
@@ -84,26 +103,10 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            closeEventQueueFile(self->mEvent);
-            closeUnixSocket(self->mSocket);
-        }
+            self = closePidServerClient_(self);
     });
 
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-static struct PidServerClient_ *
-closePidServerClient_(struct PidServerClient_ *self)
-{
-    if (self)
-    {
-        closeEventQueueFile(self->mEvent);
-        closeUnixSocket(self->mSocket);
-    }
-
-    return 0;
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -185,15 +188,10 @@ acceptPidServerConnection(struct PidServer *self)
      * to store the connection record, but pause rather than allowing
      * the event loop to spin wildly. */
 
-    struct PidServerClient_ *client_ = 0;
     struct PidServerClient_ *client  = 0;
-    ERROR_UNLESS(
-        (client_ = malloc(sizeof(*client_))));
 
-    ERROR_IF(
-        createPidServerClient_(client_, self));
-    client  = client_;
-    client_ = 0;
+    ERROR_UNLESS(
+        (client = createPidServerClient_(self)));
 
     ERROR_UNLESS(
         geteuid() == client->mCred.uid || ! client->mCred.uid,
@@ -228,7 +226,6 @@ Finally:
     FINALLY
     ({
         client = closePidServerClient_(client);
-        free(client_);
     });
 
     return rc;
@@ -265,9 +262,7 @@ cleanPidServer(struct PidServer *self)
 
         TAILQ_REMOVE(&self->mClients, client, mList);
 
-        closePidServerClient_(client);
-        free(client);
-        client = 0;
+        client = closePidServerClient_(client);
     }
 
     /* There is no further need to continue cleaning if there are no
