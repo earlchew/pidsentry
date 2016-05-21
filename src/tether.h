@@ -29,7 +29,7 @@
 #ifndef TETHER_H
 #define TETHER_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "pipe_.h"
 #include "timekeeping_.h"
 
@@ -55,25 +55,28 @@ struct TetherThread
     pthread_t    mThread;
 
     struct {
-        pthread_mutex_t       mMutex;
-        struct EventClockTime mSince;
+        pthread_mutex_t        mMutex_;
+        pthread_mutex_t       *mMutex;
+        struct EventClockTime  mSince;
     } mActivity;
 
     struct {
-        pthread_mutex_t        mMutex;
-        pthread_cond_t         mCond;
+        pthread_mutex_t        mMutex_;
+        pthread_mutex_t       *mMutex;
+        pthread_cond_t         mCond_;
+        pthread_cond_t        *mCond;
         enum TetherThreadState mValue;
     } mState;
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe);
 
-INT
+CHECKED int
 pingTetherThread(struct TetherThread *self);
 
-INT
+CHECKED int
 flushTetherThread(struct TetherThread *self);
 
 struct TetherThread *

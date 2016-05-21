@@ -29,7 +29,7 @@
 #ifndef OPTIONS_H
 #define OPTIONS_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "pid_.h"
 
 #include <sys/types.h>
@@ -67,7 +67,7 @@ extern struct Options gOptions;
 void
 initOptions(void);
 
-INT
+CHECKED int
 processOptions(int argc, char **argv, char ***args);
 
 /* -------------------------------------------------------------------------- */

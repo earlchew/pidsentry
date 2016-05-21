@@ -390,27 +390,32 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
 {
     int rc = -1;
 
-    struct PollFd pollfd;
+    struct PollFd  pollfd_;
+    struct PollFd *pollfd = 0;
+
     ERROR_IF(
         createPollFd(
-            &pollfd,
+            &pollfd_,
             self->mPollFds,
             self->mPollFdActions,
             pollFdNames_, POLL_FD_MONITOR_KINDS,
             self->mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_MONITOR_TIMER_KINDS,
             PollFdCompletionMethod(pollFdCompletion_, self)));
+    pollfd = &pollfd_;
+
 
     ERROR_IF(
-        runPollFdLoop(&pollfd));
-
-    closePollFd(&pollfd);
+        runPollFdLoop(pollfd));
 
     rc = 0;
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        pollfd = closePollFd(pollfd);
+    });
 
     return rc;
 }
@@ -487,7 +492,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
         STDOUT_FILENO != dup2(
             self->mSocket->mChildSocket->mFile->mFd, STDOUT_FILENO));
 
-    closeSocketPair(self->mSocket);
+    self->mSocket = closeSocketPair(self->mSocket);
 
     {
         appLock = createProcessAppLock();
@@ -630,7 +635,7 @@ Finally:
 
     FINALLY
     ({
-        popThreadSigMask(sigMask);
+        sigMask = popThreadSigMask(sigMask);
 
         if (rc)
         {

@@ -29,7 +29,7 @@
 #ifndef AGENT_H
 #define AGENT_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "pid_.h"
 
 #ifdef __cplusplus
@@ -47,14 +47,14 @@ struct Agent
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createAgent(struct Agent *self,
             char         **aCmd);
 
 struct Agent *
 closeAgent(struct Agent *self);
 
-INT
+CHECKED int
 runAgent(struct Agent    *self,
          struct ExitCode *aExitCode);
 

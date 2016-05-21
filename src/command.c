@@ -135,13 +135,13 @@ Finally:
             status = CommandStatusError;
 
         if (CommandStatusOk != status)
-            closeUnixSocket(self->mKeeperTether);
+            self->mKeeperTether = closeUnixSocket(self->mKeeperTether);
 
         /* There is no further need to hold a lock on the pidfile because
          * acquisition of a reference to the child process group is the
          * sole requirement. */
 
-        destroyPidFile(pidFile);
+        pidFile = destroyPidFile(pidFile);
     });
 
     return status;
@@ -188,8 +188,7 @@ runCommandChildProcess_(struct RunCommandProcess_ *self)
         (rdlen = readFile(self->mSyncPipe->mRdFile, buf, 1),
          -1 == rdlen));
 
-    closePipe(self->mSyncPipe);
-    self->mSyncPipe = 0;
+    self->mSyncPipe = closePipe(self->mSyncPipe);
 
     debug(0, "command process synchronised");
 
@@ -273,7 +272,7 @@ Finally:
 
     FINALLY
     ({
-        closePipe(syncPipe);
+        syncPipe = closePipe(syncPipe);
     });
 
     return rc;
@@ -325,9 +324,7 @@ struct Command *
 closeCommand(struct Command *self)
 {
     if (self)
-    {
-        closeUnixSocket(self->mKeeperTether);
-    }
+        self->mKeeperTether = closeUnixSocket(self->mKeeperTether);
 
     return 0;
 }

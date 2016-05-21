@@ -29,7 +29,7 @@
 #ifndef PARENT_H
 #define PARENT_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "process_.h"
 
 #include <pthread.h>
@@ -48,7 +48,7 @@ struct ParentProcess
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createParentProcess(struct ParentProcess *self);
 
 struct ParentProcess *

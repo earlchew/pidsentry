@@ -195,8 +195,7 @@ createSentry(struct Sentry *self,
      * so that stdin, stdout and stderr become available for manipulation
      * and will not be closed multiple times. */
 
-    closeStdFdFiller(self->mStdFdFiller);
-    self->mStdFdFiller = 0;
+    self->mStdFdFiller = closeStdFdFiller(self->mStdFdFiller);
 
     /* Discard the original stdin file descriptor, and instead attach
      * the reading end of the tether as stdin. This means that the
@@ -442,8 +441,7 @@ runSentry(struct Sentry   *self,
              : (errno = 0, true)));
     });
 
-    closeBellSocketPair(self->mSyncSocket);
-    self->mSyncSocket = 0;
+    self->mSyncSocket = closeBellSocketPair(self->mSyncSocket);
 
     /* Now that the child is no longer sharing any file descriptors or file
      * locks, stop the watchdog if the test requires it. Note that this
@@ -481,8 +479,7 @@ runSentry(struct Sentry   *self,
         ERROR_IF(
             acquirePidFileWriteLock(self->mPidFile));
 
-        destroyPidFile(self->mPidFile);
-        self->mPidFile = 0;
+        self->mPidFile = destroyPidFile(self->mPidFile);
     }
 
     /* Attempt to stop the umbilical process cleanly so that the watchdog
@@ -538,8 +535,7 @@ runSentry(struct Sentry   *self,
           FMTd_Pid(childPid),
           childStatus);
 
-    closeSocketPair(self->mUmbilicalSocket);
-    self->mUmbilicalSocket = 0;
+    self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
 
     ERROR_IF(
         resetProcessSigPipe());

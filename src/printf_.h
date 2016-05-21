@@ -29,7 +29,7 @@
 #ifndef PRINTF_H
 #define PRINTF_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "method_.h"
 
 #include <stdio.h>
@@ -104,7 +104,7 @@ int
 xfprintf(FILE *aFile, const char *aFmt, ...)
     __attribute__ ((__format__(__printf__, 2, 3)));
 
-INT
+CHECKED int
 xsnprintf(char *aBuf, size_t aSize, const char *aFmt, ...)
     __attribute__ ((__format__(__printf__, 3, 4)));
 
@@ -116,14 +116,14 @@ xdprintf(int aFd, const char *aFmt, ...)
 int
 xvfprintf(FILE *aFile, const char *aFmt, va_list);
 
-INT
+CHECKED int
 xvsnprintf(char *aBuf, size_t aSize, const char *aFmt, va_list);
 
 int
 xvdprintf(int aFd, const char *aFmt, va_list);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 Printf_init(struct PrintfModule *self);
 
 void

@@ -29,7 +29,7 @@
 #ifndef THREAD_H
 #define THREAD_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "method_.h"
 
 #include <stdbool.h>
@@ -80,16 +80,22 @@ enum ThreadSigMaskAction
 
 struct ThreadSigMutex
 {
-    pthread_mutex_t      mMutex;
-    pthread_cond_t       mCond;
+    pthread_mutex_t      mMutex_;
+    pthread_mutex_t     *mMutex;
+    pthread_cond_t       mCond_;
+    pthread_cond_t      *mCond;
     struct ThreadSigMask mMask;
     unsigned             mLocked;
     pthread_t            mOwner;
 };
 
-#define THREAD_SIG_MUTEX_INITIALIZER {   \
-    .mMutex = PTHREAD_MUTEX_INITIALIZER, \
-    .mCond  = PTHREAD_COND_INITIALIZER, }
+#define THREAD_SIG_MUTEX_INITIALIZER(Mutex_) \
+{                                            \
+    .mMutex_ = PTHREAD_MUTEX_INITIALIZER,    \
+    .mMutex  = &(Mutex_).mMutex_,            \
+    .mCond_  = PTHREAD_COND_INITIALIZER,     \
+    .mCond   = &(Mutex_).mCond_,             \
+}
 
 struct RWMutexReader
 {
@@ -110,7 +116,7 @@ void
 createThread(
     pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod);
 
-INT
+CHECKED int
 joinThread(pthread_t *self);
 
 void
@@ -127,90 +133,90 @@ void
 setThreadAttrDetachState(pthread_attr_t *self, int aState);
 
 /* -------------------------------------------------------------------------- */
-struct ThreadSigMutex *
+CHECKED struct ThreadSigMutex *
 createThreadSigMutex(struct ThreadSigMutex *self);
 
-struct ThreadSigMutex *
+CHECKED struct ThreadSigMutex *
 destroyThreadSigMutex(struct ThreadSigMutex *self);
 
-struct ThreadSigMutex *
+CHECKED struct ThreadSigMutex *
 lockThreadSigMutex(struct ThreadSigMutex *self);
 
 unsigned
 ownThreadSigMutexLocked(struct ThreadSigMutex *self);
 
-struct ThreadSigMutex *
+CHECKED struct ThreadSigMutex *
 unlockThreadSigMutex(struct ThreadSigMutex *self);
 
 /* -------------------------------------------------------------------------- */
-pthread_mutex_t *
+CHECKED pthread_mutex_t *
 createMutex(pthread_mutex_t *self);
 
-pthread_mutex_t *
+CHECKED pthread_mutex_t *
 createSharedMutex(pthread_mutex_t *self);
 
-pthread_mutex_t *
+CHECKED pthread_mutex_t *
 destroyMutex(pthread_mutex_t *self);
 
-pthread_mutex_t *
+CHECKED pthread_mutex_t *
 lockMutex(pthread_mutex_t *self);
 
-pthread_mutex_t *
+CHECKED pthread_mutex_t *
 unlockMutex(pthread_mutex_t *self);
 
-pthread_mutex_t *
+CHECKED pthread_mutex_t *
 unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond);
 
-pthread_mutex_t *
+CHECKED pthread_mutex_t *
 unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond);
 
 /* -------------------------------------------------------------------------- */
-pthread_rwlock_t *
+CHECKED pthread_rwlock_t *
 createRWMutex(pthread_rwlock_t *self);
 
-pthread_rwlock_t *
+CHECKED pthread_rwlock_t *
 destroyRWMutex(pthread_rwlock_t *self);
 
 /* -------------------------------------------------------------------------- */
-struct RWMutexReader *
+CHECKED struct RWMutexReader *
 createRWMutexReader(struct RWMutexReader *self,
                     pthread_rwlock_t     *aMutex);
 
-struct RWMutexReader *
+CHECKED struct RWMutexReader *
 destroyRWMutexReader(struct RWMutexReader *self);
 
 /* -------------------------------------------------------------------------- */
-struct RWMutexWriter *
+CHECKED struct RWMutexWriter *
 createRWMutexWriter(struct RWMutexWriter *self,
                     pthread_rwlock_t     *aMutex);
 
-struct RWMutexWriter *
+CHECKED struct RWMutexWriter *
 destroyRWMutexWriter(struct RWMutexWriter *self);
 
 /* -------------------------------------------------------------------------- */
-pthread_cond_t *
+CHECKED pthread_cond_t *
 createCond(pthread_cond_t *self);
 
-pthread_cond_t *
+CHECKED pthread_cond_t *
 createSharedCond(pthread_cond_t *self);
 
-pthread_cond_t *
+CHECKED pthread_cond_t *
 destroyCond(pthread_cond_t *self);
 
 void
 waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);
 
 /* -------------------------------------------------------------------------- */
-struct ThreadSigMask *
+CHECKED struct ThreadSigMask *
 pushThreadSigMask(
     struct ThreadSigMask    *self,
     enum ThreadSigMaskAction aAction,
     const int               *aSigList);
 
-struct ThreadSigMask *
+CHECKED struct ThreadSigMask *
 popThreadSigMask(struct ThreadSigMask *self);
 
-INT
+CHECKED int
 waitThreadSigMask(const int *aSigList);
 
 /* -------------------------------------------------------------------------- */

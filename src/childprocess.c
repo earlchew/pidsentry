@@ -141,10 +141,11 @@ Finally:
     ({
         if (rc)
         {
-            closePipe(self->mTetherPipe);
-            destroyThreadSigMutex(self->mChildMonitor.mMutex);
-            closeEventLatch(self->mUmbilicalLatch);
-            closeEventLatch(self->mChildLatch);
+            self->mTetherPipe          = closePipe(self->mTetherPipe);
+            self->mChildMonitor.mMutex =
+                destroyThreadSigMutex(self->mChildMonitor.mMutex);
+            self->mUmbilicalLatch      = closeEventLatch(self->mUmbilicalLatch);
+            self->mChildLatch          = closeEventLatch(self->mChildLatch);
         }
     });
 
@@ -439,7 +440,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
          * stderr. The remaining operations will close the remaining
          * unwanted file descriptors. */
 
-        closeStdFdFiller(self->mStdFdFiller);
+        self->mStdFdFiller = closeStdFdFiller(self->mStdFdFiller);
 
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
@@ -474,8 +475,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
             closePipeReader(self->mChildProcess->mTetherPipe);
 
-            closeSocketPair(self->mUmbilicalSocket);
-            self->mUmbilicalSocket = 0;
+            self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
 
             if (gOptions.mTether)
             {
@@ -563,8 +563,8 @@ runChildProcess_(struct ForkChildProcess_ *self)
                          tetherFd) != tetherFd);
             }
 
-            closePipe(self->mChildProcess->mTetherPipe);
-            self->mChildProcess->mTetherPipe = 0;
+            self->mChildProcess->mTetherPipe = closePipe(
+                self->mChildProcess->mTetherPipe);
 
         } while (0);
 
@@ -700,8 +700,7 @@ closeChildProcessTether(struct ChildProcess *self)
 
     ensure(self->mTetherPipe);
 
-    closePipe(self->mTetherPipe);
-    self->mTetherPipe = 0;
+    self->mTetherPipe = closePipe(self->mTetherPipe);
 
     rc = 0;
 
@@ -719,8 +718,7 @@ Finally:
 static void
 closeChildFiles_(struct ChildProcess *self)
 {
-    closePipe(self->mTetherPipe);
-    self->mTetherPipe = 0;
+    self->mTetherPipe = closePipe(self->mTetherPipe);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -766,12 +764,13 @@ closeChildProcess(struct ChildProcess *self)
         }
 
         ensure( ! self->mChildMonitor.mMonitor);
-        destroyThreadSigMutex(self->mChildMonitor.mMutex);
+        self->mChildMonitor.mMutex =
+            destroyThreadSigMutex(self->mChildMonitor.mMutex);
 
         closeChildFiles_(self);
 
-        closeEventLatch(self->mUmbilicalLatch);
-        closeEventLatch(self->mChildLatch);
+        self->mUmbilicalLatch = closeEventLatch(self->mUmbilicalLatch);
+        self->mChildLatch     = closeEventLatch(self->mChildLatch);
     }
 
     return 0;
@@ -1492,9 +1491,10 @@ pollFdTimerTether_(struct ChildMonitor         *self,
 
                 struct EventClockTime since;
                 {
-                    lockMutex(&self->mTetherThread->mActivity.mMutex);
+                    pthread_mutex_t *lock =
+                        lockMutex(self->mTetherThread->mActivity.mMutex);
                     since = self->mTetherThread->mActivity.mSince;
-                    unlockMutex(&self->mTetherThread->mActivity.mMutex);
+                    lock = unlockMutex(lock);
                 }
 
                 if (aPollTime->eventclock.ns <
@@ -1769,11 +1769,12 @@ static void
 updateChildProcessMonitor_(
     struct ChildProcess *self, struct ChildMonitor *aMonitor)
 {
-    lockThreadSigMutex(self->mChildMonitor.mMutex);
+    struct ThreadSigMutex *lock =
+        lockThreadSigMutex(self->mChildMonitor.mMutex);
 
     self->mChildMonitor.mMonitor = aMonitor;
 
-    unlockThreadSigMutex(self->mChildMonitor.mMutex);
+    lock = unlockThreadSigMutex(lock);
 }
 
 int

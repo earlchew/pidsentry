@@ -37,23 +37,26 @@
 
 TEST(ThreadTest, MutexDestroy)
 {
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t  mutex_ = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t *mutex  = &mutex_;
 
-    destroyMutex(&mutex);
+    mutex = destroyMutex(mutex);
 }
 
 TEST(ThreadTest, CondDestroy)
 {
-    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    pthread_cond_t  cond_ = PTHREAD_COND_INITIALIZER;
+    pthread_cond_t *cond  = &cond_;
 
-    destroyCond(&cond);
+    cond = destroyCond(cond);
 }
 
 TEST(ThreadTest, RWMutexDestroy)
 {
-    pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
+    pthread_rwlock_t  rwlock_ = PTHREAD_RWLOCK_INITIALIZER;
+    pthread_rwlock_t *rwlock  = &rwlock_;
 
-    destroyRWMutex(&rwlock);
+    rwlock = destroyRWMutex(rwlock);
 }
 
 static int sigTermCount_;
@@ -66,9 +69,10 @@ sigTermAction_(int)
 
 TEST(ThreadTest, ThreadSigMutex)
 {
-    struct ThreadSigMutex sigMutex;
+    struct ThreadSigMutex  sigMutex_;
+    struct ThreadSigMutex *sigMutex = 0;
 
-    createThreadSigMutex(&sigMutex);
+    sigMutex = createThreadSigMutex(&sigMutex_);
 
     struct sigaction prevAction;
     struct sigaction nextAction;
@@ -85,7 +89,7 @@ TEST(ThreadTest, ThreadSigMutex)
     EXPECT_FALSE(raise(SIGTERM));
     EXPECT_EQ(2, sigTermCount_);
 
-    lockThreadSigMutex(&sigMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(sigMutex);
     {
         // Verify that the lock also excludes the delivery of signals
         // while the lock is taken.
@@ -96,7 +100,7 @@ TEST(ThreadTest, ThreadSigMutex)
         EXPECT_FALSE(raise(SIGTERM));
         EXPECT_EQ(2, sigTermCount_);
     }
-    unlockThreadSigMutex(&sigMutex);
+    lock = unlockThreadSigMutex(lock);
 
     EXPECT_EQ(3, sigTermCount_);
 
@@ -108,7 +112,7 @@ TEST(ThreadTest, ThreadSigMutex)
 
     EXPECT_FALSE(sigaction(SIGTERM, &prevAction, 0));
 
-    destroyThreadSigMutex(&sigMutex);
+    sigMutex = destroyThreadSigMutex(sigMutex);
 }
 
 #include "../googletest/src/gtest_main.cc"

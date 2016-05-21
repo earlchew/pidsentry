@@ -29,7 +29,7 @@
 #ifndef PATHNAME_H
 #define PATHNAME_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "file_.h"
 
 #ifdef __cplusplus
@@ -58,19 +58,19 @@ enum PathNameStatus
 };
 
 /* -------------------------------------------------------------------------- */
-enum PathNameStatus
+CHECKED enum PathNameStatus
 createPathName(struct PathName *self, const char *aFileName);
 
-struct PathName *
+CHECKED struct PathName *
 closePathName(struct PathName *self);
 
-INT
+CHECKED int
 openPathName(struct PathName *self, int aFlags, mode_t aMode);
 
-INT
+CHECKED int
 unlinkPathName(struct PathName *self, int aFlags);
 
-INT
+CHECKED int
 fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags);
 
 /* -------------------------------------------------------------------------- */

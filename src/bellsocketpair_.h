@@ -29,7 +29,7 @@
 #ifndef BELLSOCKETPAIR_H
 #define BELLSOCKETPAIR_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "socketpair_.h"
 
 #ifdef __cplusplus
@@ -45,10 +45,10 @@ struct BellSocketPair
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createBellSocketPair(struct BellSocketPair *self, unsigned aFlags);
 
-struct BellSocketPair *
+CHECKED struct BellSocketPair *
 closeBellSocketPair(struct BellSocketPair *self);
 
 void
@@ -57,17 +57,17 @@ closeBellSocketPairParent(struct BellSocketPair *self);
 void
 closeBellSocketPairChild(struct BellSocketPair *self);
 
-INT
+CHECKED int
 ringBellSocketPairChild(struct BellSocketPair *self);
 
-INT
+CHECKED int
 ringBellSocketPairParent(struct BellSocketPair *self);
 
-INT
+CHECKED int
 waitBellSocketPairChild(struct BellSocketPair *self,
                         const struct Duration *aTimeout);
 
-INT
+CHECKED int
 waitBellSocketPairParent(struct BellSocketPair *self,
                          const struct Duration *aTimeout);
 

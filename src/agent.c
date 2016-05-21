@@ -247,8 +247,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
             createPipe(&parentPipe_, O_CLOEXEC | O_NONBLOCK));
         parentPipe = &parentPipe_;
 
-        closeStdFdFiller(stdFdFiller);
-        stdFdFiller = 0;
+        stdFdFiller = closeStdFdFiller(stdFdFiller);
     }
 
     {
@@ -302,7 +301,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
         ERROR_IF(
             closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
 
-        destroyProcessAppLock(appLock);
+        appLock = destroyProcessAppLock(appLock);
     }
 
     {

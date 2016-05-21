@@ -121,8 +121,8 @@ closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen)
                         (valid = ownFdValid(fd),
                          -1 == valid));
 
-                    if (valid)
-                        closeFd(fd);
+                    while (valid && closeFd(fd))
+                        break;
                 }
                 else
                 {
@@ -239,7 +239,7 @@ Finally:
     ({
         fd = closeFd(fd);
 
-        destroyProcessAppLock(appLock);
+        appLock = destroyProcessAppLock(appLock);
     });
 
     return rc;

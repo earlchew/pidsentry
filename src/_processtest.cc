@@ -255,7 +255,7 @@ TEST_F(ProcessTest, ProcessAppLock)
         EXPECT_FALSE(raise(SIGTERM));
         EXPECT_EQ(2, sigTermCount_);
     }
-    destroyProcessAppLock(appLock);
+    appLock = destroyProcessAppLock(appLock);
 
     EXPECT_EQ(3, sigTermCount_);
 
@@ -270,9 +270,11 @@ TEST_F(ProcessTest, ProcessAppLock)
 
 TEST_F(ProcessTest, ProcessDaemon)
 {
-    struct BellSocketPair bellSocket;
+    struct BellSocketPair  bellSocket_;
+    struct BellSocketPair *bellSocket = 0;
 
-    EXPECT_EQ(0, createBellSocketPair(&bellSocket, 0));
+    EXPECT_EQ(0, createBellSocketPair(&bellSocket_, 0));
+    bellSocket = &bellSocket_;
 
     struct DaemonState
     {
@@ -307,9 +309,9 @@ TEST_F(ProcessTest, ProcessDaemon)
                 daemonState->mSigMask[sx] = sigismember(&sigMask, sx);
         }
 
-        closeBellSocketPairParent(&bellSocket);
-        if (ringBellSocketPairChild(&bellSocket) ||
-            waitBellSocketPairChild(&bellSocket, 0))
+        closeBellSocketPairParent(bellSocket);
+        if (ringBellSocketPairChild(bellSocket) ||
+            waitBellSocketPairChild(bellSocket, 0))
         {
             execl("/bin/false", "false", (char *) 0);
         }
@@ -321,13 +323,13 @@ TEST_F(ProcessTest, ProcessDaemon)
         _exit(EXIT_FAILURE);
     }
 
-    closeBellSocketPairChild(&bellSocket);
+    closeBellSocketPairChild(bellSocket);
 
     EXPECT_NE(-1, daemonPid.mPid);
     EXPECT_EQ(daemonPid.mPid, getpgid(daemonPid.mPid));
     EXPECT_EQ(getsid(0), getsid(daemonPid.mPid));
 
-    EXPECT_EQ(0, waitBellSocketPairParent(&bellSocket, 0));
+    EXPECT_EQ(0, waitBellSocketPairParent(bellSocket, 0));
 
     EXPECT_EQ(0, daemonState->mErrno);
 
@@ -344,7 +346,7 @@ TEST_F(ProcessTest, ProcessDaemon)
 
     EXPECT_EQ(0, munmap(daemonState, sizeof(*daemonState)));
 
-    closeBellSocketPair(&bellSocket);
+    bellSocket = closeBellSocketPair(bellSocket);
 }
 
 #include "../googletest/src/gtest_main.cc"

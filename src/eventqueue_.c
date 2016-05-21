@@ -70,7 +70,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closeFile(self->mFile);
+            self->mFile = closeFile(self->mFile);
     });
 
     return rc;
@@ -81,7 +81,7 @@ struct EventQueue *
 closeEventQueue(struct EventQueue *self)
 {
     if (self)
-        closeFile(self->mFile);
+        self->mFile = closeFile(self->mFile);
 
     return 0;
 }

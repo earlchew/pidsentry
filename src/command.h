@@ -29,7 +29,7 @@
 #ifndef COMMAND_H
 #define COMMAND_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "unixsocket_.h"
 #include "pid_.h"
 
@@ -63,11 +63,11 @@ enum CommandStatus
 createCommand(struct Command *self,
               const char     *aPidFileName);
 
-INT
+CHECKED int
 runCommand(struct Command  *self,
            char           **aCmd);
 
-INT
+CHECKED int
 reapCommand(struct Command  *self,
             struct ExitCode *aExitCode);
 

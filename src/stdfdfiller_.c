@@ -91,10 +91,7 @@ Finally:
         if (rc)
         {
             for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
-            {
-                closeFile(self->mFile[ix]);
-                self->mFile[ix] = 0;
-            }
+                self->mFile[ix] = closeFile(self->mFile[ix]);
         }
     });
 

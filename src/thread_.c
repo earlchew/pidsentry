@@ -43,8 +43,8 @@
 /* -------------------------------------------------------------------------- */
 static void *
 timedLock_(void *aLock,
-           int aTryLock(void *),
-           int aTimedLock(void *, const struct timespec *))
+           int   aTryLock(void *),
+           int   aTimedLock(void *, const struct timespec *))
 {
     struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
 
@@ -147,8 +147,8 @@ createThread_(void *self_)
 
     struct ThreadFuture_ *future = self->mFuture;
 
-    lockMutex(&self->mMutex);
-    unlockMutexSignal(&self->mMutex, &self->mCond);
+    pthread_mutex_t *lock = lockMutex(&self->mMutex);
+    lock = unlockMutexSignal(lock, &self->mCond);
 
     pthread_cleanup_push(destroyThreadFuture_, future);
     {
@@ -186,7 +186,7 @@ createThread(
         });
 
 
-    lockMutex(&thread.mMutex);
+    pthread_mutex_t *lock = lockMutex(&thread.mMutex);
 
     ABORT_IF(
         (errno = pthread_create(self, aAttr, createThread_, &thread)),
@@ -196,8 +196,8 @@ createThread(
                 "Unable to create thread");
         });
 
-    waitCond(&thread.mCond, &thread.mMutex);
-    unlockMutex(&thread.mMutex);
+    waitCond(&thread.mCond, lock);
+    lock = unlockMutex(lock);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -659,8 +659,8 @@ Finally:
 struct ThreadSigMutex *
 createThreadSigMutex(struct ThreadSigMutex *self)
 {
-    createMutex(&self->mMutex);
-    createCond(&self->mCond);
+    self->mMutex = createMutex(&self->mMutex_);
+    self->mCond  = createCond(&self->mCond_);
 
     self->mLocked = 0;
 
@@ -675,8 +675,8 @@ destroyThreadSigMutex(struct ThreadSigMutex *self)
     {
         ensure( ! self->mLocked);
 
-        destroyCond(&self->mCond);
-        destroyMutex(&self->mMutex);
+        self->mCond  = destroyCond(self->mCond);
+        self->mMutex = destroyMutex(self->mMutex);
     }
 
     return 0;
@@ -690,31 +690,32 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
      * within the context of this thread, and only then lock the mutex
      * to prevent other threads accessing the resource. */
 
-    struct ThreadSigMask threadSigMask;
-    pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
+    struct ThreadSigMask  threadSigMask_;
+    struct ThreadSigMask *threadSigMask =
+        pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
 
-    lockMutex_(&self->mMutex);
+    pthread_mutex_t *lock = lockMutex_(self->mMutex);
 
     if (self->mLocked && ! pthread_equal(self->mOwner, pthread_self()))
     {
         do
-            waitCond_(&self->mCond, &self->mMutex);
+            waitCond_(self->mCond, lock);
         while (self->mLocked);
     }
 
     if (1 == ++self->mLocked)
     {
-        self->mMask  = threadSigMask;
+        self->mMask  = *threadSigMask;
         self->mOwner = pthread_self();
     }
 
-    unlockMutex_(&self->mMutex);
+    lock = unlockMutex_(lock);
 
     ensure(self->mLocked);
     ensure(pthread_equal(self->mOwner, pthread_self()));
 
     if (1 != self->mLocked)
-        popThreadSigMask(&threadSigMask);
+        threadSigMask = popThreadSigMask(threadSigMask);
 
     return self;
 }
@@ -734,19 +735,20 @@ unlockThreadSigMutex(struct ThreadSigMutex *self)
             self->mLocked = locked;
         else
         {
-            struct ThreadSigMask threadSigMask = self->mMask;
+            struct ThreadSigMask  threadSigMask_ = self->mMask;
+            struct ThreadSigMask *threadSigMask  = &threadSigMask_;
 
-            lockMutex_(&self->mMutex);
+            pthread_mutex_t *lock = lockMutex_(self->mMutex);
 
             self->mLocked = 0;
 
-            unlockMutexSignal_(&self->mMutex, &self->mCond);
+            unlockMutexSignal_(lock, self->mCond);
 
             /* Do not reference the mutex instance once it is released
              * because it might at this point be owned by another
              * thread. */
 
-            popThreadSigMask(&threadSigMask);
+            threadSigMask = popThreadSigMask(threadSigMask);
         }
     }
 
@@ -759,14 +761,14 @@ ownThreadSigMutexLocked(struct ThreadSigMutex *self)
 {
     unsigned locked;
 
-    lockMutex_(&self->mMutex);
+    pthread_mutex_t *lock = lockMutex_(self->mMutex);
 
     locked = self->mLocked;
 
     if (locked && ! pthread_equal(self->mOwner, pthread_self()))
         locked = 0;
 
-    unlockMutex_(&self->mMutex);
+    lock = unlockMutex_(lock);
 
     return locked;
 }

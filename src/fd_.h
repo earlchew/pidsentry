@@ -29,7 +29,7 @@
 #ifndef FD_H
 #define FD_H
 
-#include "int_.h"
+#include "compiler_.h"
 
 #include <stdbool.h>
 
@@ -87,70 +87,70 @@ struct WhenceType
 #define WhenceTypeEnd   ((struct WhenceType) { mType : WhenceTypeEnd_ })
 
 /* -------------------------------------------------------------------------- */
-int
+CHECKED int
 closeFd(int aFd);
 
-INT
+CHECKED int
 closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen);
 
 bool
 stdFd(int aFd);
 
-INT
+CHECKED int
 nullifyFd(int aFd);
 
-INT
+CHECKED int
 nonBlockingFd(int aFd);
 
-INT
+CHECKED int
 ownFdNonBlocking(int aFd);
 
-INT
+CHECKED int
 ownFdValid(int aFd);
 
-INT
+CHECKED int
 closeFdOnExec(int aFd, unsigned aCloseOnExec);
 
-INT
+CHECKED int
 ownFdCloseOnExec(int aFd);
 
-ssize_t
+CHECKED ssize_t
 spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 
-ssize_t
+CHECKED ssize_t
 writeFd(int aFd, const char *aBuf, size_t aLen);
 
-ssize_t
+CHECKED ssize_t
 readFd(int aFd, char *aBuf, size_t aLen);
 
-off_t
+CHECKED off_t
 lseekFd(int aFd, off_t aOffset, struct WhenceType aWhenceType);
 
-ssize_t
+CHECKED ssize_t
 readFdFully(int aFd, char **aBuf, size_t aBufSize);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 lockFd(int aFd, struct LockType aLockType);
 
-INT
+CHECKED int
 unlockFd(int aFd);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen);
 
-INT
+CHECKED int
 unlockFdRegion(int aFd, off_t aPos, off_t aLen);
 
 struct LockType
 ownFdRegionLocked(int aFd, off_t aPos, off_t aLen);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 waitFdWriteReady(int aFd, const struct Duration *aTimeout);
 
-INT
+CHECKED int
 waitFdReadReady(int aFd, const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */

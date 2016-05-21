@@ -29,7 +29,7 @@
 #ifndef EVENTQUEUE_H
 #define EVENTQUEUE_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "file_.h"
 #include "method_.h"
 
@@ -86,31 +86,31 @@ struct EventQueueFile
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createEventQueue(struct EventQueue *self);
 
-struct EventQueue *
+CHECKED struct EventQueue *
 closeEventQueue(struct EventQueue *self);
 
-INT
+CHECKED int
 pushEventQueue(struct EventQueue     *self,
                struct EventQueueFile *aEvent);
 
-INT
+CHECKED int
 popEventQueue(struct EventQueue      *self,
               struct EventQueueFile **aEvent,
               size_t                  aEvents,
               const struct Duration  *aTimeout);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createEventQueueFile(struct EventQueueFile     *self,
                      struct EventQueue         *aQueue,
                      struct File               *aFile,
                      enum EventQueuePollTrigger aTrigger,
                      struct EventQueueHandle    aSubject);
 
-struct EventQueueFile *
+CHECKED struct EventQueueFile *
 closeEventQueueFile(struct EventQueueFile *self);
 
 /* -------------------------------------------------------------------------- */

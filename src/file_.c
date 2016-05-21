@@ -83,11 +83,11 @@ createFile(struct File *self, int aFd)
             errno = err;
         });
 
-    lockMutex(&fileList_.mMutex);
+    pthread_mutex_t *lock = lockMutex(&fileList_.mMutex);
     {
         LIST_INSERT_HEAD(&fileList_.mHead, self, mList);
     }
-    unlockMutex(&fileList_.mMutex);
+    lock = unlockMutex(lock);
 
     rc = 0;
 
@@ -231,7 +231,7 @@ temporaryFileProcess_(struct TemporaryFileProcess_ *self)
         ERROR_IF(
             closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
 
-        destroyProcessAppLock(appLock);
+        appLock = destroyProcessAppLock(appLock);
     }
 
     int fd;
@@ -337,7 +337,7 @@ Finally:
 
     FINALLY
     ({
-        closeSocketPair(socketPair);
+        socketPair = closeSocketPair(socketPair);
 
         if (-1 != tempPid.mPid)
         {
@@ -424,11 +424,11 @@ detachFile(struct File *self)
         ERROR_IF(
             -1 == self->mFd);
 
-        lockMutex(&fileList_.mMutex);
+        pthread_mutex_t *lock = lockMutex(&fileList_.mMutex);
         {
             LIST_REMOVE(self, mList);
         }
-        unlockMutex(&fileList_.mMutex);
+        lock = unlockMutex(lock);
 
         self->mFd = -1;
     }
@@ -448,11 +448,11 @@ closeFile(struct File *self)
 {
     if (self && -1 != self->mFd)
     {
-        lockMutex(&fileList_.mMutex);
+        pthread_mutex_t *lock = lockMutex(&fileList_.mMutex);
         {
             LIST_REMOVE(self, mList);
         }
-        unlockMutex(&fileList_.mMutex);
+        lock = unlockMutex(lock);
 
         self->mFd = closeFd(self->mFd);
     }
@@ -472,7 +472,7 @@ void
 walkFileList(void *aOther,
              int aVisitor(void *aOther, const struct File *aFile))
 {
-    lockMutex(&fileList_.mMutex);
+    pthread_mutex_t *lock = lockMutex(&fileList_.mMutex);
     {
         const struct File *filePtr;
 
@@ -482,30 +482,23 @@ walkFileList(void *aOther,
                 break;
         }
     }
-    unlockMutex(&fileList_.mMutex);
+    lock = unlockMutex(lock);
 }
 
 /* -------------------------------------------------------------------------- */
 int
-dupFile(struct File *self_, const struct File *aOther)
+dupFile(struct File *self, const struct File *aOther)
 {
     int rc = -1;
 
-    struct File *self = 0;
-
     ERROR_IF(
-        createFile(self_, dup(aOther->mFd)));
-    self = self_;
+        createFile(self, dup(aOther->mFd)));
 
     rc = 0;
 
 Finally:
 
-    FINALLY
-    ({
-        if (rc)
-            closeFile(self);
-    });
+    FINALLY({});
 
     return rc;
 }
@@ -684,7 +677,7 @@ Finally:
     ({
         if (-1 == rc)
             fd = closeFd(fd);
-        destroyProcessAppLock(appLock);
+        appLock = destroyProcessAppLock(appLock);
     });
 
     return rc;

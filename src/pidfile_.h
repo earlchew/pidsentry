@@ -29,7 +29,7 @@
 #ifndef PIDFILE_H
 #define PIDFILE_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "pathname_.h"
 #include "pid_.h"
 
@@ -58,29 +58,29 @@ enum PidFileStatus
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 initPidFile(struct PidFile *self, const char *aFileName);
 
-struct PidFile *
+CHECKED struct PidFile *
 destroyPidFile(struct PidFile *self);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 openPidFile(struct PidFile *self, unsigned aFlags);
 
-void
+CHECKED int
 closePidFile(struct PidFile *self);
 
-struct Pid
+CHECKED struct Pid
 readPidFile(const struct PidFile *self, struct sockaddr_un *aPidServerAddr);
 
-INT
+CHECKED int
 acquirePidFileWriteLock(struct PidFile *self);
 
-INT
+CHECKED int
 acquirePidFileReadLock(struct PidFile *self);
 
-enum PidFileStatus
+CHECKED enum PidFileStatus
 writePidFile(struct PidFile           *self,
              struct Pid                aPid,
              const struct sockaddr_un *aPidServerAddr);

@@ -156,7 +156,7 @@ Finally:
     FINALLY(
     {
         if (rc)
-            closeFile(self->mFile);
+            self->mFile = closeFile(self->mFile);
     });
 
     return rc;
@@ -192,7 +192,7 @@ Finally:
     FINALLY(
     {
         if (rc)
-            closeFile(self->mFile);
+            self->mFile = closeFile(self->mFile);
     });
 
     return rc;
@@ -256,7 +256,7 @@ Finally:
     FINALLY(
     {
         if (rc)
-            closeFile(self->mFile);
+            self->mFile = closeFile(self->mFile);
     });
 
     return rc ? rc : err ? err : 0;
@@ -334,8 +334,8 @@ Finally:
 
         if (rc)
         {
-            closeFile(aParent->mFile);
-            closeFile(aChild->mFile);
+            aParent->mFile = closeFile(aParent->mFile);
+            aChild->mFile  = closeFile(aChild->mFile);
         }
     });
 

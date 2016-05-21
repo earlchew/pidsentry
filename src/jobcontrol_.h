@@ -29,7 +29,7 @@
 #ifndef JOBCONTROL_H
 #define JOBCONTROL_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "method_.h"
 #include "thread_.h"
 
@@ -64,39 +64,39 @@ struct JobControl
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createJobControl(struct JobControl *self);
 
-struct JobControl *
+CHECKED struct JobControl *
 closeJobControl(struct JobControl *self);
 
-INT
+CHECKED int
 watchJobControlSignals(struct JobControl  *self,
                        struct IntIntMethod aRaiseMethod);
 
-INT
+CHECKED int
 unwatchJobControlSignals(struct JobControl *self);
 
-INT
+CHECKED int
 watchJobControlDone(struct JobControl *self,
                     struct IntMethod   aReapMethod);
 
-INT
+CHECKED int
 unwatchJobControlDone(struct JobControl *self);
 
-INT
+CHECKED int
 watchJobControlStop(struct JobControl *self,
                     struct IntMethod   aPauseMethod,
                     struct IntMethod   aResumeMethod);
 
-INT
+CHECKED int
 unwatchJobControlStop(struct JobControl *self);
 
-INT
+CHECKED int
 watchJobControlContinue(struct JobControl *self,
                         struct IntMethod   aContinueMethod);
 
-INT
+CHECKED int
 unwatchJobControlContinue(struct JobControl *self);
 
 /* -------------------------------------------------------------------------- */

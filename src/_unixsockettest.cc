@@ -54,86 +54,99 @@ TEST(UnixSocketTest, AbstractServerCollision)
 
 TEST(UnixSocketTest, AbstractServer)
 {
-    struct UnixSocket serversock;
+    struct UnixSocket  serversock_;
+    struct UnixSocket *serversock = 0;
 
-    EXPECT_EQ(0, createUnixSocket(&serversock, 0, 0, 0));
+    EXPECT_EQ(0, createUnixSocket(&serversock_, 0, 0, 0));
+    serversock = &serversock_;
 
     struct sockaddr_un name;
-    EXPECT_EQ(0, ownUnixSocketName(&serversock, &name));
+    EXPECT_EQ(0, ownUnixSocketName(serversock, &name));
     EXPECT_EQ(0, name.sun_path[0]);
     for (unsigned ix = 1; sizeof(name.sun_path) > ix; ++ix)
         EXPECT_TRUE(strchr("0123456789abcdef", name.sun_path[ix]));
 
-    struct UnixSocket clientsock;
+    struct UnixSocket  clientsock_;
+    struct UnixSocket *clientsock = 0;
 
     int rc = connectUnixSocket(
-        &clientsock, name.sun_path, sizeof(name.sun_path));
+        &clientsock_, name.sun_path, sizeof(name.sun_path));
     EXPECT_TRUE(0 == rc || EINPROGRESS == rc);
+    clientsock = &clientsock_;
 
-    struct UnixSocket peersock;
+    struct UnixSocket  peersock_;
+    struct UnixSocket *peersock = 0;
 
     const struct Duration zeroTimeout = Duration(NanoSeconds(0));
 
-    EXPECT_EQ(0, acceptUnixSocket(&peersock, &serversock));
-    EXPECT_EQ(1, waitUnixSocketWriteReady(&clientsock, &zeroTimeout));
+    EXPECT_EQ(0, acceptUnixSocket(&peersock_, serversock));
+    peersock = &peersock_;
+
+    EXPECT_EQ(1, waitUnixSocketWriteReady(clientsock, &zeroTimeout));
 
     struct ucred cred;
 
     memset(&cred, -1, sizeof(cred));
-    EXPECT_EQ(0, ownUnixSocketPeerCred(&peersock, &cred));
+    EXPECT_EQ(0, ownUnixSocketPeerCred(peersock, &cred));
     EXPECT_EQ(getpid(), cred.pid);
     EXPECT_EQ(getuid(), cred.uid);
     EXPECT_EQ(getgid(), cred.gid);
 
     memset(&cred, -1, sizeof(cred));
-    EXPECT_EQ(0, ownUnixSocketPeerCred(&clientsock, &cred));
+    EXPECT_EQ(0, ownUnixSocketPeerCred(clientsock, &cred));
     EXPECT_EQ(getpid(), cred.pid);
     EXPECT_EQ(getuid(), cred.uid);
     EXPECT_EQ(getgid(), cred.gid);
 
     int err;
-    EXPECT_EQ(0, ownUnixSocketError(&clientsock, &err));
+    EXPECT_EQ(0, ownUnixSocketError(clientsock, &err));
     EXPECT_EQ(0, err);
 
     char buf[1];
 
     buf[0] = 'X';
-    EXPECT_EQ(1, sendUnixSocket(&clientsock, buf, sizeof(buf)));
-    EXPECT_EQ(1, waitUnixSocketReadReady(&peersock, 0));
-    EXPECT_EQ(1, recvUnixSocket(&peersock, buf, sizeof(buf)));
+    EXPECT_EQ(1, sendUnixSocket(clientsock, buf, sizeof(buf)));
+    EXPECT_EQ(1, waitUnixSocketReadReady(peersock, 0));
+    EXPECT_EQ(1, recvUnixSocket(peersock, buf, sizeof(buf)));
     EXPECT_EQ('X', buf[0]);
 
     buf[0] = 'Z';
-    EXPECT_EQ(1, sendUnixSocket(&peersock, buf, sizeof(buf)));
-    EXPECT_EQ(1, waitUnixSocketReadReady(&clientsock, 0));
-    EXPECT_EQ(1, recvUnixSocket(&clientsock, buf, sizeof(buf)));
+    EXPECT_EQ(1, sendUnixSocket(peersock, buf, sizeof(buf)));
+    EXPECT_EQ(1, waitUnixSocketReadReady(clientsock, 0));
+    EXPECT_EQ(1, recvUnixSocket(clientsock, buf, sizeof(buf)));
     EXPECT_EQ('Z', buf[0]);
 
     /* Create a pipe and send the reading file descriptor over the
      * socket. Close the reading file descriptor, and ensure that the
      * duplicate can be used to read data written into the pipe. */
 
-    struct Pipe pipe;
-    EXPECT_EQ(0, createPipe(&pipe, 0));
-    EXPECT_EQ(0, sendUnixSocketFd(&peersock, pipe.mRdFile->mFd));
-    EXPECT_EQ(1, waitUnixSocketReadReady(&clientsock, 0));
-    int fd = recvUnixSocketFd(&clientsock, O_CLOEXEC);
+    struct Pipe  pipe_;
+    struct Pipe *pipe = 0;
+
+    EXPECT_EQ(0, createPipe(&pipe_, 0));
+    pipe = &pipe_;
+
+    EXPECT_EQ(0, sendUnixSocketFd(peersock, pipe->mRdFile->mFd));
+    EXPECT_EQ(1, waitUnixSocketReadReady(clientsock, 0));
+
+    int fd = recvUnixSocketFd(clientsock, O_CLOEXEC);
     EXPECT_LE(0, fd);
     EXPECT_EQ(1, ownFdCloseOnExec(fd));
 
-    closePipeReader(&pipe);
+    closePipeReader(pipe);
     buf[0] = 'A';
-    EXPECT_EQ(1, writeFile(pipe.mWrFile, buf, sizeof(buf)));
+    EXPECT_EQ(1, writeFile(pipe->mWrFile, buf, sizeof(buf)));
     buf[0] = 0;
     EXPECT_EQ(1, waitFdReadReady(fd, 0));
     EXPECT_EQ(1, readFd(fd, buf, sizeof(buf)));
     EXPECT_EQ('A', buf[0]);
 
-    closeFd(fd);
-    closePipe(&pipe);
-    closeUnixSocket(&clientsock);
-    closeUnixSocket(&peersock);
-    closeUnixSocket(&serversock);
+    fd = closeFd(fd);
+    pipe = closePipe(pipe);
+
+    clientsock = closeUnixSocket(clientsock);
+    peersock   = closeUnixSocket(peersock);
+    serversock = closeUnixSocket(serversock);
 }
 
 #include "../googletest/src/gtest_main.cc"

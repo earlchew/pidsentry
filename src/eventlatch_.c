@@ -74,7 +74,7 @@ bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
 {
     enum EventLatchSetting rc = EventLatchSettingError;
 
-    lockThreadSigMutex(self->mMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     enum EventLatchSetting setting;
 
@@ -102,7 +102,7 @@ Finally:
 
     FINALLY
     ({
-        unlockThreadSigMutex(self->mMutex);
+        lock = unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -114,7 +114,7 @@ disableEventLatch(struct EventLatch *self)
 {
     enum EventLatchSetting rc = EventLatchSettingError;
 
-    lockThreadSigMutex(self->mMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     enum EventLatchSetting setting;
 
@@ -141,7 +141,7 @@ Finally:
 
     FINALLY
     ({
-        unlockThreadSigMutex(self->mMutex);
+        lock = unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -153,7 +153,7 @@ setEventLatch(struct EventLatch *self)
 {
     enum EventLatchSetting rc = EventLatchSettingError;
 
-    lockThreadSigMutex(self->mMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     enum EventLatchSetting setting;
 
@@ -183,7 +183,7 @@ Finally:
 
     FINALLY
     ({
-        unlockThreadSigMutex(self->mMutex);
+        lock = unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -195,7 +195,7 @@ resetEventLatch(struct EventLatch *self)
 {
     enum EventLatchSetting rc = EventLatchSettingError;
 
-    lockThreadSigMutex(self->mMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     enum EventLatchSetting setting;
 
@@ -218,7 +218,7 @@ Finally:
 
     FINALLY
     ({
-        unlockThreadSigMutex(self->mMutex);
+        lock = unlockThreadSigMutex(lock);
     });
 
     return rc;
@@ -232,7 +232,7 @@ ownEventLatchSetting(const struct EventLatch *self_)
 
     struct EventLatch *self = (struct EventLatch *) self_;
 
-    lockThreadSigMutex(self->mMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     enum EventLatchSetting setting;
 
@@ -251,7 +251,7 @@ Finally:
 
     FINALLY
     ({
-        unlockThreadSigMutex(self->mMutex);
+        lock = unlockThreadSigMutex(lock);
     });
 
     return rc;

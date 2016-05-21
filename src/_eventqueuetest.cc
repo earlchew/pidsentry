@@ -36,102 +36,120 @@
 
 TEST(EventQueueTest, CreatePushPopClose)
 {
-    struct EventQueue     eventQueue;
-    struct EventQueueFile eventFile;
-    struct BellSocketPair testSocket;
+    struct EventQueue      eventQueue_;
+    struct EventQueue     *eventQueue = 0;
 
-    EXPECT_EQ(0, createEventQueue(&eventQueue));
+    struct EventQueueFile  eventFile_;
+    struct EventQueueFile *eventFile = 0;
 
-    EXPECT_EQ(0, createBellSocketPair(&testSocket, 0));
+    struct BellSocketPair  testSocket_;
+    struct BellSocketPair *testSocket = 0;
+
+    EXPECT_EQ(0, createEventQueue(&eventQueue_));
+    eventQueue = &eventQueue_;
+
+    EXPECT_EQ(0, createBellSocketPair(&testSocket_, 0));
+    testSocket = &testSocket_;
 
     /* Create the event queue file, push it but and pop the event queue.
      * This is the expected life cycle of the event file. */
 
     EXPECT_EQ(0, createEventQueueFile(
-                  &eventFile,
-                  &eventQueue,
-                  testSocket.mSocketPair->mParentSocket->mFile,
+                  &eventFile_,
+                  eventQueue,
+                  testSocket->mSocketPair->mParentSocket->mFile,
                   EventQueuePollRead,
-                  EventQueueHandle(&testSocket)));
+                  EventQueueHandle(testSocket)));
+    eventFile = &eventFile_;
 
     struct Duration        zeroDuration = Duration(NanoSeconds(0));
     struct EventQueueFile *polledEvents[2];
 
     EXPECT_EQ(0, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
+        eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
 
-    EXPECT_EQ(0, pushEventQueue(&eventQueue, &eventFile));
+    EXPECT_EQ(0, pushEventQueue(eventQueue, eventFile));
     EXPECT_EQ(0, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
+        eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
 
-    EXPECT_EQ(0, ringBellSocketPairChild(&testSocket));
-    EXPECT_EQ(0, popEventQueue(&eventQueue, 0, 0, &zeroDuration));
+    EXPECT_EQ(0, ringBellSocketPairChild(testSocket));
+    EXPECT_EQ(0, popEventQueue(eventQueue, 0, 0, &zeroDuration));
     EXPECT_EQ(1, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), 0));
-    EXPECT_EQ(polledEvents[0], &eventFile);
+        eventQueue, polledEvents, NUMBEROF(polledEvents), 0));
+    EXPECT_EQ(polledEvents[0], eventFile);
 
     EXPECT_EQ(0, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
+        eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
 
-    EXPECT_EQ(0, pushEventQueue(&eventQueue, &eventFile));
+    EXPECT_EQ(0, pushEventQueue(eventQueue, eventFile));
     EXPECT_EQ(1, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), 0));
+        eventQueue, polledEvents, NUMBEROF(polledEvents), 0));
 
     EXPECT_EQ(0, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
+        eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
 
-    closeEventQueueFile(&eventFile);
+    eventFile = closeEventQueueFile(eventFile);
 
     /* Create the event queue file, push it but do not pop the event queue.
      * Simply close the event queue file, and then verify that it has
      * taken itself off the event queue. */
 
     EXPECT_EQ(0, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
+        eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
 
     EXPECT_EQ(0, createEventQueueFile(
-                  &eventFile,
-                  &eventQueue,
-                  testSocket.mSocketPair->mParentSocket->mFile,
+                  &eventFile_,
+                  eventQueue,
+                  testSocket->mSocketPair->mParentSocket->mFile,
                   EventQueuePollRead,
-                  EventQueueHandle(&testSocket)));
-    EXPECT_EQ(0, pushEventQueue(&eventQueue, &eventFile));
+                  EventQueueHandle(testSocket)));
+    eventFile = &eventFile_;
+
+    EXPECT_EQ(0, pushEventQueue(eventQueue, eventFile));
     EXPECT_EQ(1, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), 0));
-    EXPECT_EQ(polledEvents[0], &eventFile);
-    EXPECT_EQ(0, pushEventQueue(&eventQueue, &eventFile));
-    closeEventQueueFile(&eventFile);
+        eventQueue, polledEvents, NUMBEROF(polledEvents), 0));
+    EXPECT_EQ(polledEvents[0], eventFile);
+    EXPECT_EQ(0, pushEventQueue(eventQueue, eventFile));
+    eventFile = closeEventQueueFile(eventFile);
 
     EXPECT_EQ(0, popEventQueue(
-        &eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
+        eventQueue, polledEvents, NUMBEROF(polledEvents), &zeroDuration));
 
-    closeBellSocketPair(&testSocket);
-    closeEventQueue(&eventQueue);
+    testSocket = closeBellSocketPair(testSocket);
+    eventQueue = closeEventQueue(eventQueue);
 }
 
 TEST(EventQueueTest, CreateCloseEventFile)
 {
-    struct EventQueue      eventQueue;
-    struct EventQueueFile  eventFile;
-    struct BellSocketPair  testSocket;
+    struct EventQueue      eventQueue_;
+    struct EventQueue     *eventQueue = 0;
 
-    EXPECT_EQ(0, createEventQueue(&eventQueue));
+    struct EventQueueFile  eventFile_;
+    struct EventQueueFile *eventFile = 0;
 
-    EXPECT_EQ(0, createBellSocketPair(&testSocket, 0));
+    struct BellSocketPair  testSocket_;
+    struct BellSocketPair *testSocket = 0;
+
+    EXPECT_EQ(0, createEventQueue(&eventQueue_));
+    eventQueue = &eventQueue_;
+
+    EXPECT_EQ(0, createBellSocketPair(&testSocket_, 0));
+    testSocket = &testSocket_;
 
     /* Create the event queue file, then immediately close it to
      * verify that it can be cleaned up. */
 
     EXPECT_EQ(0, createEventQueueFile(
-                  &eventFile,
-                  &eventQueue,
-                  testSocket.mSocketPair->mParentSocket->mFile,
+                  &eventFile_,
+                  eventQueue,
+                  testSocket->mSocketPair->mParentSocket->mFile,
                   EventQueuePollRead,
-                  EventQueueHandle(&testSocket)));
+                  EventQueueHandle(testSocket)));
+    eventFile = &eventFile_;
 
-    closeEventQueueFile(&eventFile);
-    closeBellSocketPair(&testSocket);
-    closeEventQueue(&eventQueue);
+    eventFile  = closeEventQueueFile(eventFile);
+    testSocket = closeBellSocketPair(testSocket);
+    eventQueue = closeEventQueue(eventQueue);
 }
 
 #include "../googletest/src/gtest_main.cc"

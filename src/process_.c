@@ -28,6 +28,7 @@
 */
 
 #include "process_.h"
+#include "thread_.h"
 #include "macros_.h"
 #include "pathname_.h"
 #include "fd_.h"
@@ -69,7 +70,8 @@ struct ProcessAppLock
 static struct ProcessAppLock processAppLock_;
 
 static pthread_rwlock_t      processSigVecLock_ = PTHREAD_RWLOCK_INITIALIZER;
-static struct ThreadSigMutex processSigMutex_ = THREAD_SIG_MUTEX_INITIALIZER;
+static struct ThreadSigMutex processSigMutex_ =
+    THREAD_SIG_MUTEX_INITIALIZER(processSigMutex_);
 
 static unsigned processAbort_;
 static unsigned processQuit_;
@@ -82,18 +84,21 @@ static struct
     struct ProcessLock    *mLock;
 } processLock_ =
 {
-    .mMutex_ = THREAD_SIG_MUTEX_INITIALIZER,
+    .mMutex_ = THREAD_SIG_MUTEX_INITIALIZER(processLock_.mMutex_),
     .mMutex  = &processLock_.mMutex_,
 };
 
 static struct
 {
-    pthread_mutex_t      mMutex;
-    struct Pid           mParentPid;
-    struct RWMutexWriter mForkLock;
+    pthread_mutex_t        mMutex_;
+    pthread_mutex_t       *mMutex;
+    struct Pid             mParentPid;
+    struct RWMutexWriter   mForkLock_;
+    struct RWMutexWriter  *mForkLock;
+    struct ThreadSigMutex *mLock;
 } processFork_ =
 {
-    .mMutex = PTHREAD_MUTEX_INITIALIZER,
+    .mMutex_ = PTHREAD_MUTEX_INITIALIZER,
 };
 
 static unsigned              moduleInit_;
@@ -172,10 +177,11 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
               "dispatch signal %s",
               formatProcessSignalName(&sigName, aSigNum));
 
-        struct RWMutexReader forkLock;
+        struct RWMutexReader  forkLock_;
+        struct RWMutexReader *forkLock;
 
-        createRWMutexReader(&forkLock, &processSigVecLock_);
-        lockMutex(sv->mMutex);
+        forkLock = createRWMutexReader(&forkLock_, &processSigVecLock_);
+        pthread_mutex_t *lock = lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
 
@@ -199,8 +205,8 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
                 --processSignalContext_;
             }
         }
-        unlockMutex(sv->mMutex);
-        destroyRWMutexReader(&forkLock);
+        lock = unlockMutex(lock);
+        forkLock = destroyRWMutexReader(forkLock);
     });
 }
 
@@ -216,10 +222,11 @@ dispatchSigHandler_(int aSigNum)
               "dispatch signal %s",
               formatProcessSignalName(&sigName, aSigNum));
 
-        struct RWMutexReader forkLock;
+        struct RWMutexReader  forkLock_;
+        struct RWMutexReader *forkLock;
 
-        createRWMutexReader(&forkLock, &processSigVecLock_);
-        lockMutex(sv->mMutex);
+        forkLock = createRWMutexReader(&forkLock_, &processSigVecLock_);
+        pthread_mutex_t *lock = lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
 
@@ -243,8 +250,8 @@ dispatchSigHandler_(int aSigNum)
                 --processSignalContext_;
             }
         }
-        unlockMutex(sv->mMutex);
-        destroyRWMutexReader(&forkLock);
+        lock = unlockMutex(lock);
+        forkLock = destroyRWMutexReader(forkLock);
     });
 }
 
@@ -285,11 +292,11 @@ changeSigAction_(unsigned          aSigNum,
         nextAction.sa_flags &= ~ SA_NODEFER;
     }
 
-    lockThreadSigMutex(&processSigMutex_);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(&processSigMutex_);
     if ( ! processSignalVectors_[aSigNum].mMutex)
         processSignalVectors_[aSigNum].mMutex =
             createMutex(&processSignalVectors_[aSigNum].mMutex_);
-    unlockThreadSigMutex(&processSigMutex_);
+    lock = unlockThreadSigMutex(lock);
 
     /* Block signal delivery into this thread to avoid the signal
      * dispatch attempting to acquire the dispatch mutex recursively
@@ -297,10 +304,8 @@ changeSigAction_(unsigned          aSigNum,
 
     sigVecLock = createRWMutexReader(&sigVecLock_, &processSigVecLock_);
 
-    pushThreadSigMask(
+    threadSigMask = pushThreadSigMask(
         &threadSigMask_, ThreadSigMaskBlock, (const int []) { aSigNum, 0 });
-
-    threadSigMask = &threadSigMask_;
 
     sigLock = lockMutex(processSignalVectors_[aSigNum].mMutex);
 
@@ -324,7 +329,7 @@ Finally:
     ({
         sigLock = unlockMutex(sigLock);
 
-        popThreadSigMask(threadSigMask);
+        threadSigMask = popThreadSigMask(threadSigMask);
 
         sigVecLock = destroyRWMutexReader(sigVecLock);
     });
@@ -402,7 +407,7 @@ static struct
     struct IntMethod      mMethod;
 } processSigCont_ =
 {
-    .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER,
+    .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER(processSigCont_.mSigMutex),
 };
 
 static void
@@ -414,7 +419,8 @@ sigCont_(int aSigNum)
 
     __sync_add_and_fetch(&processSigCont_.mCount, 2);
 
-    lockThreadSigMutex(&processSigCont_.mSigMutex);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(
+        &processSigCont_.mSigMutex);
 
     if (ownIntMethodNil(processSigCont_.mMethod))
         debug(1, "detected SIGCONT");
@@ -425,7 +431,7 @@ sigCont_(int aSigNum)
             callIntMethod(processSigCont_.mMethod));
     }
 
-    unlockThreadSigMutex(&processSigCont_.mSigMutex);
+    lock = unlockThreadSigMutex(lock);
 }
 
 static int
@@ -470,9 +476,10 @@ Finally:
 static int
 updateProcessSigContMethod_(struct IntMethod aMethod)
 {
-    lockThreadSigMutex(&processSigCont_.mSigMutex);
+    struct ThreadSigMutex *lock =
+        lockThreadSigMutex(&processSigCont_.mSigMutex);
     processSigCont_.mMethod = aMethod;
-    unlockThreadSigMutex(&processSigCont_.mSigMutex);
+    lock = unlockThreadSigMutex(lock);
 
     return 0;
 }
@@ -557,13 +564,14 @@ static struct
     struct IntMethod      mMethod;
 } processSigStop_ =
 {
-    .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER,
+    .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER(processSigStop_.mSigMutex),
 };
 
 static void
 sigStop_(int aSigNum)
 {
-    lockThreadSigMutex(&processSigStop_.mSigMutex);
+    struct ThreadSigMutex *lock =
+        lockThreadSigMutex(&processSigStop_.mSigMutex);
 
     if (ownIntMethodNil(processSigStop_.mMethod))
     {
@@ -582,7 +590,7 @@ sigStop_(int aSigNum)
             callIntMethod(processSigStop_.mMethod));
     }
 
-    unlockThreadSigMutex(&processSigStop_.mSigMutex);
+    lock = unlockThreadSigMutex(lock);
 }
 
 static int
@@ -628,9 +636,10 @@ Finally:
 static int
 updateProcessSigStopMethod_(struct IntMethod aMethod)
 {
-    lockThreadSigMutex(&processSigStop_.mSigMutex);
+    struct ThreadSigMutex *lock =
+        lockThreadSigMutex(&processSigStop_.mSigMutex);
     processSigStop_.mMethod = aMethod;
-    unlockThreadSigMutex(&processSigStop_.mSigMutex);
+    lock = unlockThreadSigMutex(lock);
 
     return 0;
 }
@@ -1161,7 +1170,7 @@ static void
 closeProcessLock_(struct ProcessLock *self)
 {
     if (self)
-        closeFile(self->mFile);
+        self->mFile = closeFile(self->mFile);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1217,9 +1226,8 @@ acquireProcessAppLock(void)
 {
     int rc = -1;
 
-    struct ThreadSigMutex *lock = 0;
-
-    lock = lockThreadSigMutex(processLock_.mMutex);
+    struct ThreadSigMutex *lock =
+        lockThreadSigMutex(processLock_.mMutex);
 
     if (1 == ownThreadSigMutexLocked(processLock_.mMutex))
     {
@@ -1646,10 +1654,12 @@ forkProcessDaemon(struct IntMethod aForkMethod)
     {
         closeSocketPairParent(syncSocket);
 
-        struct BellSocketPair bellSocket;
+        struct BellSocketPair  bellSocket_;
+        struct BellSocketPair *bellSocket = 0;
 
         ABORT_IF(
-            createBellSocketPair(&bellSocket, 0));
+            createBellSocketPair(&bellSocket_, 0));
+        bellSocket = &bellSocket_;
 
         ABORT_IF(
             (daemonPid = forkProcessChild(ForkProcessSetProcessGroup,
@@ -1682,10 +1692,10 @@ forkProcessDaemon(struct IntMethod aForkMethod)
 
         if (daemonPid.mPid)
         {
-            closeBellSocketPairChild(&bellSocket);
+            closeBellSocketPairChild(bellSocket);
             ABORT_IF(
-                waitBellSocketPairParent(&bellSocket, 0));
-            closeBellSocketPair(&bellSocket);
+                waitBellSocketPairParent(bellSocket, 0));
+            bellSocket = closeBellSocketPair(bellSocket);
 
             while (1)
             {
@@ -1723,10 +1733,10 @@ forkProcessDaemon(struct IntMethod aForkMethod)
                 IntIntMethod(
                     &forkProcessDaemonSignalHandler_, &processDaemon)));
 
-        closeBellSocketPairParent(&bellSocket);
+        closeBellSocketPairParent(bellSocket);
         ABORT_IF(
-            ringBellSocketPairChild(&bellSocket));
-        closeBellSocketPair(&bellSocket);
+            ringBellSocketPairChild(bellSocket));
+        bellSocket = closeBellSocketPair(bellSocket);
 
         /* Once the signal handler is established to catch SIGHUP, allow
          * the parent to stop and then make the daemon process an orphan. */
@@ -1757,7 +1767,7 @@ Finally:
 
     FINALLY
     ({
-        closeSocketPair(syncSocket);
+        syncSocket = closeSocketPair(syncSocket);
 
         sigMask = popThreadSigMask(sigMask);
     });
@@ -2252,12 +2262,12 @@ prepareFork_(void)
     /* Acquire processFork_.mMutex to allow only one thread to
      * use the shared process fork structure instance at a time. */
 
-    lockMutex(&processFork_.mMutex);
+    processFork_.mMutex = lockMutex(&processFork_.mMutex_);
 
     /* Note that processLock_.mMutex is recursive, meaning that
      * it might already be held by this thread on entry to this function. */
 
-    lockThreadSigMutex(processLock_.mMutex);
+    processFork_.mLock = lockThreadSigMutex(processLock_.mMutex);
 
     ensure(
         0 < ownThreadSigMutexLocked(processLock_.mMutex));
@@ -2268,7 +2278,8 @@ prepareFork_(void)
      * in progress, since those locked mutexes will then be transferred
      * into the child process. */
 
-    createRWMutexWriter(&processFork_.mForkLock, &processSigVecLock_);
+    processFork_.mForkLock = createRWMutexWriter(
+        &processFork_.mForkLock_, &processSigVecLock_);
 
     processFork_.mParentPid = ownProcessId();
 
@@ -2285,11 +2296,15 @@ completeFork_(void)
          * release the resources acquired when preparations were made
          * immediately preceding the fork. */
 
-        destroyRWMutexWriter(&processFork_.mForkLock);
+        processFork_.mForkLock = destroyRWMutexWriter(processFork_.mForkLock);
 
-        unlockThreadSigMutex(processLock_.mMutex);
+        processFork_.mLock = unlockThreadSigMutex(processLock_.mMutex);
 
-        unlockMutex(&processFork_.mMutex);
+        pthread_mutex_t *lock = processFork_.mMutex;
+
+        processFork_.mMutex = 0;
+
+        lock = unlockMutex(lock);
     });
 }
 

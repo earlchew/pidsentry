@@ -29,7 +29,7 @@
 #ifndef EVENTLATCH_H
 #define EVENTLATCH_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "thread_.h"
 
 #ifdef __cplusplus
@@ -55,22 +55,22 @@ enum EventLatchSetting
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createEventLatch(struct EventLatch *self);
 
-struct EventLatch *
+CHECKED struct EventLatch *
 closeEventLatch(struct EventLatch *self);
 
-enum EventLatchSetting
+CHECKED enum EventLatchSetting
 bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe);
 
-enum EventLatchSetting
+CHECKED enum EventLatchSetting
 disableEventLatch(struct EventLatch *self);
 
-enum EventLatchSetting
+CHECKED enum EventLatchSetting
 setEventLatch(struct EventLatch *self);
 
-enum EventLatchSetting
+CHECKED enum EventLatchSetting
 resetEventLatch(struct EventLatch *self);
 
 enum EventLatchSetting

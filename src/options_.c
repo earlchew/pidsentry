@@ -238,7 +238,7 @@ Finally:
     FINALLY
     ({
         if (argList)
-            closeParseArgList(argList);
+            argList = closeParseArgList(argList);
     });
 
     return rc;

@@ -29,7 +29,7 @@
 #ifndef UNIXSOCKET_H
 #define UNIXSOCKET_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "file_.h"
 
 #ifdef __cplusplus
@@ -48,64 +48,64 @@ struct UnixSocket
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createUnixSocketPair(struct UnixSocket *aParent,
                      struct UnixSocket *aChild,
                      unsigned           aFlags);
 
-INT
+CHECKED int
 createUnixSocket(struct UnixSocket *self,
                  const char        *aName,
                  size_t             aNameLen,
                  unsigned           aQueueLen);
 
-INT
+CHECKED int
 acceptUnixSocket(struct UnixSocket       *self,
                  const struct UnixSocket *aServer);
 
-INT
+CHECKED int
 connectUnixSocket(struct UnixSocket *self,
                  const char         *aName,
                  size_t              aNameLen);
 
-struct UnixSocket *
+CHECKED struct UnixSocket *
 closeUnixSocket(struct UnixSocket *self);
 
-INT
+CHECKED int
 sendUnixSocketFd(struct UnixSocket *self, int aFd);
 
-INT
+CHECKED int
 recvUnixSocketFd(struct UnixSocket *self, unsigned aFlags);
 
 bool
 ownUnixSocketValid(const struct UnixSocket *self);
 
-INT
+CHECKED int
 shutdownUnixSocketReader(struct UnixSocket *self);
 
-INT
+CHECKED int
 shutdownUnixSocketWriter(struct UnixSocket *self);
 
-INT
+CHECKED int
 waitUnixSocketWriteReady(const struct UnixSocket *self,
                          const struct Duration   *aTimeout);
 
-INT
+CHECKED int
 waitUnixSocketReadReady(const struct UnixSocket *self,
                         const struct Duration   *aTimeout);
 
-INT
+CHECKED int
 ownUnixSocketPeerName(const struct UnixSocket *self,
                       struct sockaddr_un      *aAddr);
 
-INT
+CHECKED int
 ownUnixSocketName(const struct UnixSocket *self,
                   struct sockaddr_un      *aAddr);
 
-INT
+CHECKED int
 ownUnixSocketError(const struct UnixSocket *self, int *aError);
 
-INT
+CHECKED int
 ownUnixSocketPeerCred(const struct UnixSocket *self, struct ucred *aCred);
 
 ssize_t

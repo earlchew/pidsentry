@@ -127,9 +127,9 @@ pollFdDrain_(struct TetherPoll           *self,
     if (self->mPollFds[POLL_FD_TETHER_CONTROL].events)
     {
         {
-            lockMutex(&self->mThread->mActivity.mMutex);
+            pthread_mutex_t *lock = lockMutex(self->mThread->mActivity.mMutex);
             self->mThread->mActivity.mSince = eventclockTime();
-            unlockMutex(&self->mThread->mActivity.mMutex);
+            lock = unlockMutex(lock);
         }
 
         bool drained = true;
@@ -248,9 +248,9 @@ tetherThreadMain_(struct TetherThread *self)
     struct ThreadSigMask *threadSigMask = 0;
 
     {
-        lockMutex(&self->mState.mMutex);
+        pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
         self->mState.mValue = TETHER_THREAD_RUNNING;
-        unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
+        lock = unlockMutexSignal(lock, self->mState.mCond);
     }
 
     /* Do not open, or close files in this thread because it will race
@@ -324,8 +324,7 @@ tetherThreadMain_(struct TetherThread *self)
     ERROR_IF(
         runPollFdLoop(pollfd));
 
-    closePollFd(pollfd);
-    pollfd = 0;
+    pollfd = closePollFd(pollfd);
 
     threadSigMask = popThreadSigMask(threadSigMask);
 
@@ -346,12 +345,12 @@ tetherThreadMain_(struct TetherThread *self)
     debug(0, "tether emptied");
 
     {
-        lockMutex(&self->mState.mMutex);
+        pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
 
         while (TETHER_THREAD_RUNNING == self->mState.mValue)
-            waitCond(&self->mState.mCond, &self->mState.mMutex);
+            waitCond(self->mState.mCond, lock);
 
-        unlockMutex(&self->mState.mMutex);
+        lock = unlockMutex(lock);
     }
 
     rc = 0;
@@ -360,7 +359,7 @@ Finally:
 
     FINALLY
     ({
-        closePollFd(pollfd);
+        pollfd = closePollFd(pollfd);
 
         threadSigMask = popThreadSigMask(threadSigMask);
     });
@@ -372,11 +371,11 @@ Finally:
 static void
 closeTetherThread_(struct TetherThread *self)
 {
-    closePipe(self->mControlPipe);
+    self->mControlPipe = closePipe(self->mControlPipe);
 
-    destroyCond(&self->mState.mCond);
-    destroyMutex(&self->mState.mMutex);
-    destroyMutex(&self->mActivity.mMutex);
+    self->mState.mCond     = destroyCond(self->mState.mCond);
+    self->mState.mMutex    = destroyMutex(self->mState.mMutex);
+    self->mActivity.mMutex = destroyMutex(self->mActivity.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -385,9 +384,9 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
 {
     int rc = -1;
 
-    createMutex(&self->mActivity.mMutex);
-    createMutex(&self->mState.mMutex);
-    createCond(&self->mState.mCond);
+    self->mActivity.mMutex = createMutex(&self->mActivity.mMutex_);
+    self->mState.mMutex    = createMutex(&self->mState.mMutex_);
+    self->mState.mCond     = createCond(&self->mState.mCond_);
 
     self->mControlPipe     = 0;
     self->mNullPipe        = aNullPipe;
@@ -400,23 +399,23 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
     self->mControlPipe = &self->mControlPipe_;
 
     {
-        struct ThreadSigMask threadSigMask;
-
-        pushThreadSigMask(&threadSigMask, ThreadSigMaskBlock, 0);
+        struct ThreadSigMask  threadSigMask_;
+        struct ThreadSigMask *threadSigMask =
+            pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
 
         createThread(&self->mThread, 0,
                      ThreadMethod(tetherThreadMain_, self));
 
-        popThreadSigMask(&threadSigMask);
+        threadSigMask = popThreadSigMask(threadSigMask);
     }
 
     {
-        lockMutex(&self->mState.mMutex);
+        pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
 
         while (TETHER_THREAD_STOPPED == self->mState.mValue)
-            waitCond(&self->mState.mCond, &self->mState.mMutex);
+            waitCond(self->mState.mCond, lock);
 
-        unlockMutex(&self->mState.mMutex);
+        lock = unlockMutex(lock);
     }
 
     rc = 0;
@@ -503,12 +502,12 @@ closeTetherThread(struct TetherThread *self)
         debug(0, "synchronising tether thread");
 
         {
-            lockMutex(&self->mState.mMutex);
+            pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
 
             ensure(TETHER_THREAD_RUNNING == self->mState.mValue);
             self->mState.mValue = TETHER_THREAD_STOPPING;
 
-            unlockMutexSignal(&self->mState.mMutex, &self->mState.mCond);
+            lock = unlockMutexSignal(lock, self->mState.mCond);
         }
 
         ABORT_IF(

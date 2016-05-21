@@ -34,20 +34,22 @@
 
 TEST(FileTest, TemporaryFile)
 {
-    struct File file;
+    struct File  file_;
+    struct File *file = 0;
 
-    ASSERT_EQ(0, temporaryFile(&file));
+    ASSERT_EQ(0, temporaryFile(&file_));
+    file = &file_;
 
-    EXPECT_EQ(1, writeFile(&file, "A", 1));
+    EXPECT_EQ(1, writeFile(file, "A", 1));
 
-    EXPECT_EQ(0, lseekFile(&file, 0, WhenceTypeStart));
+    EXPECT_EQ(0, lseekFile(file, 0, WhenceTypeStart));
 
     char buf[1];
-    EXPECT_EQ(1, readFile(&file, buf, 1));
+    EXPECT_EQ(1, readFile(file, buf, 1));
 
     EXPECT_EQ('A', buf[0]);
 
-    closeFile(&file);
+    file = closeFile(file);
 }
 
 struct LockType
@@ -97,82 +99,84 @@ checkLock(struct File *aFile)
 
 TEST(FileTest, LockFileRegion)
 {
-    struct File file;
+    struct File  file_;
+    struct File *file = 0;
 
-    ASSERT_EQ(0, temporaryFile(&file));
+    ASSERT_EQ(0, temporaryFile(&file_));
+    file = &file_;
 
     // If a process holds a region lock, querying the lock state from
     // that process will always show the region as unlocked, but another
     // process will see the region as locked.
 
     EXPECT_EQ(
-        LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+        LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
     EXPECT_EQ(
-        LockTypeUnlocked.mType, checkLock(&file).mType);
+        LockTypeUnlocked.mType, checkLock(file).mType);
 
     {
-        EXPECT_EQ(0, lockFileRegion(&file, LockTypeWrite, 0, 0));
+        EXPECT_EQ(0, lockFileRegion(file, LockTypeWrite, 0, 0));
 
         EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
         EXPECT_EQ(
-            LockTypeWrite.mType, checkLock(&file).mType);
+            LockTypeWrite.mType, checkLock(file).mType);
 
-        EXPECT_EQ(0, unlockFileRegion(&file, 0, 0));
+        EXPECT_EQ(0, unlockFileRegion(file, 0, 0));
 
         EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
         EXPECT_EQ(
-            LockTypeUnlocked.mType, checkLock(&file).mType);
+            LockTypeUnlocked.mType, checkLock(file).mType);
     }
 
     {
-        EXPECT_EQ(0, lockFileRegion(&file, LockTypeRead, 0, 0));
+        EXPECT_EQ(0, lockFileRegion(file, LockTypeRead, 0, 0));
 
         EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
         EXPECT_EQ(
-            LockTypeRead.mType, checkLock(&file).mType);
+            LockTypeRead.mType, checkLock(file).mType);
 
-        EXPECT_EQ(0, unlockFileRegion(&file, 0, 0));
+        EXPECT_EQ(0, unlockFileRegion(file, 0, 0));
 
         EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
         EXPECT_EQ(
-            LockTypeUnlocked.mType, checkLock(&file).mType);
+            LockTypeUnlocked.mType, checkLock(file).mType);
     }
 
     {
-        EXPECT_EQ(0, lockFileRegion(&file, LockTypeWrite, 0, 0));
+        EXPECT_EQ(0, lockFileRegion(file, LockTypeWrite, 0, 0));
 
         EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
         EXPECT_EQ(
-            LockTypeWrite.mType, checkLock(&file).mType);
+            LockTypeWrite.mType, checkLock(file).mType);
 
-        EXPECT_EQ(0, lockFileRegion(&file, LockTypeRead, 0, 0));
-
-        EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
-        EXPECT_EQ(
-            LockTypeRead.mType, checkLock(&file).mType);
-
-        EXPECT_EQ(0, lockFileRegion(&file, LockTypeWrite, 0, 0));
+        EXPECT_EQ(0, lockFileRegion(file, LockTypeRead, 0, 0));
 
         EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
         EXPECT_EQ(
-            LockTypeWrite.mType, checkLock(&file).mType);
+            LockTypeRead.mType, checkLock(file).mType);
 
-        EXPECT_EQ(0, unlockFileRegion(&file, 0, 0));
+        EXPECT_EQ(0, lockFileRegion(file, LockTypeWrite, 0, 0));
 
         EXPECT_EQ(
-            LockTypeUnlocked.mType, ownFileRegionLocked(&file, 0, 0).mType);
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
         EXPECT_EQ(
-            LockTypeUnlocked.mType, checkLock(&file).mType);
+            LockTypeWrite.mType, checkLock(file).mType);
+
+        EXPECT_EQ(0, unlockFileRegion(file, 0, 0));
+
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, ownFileRegionLocked(file, 0, 0).mType);
+        EXPECT_EQ(
+            LockTypeUnlocked.mType, checkLock(file).mType);
     }
 
-    closeFile(&file);
+    file = closeFile(file);
 }
 
 #include "../googletest/src/gtest_main.cc"

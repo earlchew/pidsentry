@@ -45,69 +45,81 @@ TEST(FdTest, ReadFully)
         char  buf_;
         char *buf = &buf_;
 
-        struct Pipe pipe;
+        struct Pipe  pipe_;
+        struct Pipe *pipe = 0;
 
-        EXPECT_EQ(0, createPipe(&pipe, 0));
-        closePipeWriter(&pipe);
+        EXPECT_EQ(0, createPipe(&pipe_, 0));
+        pipe = &pipe_;
 
-        EXPECT_EQ(0, readFdFully(pipe.mRdFile->mFd, &buf, 0));
+        closePipeWriter(pipe);
+
+        EXPECT_EQ(0, readFdFully(pipe->mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, buf);
 
-        closePipe(&pipe);
+        pipe = closePipe(pipe);
     }
 
     {
         char  buf_;
         char *buf = &buf_;
 
-        struct Pipe pipe;
+        struct Pipe  pipe_;
+        struct Pipe *pipe = 0;
 
-        EXPECT_EQ(0, createPipe(&pipe, 0));
-        EXPECT_EQ(1, writeFd(pipe.mWrFile->mFd, "1", 1));
-        closePipeWriter(&pipe);
+        EXPECT_EQ(0, createPipe(&pipe_, 0));
+        pipe = &pipe_;
 
-        EXPECT_EQ(1, readFdFully(pipe.mRdFile->mFd, &buf, 0));
+        EXPECT_EQ(1, writeFd(pipe->mWrFile->mFd, "1", 1));
+        closePipeWriter(pipe);
+
+        EXPECT_EQ(1, readFdFully(pipe->mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, strncmp("1", buf, 1));
 
         free(buf);
 
-        closePipe(&pipe);
+        pipe = closePipe(pipe);
     }
 
     {
         char  buf_;
         char *buf = &buf_;
 
-        struct Pipe pipe;
+        struct Pipe  pipe_;
+        struct Pipe *pipe = 0;
 
-        EXPECT_EQ(0, createPipe(&pipe, 0));
-        EXPECT_EQ(4, writeFd(pipe.mWrFile->mFd, "1234", 4));
-        closePipeWriter(&pipe);
+        EXPECT_EQ(0, createPipe(&pipe_, 0));
+        pipe = &pipe_;
 
-        EXPECT_EQ(4, readFdFully(pipe.mRdFile->mFd, &buf, 0));
+        EXPECT_EQ(4, writeFd(pipe->mWrFile->mFd, "1234", 4));
+        closePipeWriter(pipe);
+
+        EXPECT_EQ(4, readFdFully(pipe->mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, strncmp("1234", buf, 4));
 
         free(buf);
 
-        closePipe(&pipe);
+        pipe = closePipe(pipe);
     }
 
     {
         char  buf_;
         char *buf = &buf_;
 
-        struct Pipe pipe;
+        struct Pipe  pipe_;
+        struct Pipe *pipe = 0;
 
-        EXPECT_EQ(0, createPipe(&pipe, 0));
-        EXPECT_EQ(5, writeFd(pipe.mWrFile->mFd, "12345", 5));
-        closePipeWriter(&pipe);
+        EXPECT_EQ(0, createPipe(&pipe_, 0));
+        pipe = &pipe_;
 
-        EXPECT_EQ(5, readFdFully(pipe.mRdFile->mFd, &buf, 0));
+        EXPECT_EQ(5, writeFd(pipe->mWrFile->mFd, "12345", 5));
+        closePipeWriter(pipe);
+
+        EXPECT_EQ(5, readFdFully(pipe->mRdFile->mFd, &buf, 0));
         EXPECT_EQ(0, strncmp("12345", buf, 5));
 
         free(buf);
 
-        closePipe(&pipe);
+        pipe = closePipe(pipe);
     }
 }
 

@@ -29,7 +29,7 @@
 #ifndef PARSE_H
 #define PARSE_H
 
-#include "int_.h"
+#include "compiler_.h"
 
 #include <inttypes.h>
 
@@ -49,23 +49,23 @@ struct ParseArgList
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createParseArgListCSV(struct ParseArgList *self, const char *aArg);
 
-struct ParseArgList *
+CHECKED struct ParseArgList *
 closeParseArgList(struct ParseArgList *self);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 parseInt(const char *aArg, int *aValue);
 
-INT
+CHECKED int
 parseUInt(const char *aArg, unsigned *aValue);
 
-INT
+CHECKED int
 parseUInt64(const char *aArg, uint64_t *aValue);
 
-INT
+CHECKED int
 parsePid(const char *aArg, struct Pid *aValue);
 
 /* -------------------------------------------------------------------------- */

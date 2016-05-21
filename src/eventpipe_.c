@@ -57,8 +57,7 @@ Finally:
     ({
         if (rc)
         {
-            closePipe(self->mPipe);
-
+            self->mPipe  = closePipe(self->mPipe);
             self->mMutex = destroyThreadSigMutex(self->mMutex);
         }
     });
@@ -72,8 +71,7 @@ closeEventPipe(struct EventPipe *self)
 {
     if (self)
     {
-        closePipe(self->mPipe);
-
+        self->mPipe  = closePipe(self->mPipe);
         self->mMutex = destroyThreadSigMutex(self->mMutex);
     }
 

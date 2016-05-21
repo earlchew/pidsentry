@@ -64,16 +64,14 @@ Finally:
 void
 closeSocketPairParent(struct SocketPair *self)
 {
-    closeUnixSocket(self->mParentSocket);
-    self->mParentSocket = 0;
+    self->mParentSocket = closeUnixSocket(self->mParentSocket);
 }
 
 /* -------------------------------------------------------------------------- */
 void
 closeSocketPairChild(struct SocketPair *self)
 {
-    closeUnixSocket(self->mChildSocket);
-    self->mChildSocket = 0;
+    self->mChildSocket = closeUnixSocket(self->mChildSocket);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -49,7 +49,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            closeSocketPair(self->mSocketPair);
+            self->mSocketPair = closeSocketPair(self->mSocketPair);
     });
 
     return rc;
@@ -74,7 +74,7 @@ struct BellSocketPair *
 closeBellSocketPair(struct BellSocketPair *self)
 {
     if (self)
-        closeSocketPair(self->mSocketPair);
+        self->mSocketPair = closeSocketPair(self->mSocketPair);
 
     return 0;
 }

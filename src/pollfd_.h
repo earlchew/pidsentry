@@ -29,7 +29,7 @@
 #ifndef POLLFD_H
 #define POLLFD_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "timekeeping_.h"
 #include "method_.h"
 
@@ -146,7 +146,7 @@ struct PollEventText
 #define POLL_DISCONNECTEVENT   ((unsigned) (POLLHUP|POLLERR))
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createPollFd(struct PollFd                 *self,
              struct pollfd                 *aPoll,
              struct PollFdAction           *aFdActions,
@@ -157,10 +157,10 @@ createPollFd(struct PollFd                 *self,
              size_t                         aNumTimerActions,
              struct PollFdCompletionMethod  aCompletionQuery);
 
-INT
+CHECKED int
 runPollFdLoop(struct PollFd *self);
 
-struct PollFd *
+CHECKED struct PollFd *
 closePollFd(struct PollFd *self);
 
 /* -------------------------------------------------------------------------- */

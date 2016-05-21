@@ -84,7 +84,7 @@ addErrorFrame(const struct ErrorFrame *aFrame, int aErrno)
     unsigned level = errorStack_.mStack->mLevel++;
 
     if (NUMBEROF(errorStack_.mStack->mFrame) <= level)
-        abort();
+        abortProcess();
 
     errorStack_.mStack->mFrame[level]        = *aFrame;
     errorStack_.mStack->mFrame[level].mErrno = aErrno;
@@ -519,7 +519,9 @@ print_(
                 fprintf(printBuf_.mFile, " - errno %d\n", aErrCode);
             fflush(printBuf_.mFile);
 
-            writeFd(STDERR_FILENO, printBuf_.mBuf, printBuf_.mSize);
+            if (printBuf_.mSize != writeFd(STDERR_FILENO,
+                                           printBuf_.mBuf, printBuf_.mSize))
+                abortProcess();
         }
 
         if (locked)
@@ -532,7 +534,7 @@ print_(
                     &elapsed, elapsed_h, elapsed_m, elapsed_s, elapsed_ms,
                     __func__, __FILE__, __LINE__,
                     "Unable to release process lock");
-                abort();
+                abortProcess();
             }
         }
     });
@@ -570,8 +572,7 @@ errorEnsure(const char *aFunction,
 
         VALGRIND_PRINTF_BACKTRACE(msgFmt, aPredicate);
 
-        while (1)
-            abort();
+        abortProcess();
     });
 }
 
@@ -710,7 +711,7 @@ Finally:
 
     FINALLY
     ({
-        destroyProcessAppLock(appLock);
+        appLock = destroyProcessAppLock(appLock);
 
         if (rc)
         {
@@ -754,7 +755,7 @@ Error_exit(struct ErrorModule *self)
 
             free(printBuf_.mBuf);
 
-            destroyProcessAppLock(appLock);
+            appLock = destroyProcessAppLock(appLock);
 
             Printf_exit(self->mPrintfModule);
         }

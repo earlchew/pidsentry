@@ -494,7 +494,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             ERROR_IF(
                 releasePidFileLock_(self));
 
-            closeFile(self->mFile);
+            self->mFile = closeFile(self->mFile);
 
             self->mFile = 0;
         }
@@ -533,8 +533,7 @@ Finally:
     ({
         if (rc)
         {
-            closeFile(self->mFile);
-            self->mFile = 0;
+            self->mFile = closeFile(self->mFile);
             self->mLock = 0;
         }
     });
@@ -543,9 +542,11 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 closePidFile(struct PidFile *self)
 {
+    int rc = -1;
+
     if (self && self->mFile)
     {
         if (lockTypeWrite_ == self->mLock)
@@ -571,11 +572,17 @@ closePidFile(struct PidFile *self)
                  -1 == unlinked || (errno = 0, ! unlinked)));
         }
 
-        closeFile(self->mFile);
-
-        self->mFile = 0;
+        self->mFile = closeFile(self->mFile);
         self->mLock = 0;
     }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -599,7 +606,8 @@ Finally:
     FINALLY
     ({
         if (rc)
-            destroyPidFile(self);
+            while (destroyPidFile(self))
+                break;
     });
 
     return rc;
@@ -611,8 +619,10 @@ destroyPidFile(struct PidFile *self)
 {
     if (self)
     {
-        closePidFile(self);
-        closePathName(self->mPathName);
+        ABORT_IF(
+            closePidFile(self));
+
+        self->mPathName = closePathName(self->mPathName);
     }
 
     return 0;
@@ -713,7 +723,8 @@ writePidFile(struct PidFile           *self,
                   "disregarding zombie %" PRIs_Method,
                   FMTs_Method(printPidFile_, self));
 
-            closePidFile(self);
+            ERROR_IF(
+                closePidFile(self));
         }
 
         int err;

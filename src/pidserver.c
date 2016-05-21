@@ -54,8 +54,8 @@ closePidServerClient_(struct PidServerClient_ *self)
 {
     if (self)
     {
-        closeEventQueueFile(self->mEvent);
-        closeUnixSocket(self->mSocket);
+        self->mEvent  = closeEventQueueFile(self->mEvent);
+        self->mSocket = closeUnixSocket(self->mSocket);
 
         free(self);
     }
@@ -142,8 +142,8 @@ Finally:
     ({
         if (rc)
         {
-            closeEventQueue(self->mEventQueue);
-            closeUnixSocket(self->mSocket);
+            self->mEventQueue = closeEventQueue(self->mEventQueue);
+            self->mSocket     = closeUnixSocket(self->mSocket);
         }
     });
 

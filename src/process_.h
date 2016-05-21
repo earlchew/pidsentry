@@ -29,7 +29,7 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "timescale_.h"
 #include "method_.h"
 #include "pid_.h"
@@ -156,47 +156,47 @@ void
 initProcessDirName(struct ProcessDirName *self, struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 purgeProcessOrphanedFds(void);
 
 /* -------------------------------------------------------------------------- */
 unsigned
 ownProcessSignalContext(void);
 
-INT
+CHECKED int
 watchProcessChildren(struct IntMethod aMethod);
 
-INT
+CHECKED int
 unwatchProcessChildren(void);
 
-INT
+CHECKED int
 watchProcessSignals(struct IntIntMethod aMethod);
 
-INT
+CHECKED int
 unwatchProcessSignals(void);
 
-INT
+CHECKED int
 ignoreProcessSigPipe(void);
 
-INT
+CHECKED int
 resetProcessSigPipe(void);
 
-INT
+CHECKED int
 watchProcessSigCont(struct IntMethod aMethod);
 
-INT
+CHECKED int
 unwatchProcessSigCont(void);
 
-INT
+CHECKED int
 watchProcessSigStop(struct IntMethod aMethod);
 
-INT
+CHECKED int
 unwatchProcessSigStop(void);
 
-INT
+CHECKED int
 watchProcessClock(struct IntMethod aMethod, struct Duration aPeriod);
 
-INT
+CHECKED int
 unwatchProcessClock(void);
 
 /* -------------------------------------------------------------------------- */
@@ -212,21 +212,21 @@ bool
 checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
-struct Pid
+CHECKED struct Pid
 forkProcessChild(enum ForkProcessOption aOption,
                  struct Pgid            aPgid,
                  struct IntMethod       aMethod);
 
-struct Pid
+CHECKED struct Pid
 forkProcessDaemon(struct IntMethod aMethod);
 
-INT
+CHECKED int
 reapProcessChild(struct Pid aPid, int *aStatus);
 
-struct ChildProcessState
+CHECKED struct ChildProcessState
 waitProcessChild(struct Pid aPid);
 
-struct ChildProcessState
+CHECKED struct ChildProcessState
 monitorProcessChild(struct Pid aPid);
 
 struct ExitCode
@@ -235,7 +235,7 @@ extractProcessExitStatus(int aStatus, struct Pid aPid);
 void
 execProcess(const char *aCmd, char **aArgv);
 
-INT
+CHECKED int
 signalProcessGroup(struct Pgid aPgid, int aSignal);
 
 void
@@ -248,16 +248,16 @@ void
 quitProcess(void) __attribute__((__noreturn__));
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 acquireProcessAppLock(void);
 
-INT
+CHECKED int
 releaseProcessAppLock(void);
 
-struct ProcessAppLock *
+CHECKED struct ProcessAppLock *
 createProcessAppLock(void);
 
-struct ProcessAppLock *
+CHECKED struct ProcessAppLock *
 destroyProcessAppLock(struct ProcessAppLock *self);
 
 unsigned
@@ -286,7 +286,7 @@ struct Pgid
 ownProcessGroupId(void);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 fetchProcessSignature(struct Pid aPid, char **aSignature);
 
 struct ProcessState
@@ -296,7 +296,7 @@ struct Pgid
 fetchProcessGroupId(struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 Process_init(struct ProcessModule *self, const char *aArg0);
 
 void

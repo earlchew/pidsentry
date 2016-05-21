@@ -29,7 +29,7 @@
 #ifndef SOCKETPAIR_H
 #define SOCKETPAIR_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "unixsocket_.h"
 
 #ifdef __cplusplus
@@ -45,10 +45,10 @@ struct SocketPair
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createSocketPair(struct SocketPair *self, unsigned aFlags);
 
-struct SocketPair *
+CHECKED struct SocketPair *
 closeSocketPair(struct SocketPair *self);
 
 void

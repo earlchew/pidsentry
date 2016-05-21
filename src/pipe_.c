@@ -92,8 +92,8 @@ Finally:
 
         if (rc)
         {
-            closeFile(self->mRdFile);
-            closeFile(self->mWrFile);
+            self->mRdFile = closeFile(self->mRdFile);
+            self->mWrFile = closeFile(self->mWrFile);
         }
     });
 
@@ -144,16 +144,14 @@ Finally:
 void
 closePipeReader(struct Pipe *self)
 {
-    closeFile(self->mRdFile);
-    self->mRdFile = 0;
+    self->mRdFile = closeFile(self->mRdFile);
 }
 
 /* -------------------------------------------------------------------------- */
 void
 closePipeWriter(struct Pipe *self)
 {
-    closeFile(self->mWrFile);
-    self->mWrFile = 0;
+    self->mWrFile = closeFile(self->mWrFile);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -26,16 +26,15 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef INT_H
-#define INT_H
+#ifndef COMPILER_H
+#define COMPILER_H
 
 /* -------------------------------------------------------------------------- */
-/* Return Codes
+/* Checked Return
  *
- * Idiomatically functions use an integer as a return code, with -1 as a
- * non-zero value to indicate an error, and zero to indicate success. On error,
- * errno contains the error code. */
+ * Where there are return code that need to be checked, this decorator
+ * is used to have the compiler enforce policy. */
 
-#define INT __attribute__((__warn_unused_result__)) int
+#define CHECKED __attribute__((__warn_unused_result__))
 
-#endif /* INT_H */
+#endif /* COMPILER_H */

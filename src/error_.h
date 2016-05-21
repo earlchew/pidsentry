@@ -29,7 +29,7 @@
 #ifndef ERROR_H
 #define ERROR_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "options_.h"
 #include "printf_.h"
 #include "test_.h"
@@ -352,7 +352,7 @@ errorTerminate(
     __attribute__ ((__format__(__printf__, 5, 6), __noreturn__));
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 Error_init(struct ErrorModule *self);
 
 void

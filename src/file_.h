@@ -29,7 +29,7 @@
 #ifndef FILE_H
 #define FILE_H
 
-#include "int_.h"
+#include "compiler_.h"
 #include "fd_.h"
 
 #include <stdbool.h>
@@ -54,125 +54,125 @@ struct File
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 temporaryFile(struct File *self);
 
-INT
+CHECKED int
 createFile(struct File *self, int aFd);
 
-INT
+CHECKED int
 detachFile(struct File *self);
 
-struct File *
+CHECKED struct File *
 closeFile(struct File *self);
 
 void
 walkFileList(void *aOther,
              int (*aVisitor)(void *aOther, const struct File *aFile));
 
-INT
+CHECKED int
 dupFile(struct File *self, const struct File *aOther);
 
-INT
+CHECKED int
 nonBlockingFile(struct File *self);
 
-INT
+CHECKED int
 ownFileNonBlocking(const struct File *self);
 
-INT
+CHECKED int
 closeFileOnExec(struct File *self, unsigned aCloseOnExec);
 
-INT
+CHECKED int
 ownFileCloseOnExec(const struct File *self);
 
-ssize_t
+CHECKED ssize_t
 writeFile(struct File *self, const char *aBuf, size_t aLen);
 
-ssize_t
+CHECKED ssize_t
 readFile(struct File *self, char *aBuf, size_t aLen);
 
-off_t
+CHECKED off_t
 lseekFile(struct File *self, off_t aOffset, struct WhenceType aWhenceType);
 
-INT
+CHECKED int
 fstatFile(struct File *self, struct stat *aStat);
 
-INT
+CHECKED int
 fcntlFileGetFlags(struct File *self);
 
-INT
+CHECKED int
 ftruncateFile(struct File *self, off_t aLength);
 
 bool
 ownFileValid(const struct File *self);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 waitFileWriteReady(const struct File     *self,
                    const struct Duration *aTimeout);
 
-INT
+CHECKED int
 waitFileReadReady(const struct File     *self,
                   const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 bindFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
 
-INT
+CHECKED int
 connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
 
-INT
+CHECKED int
 acceptFileSocket(struct File *self, unsigned aFlags);
 
-INT
+CHECKED int
 listenFileSocket(struct File *self, unsigned aQueueLen);
 
-ssize_t
+CHECKED ssize_t
 sendFileSocket(struct File *self, const char *aBuf, size_t aLen);
 
-ssize_t
+CHECKED ssize_t
 recvFileSocket(struct File *self, char *aBuf, size_t aLen);
 
-ssize_t
+CHECKED ssize_t
 sendFileSocketMsg(struct File *self, const struct msghdr *aMsg, int aFlags);
 
-ssize_t
+CHECKED ssize_t
 recvFileSocketMsg(struct File *self, struct msghdr *aMsg, int aFlags);
 
-INT
+CHECKED int
 shutdownFileSocketReader(struct File *self);
 
-INT
+CHECKED int
 shutdownFileSocketWriter(struct File *self);
 
-INT
+CHECKED int
 ownFileSocketName(const struct File *self,
                   struct sockaddr *aAddr, socklen_t *aAddrLen);
 
-INT
+CHECKED int
 ownFileSocketPeerName(const struct File *self,
                       struct sockaddr *aAddr, socklen_t *aAddrLen);
 
-INT
+CHECKED int
 ownFileSocketError(const struct File *self, int *aError);
 
-INT
+CHECKED int
 ownFileSocketPeerCred(const struct File *self, struct ucred *aCred);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 lockFile(struct File *self, struct LockType aLockType);
 
-INT
+CHECKED int
 unlockFile(struct File *self);
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 lockFileRegion(
     struct File *self, struct LockType aLockType, off_t aPos, off_t aLen);
 
-INT
+CHECKED int
 unlockFileRegion(struct File *self, off_t aPos, off_t aLen);
 
 struct LockType

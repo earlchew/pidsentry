@@ -33,7 +33,7 @@
 #include "umbilical.h"
 #include "pidserver.h"
 
-#include "int_.h"
+#include "compiler_.h"
 #include "stdfdfiller_.h"
 #include "socketpair_.h"
 #include "jobcontrol_.h"
@@ -76,7 +76,7 @@ struct Sentry
 };
 
 /* -------------------------------------------------------------------------- */
-INT
+CHECKED int
 createSentry(struct Sentry *self,
              char         **aCmd);
 
@@ -86,7 +86,7 @@ closeSentry(struct Sentry *self);
 enum PidFileStatus
 announceSentryPidFile(struct Sentry *self);
 
-INT
+CHECKED int
 runSentry(struct Sentry   *self,
           struct Pid       aParentPid,
           struct Pipe     *aParentPipe,

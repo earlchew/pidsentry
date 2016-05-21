@@ -87,16 +87,8 @@ Finally:
         if (rc)
             status = PathNameStatusError;
 
-        if (PathNameStatusOk != status)
-        {
-            free(self->mFileName);
-            free(self->mBaseName_);
-            free(self->mBaseName);
-            free(self->mDirName_);
-            free(self->mDirName);
-
-            closeFile(self->mDirFile);
-        }
+        while (PathNameStatusOk != status && closePathName(self))
+            break;
     });
 
     return status;
@@ -108,7 +100,7 @@ closePathName(struct PathName *self)
 {
     if (self)
     {
-        closeFile(self->mDirFile);
+        self->mDirFile = closeFile(self->mDirFile);
 
         free(self->mFileName);
         free(self->mBaseName_);
