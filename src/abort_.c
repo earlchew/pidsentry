@@ -26,33 +26,25 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef COMPILER_H
-#define COMPILER_H
 
-#include "macros_.h"
+#include "process_.h"
 
-/* -------------------------------------------------------------------------- */
-/* Checked Return
- *
- * Where there are return code that need to be checked, this decorator
- * is used to have the compiler enforce policy. */
-
-#define CHECKED __attribute__((__warn_unused_result__))
+#include <stdlib.h>
 
 /* -------------------------------------------------------------------------- */
-/* Abort
+/* Abort process
  *
- * Prefer to have the application call abortProcess() directly rather than
- * abort(). See abort_.c for the rationale. */
+ * Delegate to abortProcess() because the library implementation will
+ * try to flush IO streams and perform other activity that might fail.
+ * Also, the application implementation in abortProcess() is valgrind
+ * aware. */
 
-static __inline__ void
-abort_(void)
-    __attribute__((__deprecated__));
+/* -------------------------------------------------------------------------- */
+#undef abort
+void
+abort(void)
+{
+    abortProcess();
+}
 
-static __inline__ void
-abort_(void)
-{ }
-
-#define abort(Arg_) IFEMPTY(abort_(), abort(Arg_), Arg_)
-
-#endif /* COMPILER_H */
+/* -------------------------------------------------------------------------- */
