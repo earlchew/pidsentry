@@ -42,6 +42,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <execinfo.h>
 
 #include <valgrind/valgrind.h>
 
@@ -558,6 +559,54 @@ printf_(
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+errorEnsureBacktrace_(int aFd, int aDepth)
+{
+    int rc = -1;
+
+    char **frames = 0;
+
+    ERROR_IF(
+        0 >= aDepth,
+        {
+            errno = EINVAL;
+        });
+
+    {
+        void *symbols[aDepth];
+
+        int depth = backtrace(symbols, aDepth);
+
+        ERROR_IF(
+            (0 > depth || aDepth <= depth),
+            {
+                errno = EAGAIN;
+            });
+
+        frames = backtrace_symbols(symbols, depth);
+
+        if ( ! frames || testAction(TestLevelRace))
+            backtrace_symbols_fd(symbols, depth, aFd);
+        else
+        {
+            for (int ix = 0; ix < depth; ++ix)
+                printf_(0, 0, 0, 0, "%s", frames[ix]);
+        }
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        free(frames);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 void
 errorEnsure(const char *aFunction,
             const char *aFile,
@@ -568,11 +617,36 @@ errorEnsure(const char *aFunction,
     ({
         static const char msgFmt[] = "Assertion failure - %s";
 
-        printf_(0, aFunction, aFile, aLine, msgFmt, aPredicate);
+        const char *predicate = aPredicate ? aPredicate : "TEST";
 
-        VALGRIND_PRINTF_BACKTRACE(msgFmt, aPredicate);
+        printf_(0, aFunction, aFile, aLine, msgFmt, predicate);
 
-        abortProcess();
+        if (RUNNING_ON_VALGRIND)
+            VALGRIND_PRINTF_BACKTRACE(msgFmt, predicate);
+        else
+        {
+            int err;
+
+            int depth = 1;
+
+            do
+            {
+                depth = depth * 2;
+                err = errorEnsureBacktrace_(STDERR_FILENO, depth);
+
+            } while (-1 == err && EAGAIN == errno);
+
+            if (err)
+                printf_(errno, 0, 0, 0, "Unable to print backtrace");
+        }
+
+        /* This conditional exit is used by the unit test to exercise
+         * the backtrace functionality. */
+
+        if (aPredicate)
+            abortProcess();
+        else
+            exitProcess(EXIT_SUCCESS);
     });
 }
 
