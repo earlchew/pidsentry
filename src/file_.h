@@ -31,12 +31,41 @@
 
 #include "compiler_.h"
 #include "fd_.h"
+#include "method_.h"
 
 #include <stdbool.h>
 
 #include <sys/queue.h>
 #include <sys/socket.h>
 
+/* -------------------------------------------------------------------------- */
+BEGIN_C_SCOPE;
+struct File;
+END_C_SCOPE;
+
+#define METHOD_DEFINITION
+#define METHOD_RETURN_FileVisitor    int
+#define METHOD_CONST_FileVisitor
+#define METHOD_ARG_LIST_FileVisitor  (const struct File *aFile_)
+#define METHOD_CALL_LIST_FileVisitor (aFile_)
+
+#define METHOD_NAME      FileVisitor
+#define METHOD_RETURN    METHOD_RETURN_FileVisitor
+#define METHOD_CONST     METHOD_CONST_FileVisitor
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_FileVisitor
+#define METHOD_CALL_LIST METHOD_CALL_LIST_FileVisitor
+#include "method_.h"
+
+#define FileVisitor(Method_, Object_)          \
+    METHOD_TRAMPOLINE(                         \
+        Method_, Object_,                      \
+        FileVisitor_,                          \
+        METHOD_RETURN_FileVisitor,             \
+        METHOD_CONST_FileVisitor,              \
+        METHOD_ARG_LIST_FileVisitor,           \
+        METHOD_CALL_LIST_FileVisitor)
+
+/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -67,8 +96,7 @@ CHECKED struct File *
 closeFile(struct File *self);
 
 void
-walkFileList(void *aOther,
-             int (*aVisitor)(void *aOther, const struct File *aFile));
+walkFileList(struct FileVisitor aVisitor);
 
 CHECKED int
 dupFile(struct File *self, const struct File *aOther);

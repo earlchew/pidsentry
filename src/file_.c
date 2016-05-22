@@ -469,8 +469,7 @@ ownFileValid(const struct File *self)
 
 /* -------------------------------------------------------------------------- */
 void
-walkFileList(void *aOther,
-             int aVisitor(void *aOther, const struct File *aFile))
+walkFileList(struct FileVisitor aVisitor)
 {
     pthread_mutex_t *lock = lockMutex(&fileList_.mMutex);
     {
@@ -478,7 +477,7 @@ walkFileList(void *aOther,
 
         LIST_FOREACH(filePtr, &fileList_.mHead, mList)
         {
-            if (aVisitor(aOther, filePtr))
+            if (callFileVisitor(aVisitor, filePtr))
                 break;
         }
     }

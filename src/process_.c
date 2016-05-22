@@ -40,6 +40,7 @@
 #include "timekeeping_.h"
 #include "thread_.h"
 #include "system_.h"
+#include "lambda_.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -2168,32 +2169,6 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-struct ProcessFdWhiteList
-{
-    int     *mList;
-    unsigned mLen;
-};
-
-static int
-countProcessFds_(void *aNumFds, const struct File *aFile)
-{
-    unsigned *numFds = aNumFds;
-
-    ++(*numFds);
-
-    return 0;
-}
-
-static int
-enumerateProcessFds_(void *aWhiteList, const struct File *aFile)
-{
-    struct ProcessFdWhiteList *whiteList = aWhiteList;
-
-    whiteList->mList[whiteList->mLen++] = aFile->mFd;
-
-    return 0;
-}
-
 int
 purgeProcessOrphanedFds(void)
 {
@@ -2221,7 +2196,15 @@ purgeProcessOrphanedFds(void)
 
     unsigned numFds = NUMBEROF(stdfds);
 
-    walkFileList(&numFds, countProcessFds_);
+    walkFileList(FileVisitor(
+                     LAMBDA(
+                         int, (unsigned *aNumFds, const struct File *aFile),
+                         {
+                             ++(*aNumFds);
+
+                             return 0;
+                         }),
+                     &numFds));
 
     /* Create the whitelist of file descriptors by copying the fds
      * from each of the explicitly created file descriptors. */
@@ -2229,7 +2212,12 @@ purgeProcessOrphanedFds(void)
     int whiteList[numFds];
 
     {
-        struct ProcessFdWhiteList fdWhiteList =
+        struct ProcessFdWhiteList
+        {
+            int     *mList;
+            unsigned mLen;
+
+        } fdWhiteList =
         {
             .mList = whiteList,
             .mLen  = 0,
@@ -2238,7 +2226,17 @@ purgeProcessOrphanedFds(void)
         for (unsigned jx = 0; NUMBEROF(stdfds) > jx; ++jx)
             fdWhiteList.mList[fdWhiteList.mLen++] = stdfds[jx];
 
-        walkFileList(&fdWhiteList, enumerateProcessFds_);
+        walkFileList(
+            FileVisitor(
+                LAMBDA(
+                    int, (struct ProcessFdWhiteList *aWhiteList,
+                          const struct File         *aFile),
+                    {
+                        aWhiteList->mList[aWhiteList->mLen++] = aFile->mFd;
+
+                        return 0;
+                    }),
+                &fdWhiteList));
 
         ensure(fdWhiteList.mLen == numFds);
     }
