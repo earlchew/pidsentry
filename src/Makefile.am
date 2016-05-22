@@ -63,8 +63,8 @@ check_PROGRAMS     += _envtest
 check_PROGRAMS     += _errortest
 check_PROGRAMS     += _eventlatchtest
 check_PROGRAMS     += _eventpipetest
-check_PROGRAMS     += _eventqueuetest
 check_PROGRAMS     += _fdtest
+check_PROGRAMS     += _fileeventqueuetest
 check_PROGRAMS     += _filetest
 check_PROGRAMS     += _lambdatest
 check_PROGRAMS     += _unixsockettest
@@ -110,11 +110,11 @@ _eventlatchtest_LDADD   = $(TEST_LIBS)
 _eventpipetest_SOURCES = _eventpipetest.cc
 _eventpipetest_LDADD   = $(TEST_LIBS)
 
-_eventqueuetest_SOURCES = _eventqueuetest.cc
-_eventqueuetest_LDADD   = $(TEST_LIBS)
-
 _fdtest_SOURCES = _fdtest.cc
 _fdtest_LDADD   = $(TEST_LIBS)
+
+_fileeventqueuetest_SOURCES = _fileeventqueuetest.cc
+_fileeventqueuetest_LDADD   = $(TEST_LIBS)
 
 _filetest_SOURCES = _filetest.cc
 _filetest_LDADD   = $(TEST_LIBS)

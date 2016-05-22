@@ -31,11 +31,41 @@
 
 #include "compiler_.h"
 #include "unixsocket_.h"
-#include "eventqueue_.h"
+#include "fileeventqueue_.h"
 
 #include <sys/un.h>
 #include <sys/queue.h>
 
+/* -------------------------------------------------------------------------- */
+BEGIN_C_SCOPE;
+struct PidServerClientActivity_;
+END_C_SCOPE;
+
+#define METHOD_DEFINITION
+#define METHOD_RETURN_PidServerClientActivityMethod    int
+#define METHOD_CONST_PidServerClientActivityMethod
+#define METHOD_ARG_LIST_PidServerClientActivityMethod  \
+    (struct PidServerClientActivity_ *aActivity_)
+#define METHOD_CALL_LIST_PidServerClientActivityMethod \
+    (aActivity_)
+
+#define METHOD_NAME      PidServerClientActivityMethod_
+#define METHOD_RETURN    METHOD_RETURN_PidServerClientActivityMethod
+#define METHOD_CONST     METHOD_CONST_PidServerClientActivityMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_PidServerClientActivityMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_PidServerClientActivityMethod
+#include "method_.h"
+
+#define PidServerClientActivityMethod_(Method_, Object_)        \
+    METHOD_TRAMPOLINE(                                          \
+        Method_, Object_,                                       \
+        PidServerClientActivityMethod__,                        \
+        METHOD_RETURN_PidServerClientActivityMethod,            \
+        METHOD_CONST_PidServerClientActivityMethod,             \
+        METHOD_ARG_LIST_PidServerClientActivityMethod,          \
+        METHOD_CALL_LIST_PidServerClientActivityMethod)
+
+/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -45,21 +75,30 @@ struct PidServer;
 /* -------------------------------------------------------------------------- */
 struct PidServerClient_
 {
-    TAILQ_ENTRY(PidServerClient_) mList;
-
-    struct PidServer *mServer;
-
     struct ucred mCred;
 
     struct UnixSocket  mSocket_;
     struct UnixSocket *mSocket;
-
-    struct EventQueueFile  mEvent_;
-    struct EventQueueFile *mEvent;
 };
 
-typedef TAILQ_HEAD(PidServerClientList_,
-                   PidServerClient_) PidServerClientListT_;
+/* -------------------------------------------------------------------------- */
+struct PidServerClientActivity_;
+typedef TAILQ_ENTRY(PidServerClientActivity_) PidServerClientActivityListEntryT;
+
+struct PidServerClientActivity_
+{
+    PidServerClientActivityListEntryT  mList_;
+    PidServerClientActivityListEntryT *mList;
+
+    struct FileEventQueueActivity  mEvent_;
+    struct FileEventQueueActivity *mEvent;
+
+    struct PidServerClient_              *mClient;
+    struct PidServerClientActivityMethod_ mMethod;
+};
+
+typedef TAILQ_HEAD(PidServerClientActivityList_,
+                   PidServerClientActivity_) PidServerClientActivityListT_;
 
 /* -------------------------------------------------------------------------- */
 struct PidServer
@@ -68,10 +107,10 @@ struct PidServer
     struct UnixSocket *mSocket;
     struct sockaddr_un mSocketAddr;
 
-    struct EventQueue  mEventQueue_;
-    struct EventQueue *mEventQueue;
+    struct FileEventQueue  mEventQueue_;
+    struct FileEventQueue *mEventQueue;
 
-    struct PidServerClientList_ mClients;
+    struct PidServerClientActivityList_ mClients;
 };
 
 /* -------------------------------------------------------------------------- */

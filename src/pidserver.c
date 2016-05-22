@@ -32,9 +32,78 @@
 #include "error_.h"
 #include "uid_.h"
 #include "timekeeping_.h"
+#include "method_.h"
 
 #include <unistd.h>
 #include <stdlib.h>
+
+/* -------------------------------------------------------------------------- */
+static struct PidServerClientActivity_ *
+closePidServerClientActivity_(struct PidServerClientActivity_ *self)
+{
+    if (self)
+    {
+        ensure( ! self->mList);
+
+        self->mEvent = closeFileEventQueueActivity(self->mEvent);
+
+        free(self);
+    }
+
+    return 0;
+}
+
+static struct PidServerClientActivity_*
+createPidServerClientActivity_(
+    struct PidServerClient_               *aClient,
+    struct FileEventQueue                 *aQueue,
+    struct PidServerClientActivityMethod_  aMethod)
+{
+    int rc = -1;
+
+    struct PidServerClientActivity_ *self = 0;
+
+    ERROR_UNLESS(
+        (self = malloc(sizeof(*self))));
+
+    self->mList   = 0;
+    self->mEvent  = 0;
+    self->mClient = aClient;
+    self->mMethod = aMethod;
+
+    ERROR_IF(
+        createFileEventQueueActivity(
+            &self->mEvent_,
+            aQueue,
+            aClient->mSocket->mFile));
+    self->mEvent = &self->mEvent_;
+
+    ERROR_IF(
+        armFileEventQueueActivity(
+            self->mEvent,
+            EventQueuePollRead,
+            FileEventQueueActivityMethod(
+                LAMBDA(
+                    int, (struct PidServerClientActivity_ *self_),
+                    {
+                        return
+                            callPidServerClientActivityMethod_(
+                                self_->mMethod, self_);
+                    }),
+                self)));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            self = closePidServerClientActivity_(self);
+    });
+
+    return self;
+}
 
 /* -------------------------------------------------------------------------- */
 #define PRIs_ucred "s"                  \
@@ -54,7 +123,6 @@ closePidServerClient_(struct PidServerClient_ *self)
 {
     if (self)
     {
-        self->mEvent  = closeEventQueueFile(self->mEvent);
         self->mSocket = closeUnixSocket(self->mSocket);
 
         free(self);
@@ -65,7 +133,7 @@ closePidServerClient_(struct PidServerClient_ *self)
 
 /* -------------------------------------------------------------------------- */
 static struct PidServerClient_ *
-createPidServerClient_(struct PidServer *aServer)
+createPidServerClient_(struct UnixSocket *aSocket)
 {
     int rc = -1;
 
@@ -74,11 +142,8 @@ createPidServerClient_(struct PidServer *aServer)
     ERROR_UNLESS(
         (self = malloc(sizeof(*self))));
 
-    self->mServer = aServer;
-    self->mEvent  = 0;
-
     ERROR_IF(
-        acceptUnixSocket(&self->mSocket_, self->mServer->mSocket),
+        acceptUnixSocket(&self->mSocket_, aSocket),
         {
             warn(errno, "Unable to accept connection");
         });
@@ -86,15 +151,6 @@ createPidServerClient_(struct PidServer *aServer)
 
     ERROR_IF(
         ownUnixSocketPeerCred(self->mSocket, &self->mCred));
-
-    ERROR_IF(
-        createEventQueueFile(
-            &self->mEvent_,
-            self->mServer->mEventQueue,
-            self->mSocket->mFile,
-            EventQueuePollRead,
-            EventQueueHandle(self)));
-    self->mEvent = &self->mEvent_;
 
     rc = 0;
 
@@ -130,8 +186,10 @@ createPidServer(struct PidServer *self)
     ERROR_IF(
         self->mSocketAddr.sun_path[0]);
 
+    int numEvents = 16;
+
     ERROR_IF(
-        createEventQueue(&self->mEventQueue_));
+        createFileEventQueue(&self->mEventQueue_, numEvents));
     self->mEventQueue = &self->mEventQueue_;
 
     rc = 0;
@@ -142,12 +200,67 @@ Finally:
     ({
         if (rc)
         {
-            self->mEventQueue = closeEventQueue(self->mEventQueue);
+            self->mEventQueue = closeFileEventQueue(self->mEventQueue);
             self->mSocket     = closeUnixSocket(self->mSocket);
         }
     });
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+enqueuePidServerConnection_(struct PidServer                *self,
+                            struct PidServerClientActivity_ *aActivity)
+{
+    int rc = -1;
+
+    ensure( ! aActivity->mList);
+
+    debug(0,
+          "add reference from %" PRIs_ucred,
+          FMTs_ucred(aActivity->mClient->mCred));
+
+    TAILQ_INSERT_TAIL(
+        &self->mClients, aActivity, mList_);
+
+    aActivity->mList = &aActivity->mList_;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static struct PidServerClientActivity_ *
+discardPidServerConnection_(struct PidServer                *self,
+                            struct PidServerClientActivity_ *aActivity)
+{
+    struct PidServerClientActivity_ *activity = aActivity;
+
+    if (activity)
+    {
+        if (activity->mList)
+        {
+            debug(0,
+                  "drop reference from %" PRIs_ucred,
+                  FMTs_ucred(activity->mClient->mCred));
+
+            TAILQ_REMOVE(&self->mClients, activity, mList_);
+            activity->mList = 0;
+        }
+
+        struct PidServerClient_ *client = activity->mClient;
+
+        activity = closePidServerClientActivity_(activity);
+        client   = closePidServerClient_(client);
+    }
+
+    return activity;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -158,15 +271,13 @@ closePidServer(struct PidServer *self)
     {
         while ( ! TAILQ_EMPTY(&self->mClients))
         {
-            struct PidServerClient_ *client =
+            struct PidServerClientActivity_ *activity =
                 TAILQ_FIRST(&self->mClients);
 
-            TAILQ_REMOVE(&self->mClients, client, mList);
-
-            client = closePidServerClient_(client);
+            activity = discardPidServerConnection_(self, activity);
         }
 
-        self->mEventQueue = closeEventQueue(self->mEventQueue);
+        self->mEventQueue = closeFileEventQueue(self->mEventQueue);
         self->mSocket     = closeUnixSocket(self->mSocket);
    }
 
@@ -188,10 +299,11 @@ acceptPidServerConnection(struct PidServer *self)
      * to store the connection record, but pause rather than allowing
      * the event loop to spin wildly. */
 
-    struct PidServerClient_ *client  = 0;
+    struct PidServerClient_         *client   = 0;
+    struct PidServerClientActivity_ *activity = 0;
 
     ERROR_UNLESS(
-        (client = createPidServerClient_(self)));
+        (client = createPidServerClient_(self->mSocket)));
 
     ERROR_UNLESS(
         geteuid() == client->mCred.uid || ! client->mCred.uid,
@@ -201,23 +313,35 @@ acceptPidServerConnection(struct PidServer *self)
                  FMTs_ucred(client->mCred));
         });
 
-    ERROR_IF(
-        pushEventQueue(self->mEventQueue, client->mEvent));
+    ERROR_UNLESS(
+        (activity = createPidServerClientActivity_(
+            client,
+            self->mEventQueue,
+            PidServerClientActivityMethod_(
+                LAMBDA(
+                    int, (struct PidServer                *self_,
+                          struct PidServerClientActivity_ *aActivity),
+                    {
+                        struct PidServerClientActivity_ *activity_ = aActivity;
+
+                        activity_ =
+                            discardPidServerConnection_(self_, activity_);
+
+                        return 0;
+                    }),
+                self))));
+    client = 0;
 
     char buf[1] = { 0 };
 
     int err;
     ERROR_IF(
-        (err = writeFile(client->mSocket->mFile, buf, 1),
+        (err = writeFile(activity->mClient->mSocket->mFile, buf, 1),
          -1 == err || (errno = EIO, 1 != err)));
 
-    debug(0,
-          "add reference from %" PRIs_ucred,
-          FMTs_ucred(client->mCred));
-
-    TAILQ_INSERT_TAIL(
-        &self->mClients, client, mList);
-    client = 0;
+    ERROR_IF(
+        enqueuePidServerConnection_(self, activity));
+    activity = 0;
 
     rc = 0;
 
@@ -225,7 +349,8 @@ Finally:
 
     FINALLY
     ({
-        client = closePidServerClient_(client);
+        activity = discardPidServerConnection_(self, activity);
+        client   = closePidServerClient_(client);
     });
 
     return rc;
@@ -241,29 +366,10 @@ cleanPidServer(struct PidServer *self)
      * queue, and remove those references to the child process group
      * that have expired. */
 
-    struct EventQueueFile *events[16];
-
     struct Duration zeroTimeout = Duration(NanoSeconds(0));
 
-    int poppedEvents;
     ERROR_IF(
-        (poppedEvents = popEventQueue(
-            self->mEventQueue,
-            events, NUMBEROF(events), &zeroTimeout),
-         -1 == poppedEvents));
-
-    for (int px = 0; px < poppedEvents; ++px)
-    {
-        struct PidServerClient_ *client = events[px]->mSubject.mHandle;
-
-        debug(0,
-              "drop reference from %" PRIs_ucred,
-              FMTs_ucred(client->mCred));
-
-        TAILQ_REMOVE(&self->mClients, client, mList);
-
-        client = closePidServerClient_(client);
-    }
+        pollFileEventQueueActivity(self->mEventQueue, &zeroTimeout));
 
     /* There is no further need to continue cleaning if there are no
      * more outstanding connections. The last remaining connection

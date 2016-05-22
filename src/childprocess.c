@@ -598,7 +598,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
          * O_CLOEXEC to close the underlying file descriptors. */
 
         execProcess(self->mCmd[0], self->mCmd);
-        warn(errno, "Unable to execute '%s'", self->mCmd[0]);
+        message(errno, "Unable to execute '%s'", self->mCmd[0]);
 
     } while (0);
 
