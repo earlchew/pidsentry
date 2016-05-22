@@ -42,6 +42,11 @@ extern "C" {
 #define METHOD_CTOR_(Const_, Struct_)
 #else
 #define METHOD_CTOR_(Const_, Struct_)                   \
+    explicit Struct_()                                  \
+    : mMethod(0),                                       \
+      mObject(0)                                        \
+    { }                                                 \
+                                                        \
     explicit Struct_(CONCAT(Struct_, T_) aMethod,       \
                      Const_ void        *aObject)       \
     : mMethod(aMethod),                                 \
