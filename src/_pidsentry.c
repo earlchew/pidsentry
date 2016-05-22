@@ -97,15 +97,15 @@ cmdRunCommand(const char *aPidFileName, char **aCmd, struct ExitCode *aExitCode)
         break;
 
     case CommandStatusUnreachablePidFile:
-        warn(0, "Unable to reach pidfile '%s'", aPidFileName);
+        message(0, "Unable to reach pidfile '%s'", aPidFileName);
         break;
 
     case CommandStatusInaccessiblePidFile:
-        warn(0, "Unable to open pidfile '%s'", aPidFileName);
+        message(0, "Unable to open pidfile '%s'", aPidFileName);
         break;
 
     case CommandStatusZombiePidFile:
-        warn(0, "Dead process named in pidfile '%s'", aPidFileName);
+        message(0, "Dead process named in pidfile '%s'", aPidFileName);
         break;
     }
 
@@ -203,10 +203,18 @@ main(int argc, char **argv)
 
     if (gOptions.mCommand)
         ABORT_IF(
-            cmdRunCommand(gOptions.mPidFile, args, &exitCode));
+            cmdRunCommand(gOptions.mPidFile, args, &exitCode),
+            {
+                terminate(errno,
+                          "Failed to run command: %s", args[0]);
+            });
     else
         ABORT_IF(
-            cmdMonitorChild(args, &exitCode));
+            cmdMonitorChild(args, &exitCode),
+            {
+                terminate(errno,
+                          "Failed to supervise program: %s", args[0]);
+            });
 
 Finally:
 
