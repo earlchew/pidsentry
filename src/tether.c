@@ -460,7 +460,7 @@ flushTetherThread(struct TetherThread *self)
     debug(0, "flushing tether thread");
 
     ERROR_IF(
-        watchProcessClock(IntMethodNil(), Duration(NanoSeconds(0))));
+        watchProcessClock(WatchProcessMethodNil(), Duration(NanoSeconds(0))));
 
     /* This code will race the tether thread which might finished
      * because it already has detected that the child process has

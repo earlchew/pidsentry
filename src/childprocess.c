@@ -643,7 +643,7 @@ forkChildProcess(
         (childPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
-            IntMethod(runChildProcess_, &childProcess)),
+            ForkProcessMethod(runChildProcess_, &childProcess)),
          -1 == childPid.mPid));
 
     /* Do not try to place the watchdog in the process group of the child.

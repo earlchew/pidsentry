@@ -239,7 +239,7 @@ runCommand(struct Command *self,
         (pid = forkProcessChild(
             ForkProcessInheritProcessGroup,
             Pgid(0),
-            IntMethod(runCommandChildProcess_, &commandProcess)),
+            ForkProcessMethod(runCommandChildProcess_, &commandProcess)),
          -1 == pid.mPid));
 
     self->mPid = pid;

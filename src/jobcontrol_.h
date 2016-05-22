@@ -30,7 +30,7 @@
 #define JOBCONTROL_H
 
 #include "compiler_.h"
-#include "method_.h"
+#include "process_.h"
 #include "thread_.h"
 
 /* -------------------------------------------------------------------------- */
@@ -43,23 +43,23 @@ struct JobControl
 {
     struct
     {
-        struct IntIntMethod mMethod;
+        struct WatchProcessSignalMethod mMethod;
     } mRaise;
 
     struct
     {
-        struct IntMethod mMethod;
+        struct WatchProcessMethod mMethod;
     } mReap;
 
     struct
     {
-        struct IntMethod mPauseMethod;
-        struct IntMethod mResumeMethod;
+        struct WatchProcessMethod mPauseMethod;
+        struct WatchProcessMethod mResumeMethod;
     } mStop;
 
     struct
     {
-        struct IntMethod mMethod;
+        struct WatchProcessMethod mMethod;
     } mContinue;
 };
 
@@ -71,30 +71,30 @@ CHECKED struct JobControl *
 closeJobControl(struct JobControl *self);
 
 CHECKED int
-watchJobControlSignals(struct JobControl  *self,
-                       struct IntIntMethod aRaiseMethod);
+watchJobControlSignals(struct JobControl              *self,
+                       struct WatchProcessSignalMethod aRaiseMethod);
 
 CHECKED int
 unwatchJobControlSignals(struct JobControl *self);
 
 CHECKED int
-watchJobControlDone(struct JobControl *self,
-                    struct IntMethod   aReapMethod);
+watchJobControlDone(struct JobControl        *self,
+                    struct WatchProcessMethod aReapMethod);
 
 CHECKED int
 unwatchJobControlDone(struct JobControl *self);
 
 CHECKED int
-watchJobControlStop(struct JobControl *self,
-                    struct IntMethod   aPauseMethod,
-                    struct IntMethod   aResumeMethod);
+watchJobControlStop(struct JobControl        *self,
+                    struct WatchProcessMethod aPauseMethod,
+                    struct WatchProcessMethod aResumeMethod);
 
 CHECKED int
 unwatchJobControlStop(struct JobControl *self);
 
 CHECKED int
-watchJobControlContinue(struct JobControl *self,
-                        struct IntMethod   aContinueMethod);
+watchJobControlContinue(struct JobControl        *self,
+                        struct WatchProcessMethod aContinueMethod);
 
 CHECKED int
 unwatchJobControlContinue(struct JobControl *self);

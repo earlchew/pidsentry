@@ -41,6 +41,75 @@
 #include <sys/types.h>
 
 /* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_ForkProcessMethod    int
+#define METHOD_CONST_ForkProcessMethod
+#define METHOD_ARG_LIST_ForkProcessMethod  ()
+#define METHOD_CALL_LIST_ForkProcessMethod ()
+
+#define METHOD_NAME      ForkProcessMethod
+#define METHOD_RETURN    METHOD_RETURN_ForkProcessMethod
+#define METHOD_CONST     METHOD_CONST_ForkProcessMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_ForkProcessMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_ForkProcessMethod
+#include "method_.h"
+
+#define ForkProcessMethod(Method_, Object_)     \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        ForkProcessMethod_,                     \
+        METHOD_RETURN_ForkProcessMethod,        \
+        METHOD_CONST_ForkProcessMethod,         \
+        METHOD_ARG_LIST_ForkProcessMethod,      \
+        METHOD_CALL_LIST_ForkProcessMethod)
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_WatchProcessMethod    int
+#define METHOD_CONST_WatchProcessMethod
+#define METHOD_ARG_LIST_WatchProcessMethod  ()
+#define METHOD_CALL_LIST_WatchProcessMethod ()
+
+#define METHOD_NAME      WatchProcessMethod
+#define METHOD_RETURN    METHOD_RETURN_WatchProcessMethod
+#define METHOD_CONST     METHOD_CONST_WatchProcessMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_WatchProcessMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_WatchProcessMethod
+#include "method_.h"
+
+#define WatchProcessMethod(Method_, Object_)    \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        WatchProcessMethod_,                    \
+        METHOD_RETURN_WatchProcessMethod,       \
+        METHOD_CONST_WatchProcessMethod,        \
+        METHOD_ARG_LIST_WatchProcessMethod,     \
+        METHOD_CALL_LIST_WatchProcessMethod)
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_WatchProcessSignalMethod    int
+#define METHOD_CONST_WatchProcessSignalMethod
+#define METHOD_ARG_LIST_WatchProcessSignalMethod  (int aSigNum_)
+#define METHOD_CALL_LIST_WatchProcessSignalMethod (aSigNum_)
+
+#define METHOD_NAME      WatchProcessSignalMethod
+#define METHOD_RETURN    METHOD_RETURN_WatchProcessSignalMethod
+#define METHOD_CONST     METHOD_CONST_WatchProcessSignalMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_WatchProcessSignalMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_WatchProcessSignalMethod
+#include "method_.h"
+
+#define WatchProcessSignalMethod(Method_, Object_)      \
+    METHOD_TRAMPOLINE(                                  \
+        Method_, Object_,                               \
+        WatchProcessSignalMethod_,                      \
+        METHOD_RETURN_WatchProcessSignalMethod,         \
+        METHOD_CONST_WatchProcessSignalMethod,          \
+        METHOD_ARG_LIST_WatchProcessSignalMethod,       \
+        METHOD_CALL_LIST_WatchProcessSignalMethod)
+
+/* -------------------------------------------------------------------------- */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -164,13 +233,13 @@ unsigned
 ownProcessSignalContext(void);
 
 CHECKED int
-watchProcessChildren(struct IntMethod aMethod);
+watchProcessChildren(struct WatchProcessMethod aMethod);
 
 CHECKED int
 unwatchProcessChildren(void);
 
 CHECKED int
-watchProcessSignals(struct IntIntMethod aMethod);
+watchProcessSignals(struct WatchProcessSignalMethod aMethod);
 
 CHECKED int
 unwatchProcessSignals(void);
@@ -182,19 +251,19 @@ CHECKED int
 resetProcessSigPipe(void);
 
 CHECKED int
-watchProcessSigCont(struct IntMethod aMethod);
+watchProcessSigCont(struct WatchProcessMethod aMethod);
 
 CHECKED int
 unwatchProcessSigCont(void);
 
 CHECKED int
-watchProcessSigStop(struct IntMethod aMethod);
+watchProcessSigStop(struct WatchProcessMethod aMethod);
 
 CHECKED int
 unwatchProcessSigStop(void);
 
 CHECKED int
-watchProcessClock(struct IntMethod aMethod, struct Duration aPeriod);
+watchProcessClock(struct WatchProcessMethod aMethod, struct Duration aPeriod);
 
 CHECKED int
 unwatchProcessClock(void);
@@ -213,12 +282,12 @@ checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
 CHECKED struct Pid
-forkProcessChild(enum ForkProcessOption aOption,
-                 struct Pgid            aPgid,
-                 struct IntMethod       aMethod);
+forkProcessChild(enum ForkProcessOption   aOption,
+                 struct Pgid              aPgid,
+                 struct ForkProcessMethod aMethod);
 
 CHECKED struct Pid
-forkProcessDaemon(struct IntMethod aMethod);
+forkProcessDaemon(struct ForkProcessMethod aMethod);
 
 CHECKED int
 reapProcessChild(struct Pid aPid, int *aStatus);

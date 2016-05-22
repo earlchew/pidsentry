@@ -263,7 +263,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
             (agentPid = forkProcessChild(
                 ForkProcessSetProcessGroup,
                 Pgid(0),
-                IntMethod(runAgentChildProcess_, &agentChild)),
+                ForkProcessMethod(runAgentChildProcess_, &agentChild)),
              -1 == agentPid.mPid));
 
         self->mAgentPid = agentPid;
@@ -279,12 +279,12 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
     ERROR_IF(
         watchJobControlSignals(
             jobControl,
-            IntIntMethod(raiseAgentSignal_, self)));
+            WatchProcessSignalMethod(raiseAgentSignal_, self)));
 
     ERROR_IF(
         watchJobControlStop(jobControl,
-                            IntMethod(raiseAgentStop_, self),
-                            IntMethod(raiseAgentResume_, self)));
+                            WatchProcessMethod(raiseAgentStop_, self),
+                            WatchProcessMethod(raiseAgentResume_, self)));
 
     {
         struct ProcessAppLock *appLock = createProcessAppLock();

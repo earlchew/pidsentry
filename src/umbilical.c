@@ -445,7 +445,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
         (self->mChildAnchor = forkProcessChild(
             ForkProcessSetProcessGroup,
             self->mChildProcess->mPgid,
-            IntMethod(
+            ForkProcessMethod(
                 LAMBDA(
                     int, (char *this),
                     {
@@ -458,7 +458,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
         (self->mWatchdogAnchor = forkProcessChild(
             ForkProcessSetProcessGroup,
             self->mWatchdogPgid,
-            IntMethod(
+            ForkProcessMethod(
                 LAMBDA(
                     int, (char *this),
                     {
@@ -614,7 +614,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
         (umbilicalPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
-            IntMethod(runUmbilicalProcessChild_, self)),
+            ForkProcessMethod(runUmbilicalProcessChild_, self)),
          -1 == umbilicalPid.mPid));
     self->mPid = umbilicalPid;
 

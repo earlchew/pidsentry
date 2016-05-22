@@ -121,7 +121,7 @@ createSentry(struct Sentry *self,
 
     ERROR_IF(
         watchJobControlDone(self->mJobControl,
-                            IntMethod(reapSentry_, self)));
+                            WatchProcessMethod(reapSentry_, self)));
 
     ERROR_IF(
         createBellSocketPair(&self->mSyncSocket_, O_CLOEXEC));
@@ -141,16 +141,16 @@ createSentry(struct Sentry *self,
     ERROR_IF(
         watchJobControlSignals(
             self->mJobControl,
-            IntIntMethod(raiseSentrySignal_, self)));
+            WatchProcessSignalMethod(raiseSentrySignal_, self)));
 
     ERROR_IF(
         watchJobControlStop(self->mJobControl,
-                            IntMethod(raiseSentryStop_, self),
-                            IntMethod(raiseSentryResume_, self)));
+                            WatchProcessMethod(raiseSentryStop_, self),
+                            WatchProcessMethod(raiseSentryResume_, self)));
 
     ERROR_IF(
         watchJobControlContinue(self->mJobControl,
-                                IntMethod(raiseSentrySigCont_, self)));
+                                WatchProcessMethod(raiseSentrySigCont_, self)));
 
     /* If a pidfile is required, create it now so that it can
      * be anchored to its directory before changing the current

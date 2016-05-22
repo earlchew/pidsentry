@@ -41,9 +41,9 @@ reapJobControl_(struct JobControl *self)
 {
     int rc = -1;
 
-    if ( ! ownIntMethodNil(self->mReap.mMethod))
+    if ( ! ownWatchProcessMethodNil(self->mReap.mMethod))
         ERROR_IF(
-            callIntMethod(self->mReap.mMethod));
+            callWatchProcessMethod(self->mReap.mMethod));
 
     rc = 0;
 
@@ -60,9 +60,9 @@ raiseJobControlSignal_(struct JobControl *self, int aSigNum)
 {
     int rc = -1;
 
-    if ( ! ownIntIntMethodNil(self->mRaise.mMethod))
+    if ( ! ownWatchProcessSignalMethodNil(self->mRaise.mMethod))
         ERROR_IF(
-            callIntIntMethod(self->mRaise.mMethod, aSigNum));
+            callWatchProcessSignalMethod(self->mRaise.mMethod, aSigNum));
 
     rc = 0;
 
@@ -79,9 +79,9 @@ raiseJobControlSigStop_(struct JobControl *self)
 {
     int rc = -1;
 
-    if ( ! ownIntMethodNil(self->mStop.mPauseMethod))
+    if ( ! ownWatchProcessMethodNil(self->mStop.mPauseMethod))
         ERROR_IF(
-            callIntMethod(self->mStop.mPauseMethod));
+            callWatchProcessMethod(self->mStop.mPauseMethod));
 
     ERROR_IF(
         raise(SIGSTOP),
@@ -92,9 +92,9 @@ raiseJobControlSigStop_(struct JobControl *self)
                 FMTd_Pid(ownProcessId()));
         });
 
-    if ( ! ownIntMethodNil(self->mStop.mResumeMethod))
+    if ( ! ownWatchProcessMethodNil(self->mStop.mResumeMethod))
         ERROR_IF(
-            callIntMethod(self->mStop.mResumeMethod));
+            callWatchProcessMethod(self->mStop.mResumeMethod));
 
     rc = 0;
 
@@ -111,9 +111,9 @@ raiseJobControlSigCont_(struct JobControl *self)
 {
     int rc = -1;
 
-    if ( ! ownIntMethodNil(self->mContinue.mMethod))
+    if ( ! ownWatchProcessMethodNil(self->mContinue.mMethod))
         ERROR_IF(
-            callIntMethod(self->mContinue.mMethod));
+            callWatchProcessMethod(self->mContinue.mMethod));
 
     rc = 0;
 
@@ -130,11 +130,11 @@ createJobControl(struct JobControl *self)
 {
     int rc = -1;
 
-    self->mRaise.mMethod      = IntIntMethodNil();
-    self->mReap.mMethod       = IntMethodNil();
-    self->mStop.mPauseMethod  = IntMethodNil();
-    self->mStop.mResumeMethod = IntMethodNil();
-    self->mContinue.mMethod   = IntMethodNil();
+    self->mRaise.mMethod      = WatchProcessSignalMethodNil();
+    self->mReap.mMethod       = WatchProcessMethodNil();
+    self->mStop.mPauseMethod  = WatchProcessMethodNil();
+    self->mStop.mResumeMethod = WatchProcessMethodNil();
+    self->mContinue.mMethod   = WatchProcessMethodNil();
 
     rc = 0;
 
@@ -162,19 +162,19 @@ closeJobControl(struct JobControl *self)
 
 /* -------------------------------------------------------------------------- */
 int
-watchJobControlSignals(struct JobControl  *self,
-                       struct IntIntMethod aRaiseMethod)
+watchJobControlSignals(struct JobControl              *self,
+                       struct WatchProcessSignalMethod aRaiseMethod)
 {
     int rc = -1;
 
     ERROR_IF(
-        ownIntIntMethodNil(aRaiseMethod),
+        ownWatchProcessSignalMethodNil(aRaiseMethod),
         {
             errno = EINVAL;
         });
 
     ERROR_UNLESS(
-        ownIntIntMethodNil(self->mRaise.mMethod),
+        ownWatchProcessSignalMethodNil(self->mRaise.mMethod),
         {
             errno = EPERM;
         });
@@ -182,9 +182,10 @@ watchJobControlSignals(struct JobControl  *self,
     self->mRaise.mMethod = aRaiseMethod;
 
     ERROR_IF(
-        watchProcessSignals(IntIntMethod(raiseJobControlSignal_, self)),
+        watchProcessSignals(
+            WatchProcessSignalMethod(raiseJobControlSignal_, self)),
         {
-            self->mRaise.mMethod = IntIntMethodNil();
+            self->mRaise.mMethod = WatchProcessSignalMethodNil();
         });
 
     rc = 0;
@@ -203,7 +204,7 @@ unwatchJobControlSignals(struct JobControl *self)
     int rc = -1;
 
     ERROR_IF(
-        ownIntIntMethodNil(self->mRaise.mMethod),
+        ownWatchProcessSignalMethodNil(self->mRaise.mMethod),
         {
             errno = EPERM;
         });
@@ -211,7 +212,7 @@ unwatchJobControlSignals(struct JobControl *self)
     ERROR_IF(
         unwatchProcessSignals());
 
-    self->mRaise.mMethod = IntIntMethodNil();
+    self->mRaise.mMethod = WatchProcessSignalMethodNil();
 
     rc = 0;
 
@@ -224,19 +225,19 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-watchJobControlDone(struct JobControl *self,
-                    struct IntMethod   aReapMethod)
+watchJobControlDone(struct JobControl        *self,
+                    struct WatchProcessMethod aReapMethod)
 {
     int rc = -1;
 
     ERROR_IF(
-        ownIntMethodNil(aReapMethod),
+        ownWatchProcessMethodNil(aReapMethod),
         {
             errno = EINVAL;
         });
 
     ERROR_UNLESS(
-        ownIntMethodNil(self->mReap.mMethod),
+        ownWatchProcessMethodNil(self->mReap.mMethod),
         {
             errno = EPERM;
         });
@@ -244,9 +245,9 @@ watchJobControlDone(struct JobControl *self,
     self->mReap.mMethod = aReapMethod;
 
     ERROR_IF(
-        watchProcessChildren(IntMethod(reapJobControl_, self)),
+        watchProcessChildren(WatchProcessMethod(reapJobControl_, self)),
         {
-            self->mReap.mMethod = IntMethodNil();
+            self->mReap.mMethod = WatchProcessMethodNil();
         });
 
     rc = 0;
@@ -265,7 +266,7 @@ unwatchJobControlDone(struct JobControl *self)
     int rc = -1;
 
     ERROR_IF(
-        ownIntMethodNil(self->mReap.mMethod),
+        ownWatchProcessMethodNil(self->mReap.mMethod),
         {
             errno = EPERM;
         });
@@ -273,7 +274,7 @@ unwatchJobControlDone(struct JobControl *self)
     ERROR_IF(
         unwatchProcessChildren());
 
-    self->mReap.mMethod = IntMethodNil();
+    self->mReap.mMethod = WatchProcessMethodNil();
 
     rc = 0;
 
@@ -286,22 +287,22 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-watchJobControlStop(struct JobControl *self,
-                    struct IntMethod   aPauseMethod,
-                    struct IntMethod   aResumeMethod)
+watchJobControlStop(struct JobControl        *self,
+                    struct WatchProcessMethod aPauseMethod,
+                    struct WatchProcessMethod aResumeMethod)
 {
     int rc = -1;
 
     ERROR_IF(
-        ownIntMethodNil(aPauseMethod) &&
-        ownIntMethodNil(aResumeMethod),
+        ownWatchProcessMethodNil(aPauseMethod) &&
+        ownWatchProcessMethodNil(aResumeMethod),
         {
             errno = EINVAL;
         });
 
     ERROR_UNLESS(
-        ownIntMethodNil(self->mStop.mPauseMethod) &&
-        ownIntMethodNil(self->mStop.mResumeMethod),
+        ownWatchProcessMethodNil(self->mStop.mPauseMethod) &&
+        ownWatchProcessMethodNil(self->mStop.mResumeMethod),
         {
             errno = EPERM;
         });
@@ -310,10 +311,11 @@ watchJobControlStop(struct JobControl *self,
     self->mStop.mResumeMethod = aResumeMethod;
 
     ERROR_IF(
-        watchProcessSigStop(IntMethod(raiseJobControlSigStop_, self)),
+        watchProcessSigStop(
+            WatchProcessMethod(raiseJobControlSigStop_, self)),
         {
-            self->mStop.mPauseMethod  = IntMethodNil();
-            self->mStop.mResumeMethod = IntMethodNil();
+            self->mStop.mPauseMethod  = WatchProcessMethodNil();
+            self->mStop.mResumeMethod = WatchProcessMethodNil();
         });
 
     rc = 0;
@@ -332,8 +334,8 @@ unwatchJobControlStop(struct JobControl *self)
     int rc = -1;
 
     ERROR_IF(
-        ownIntMethodNil(self->mStop.mPauseMethod) &&
-        ownIntMethodNil(self->mStop.mResumeMethod),
+        ownWatchProcessMethodNil(self->mStop.mPauseMethod) &&
+        ownWatchProcessMethodNil(self->mStop.mResumeMethod),
         {
             errno = EPERM;
         });
@@ -341,8 +343,8 @@ unwatchJobControlStop(struct JobControl *self)
     ERROR_IF(
         unwatchProcessSigStop());
 
-    self->mStop.mPauseMethod  = IntMethodNil();
-    self->mStop.mResumeMethod = IntMethodNil();
+    self->mStop.mPauseMethod  = WatchProcessMethodNil();
+    self->mStop.mResumeMethod = WatchProcessMethodNil();
 
     rc = 0;
 
@@ -355,19 +357,19 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-watchJobControlContinue(struct JobControl *self,
-                        struct IntMethod   aContinueMethod)
+watchJobControlContinue(struct JobControl        *self,
+                        struct WatchProcessMethod aContinueMethod)
 {
     int rc = -1;
 
     ERROR_IF(
-        ownIntMethodNil(aContinueMethod),
+        ownWatchProcessMethodNil(aContinueMethod),
         {
             errno = EINVAL;
         });
 
     ERROR_UNLESS(
-        ownIntMethodNil(self->mContinue.mMethod),
+        ownWatchProcessMethodNil(self->mContinue.mMethod),
         {
             errno = EPERM;
         });
@@ -375,9 +377,10 @@ watchJobControlContinue(struct JobControl *self,
     self->mContinue.mMethod  = aContinueMethod;
 
     ERROR_IF(
-        watchProcessSigCont(IntMethod(raiseJobControlSigCont_, self)),
+        watchProcessSigCont(
+            WatchProcessMethod(raiseJobControlSigCont_, self)),
         {
-            self->mContinue.mMethod = IntMethodNil();
+            self->mContinue.mMethod = WatchProcessMethodNil();
         });
 
     rc = 0;
@@ -396,7 +399,7 @@ unwatchJobControlContinue(struct JobControl *self)
     int rc = -1;
 
     ERROR_IF(
-        ownIntMethodNil(self->mContinue.mMethod),
+        ownWatchProcessMethodNil(self->mContinue.mMethod),
         {
             errno = EPERM;
         });
@@ -404,7 +407,7 @@ unwatchJobControlContinue(struct JobControl *self)
     ERROR_IF(
         unwatchProcessSigCont());
 
-    self->mContinue.mMethod  = IntMethodNil();
+    self->mContinue.mMethod  = WatchProcessMethodNil();
 
     rc = 0;
 

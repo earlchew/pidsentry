@@ -403,9 +403,9 @@ resetProcessSigPipe(void)
 /* -------------------------------------------------------------------------- */
 static struct
 {
-    struct ThreadSigMutex mSigMutex;
-    unsigned              mCount;
-    struct IntMethod      mMethod;
+    struct ThreadSigMutex     mSigMutex;
+    unsigned                  mCount;
+    struct WatchProcessMethod mMethod;
 } processSigCont_ =
 {
     .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER(processSigCont_.mSigMutex),
@@ -423,13 +423,13 @@ sigCont_(int aSigNum)
     struct ThreadSigMutex *lock = lockThreadSigMutex(
         &processSigCont_.mSigMutex);
 
-    if (ownIntMethodNil(processSigCont_.mMethod))
+    if (ownWatchProcessMethodNil(processSigCont_.mMethod))
         debug(1, "detected SIGCONT");
     else
     {
         debug(1, "observed SIGCONT");
         ABORT_IF(
-            callIntMethod(processSigCont_.mMethod));
+            callWatchProcessMethod(processSigCont_.mMethod));
     }
 
     lock = unlockThreadSigMutex(lock);
@@ -475,7 +475,7 @@ Finally:
 }
 
 static int
-updateProcessSigContMethod_(struct IntMethod aMethod)
+updateProcessSigContMethod_(struct WatchProcessMethod aMethod)
 {
     struct ThreadSigMutex *lock =
         lockThreadSigMutex(&processSigCont_.mSigMutex);
@@ -491,7 +491,7 @@ resetProcessSigCont_(void)
     int rc = -1;
 
     ERROR_IF(
-        updateProcessSigContMethod_(IntMethodNil()));
+        updateProcessSigContMethod_(WatchProcessMethodNil()));
 
     rc = 0;
 
@@ -503,7 +503,7 @@ Finally:
 }
 
 int
-watchProcessSigCont(struct IntMethod aMethod)
+watchProcessSigCont(struct WatchProcessMethod aMethod)
 {
     int rc = -1;
 
@@ -561,8 +561,8 @@ checkProcessSigContTracker(struct ProcessSigContTracker *self)
 /* -------------------------------------------------------------------------- */
 static struct
 {
-    struct ThreadSigMutex mSigMutex;
-    struct IntMethod      mMethod;
+    struct ThreadSigMutex     mSigMutex;
+    struct WatchProcessMethod mMethod;
 } processSigStop_ =
 {
     .mSigMutex = THREAD_SIG_MUTEX_INITIALIZER(processSigStop_.mSigMutex),
@@ -574,7 +574,7 @@ sigStop_(int aSigNum)
     struct ThreadSigMutex *lock =
         lockThreadSigMutex(&processSigStop_.mSigMutex);
 
-    if (ownIntMethodNil(processSigStop_.mMethod))
+    if (ownWatchProcessMethodNil(processSigStop_.mMethod))
     {
         debug(1, "detected SIGTSTP");
 
@@ -588,7 +588,7 @@ sigStop_(int aSigNum)
     {
         debug(1, "observed SIGTSTP");
         ABORT_IF(
-            callIntMethod(processSigStop_.mMethod));
+            callWatchProcessMethod(processSigStop_.mMethod));
     }
 
     lock = unlockThreadSigMutex(lock);
@@ -635,7 +635,7 @@ Finally:
 }
 
 static int
-updateProcessSigStopMethod_(struct IntMethod aMethod)
+updateProcessSigStopMethod_(struct WatchProcessMethod aMethod)
 {
     struct ThreadSigMutex *lock =
         lockThreadSigMutex(&processSigStop_.mSigMutex);
@@ -651,7 +651,7 @@ resetProcessSigStop_(void)
     int rc = -1;
 
     ERROR_IF(
-        updateProcessSigStopMethod_(IntMethodNil()));
+        updateProcessSigStopMethod_(WatchProcessMethodNil()));
 
     rc = 0;
 
@@ -663,7 +663,7 @@ Finally:
 }
 
 int
-watchProcessSigStop(struct IntMethod aMethod)
+watchProcessSigStop(struct WatchProcessMethod aMethod)
 {
     int rc = -1;
 
@@ -686,16 +686,16 @@ unwatchProcessSigStop(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct IntMethod processSigChldMethod_;
+static struct WatchProcessMethod processSigChldMethod_;
 
 static void
 sigChld_(int aSigNum)
 {
-    if ( ! ownIntMethodNil(processSigChldMethod_))
+    if ( ! ownWatchProcessMethodNil(processSigChldMethod_))
     {
         debug(1, "observed SIGCHLD");
         ABORT_IF(
-            callIntMethod(processSigChldMethod_));
+            callWatchProcessMethod(processSigChldMethod_));
     }
 }
 
@@ -710,7 +710,7 @@ resetProcessChildrenWatch_(void)
             (struct sigaction) { .sa_handler = SIG_DFL },
             0));
 
-    processSigChldMethod_ = IntMethodNil();
+    processSigChldMethod_ = WatchProcessMethodNil();
 
     rc = 0;
 
@@ -722,11 +722,11 @@ Finally:
 }
 
 int
-watchProcessChildren(struct IntMethod aMethod)
+watchProcessChildren(struct WatchProcessMethod aMethod)
 {
     int rc = -1;
 
-    struct IntMethod sigChldMethod = processSigChldMethod_;
+    struct WatchProcessMethod sigChldMethod = processSigChldMethod_;
 
     processSigChldMethod_ = aMethod;
 
@@ -756,9 +756,9 @@ unwatchProcessChildren(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct Duration  processClockTickPeriod_;
-static struct IntMethod processClockMethod_;
-static struct sigaction processClockTickSigAction_ =
+static struct Duration           processClockTickPeriod_;
+static struct WatchProcessMethod processClockMethod_;
+static struct sigaction          processClockTickSigAction_ =
 {
     .sa_handler = SIG_ERR,
 };
@@ -766,13 +766,13 @@ static struct sigaction processClockTickSigAction_ =
 static void
 clockTick_(int aSigNum)
 {
-    if (ownIntMethodNil(processClockMethod_))
+    if (ownWatchProcessMethodNil(processClockMethod_))
         debug(1, "received clock tick");
     else
     {
         debug(1, "observed clock tick");
         ABORT_IF(
-            callIntMethod(processClockMethod_));
+            callWatchProcessMethod(processClockMethod_));
     }
 }
 
@@ -796,7 +796,7 @@ resetProcessClockWatch_(void)
         ERROR_IF(
             changeSigAction_(SIGALRM, processClockTickSigAction_, 0));
 
-        processClockMethod_ = IntMethodNil();
+        processClockMethod_ = WatchProcessMethodNil();
 
         processClockTickSigAction_.sa_handler = SIG_ERR;
         processClockTickSigAction_.sa_flags = 0;
@@ -814,12 +814,12 @@ Finally:
 }
 
 int
-watchProcessClock(struct IntMethod aMethod,
-                  struct Duration  aClockPeriod)
+watchProcessClock(struct WatchProcessMethod aMethod,
+                  struct Duration           aClockPeriod)
 {
     int rc = -1;
 
-    struct IntMethod clockMethod = processClockMethod_;
+    struct WatchProcessMethod clockMethod = processClockMethod_;
 
     processClockMethod_ = aMethod;
 
@@ -886,7 +886,7 @@ unwatchProcessClock(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct IntIntMethod processWatchedSignalMethod_;
+static struct WatchProcessSignalMethod processWatchedSignalMethod_;
 
 static struct SignalWatch {
     int              mSigNum;
@@ -903,18 +903,18 @@ static struct SignalWatch {
 static void
 caughtSignal_(int aSigNum)
 {
-    if ( ! ownIntIntMethodNil(processWatchedSignalMethod_))
+    if ( ! ownWatchProcessSignalMethodNil(processWatchedSignalMethod_))
     {
         struct ProcessSignalName sigName;
 
         debug(1, "observed %s", formatProcessSignalName(&sigName, aSigNum));
 
-        callIntIntMethod(processWatchedSignalMethod_, aSigNum);
+        callWatchProcessSignalMethod(processWatchedSignalMethod_, aSigNum);
     }
 }
 
 int
-watchProcessSignals(struct IntIntMethod aMethod)
+watchProcessSignals(struct WatchProcessSignalMethod aMethod)
 {
     int rc = -1;
 
@@ -964,7 +964,7 @@ Finally:
                 }
             }
 
-            processWatchedSignalMethod_ = IntIntMethodNil();
+            processWatchedSignalMethod_ = WatchProcessSignalMethodNil();
         }
     });
 
@@ -997,7 +997,7 @@ resetProcessSignalsWatch_(void)
         }
     }
 
-    processWatchedSignalMethod_ = IntIntMethodNil();
+    processWatchedSignalMethod_ = WatchProcessSignalMethodNil();
 
     if (rc)
         errno = err;
@@ -1446,13 +1446,13 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static void
-callForkMethod_(struct IntMethod aMethod)
+callForkMethod_(struct ForkProcessMethod aMethod)
 {
-    if ( ! ownIntMethodNil(aMethod))
+    if ( ! ownForkProcessMethodNil(aMethod))
     {
         int status;
         ABORT_IF(
-            (status = callIntMethod(aMethod),
+            (status = callForkProcessMethod(aMethod),
              -1 == status || (errno = 0, 0 > status || 255 < status)),
             {
                 if (-1 != status)
@@ -1467,9 +1467,9 @@ callForkMethod_(struct IntMethod aMethod)
 
 /* -------------------------------------------------------------------------- */
 struct Pid
-forkProcessChild(enum ForkProcessOption aOption,
-                 struct Pgid            aPgid,
-                 struct IntMethod       aMethod)
+forkProcessChild(enum ForkProcessOption   aOption,
+                 struct Pgid              aPgid,
+                 struct ForkProcessMethod aMethod)
 {
     pid_t rc = -1;
 
@@ -1604,7 +1604,7 @@ forkProcessDaemonSignalHandler_(struct ForkProcessDaemon *self, int aSigNum)
 }
 
 struct Pid
-forkProcessDaemon(struct IntMethod aForkMethod)
+forkProcessDaemon(struct ForkProcessMethod aForkMethod)
 {
     pid_t rc = -1;
 
@@ -1625,7 +1625,7 @@ forkProcessDaemon(struct IntMethod aForkMethod)
     ERROR_IF(
         (serverPid = forkProcessChild(ForkProcessInheritProcessGroup,
                                       Pgid(0),
-                                      IntMethodNil()),
+                                      ForkProcessMethodNil()),
          -1 == serverPid.mPid));
 
     struct Pid daemonPid;
@@ -1665,7 +1665,7 @@ forkProcessDaemon(struct IntMethod aForkMethod)
         ABORT_IF(
             (daemonPid = forkProcessChild(ForkProcessSetProcessGroup,
                                           Pgid(0),
-                                          IntMethodNil()),
+                                          ForkProcessMethodNil()),
              -1 == daemonPid.mPid));
 
         /* Terminate the server to make the child an orphan. The child
@@ -1731,7 +1731,7 @@ forkProcessDaemon(struct IntMethod aForkMethod)
 
         ABORT_IF(
             watchProcessSignals(
-                IntIntMethod(
+                WatchProcessSignalMethod(
                     &forkProcessDaemonSignalHandler_, &processDaemon)));
 
         closeBellSocketPairParent(bellSocket);

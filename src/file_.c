@@ -311,7 +311,7 @@ temporaryFile_(const char *aDirName)
         (tempPid = forkProcessChild(
             ForkProcessSetSessionLeader,
             Pgid(0),
-            IntMethod(temporaryFileProcess_, &temporaryFileProcess)),
+            ForkProcessMethod(temporaryFileProcess_, &temporaryFileProcess)),
          -1 == tempPid.mPid));
 
     closeSocketPairChild(socketPair);
