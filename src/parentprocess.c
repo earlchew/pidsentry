@@ -37,7 +37,7 @@
 #include <stdlib.h>
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 monitorParent_(struct ParentProcess *self)
 {
     int rc = -1;

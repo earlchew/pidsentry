@@ -142,7 +142,7 @@ enum OptionMode
     OptionModeRunCommand
 };
 
-static enum OptionMode
+static CHECKED enum OptionMode
 setOptionMode(enum OptionMode  self,
               enum OptionMode  aMode,
               const char      *aLongOpt,
@@ -189,7 +189,7 @@ initOptions()
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 processTimeoutOption(const char *aArg)
 {
     int rc = -1;

@@ -419,7 +419,7 @@ struct ForkChildProcess_
     struct SocketPair     *mUmbilicalSocket;
 };
 
-static int
+static CHECKED int
 runChildProcess_(struct ForkChildProcess_ *self)
 {
     int rc = -1;
@@ -894,7 +894,7 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
     }
 }
 
-static int
+static CHECKED int
 pollFdTimerTermination_(struct ChildMonitor         *self,
                         const struct EventClockTime *aPollTime)
 {
@@ -941,7 +941,7 @@ Finally:
  * This connection allows for monitoring ofthe parent. The child will
  * terminate if the parent terminates. */
 
-static int
+static CHECKED int
 pollFdParent_(struct ChildMonitor         *self,
               const struct EventClockTime *aPollTime)
 {
@@ -1008,7 +1008,7 @@ pollFdCloseUmbilical_(struct ChildMonitor         *self,
     activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
 }
 
-static int
+static CHECKED int
 pollFdUmbilical_(struct ChildMonitor         *self,
                  const struct EventClockTime *aPollTime)
 {
@@ -1091,7 +1091,7 @@ Finally:
     return rc;
 }
 
-static bool
+static CHECKED bool
 pollFdWriteUmbilicalError_(int aErrno)
 {
     bool error = false;
@@ -1121,7 +1121,7 @@ pollFdWriteUmbilicalError_(int aErrno)
     return error;
 }
 
-static int
+static CHECKED int
 pollFdWriteUmbilical_(struct ChildMonitor *self)
 {
     int rc = -1;
@@ -1159,7 +1159,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
                           int                          aEvent,
                           const struct EventClockTime *aPollTime)
@@ -1197,7 +1197,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdContUmbilical_(struct ChildMonitor         *self,
                      const struct EventClockTime *aPollTime)
 {
@@ -1242,7 +1242,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdTimerUmbilical_(struct ChildMonitor         *self,
                       const struct EventClockTime *aPollTime)
 {
@@ -1342,7 +1342,7 @@ Finally:
  * stopped to alert the monitoring loop that timers must be re-synchronised
  * to compensate for the outage. */
 
-static int
+static CHECKED int
 pollFdContEvent_(struct ChildMonitor         *self,
                  int                          aEvent,
                  const struct EventClockTime *aPollTime)
@@ -1363,7 +1363,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 raiseFdContEvent_(struct ChildMonitor *self)
 {
     int rc = -1;
@@ -1401,7 +1401,7 @@ disconnectPollFdTether_(struct ChildMonitor *self)
     self->mPollFds[POLL_FD_CHILD_TETHER].events = 0;
 }
 
-static int
+static CHECKED int
 pollFdTether_(struct ChildMonitor         *self,
               const struct EventClockTime *aPollTime)
 {
@@ -1442,7 +1442,7 @@ restartFdTimerTether_(struct ChildMonitor         *self,
     }
 }
 
-static int
+static CHECKED int
 pollFdTimerTether_(struct ChildMonitor         *self,
                    const struct EventClockTime *aPollTime)
 {
@@ -1555,7 +1555,7 @@ pollFdCompletion_(struct ChildMonitor *self)
  * event loop on a pipe, at which point the child process is known
  * to be dead. */
 
-static int
+static CHECKED int
 pollFdReapChildEvent_(struct ChildMonitor         *self,
                       int                          aEvent,
                       const struct EventClockTime *aPollTime)
@@ -1609,7 +1609,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdTimerChild_(struct ChildMonitor         *self,
                   const struct EventClockTime *aPollTime)
 {
@@ -1640,7 +1640,7 @@ Finally:
  * a single rather expensive file descriptor can be used to service
  * multiple events. */
 
-static int
+static CHECKED int
 pollFdEventLatch_(
     struct EventLatch **aLatch, const char *aRole, int *aSignalled)
 {
@@ -1678,7 +1678,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdEventPipe_(struct ChildMonitor         *self,
                  const struct EventClockTime *aPollTime)
 {

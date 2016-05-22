@@ -356,13 +356,13 @@ destroyMutex(pthread_mutex_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 tryMutexLock_(void *self)
 {
     return pthread_mutex_trylock(self);
 }
 
-static int
+static CHECKED int
 tryMutexTimedLock_(void *self, const struct timespec *aDeadline)
 {
     return pthread_mutex_timedlock(self, aDeadline);
@@ -383,7 +383,7 @@ lockMutex(pthread_mutex_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static pthread_mutex_t *
+static CHECKED pthread_mutex_t *
 unlockMutex_(pthread_mutex_t *self)
 {
     if (self)
@@ -807,13 +807,13 @@ destroyRWMutex(pthread_rwlock_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 tryRWMutexRdLock_(void *self)
 {
     return pthread_rwlock_tryrdlock(self);
 }
 
-static int
+static CHECKED int
 tryRWMutexTimedRdLock_(void *self, const struct timespec *aDeadline)
 {
     return pthread_rwlock_timedrdlock(self, aDeadline);
@@ -848,13 +848,13 @@ destroyRWMutexReader(struct RWMutexReader *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 tryRWMutexWrLock_(void *self)
 {
     return pthread_rwlock_trywrlock(self);
 }
 
-static int
+static CHECKED int
 tryRWMutexTimedWrLock_(void *self, const struct timespec *aDeadline)
 {
     return pthread_rwlock_timedwrlock(self, aDeadline);

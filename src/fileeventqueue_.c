@@ -55,7 +55,7 @@ markFileEventQueueActivityPending_(struct FileEventQueueActivity *self,
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 disarmFileEventQueueActivity_(struct FileEventQueueActivity *self)
 {
     struct FileEventQueueActivityMethod method = self->mMethod;
@@ -114,7 +114,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 controlFileEventQueueActivity_(struct FileEventQueue         *self,
                                struct FileEventQueueActivity *aEvent,
                                uint32_t                       aEvents,
@@ -141,14 +141,14 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 attachFileEventQueueActivity_(struct FileEventQueue         *self,
                               struct FileEventQueueActivity *aEvent)
 {
     return controlFileEventQueueActivity_(self, aEvent, 0, EPOLL_CTL_ADD);
 }
 
-static int
+static CHECKED int
 detachFileEventQueueActivity_(struct FileEventQueue         *self,
                               struct FileEventQueueActivity *aEvent)
 {
@@ -176,7 +176,7 @@ closeFileEventQueue(struct FileEventQueue *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 lodgeFileEventQueueActivity_(struct FileEventQueue         *self,
                              struct FileEventQueueActivity *aEvent)
 {

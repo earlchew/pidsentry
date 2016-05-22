@@ -89,7 +89,7 @@ struct TetherPoll
     struct PollFdTimerAction mPollFdTimerActions[POLL_FD_TETHER_TIMER_KINDS];
 };
 
-static int
+static CHECKED int
 pollFdControl_(struct TetherPoll           *self,
                const struct EventClockTime *aPollTime)
 {
@@ -118,7 +118,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdDrain_(struct TetherPoll           *self,
              const struct EventClockTime *aPollTime)
 {
@@ -209,7 +209,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdTimerDisconnected_(struct TetherPoll           *self,
                          const struct EventClockTime *aPollTime)
 {
@@ -238,7 +238,7 @@ pollFdCompletion_(struct TetherPoll *self)
     return ! self->mPollFds[POLL_FD_TETHER_CONTROL].events;
 }
 
-static int
+static CHECKED int
 tetherThreadMain_(struct TetherThread *self)
 {
     int rc = -1;

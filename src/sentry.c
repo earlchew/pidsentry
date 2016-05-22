@@ -45,7 +45,7 @@
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 reapSentry_(struct Sentry *self)
 {
     struct Pid umbilicalPid =
@@ -54,7 +54,7 @@ reapSentry_(struct Sentry *self)
     return superviseChildProcess(self->mChildProcess, umbilicalPid);
 }
 
-static int
+static CHECKED int
 raiseSentrySignal_(struct Sentry *self, int aSigNum)
 {
     /* Propagate the signal to the child. Note that SIGQUIT might cause
@@ -65,19 +65,19 @@ raiseSentrySignal_(struct Sentry *self, int aSigNum)
     return killChildProcess(self->mChildProcess, aSigNum);
 }
 
-static int
+static CHECKED int
 raiseSentryStop_(struct Sentry *self)
 {
     return pauseChildProcessGroup(self->mChildProcess);
 }
 
-static int
+static CHECKED int
 raiseSentryResume_(struct Sentry *self)
 {
     return resumeChildProcessGroup(self->mChildProcess);
 }
 
-static int
+static CHECKED int
 raiseSentrySigCont_(struct Sentry *self)
 {
     return raiseChildProcessSigCont(self->mChildProcess);
@@ -306,7 +306,8 @@ runSentry(struct Sentry   *self,
      * case that the umbilical might have terminated before the process
      * is recorded, force a supervision run after the process is recorded. */
 
-    reapSentry_(self);
+    ERROR_IF(
+        reapSentry_(self));
 
     /* The PidServer instance will continue to run in the umbilical process,
        so the instance that was created in the watchdog is no longer

@@ -403,7 +403,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
 {
     int rc = -1;

@@ -256,7 +256,7 @@ dispatchSigHandler_(int aSigNum)
     });
 }
 
-static int
+static CHECKED int
 changeSigAction_(unsigned          aSigNum,
                  struct sigaction  aNewAction,
                  struct sigaction *aOldAction)
@@ -370,7 +370,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 resetProcessSigPipe_(void)
 {
     int rc = -1;
@@ -435,7 +435,7 @@ sigCont_(int aSigNum)
     lock = unlockThreadSigMutex(lock);
 }
 
-static int
+static CHECKED int
 hookProcessSigCont_(void)
 {
     int rc = -1;
@@ -454,7 +454,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 unhookProcessSigCont_(void)
 {
     int rc = -1;
@@ -474,7 +474,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 updateProcessSigContMethod_(struct WatchProcessMethod aMethod)
 {
     struct ThreadSigMutex *lock =
@@ -485,7 +485,7 @@ updateProcessSigContMethod_(struct WatchProcessMethod aMethod)
     return 0;
 }
 
-static int
+static CHECKED int
 resetProcessSigCont_(void)
 {
     int rc = -1;
@@ -526,12 +526,16 @@ unwatchProcessSigCont(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static unsigned
+static CHECKED unsigned
 fetchProcessSigContTracker_(void)
 {
     /* Because this function is called from lockMutex(), amongst other places,
      * do not use or cause lockMutex() to be used here to avoid introducing
-     * the chance of infinite recursion. */
+     * the chance of infinite recursion.
+     *
+     * Use the least sigificant bit to ensure that only non-zero counts
+     * are valid, allowing detection of zero initialised values that
+     * have not been constructed properly. */
 
     return 1 | processSigCont_.mCount;
 }
@@ -594,7 +598,7 @@ sigStop_(int aSigNum)
     lock = unlockThreadSigMutex(lock);
 }
 
-static int
+static CHECKED int
 hookProcessSigStop_(void)
 {
     int rc = -1;
@@ -614,7 +618,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 unhookProcessSigStop_(void)
 {
     int rc = -1;
@@ -634,7 +638,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 updateProcessSigStopMethod_(struct WatchProcessMethod aMethod)
 {
     struct ThreadSigMutex *lock =
@@ -645,7 +649,7 @@ updateProcessSigStopMethod_(struct WatchProcessMethod aMethod)
     return 0;
 }
 
-static int
+static CHECKED int
 resetProcessSigStop_(void)
 {
     int rc = -1;
@@ -699,7 +703,7 @@ sigChld_(int aSigNum)
     }
 }
 
-static int
+static CHECKED int
 resetProcessChildrenWatch_(void)
 {
     int rc = -1;
@@ -776,7 +780,7 @@ clockTick_(int aSigNum)
     }
 }
 
-static int
+static CHECKED int
 resetProcessClockWatch_(void)
 {
     int rc = -1;
@@ -971,7 +975,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 resetProcessSignalsWatch_(void)
 {
     int rc  = 0;
@@ -1012,7 +1016,7 @@ unwatchProcessSignals(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 resetSignals_(void)
 {
     int rc = -1;
@@ -1145,7 +1149,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 createProcessLock_(struct ProcessLock *self)
 {
     int rc = -1;
@@ -1175,7 +1179,7 @@ closeProcessLock_(struct ProcessLock *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 lockProcessLock_(struct ProcessLock *self)
 {
     int rc = -1;
@@ -1590,7 +1594,7 @@ struct ForkProcessDaemon
     unsigned mHangUp;
 };
 
-static int
+static CHECKED int
 forkProcessDaemonSignalHandler_(struct ForkProcessDaemon *self, int aSigNum)
 {
     ++self->mHangUp;
@@ -2427,8 +2431,10 @@ Process_init(struct ProcessModule *self, const char *aArg0)
         createProcessLock_(&processLock_.mLock_));
     processLock_.mLock = &processLock_.mLock_;
 
-    hookProcessSigCont_();
-    hookProcessSigStop_();
+    ERROR_IF(
+        hookProcessSigCont_());
+    ERROR_IF(
+        hookProcessSigStop_());
     hookedSignals = true;
 
     ++moduleInit_;
@@ -2443,8 +2449,10 @@ Finally:
         {
             if (hookedSignals)
             {
-                unhookProcessSigStop_();
-                unhookProcessSigCont_();
+                ABORT_IF(
+                    unhookProcessSigStop_());
+                ABORT_IF(
+                    unhookProcessSigCont_());
             }
 
             struct ProcessLock *processLock = processLock_.mLock;
@@ -2467,8 +2475,10 @@ Process_exit(struct ProcessModule *self)
     {
         ensure( ! --moduleInit_);
 
-        unhookProcessSigStop_();
-        unhookProcessSigCont_();
+        ABORT_IF(
+            unhookProcessSigStop_());
+        ABORT_IF(
+            unhookProcessSigCont_());
 
         struct ProcessLock *processLock = processLock_.mLock;
         processLock_.mLock = 0;

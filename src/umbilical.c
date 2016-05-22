@@ -68,7 +68,7 @@ static const char *pollFdTimerNames_[POLL_FD_MONITOR_TIMER_KINDS] =
 };
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 pollFdPidServer_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
@@ -95,7 +95,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 pollFdPidClient_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
@@ -134,7 +134,7 @@ closeFdUmbilical_(struct UmbilicalMonitor *self)
     self->mPollFds[POLL_FD_MONITOR_PIDSERVER].events = 0;
 }
 
-static int
+static CHECKED int
 pollFdUmbilical_(struct UmbilicalMonitor     *self,
                  const struct EventClockTime *aPollTime)
 {
@@ -231,7 +231,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 pollFdTimerUmbilical_(
     struct UmbilicalMonitor     *self,
     const struct EventClockTime *aPollTime)
@@ -373,7 +373,8 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self)
     ERROR_IF(
         -1 == waitFdReadReady(self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, 0));
 
-    pollFdUmbilical_(self, 0);
+    ERROR_IF(
+        pollFdUmbilical_(self, 0));
 
     rc = 0;
 
@@ -428,7 +429,7 @@ ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 runUmbilicalProcessChild_(struct UmbilicalProcess *self)
 {
     int rc = -1;

@@ -38,7 +38,7 @@
 #include <stdlib.h>
 
 /* -------------------------------------------------------------------------- */
-static struct PidServerClientActivity_ *
+static CHECKED struct PidServerClientActivity_ *
 closePidServerClientActivity_(struct PidServerClientActivity_ *self)
 {
     if (self)
@@ -53,7 +53,7 @@ closePidServerClientActivity_(struct PidServerClientActivity_ *self)
     return 0;
 }
 
-static struct PidServerClientActivity_*
+static CHECKED struct PidServerClientActivity_*
 createPidServerClientActivity_(
     struct PidServerClient_               *aClient,
     struct FileEventQueue                 *aQueue,
@@ -118,7 +118,7 @@ Finally:
     FMTd_Pid(Pid((Ucred).pid))
 
 /* -------------------------------------------------------------------------- */
-static struct PidServerClient_ *
+static CHECKED struct PidServerClient_ *
 closePidServerClient_(struct PidServerClient_ *self)
 {
     if (self)
@@ -132,7 +132,7 @@ closePidServerClient_(struct PidServerClient_ *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static struct PidServerClient_ *
+static CHECKED struct PidServerClient_ *
 createPidServerClient_(struct UnixSocket *aSocket)
 {
     int rc = -1;
@@ -209,7 +209,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 enqueuePidServerConnection_(struct PidServer                *self,
                             struct PidServerClientActivity_ *aActivity)
 {
@@ -236,7 +236,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static struct PidServerClientActivity_ *
+static CHECKED struct PidServerClientActivity_ *
 discardPidServerConnection_(struct PidServer                *self,
                             struct PidServerClientActivity_ *aActivity)
 {

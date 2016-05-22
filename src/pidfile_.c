@@ -65,7 +65,7 @@ printPidFile_(const struct PidFile *self, FILE *aFile)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 lockPidFile_(
     struct PidFile *self,
     const struct LockType *aLockType, const char *aLockName)
@@ -98,7 +98,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static struct Pid
+static CHECKED struct Pid
 readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 {
     int rc = -1;
@@ -253,7 +253,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 releasePidFileLock_(struct PidFile *self)
 {
     int rc = -1;
@@ -282,7 +282,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 acquirePidFileWriteLock_(struct PidFile *self)
 {
     return lockPidFile_(self, lockTypeWrite_, "exclusive");
@@ -321,7 +321,7 @@ acquirePidFileReadLock(struct PidFile *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 detectPidFileZombie_(const struct PidFile *self)
 {
     int rc = -1;
@@ -367,7 +367,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 unlinkPidFile_(struct PidFile *self)
 {
     int rc = -1;
@@ -629,7 +629,7 @@ destroyPidFile(struct PidFile *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 writePidFile_(struct PidFile           *self,
               struct Pid                aPid,
               const struct sockaddr_un *aPidServerAddr)

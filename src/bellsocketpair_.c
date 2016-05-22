@@ -80,7 +80,7 @@ closeBellSocketPair(struct BellSocketPair *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 ringBellSocketPair_(struct UnixSocket *aSocket)
 {
     int rc = -1;
@@ -131,7 +131,7 @@ ringBellSocketPairChild(struct BellSocketPair *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 waitBellSocketPair_(struct UnixSocket     *aSocket,
                     const struct Duration *aTimeout)
 {

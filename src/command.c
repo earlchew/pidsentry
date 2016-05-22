@@ -155,7 +155,7 @@ struct RunCommandProcess_
     char          **mCmd;
 };
 
-static int
+static CHECKED int
 runCommandChildProcess_(struct RunCommandProcess_ *self)
 {
     int rc = -1;

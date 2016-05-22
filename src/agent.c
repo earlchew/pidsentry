@@ -41,7 +41,7 @@
 #include <stdio.h>
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 raiseAgentSignal_(struct Agent *self, int aSigNum)
 {
     struct Pid agentPid = self->mAgentPid;
@@ -51,7 +51,7 @@ raiseAgentSignal_(struct Agent *self, int aSigNum)
     return kill(agentPid.mPid, aSigNum);
 }
 
-static int
+static CHECKED int
 raiseAgentStop_(struct Agent *self)
 {
     struct Pid agentPid = self->mAgentPid;
@@ -61,7 +61,7 @@ raiseAgentStop_(struct Agent *self)
     return kill(agentPid.mPid, SIGTSTP);
 }
 
-static int
+static CHECKED int
 raiseAgentResume_(struct Agent *self)
 {
     struct Pid agentPid = self->mAgentPid;
@@ -109,7 +109,7 @@ closeAgent(struct Agent *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 runAgentSentry_(struct Agent    *self,
                 struct Pid       aParentPid,
                 struct Pipe     *aParentPipe,
@@ -178,7 +178,7 @@ struct RunAgentProcess_
     struct Pipe  *mParentPipe;
 };
 
-static int
+static CHECKED int
 runAgentChildProcess_(struct RunAgentProcess_ *self)
 {
     int rc = -1;
@@ -210,7 +210,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
 {
     int rc = -1;

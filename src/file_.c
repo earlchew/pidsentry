@@ -147,7 +147,7 @@ temporaryFileName_(struct TemporaryFileName_ *self, uint32_t *aRandom)
     }
 }
 
-static int
+static CHECKED int
 temporaryFileCreate_(const char *aDirName)
 {
     int rc = -1;
@@ -207,7 +207,7 @@ struct TemporaryFileProcess_
     const char        *mDirName;
 };
 
-static int
+static CHECKED int
 temporaryFileProcess_(struct TemporaryFileProcess_ *self)
 {
     int rc = -1;
@@ -278,7 +278,7 @@ Finally:
     return rc;
 }
 
-static int
+static CHECKED int
 temporaryFile_(const char *aDirName)
 {
     int rc = -1;

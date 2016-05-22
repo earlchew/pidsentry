@@ -393,7 +393,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 recvUnixSocketFd_(struct UnixSocket *self, struct msghdr *aMsg)
 {
     int rc = -1;

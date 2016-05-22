@@ -214,7 +214,7 @@ ownErrorUnwindActiveFrame_(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 tryErrTextLength_(int aErrCode, size_t *aSize)
 {
     int rc = -1;
@@ -238,7 +238,7 @@ Finally:
     return rc;
 }
 
-static size_t
+static CHECKED size_t
 findErrTextLength_(int aErrCode)
 {
     size_t rc = 0;
@@ -559,7 +559,7 @@ printf_(
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 errorEnsureBacktrace_(int aFd, int aDepth)
 {
     int rc = -1;

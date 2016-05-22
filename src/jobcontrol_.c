@@ -36,7 +36,7 @@
 #include <sys/signal.h>
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 reapJobControl_(struct JobControl *self)
 {
     int rc = -1;
@@ -55,7 +55,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 raiseJobControlSignal_(struct JobControl *self, int aSigNum)
 {
     int rc = -1;
@@ -74,7 +74,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 raiseJobControlSigStop_(struct JobControl *self)
 {
     int rc = -1;
@@ -106,7 +106,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 raiseJobControlSigCont_(struct JobControl *self)
 {
     int rc = -1;
