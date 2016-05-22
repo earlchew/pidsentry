@@ -2454,7 +2454,7 @@ Finally:
 
             closeProcessLock_(processLock);
 
-            Error_exit(self->mErrorModule);
+            self->mErrorModule = Error_exit(self->mErrorModule);
         }
     });
 
@@ -2462,7 +2462,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ProcessModule *
 Process_exit(struct ProcessModule *self)
 {
     if (self)
@@ -2481,8 +2481,10 @@ Process_exit(struct ProcessModule *self)
         ABORT_IF(
             errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
 
-        Error_exit(self->mErrorModule);
+        self->mErrorModule = Error_exit(self->mErrorModule);
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

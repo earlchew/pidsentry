@@ -126,7 +126,7 @@ xvdprintf(int aFd, const char *aFmt, va_list);
 CHECKED int
 Printf_init(struct PrintfModule *self);
 
-void
+CHECKED struct PrintfModule *
 Printf_exit(struct PrintfModule *self);
 
 /* -------------------------------------------------------------------------- */

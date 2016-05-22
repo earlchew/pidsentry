@@ -83,7 +83,7 @@ testErrorLevel(void);
 CHECKED int
 Test_init(struct TestModule *self, const char *aErrorEnv);
 
-void
+CHECKED struct TestModule *
 Test_exit(struct TestModule *self);
 
 /* -------------------------------------------------------------------------- */

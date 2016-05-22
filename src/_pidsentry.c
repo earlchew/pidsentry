@@ -210,13 +210,12 @@ main(int argc, char **argv)
 
 Finally:
 
-    Process_exit(processModule);
-
-    Timekeeping_exit(timeKeepingModule);
+    processModule     = Process_exit(processModule);
+    timeKeepingModule = Timekeeping_exit(timeKeepingModule);
 
     if (testMode(TestLevelError))
         dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());
-    Test_exit(testModule);
+    testModule = Test_exit(testModule);
 
     return exitCode.mStatus;
 }

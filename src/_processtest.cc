@@ -45,17 +45,19 @@ class ProcessTest : public ::testing::Test
 {
     void SetUp()
     {
-        ASSERT_EQ(0, Process_init(&mModule, __FILE__));
+        ASSERT_EQ(0, Process_init(&mModule_, __FILE__));
+        mModule= &mModule_;
     }
 
     void TearDown()
     {
-        Process_exit(&mModule);
+        mModule = Process_exit(mModule);
     }
 
 private:
 
-    struct ProcessModule mModule;
+    struct ProcessModule  mModule_;
+    struct ProcessModule *mModule;
 };
 
 TEST_F(ProcessTest, ProcessSignalName)

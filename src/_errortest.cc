@@ -39,17 +39,19 @@ class ErrorTest : public ::testing::Test
 {
     void SetUp()
     {
-        ASSERT_EQ(0, Error_init(&mModule));
+        ASSERT_EQ(0, Error_init(&mModule_));
+        mModule = &mModule_;
     }
 
     void TearDown()
     {
-        Error_exit(&mModule);
+        mModule = Error_exit(mModule);
     }
 
 private:
 
-    struct ErrorModule mModule;
+    struct ErrorModule  mModule_;
+    struct ErrorModule *mModule;
 };
 
 TEST_F(ErrorTest, ErrnoText)

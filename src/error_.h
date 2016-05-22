@@ -355,7 +355,7 @@ errorTerminate(
 CHECKED int
 Error_init(struct ErrorModule *self);
 
-void
+CHECKED struct ErrorModule *
 Error_exit(struct ErrorModule *self);
 
 /* -------------------------------------------------------------------------- */

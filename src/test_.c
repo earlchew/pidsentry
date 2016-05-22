@@ -189,7 +189,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct TestModule *
 Test_exit(struct TestModule *self)
 {
     if (self)
@@ -203,6 +203,8 @@ Test_exit(struct TestModule *self)
                 munmap(state, sizeof(*state)));
         }
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -440,11 +440,13 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct TimeKeepingModule *
 Timekeeping_exit(struct TimeKeepingModule *self)
 {
     if (self)
         --moduleInit_;
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

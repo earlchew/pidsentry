@@ -299,7 +299,7 @@ fetchProcessGroupId(struct Pid aPid);
 CHECKED int
 Process_init(struct ProcessModule *self, const char *aArg0);
 
-void
+CHECKED struct ProcessModule *
 Process_exit(struct ProcessModule *self);
 
 /* -------------------------------------------------------------------------- */

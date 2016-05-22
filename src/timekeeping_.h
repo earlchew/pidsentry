@@ -129,7 +129,7 @@ deadlineTimeExpired(
 CHECKED int
 Timekeeping_init(struct TimeKeepingModule *self);
 
-void
+CHECKED struct TimeKeepingModule *
 Timekeeping_exit(struct TimeKeepingModule *self);
 
 /* -------------------------------------------------------------------------- */

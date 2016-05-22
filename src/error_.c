@@ -801,7 +801,7 @@ Finally:
                     fclose(file));
             }
 
-            Printf_exit(self->mPrintfModule);
+            self->mPrintfModule = Printf_exit(self->mPrintfModule);
         }
     });
 
@@ -809,7 +809,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+struct ErrorModule *
 Error_exit(struct ErrorModule *self)
 {
     if (self)
@@ -831,9 +831,11 @@ Error_exit(struct ErrorModule *self)
 
             appLock = destroyProcessAppLock(appLock);
 
-            Printf_exit(self->mPrintfModule);
+            self->mPrintfModule = Printf_exit(self->mPrintfModule);
         }
     }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
