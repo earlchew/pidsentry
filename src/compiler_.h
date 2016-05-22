@@ -32,6 +32,20 @@
 #include "macros_.h"
 
 /* -------------------------------------------------------------------------- */
+/* Scoping in C++
+ *
+ * Provide a clean way to scope areas containing C declarations when using
+ * a C++ compiler.
+ */
+#ifdef __cplusplus
+#define BEGIN_C_SCOPE struct CppScope_; extern "C" { struct CScope_
+#define END_C_SCOPE   } struct CppScope_
+#else
+#define BEGIN_C_SCOPE struct CScope_
+#define END_C_SCOPE   struct CScope_
+#endif
+
+/* -------------------------------------------------------------------------- */
 /* Checked Return
  *
  * Where there are return code that need to be checked, this decorator
