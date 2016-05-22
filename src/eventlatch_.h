@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "thread_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct EventPipe;
 
@@ -78,8 +76,6 @@ ownEventLatchSetting(const struct EventLatch *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* EVENTLATCH_H */

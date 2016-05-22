@@ -35,9 +35,7 @@
 
 #include <sys/types.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Duration;
 
@@ -155,8 +153,6 @@ waitFdReadReady(int aFd, const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* FD_H */

@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "file_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct stat;
 
@@ -75,8 +73,6 @@ fstatPathName(const struct PathName *self, struct stat *aStat, int aFlags);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PATHNAME_H */

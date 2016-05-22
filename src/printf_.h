@@ -59,9 +59,7 @@
         METHOD_CALL_LIST_PrintfMethod)
 
 /* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Type;
 
@@ -131,8 +129,6 @@ Printf_exit(struct PrintfModule *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PRINTF_H */

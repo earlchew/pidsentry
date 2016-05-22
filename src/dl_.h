@@ -29,11 +29,11 @@
 #ifndef DL_H
 #define DL_H
 
+#include "compiler_.h"
+
 #include <inttypes.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 const char *
@@ -41,8 +41,6 @@ findDlSymbol(const char *aSymName, uintptr_t *aSymAddr, const char **aErr);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* DL_H */

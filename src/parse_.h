@@ -35,9 +35,7 @@
 
 #include <sys/types.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Pid;
 
@@ -70,8 +68,6 @@ parsePid(const char *aArg, struct Pid *aValue);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PARSE_H */

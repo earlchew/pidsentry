@@ -66,9 +66,7 @@ END_C_SCOPE;
         METHOD_CALL_LIST_PidServerClientActivityMethod)
 
 /* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct PidServer;
 
@@ -128,8 +126,6 @@ cleanPidServer(struct PidServer *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PIDSERVER_H */

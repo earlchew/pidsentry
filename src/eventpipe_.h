@@ -35,9 +35,7 @@
 
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct EventPipe
 {
@@ -63,8 +61,6 @@ resetEventPipe(struct EventPipe *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* EVENTPIPE_H */

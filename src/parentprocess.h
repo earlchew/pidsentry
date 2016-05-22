@@ -34,9 +34,7 @@
 
 #include <pthread.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 struct ParentProcess
@@ -56,8 +54,6 @@ closeParentProcess(struct ParentProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PARENTPROCESS_H */

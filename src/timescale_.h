@@ -29,16 +29,16 @@
 #ifndef TIMESCALE_H
 #define TIMESCALE_H
 
+#include "compiler_.h"
+
 #include <inttypes.h>
 #include <stddef.h>
+
+BEGIN_C_SCOPE;
 
 struct timespec;
 struct timeval;
 struct itimerval;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #ifndef __cplusplus
 #define TIMESCALE_CTOR_(Struct_, Type_, Field_)
@@ -217,8 +217,6 @@ earliestTime(const struct timespec *aLhs, const struct timespec *aRhs);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* TIMESCALE_H */

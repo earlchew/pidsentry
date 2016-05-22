@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "socketpair_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Duration;
 
@@ -73,8 +71,6 @@ waitBellSocketPairParent(struct BellSocketPair *self,
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* BELLSOCKETPAIR_H */

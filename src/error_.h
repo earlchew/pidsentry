@@ -38,9 +38,7 @@
 #include <errno.h>
 #include <setjmp.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct ErrorModule
 {
@@ -360,8 +358,6 @@ Error_exit(struct ErrorModule *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* ERROR_H */

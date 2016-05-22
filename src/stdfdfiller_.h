@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "file_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct StdFdFiller
 {
@@ -51,8 +49,6 @@ closeStdFdFiller(struct StdFdFiller *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* STDFDFILLER_H */

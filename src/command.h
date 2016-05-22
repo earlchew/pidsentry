@@ -33,9 +33,7 @@
 #include "unixsocket_.h"
 #include "pid_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct ExitCode;
 
@@ -76,8 +74,6 @@ closeCommand(struct Command *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* COMMAND_H */

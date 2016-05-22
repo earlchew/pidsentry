@@ -29,11 +29,11 @@
 #ifndef PID_H
 #define PID_H
 
+#include "compiler_.h"
+
 #include <sys/types.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 struct Tid
@@ -109,8 +109,6 @@ Pgid(pid_t aPgid)
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PID_H */

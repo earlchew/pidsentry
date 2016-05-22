@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "file_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Pipe
 {
@@ -71,8 +69,6 @@ nonBlockingPipe(struct Pipe *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PIPE_H */

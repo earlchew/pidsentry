@@ -33,10 +33,7 @@
 #include "process_.h"
 #include "thread_.h"
 
-/* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 struct JobControl
@@ -101,8 +98,6 @@ unwatchJobControlContinue(struct JobControl *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* JOBCONTROL_H */

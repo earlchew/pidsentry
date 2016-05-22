@@ -36,9 +36,7 @@
 
 #include <sys/types.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
@@ -76,8 +74,6 @@ getEnvPid(const char *aName, struct Pid *aValue);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* ENV_H */

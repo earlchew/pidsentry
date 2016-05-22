@@ -37,9 +37,7 @@
 
 #include <sys/time.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct TimeKeepingModule
 {
@@ -134,8 +132,6 @@ Timekeeping_exit(struct TimeKeepingModule *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* TIMEKEEPING_H */

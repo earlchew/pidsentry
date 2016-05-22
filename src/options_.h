@@ -35,9 +35,7 @@
 #include <sys/types.h>
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 struct Options
@@ -72,8 +70,6 @@ processOptions(int argc, char **argv, char ***args);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* OPTIONS_H */

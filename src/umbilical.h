@@ -39,9 +39,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct SocketPair;
 struct PidFile;
@@ -123,8 +121,6 @@ stopUmbilicalProcess(struct UmbilicalProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* UMBILICAL_H */

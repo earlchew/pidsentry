@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "pid_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct ExitCode;
 
@@ -60,8 +58,6 @@ runAgent(struct Agent    *self,
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* AGENT_H */

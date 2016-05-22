@@ -38,9 +38,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct StdFdFiller;
 struct SocketPair;
@@ -122,8 +120,6 @@ resumeChildProcessGroup(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* CHILDPROCESS_H */

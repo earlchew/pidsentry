@@ -40,9 +40,7 @@
 #include "bellsocketpair_.h"
 #include "pidfile_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct ExitCode;
 struct Pipe;
@@ -97,8 +95,6 @@ ownSentryPidFileName(const struct Sentry *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* SENTRY_H */

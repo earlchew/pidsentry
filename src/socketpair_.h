@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "unixsocket_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct SocketPair
 {
@@ -59,8 +57,6 @@ closeSocketPairChild(struct SocketPair *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* SOCKETPAIR_H */

@@ -66,9 +66,7 @@ END_C_SCOPE;
         METHOD_CALL_LIST_FileVisitor)
 
 /* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct stat;
 struct sockaddr;
@@ -208,8 +206,6 @@ ownFileRegionLocked(const struct File *self, off_t aPos, off_t aLen);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* FILE_H */

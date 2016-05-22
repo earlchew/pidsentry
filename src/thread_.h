@@ -60,9 +60,7 @@
         METHOD_CALL_LIST_ThreadMethod)
 
 /* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Tid;
 
@@ -221,8 +219,6 @@ waitThreadSigMask(const int *aSigList);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* THREAD_H */

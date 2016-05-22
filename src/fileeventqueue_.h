@@ -61,9 +61,7 @@ END_C_SCOPE;
         METHOD_CALL_LIST_FileEventQueueActivityMethod)
 
 /* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Duration;
 
@@ -123,8 +121,6 @@ closeFileEventQueueActivity(struct FileEventQueueActivity *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* FILEEVENTQUEUE_H */

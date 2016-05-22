@@ -86,9 +86,7 @@
         METHOD_CALL_LIST_PollFdCallbackMethod)
 
 /* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct pollfd;
 
@@ -170,8 +168,6 @@ createPollEventText(
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* POLLFD_H */

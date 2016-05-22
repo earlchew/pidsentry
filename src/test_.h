@@ -34,9 +34,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct ErrorFrame;
 
@@ -88,8 +86,6 @@ Test_exit(struct TestModule *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* TEST_H */

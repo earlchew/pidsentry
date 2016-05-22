@@ -29,9 +29,9 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "compiler_.h"
+
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 const char *
@@ -39,8 +39,6 @@ fetchSystemIncarnation(void);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* SYSTEM_H */

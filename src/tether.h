@@ -33,9 +33,7 @@
 #include "pipe_.h"
 #include "timekeeping_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 enum TetherThreadState
@@ -84,8 +82,6 @@ closeTetherThread(struct TetherThread *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* TETHER_H */

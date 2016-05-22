@@ -29,11 +29,11 @@
 #ifndef UID_H
 #define UID_H
 
+#include "compiler_.h"
+
 #include <sys/types.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 struct Uid
@@ -85,8 +85,6 @@ Gid(gid_t aGid)
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* UID_H */

@@ -31,9 +31,7 @@
 
 #include "compiler_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
@@ -41,8 +39,6 @@ main(int, char **);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PIDSENTRY_H */

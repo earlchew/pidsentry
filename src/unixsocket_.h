@@ -32,9 +32,7 @@
 #include "compiler_.h"
 #include "file_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct Duration;
 
@@ -116,8 +114,6 @@ recvUnixSocket(struct UnixSocket *self, char *aBuf, size_t aLen);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* UNIXSOCKET_H */

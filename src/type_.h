@@ -29,9 +29,9 @@
 #ifndef TYPE_H
 #define TYPE_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "compiler_.h"
+
+BEGIN_C_SCOPE;
 
 struct Type
 {
@@ -43,8 +43,6 @@ struct Type
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* TYPE_H */

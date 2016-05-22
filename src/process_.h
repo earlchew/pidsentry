@@ -110,9 +110,7 @@
         METHOD_CALL_LIST_WatchProcessSignalMethod)
 
 /* -------------------------------------------------------------------------- */
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct timespec;
 
@@ -373,8 +371,6 @@ Process_exit(struct ProcessModule *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PROCESS_H */

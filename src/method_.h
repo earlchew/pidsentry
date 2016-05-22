@@ -33,9 +33,7 @@
 #include "lambda_.h"
 #include "macros_.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 #ifndef __cplusplus
@@ -91,9 +89,7 @@ methodEnsure_(const char *aFunction, const char *aFile, unsigned aLine,
             methodEnsure_(__func__, __FILE__, __LINE__, # aPredicate);  \
     while (0);
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* METHOD_H */
 
@@ -103,9 +99,7 @@ methodEnsure_(const char *aFunction, const char *aFile, unsigned aLine,
 
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 typedef METHOD_RETURN (*CONCAT(METHOD_NAME, T_))(
     METHOD_CONST void *self EXPAND(ARGS METHOD_ARG_LIST));
@@ -160,9 +154,7 @@ CONCAT(METHOD_NAME, Nil)(void)
     return CONCAT(METHOD_NAME, _)(0, 0);
 }
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 

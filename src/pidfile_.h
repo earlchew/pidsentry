@@ -35,9 +35,7 @@
 
 #include <stdio.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+BEGIN_C_SCOPE;
 
 struct sockaddr_un;
 
@@ -90,8 +88,6 @@ ownPidFileName(const struct PidFile *self);
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __cplusplus
-}
-#endif
+END_C_SCOPE;
 
 #endif /* PIDFILE_H */
