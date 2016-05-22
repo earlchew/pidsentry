@@ -844,8 +844,8 @@ struct ChildMonitor
 };
 
 /* -------------------------------------------------------------------------- */
-static int
-printChildProcessMonitor_(const struct ChildMonitor *self, FILE *aFile)
+int
+printChildProcessMonitor(const struct ChildMonitor *self, FILE *aFile)
 {
     return fprintf(aFile,
                    "<child monitor %p pid %" PRId_Pid ">",
@@ -929,7 +929,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -962,7 +962,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1085,7 +1085,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1153,7 +1153,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1329,7 +1329,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1377,7 +1377,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1418,7 +1418,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1528,7 +1528,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1626,7 +1626,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;
@@ -1758,7 +1758,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor_, self);
+        finally_warn_if(rc, printChildProcessMonitor, self);
     });
 
     return rc;

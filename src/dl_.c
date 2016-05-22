@@ -41,7 +41,7 @@ struct DlSymbolVisitor_
     char     *mSoPath;
 };
 
-static int
+static CHECKED int
 dlSymbolVisitor_(struct dl_phdr_info *aInfo, size_t aSize, void *aVisitor)
 {
     int rc = -1;

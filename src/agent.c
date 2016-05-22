@@ -95,8 +95,8 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static int
-printAgent_(const struct Agent *self, FILE *aFile)
+int
+printAgent(const struct Agent *self, FILE *aFile)
 {
     return fprintf(aFile, "<agent %p %s>", self, self->mCmd[0]);
 }
@@ -162,7 +162,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printAgent_, self);
+        finally_warn_if(rc, printAgent, self);
 
         sentry = closeSentry(sentry);
     });
@@ -353,7 +353,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printAgent_, self);
+        finally_warn_if(rc, printAgent, self);
 
         parentPipe    = closePipe(parentPipe);
         stdFdFiller   = closeStdFdFiller(stdFdFiller);

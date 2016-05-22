@@ -58,8 +58,8 @@ static const struct LockType * const lockTypeRead_  = &LockTypeRead;
 static const struct LockType * const lockTypeWrite_ = &LockTypeWrite;
 
 /* -------------------------------------------------------------------------- */
-static int
-printPidFile_(const struct PidFile *self, FILE *aFile)
+int
+printPidFile(const struct PidFile *self, FILE *aFile)
 {
     return fprintf(aFile, "<pidfile %p %s>", self, self->mPathName->mFileName);
 }
@@ -75,7 +75,7 @@ lockPidFile_(
     debug(0,
           "lock %s %" PRIs_Method,
           aLockName,
-          FMTs_Method(printPidFile_, self));
+          FMTs_Method(printPidFile, self));
 
     ensure(aLockType);
     ensure( ! self->mLock);
@@ -267,7 +267,7 @@ releasePidFileLock_(struct PidFile *self)
 
     debug(0,
           "unlock %" PRIs_Method,
-          FMTs_Method(printPidFile_, self));
+          FMTs_Method(printPidFile, self));
 
     rc = 0;
 
@@ -489,7 +489,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             if (unlinked)
                 debug(0,
                       "removing existing file %" PRIs_Method,
-                      FMTs_Method(printPidFile_, self));
+                      FMTs_Method(printPidFile, self));
 
             ERROR_IF(
                 releasePidFileLock_(self));
@@ -721,7 +721,7 @@ writePidFile(struct PidFile           *self,
 
             debug(0,
                   "disregarding zombie %" PRIs_Method,
-                  FMTs_Method(printPidFile_, self));
+                  FMTs_Method(printPidFile, self));
 
             ERROR_IF(
                 closePidFile(self));
@@ -761,7 +761,7 @@ writePidFile(struct PidFile           *self,
 
         debug(0,
               "initialised %" PRIs_Method,
-              FMTs_Method(printPidFile_, self));
+              FMTs_Method(printPidFile, self));
 
         ERROR_IF(
             writePidFile_(self, aPid, aPidServerAddr));
@@ -781,7 +781,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printPidFile_, self);
+        finally_warn_if(rc, printPidFile, self);
 
         if (rc)
             status = PidFileStatusError;

@@ -46,7 +46,7 @@ static bool     moduleInitPrintf_;
 const struct Type * const printfMethodType_ = TYPE("PrintfMethod");
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 xvprintf_(void       *self,
           int       (*aPrintf)(void *self, const char *aFmt, va_list aArg),
           const char *aFmt,
@@ -108,7 +108,7 @@ xvprintf_(void       *self,
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 xvfprintf_(void *self, const char *aFmt, va_list aArg)
 {
     return vfprintf(self, aFmt, aArg);
@@ -127,7 +127,7 @@ struct PrintfString
     size_t mBufLen;
 };
 
-static int
+static CHECKED int
 xvsnprintf_(void *self_, const char *aFmt, va_list aArg)
 {
     struct PrintfString *self = self_;
@@ -148,7 +148,7 @@ xvsnprintf(char *aBuf, size_t aSize, const char *aFmt, va_list aArg)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 xvdprintf_(void *self_, const char *aFmt, va_list aArg)
 {
     const int *self = self_;
@@ -223,7 +223,7 @@ xdprintf(int aFd, const char *aFmt, ...)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 printf_method_call_(
     FILE                     *aFile,
     const struct printf_info *aInfo,
@@ -241,7 +241,7 @@ printf_method_call_(
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 printf_method_info_(
     const struct printf_info *aInfo,
     size_t                    aSize,

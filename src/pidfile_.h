@@ -59,6 +59,9 @@ enum PidFileStatus
 CHECKED int
 initPidFile(struct PidFile *self, const char *aFileName);
 
+int
+printPidFile(const struct PidFile *self, FILE *aFile);
+
 CHECKED struct PidFile *
 destroyPidFile(struct PidFile *self);
 

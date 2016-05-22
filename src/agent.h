@@ -32,6 +32,8 @@
 #include "compiler_.h"
 #include "pid_.h"
 
+#include <stdio.h>
+
 BEGIN_C_SCOPE;
 
 struct ExitCode;
@@ -51,6 +53,9 @@ createAgent(struct Agent *self,
 
 struct Agent *
 closeAgent(struct Agent *self);
+
+int
+printAgent(const struct Agent *self, FILE *aFile);
 
 CHECKED int
 runAgent(struct Agent    *self,

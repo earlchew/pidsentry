@@ -72,6 +72,9 @@ struct ChildProcess
 CHECKED int
 createChildProcess(struct ChildProcess *self);
 
+int
+printChildProcessMonitor(const struct ChildMonitor *self, FILE *aFile);
+
 CHECKED int
 superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
 

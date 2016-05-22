@@ -63,7 +63,7 @@ closeFd(int aFd)
 }
 
 /* -------------------------------------------------------------------------- */
-static int
+static CHECKED int
 rankFd_(const void *aLhs, const void *aRhs)
 {
     int lhs = * (const int *) aLhs;
