@@ -129,6 +129,9 @@ cmdMonitorChild(char **aCmd, struct ExitCode *aExitCode)
 {
     int rc = -1;
 
+    struct Agent  agent_;
+    struct Agent *agent = 0;
+
     struct ExitCode exitCode = { EXIT_FAILURE };
 
     ensure(aCmd);
@@ -140,9 +143,6 @@ cmdMonitorChild(char **aCmd, struct ExitCode *aExitCode)
 
     ERROR_IF(
         ignoreProcessSigPipe());
-
-    struct Agent  agent_;
-    struct Agent *agent = 0;
 
     ERROR_IF(
         createAgent(&agent_, aCmd));
