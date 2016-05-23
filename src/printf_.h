@@ -71,23 +71,40 @@ struct PrintfModule
 /* -------------------------------------------------------------------------- */
 extern const struct Type * const printfMethodType_;
 
-#define PrintfMethod(Method_, Object_)                  \
-({                                                      \
-    struct PrintfMethod printfMethod_ =                 \
-    {                                                   \
-        mType   : &printfMethodType_,                   \
-        mMethod : PrintfMethod_((Method_), (Object_)),  \
-    };                                                  \
-                                                        \
-    &printfMethod_;                                     \
-})
-
 struct PrintfMethod
 {
     const struct Type * const *mType;
 
     struct PrintfMethod_ mMethod;
 };
+
+/* The C compiler is quite willing to take the address of the temporary
+ * without emitting a warning, but the C++ compiler generates a warning.
+ * This context is safe because the temporary is only required within
+ * the context of the full-expression, during which time the temporary
+ * remains alive. Provide a helper function to silence the warning in
+ * this context. */
+
+#ifndef __cplusplus
+#define PrintfMethodPtr_(aMethod) (&(aMethod))
+#else
+static inline
+const struct PrintfMethod *
+PrintfMethodPtr_(const struct PrintfMethod &aMethod)
+{
+    return &aMethod;
+}
+#endif
+
+#define PrintfMethod(Method_, Object_)                          \
+(                                                               \
+    PrintfMethodPtr_(                                           \
+        ((struct PrintfMethod)                                  \
+        {                                                       \
+            mType   : &printfMethodType_,                       \
+            mMethod : PrintfMethod_((Method_), (Object_)),      \
+                }))                                             \
+)
 
 /* -------------------------------------------------------------------------- */
 #define PRIs_Method "%%p<struct PrintfMethod>%%"
