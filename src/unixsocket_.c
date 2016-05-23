@@ -52,9 +52,10 @@ createRandomName(struct sockaddr_un *aSockAddr, uint32_t *aRandom)
     char *bp = aSockAddr->sun_path;
     char *ep = bp + sizeof(aSockAddr->sun_path);
 
-    typedef char check[sizeof(aSockAddr->sun_path) > 40 ? 1 : 0];
-
     *bp++ = 0;
+
+    static const char check[sizeof(aSockAddr->sun_path) > 40 ? 1 : 0]
+        __attribute__((__unused__));
 
     for (unsigned ix = 0; 10 > ix; ++ix)
     {
