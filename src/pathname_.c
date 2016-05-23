@@ -38,6 +38,8 @@
 #include <errno.h>
 #include <unistd.h>
 
+#include <sys/stat.h>
+
 /* -------------------------------------------------------------------------- */
 enum PathNameStatus
 createPathName(struct PathName *self, const char *aFileName)
