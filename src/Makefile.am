@@ -28,9 +28,8 @@ $(eval include $(top_srcdir)/wildcard.mk)
 
 include $(top_srcdir)/headercheck.mk
 
-VERSION       = 1.0.0
-INCLUDES      =
-LDADD         =
+VERSION = 1.0.0
+LDADD   =
 
 AM_CPPFLAGS   = -I.
 AM_CFLAGS     = $(TEST_CFLAGS)
