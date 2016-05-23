@@ -523,9 +523,17 @@ runChildProcess_(struct ForkChildProcess_ *self)
                                     strlen(gOptions.mName) +
                                     strlen(tetherArg)      + 1];
 
+                                int matchLen = matchArg - self->mCmd[ix];
+
+                                ERROR_UNLESS(
+                                    self->mCmd[ix] + matchLen == matchArg,
+                                    {
+                                        errno = ERANGE;
+                                    });
+
                                 sprintf(replacedArg,
                                         "%.*s%s%s",
-                                        matchArg - self->mCmd[ix],
+                                        matchLen,
                                         self->mCmd[ix],
                                         tetherArg,
                                         matchArg + strlen(gOptions.mName));
