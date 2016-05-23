@@ -33,6 +33,10 @@ AC_CONFIG_SRCDIR([src/_pidsentry.c])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([-Wno-portability])
 
+# Allows Makefile.am to select optimisation level explicitly
+: ${CFLAGS="-g"}
+: ${CXXFLAGS="-g"}
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_CXX
