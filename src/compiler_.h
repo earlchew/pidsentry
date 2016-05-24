@@ -69,4 +69,16 @@ abort_(void)
 
 #define abort(Arg_) IFEMPTY(abort_(), abort(Arg_), Arg_)
 
+/* -------------------------------------------------------------------------- */
+/* Type Introspection
+ *
+ * Retrieve the type of the expression. This can use decltype() directly
+ * in C++ implementations, otherwise __typeinfo__. */
+
+#ifdef __cplusplus
+#define DECLTYPE(Expr_) decltype((Expr_))
+#else
+#define DECLTYPE(Expr_) __typeof__((Expr_))
+#endif
+
 #endif /* COMPILER_H */
