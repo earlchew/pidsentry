@@ -55,13 +55,15 @@ BEGIN_C_SCOPE;
 /* -------------------------------------------------------------------------- */
 #define METHOD_TRAMPOLINE(                                               \
     Method_, Object_, Name_, Return_, Const_, ArgList_, CallList_)       \
-(*({                                                                     \
+({                                                                       \
     typedef Const_ __typeof__(*(Object_)) *ObjectT_;                     \
                                                                          \
-    Return_ (*Validate_)(ObjectT_ ARGS ArgList_) = (Method_);            \
+    Const_ void *ValidateObject_ = (Object_);                            \
                                                                          \
-    __typeof__(Name_(0,0)) Instance_ = Name_(                            \
-        ! Validate_                                                      \
+    Return_ (*ValidateMethod_)(ObjectT_ ARGS ArgList_) = (Method_);      \
+                                                                         \
+    Name_(                                                               \
+        ! ValidateMethod_                                                \
         ? 0                                                              \
         : LAMBDA(                                                        \
             Return_, (Const_ void *Self_ ARGS ArgList_),                 \
@@ -72,10 +74,8 @@ BEGIN_C_SCOPE;
                 return method_(                                          \
                     (ObjectT_) Self_ ARGS CallList_);                    \
             }),                                                          \
-        (Object_));                                                      \
-                                                                         \
-    &Instance_;                                                          \
-}))
+        (ValidateObject_));                                              \
+})
 
 /* -------------------------------------------------------------------------- */
 void
