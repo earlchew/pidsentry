@@ -56,7 +56,7 @@ BEGIN_C_SCOPE;
 #define METHOD_TRAMPOLINE(                                               \
     Method_, Object_, Name_, Return_, Const_, ArgList_, CallList_)       \
 ({                                                                       \
-    typedef Const_ __typeof__(*(Object_)) *ObjectT_;                     \
+    typedef Const_ DECLTYPE(*(Object_)) *ObjectT_;                       \
                                                                          \
     Const_ void *ValidateObject_ = (Object_);                            \
                                                                          \
