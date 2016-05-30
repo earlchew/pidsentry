@@ -309,7 +309,14 @@ runTests()
     testCaseEnd
 
     testCaseBegin 'Test ignored signals in child'
-    testOutput "0000000000000000" = '$(
+    REPLY=$(
+        grep SigIgn /proc/self/status |
+        {
+            read HEADING SIGNALS
+            /bin/echo "$SIGNALS"
+        }
+    )
+    testOutput "$REPLY" = '$(
         pidsentry -- grep SigIgn /proc/self/status |
         {
             read HEADING SIGNALS
@@ -370,7 +377,7 @@ runTests()
             done
             ls -l /proc/$UMBILICAL/fd |
                 grep -v " -> /proc/$PARENT" |
-                grep "[0-9]-[0-9]" |
+                grep "[0-9]:[0-9]" |
                 wc -l
             for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
@@ -397,7 +404,7 @@ runTests()
             done
             ls -l /proc/$UMBILICAL/fd |
                 grep -v " -> /proc/$PARENT" |
-                grep "[0-9]-[0-9]" |
+                grep "[0-9]:[0-9]" |
                 wc -l
             for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
@@ -423,7 +430,7 @@ runTests()
             done
             ls -l /proc/$SENTRY/fd |
                 grep -v " -> /proc/$PARENT" |
-                grep "[0-9]-[0-9]" |
+                grep "[0-9]:[0-9]" |
                 wc -l
             for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
@@ -449,7 +456,7 @@ runTests()
             done
             ls -l /proc/$SENTRY/fd |
                 grep -v " -> /proc/$PARENT" |
-                grep "[0-9]-[0-9]" |
+                grep "[0-9]:[0-9]" |
                 wc -l
             for P in $SENTRY $UMBILICAL ; do
                kill -CONT $P || { /bin/echo NOTOK ; exit 1 ; }
@@ -464,9 +471,9 @@ runTests()
     # ii.  stdout
     # iii. stderr
     testOutput '$(
-      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)' = '$(
+      ls -l /proc/self/fd | grep "[0-9]:[0-9]" | wc -l)' = '$(
       pidsentry --test=1 -u -- ls -l /proc/self/fd |
-          grep "[0-9]-[0-9]" | wc -l)'
+          grep "[0-9]:[0-9]" | wc -l)'
     testCaseEnd
 
     testCaseBegin 'Command process file descriptors'
@@ -493,23 +500,23 @@ runTests()
 
     testCaseBegin 'Tether with new file descriptor'
     testOutput '$(( 1 + $(
-      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
+      ls -l /proc/self/fd | grep "[0-9]:[0-9]" | wc -l) ))' = '$(
       pidsentry --test=1 -f - -- ls -l /proc/self/fd |
-          grep "[0-9]-[0-9]" |
+          grep "[0-9]:[0-9]" |
           wc -l)'
     testCaseEnd
 
     testCaseBegin 'Tether using stdout'
     testOutput '$(( 0 + $(
-      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
-      pidsentry --test=1 -- ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l)'
+      ls -l /proc/self/fd | grep "[0-9]:[0-9]" | wc -l) ))' = '$(
+      pidsentry --test=1 -- ls -l /proc/self/fd | grep "[0-9]:[0-9]" | wc -l)'
     testCaseEnd
 
     testCaseBegin 'Tether using named stdout'
     testOutput '$(( 0 + $(
-      ls -l /proc/self/fd | grep "[0-9]-[0-9]" | wc -l) ))' = '$(
+      ls -l /proc/self/fd | grep "[0-9]:[0-9]" | wc -l) ))' = '$(
       pidsentry --test=1 -f 1 -- ls -l /proc/self/fd |
-          grep "[0-9]-[0-9]" |
+          grep "[0-9]:[0-9]" |
           wc -l)'
     testCaseEnd
 
