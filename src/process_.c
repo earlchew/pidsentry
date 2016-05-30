@@ -1360,6 +1360,28 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+waitProcessChild_(const siginfo_t *aSigInfo)
+{
+    int rc = ChildProcessStateError;
+
+    switch (aSigInfo->si_code)
+    {
+    default:
+        break;
+
+    case CLD_EXITED: rc = ChildProcessStateExited;  break;
+    case CLD_KILLED: rc = ChildProcessStateKilled;  break;
+    case CLD_DUMPED: rc = ChildProcessStateDumped;  break;
+    }
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
 struct ChildProcessState
 waitProcessChild(struct Pid aPid)
 {
@@ -1384,18 +1406,12 @@ waitProcessChild(struct Pid aPid)
 
     rc.mChildStatus = siginfo.si_status;
 
-    switch (siginfo.si_code)
-    {
-    default:
-        ERROR_IF(
-            true,
-            {
-                errno = EINVAL;
-            });
-
-    case CLD_EXITED: rc.mChildState = ChildProcessStateExited;  break;
-    case CLD_KILLED: rc.mChildState = ChildProcessStateKilled;  break;
-    }
+    ERROR_IF(
+        (rc.mChildState = waitProcessChild_(&siginfo),
+         ChildProcessStateError == rc.mChildState),
+        {
+            errno = EINVAL;
+        });
 
 Finally:
 
