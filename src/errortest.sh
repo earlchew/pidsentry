@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 set -eu
 
@@ -70,7 +70,7 @@ fi
 
 while [ $TRIGGER -lt $RANGE ] ; do
 
-    : $(( ++TRIGGER ))
+    TRIGGER=$(( TRIGGER + 1))
 
     testLostWatchdogs
 
