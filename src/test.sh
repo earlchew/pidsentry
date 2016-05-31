@@ -1054,9 +1054,12 @@ testCaseBegin 'Valgrind run over unit tests'
 testOutput "" != "$(/bin/echo $VALGRIND)"
 testCaseEnd
 
-TESTS=$(/bin/echo $(ls -1 _* | grep -v -F .) )
-TESTS_ENVIRONMENT="${TESTS_ENVIRONMENT+$TESTS_ENVIRONMENT }$VALGRIND"
-make check TESTS_ENVIRONMENT="$TESTS_ENVIRONMENT" TESTS="$TESTS"
+for TEST in $(/bin/echo $(ls -1 _* | grep -v -F .) ) ; do
+    testCaseBegin "Valgrind - $TEST"
+    make "$TEST"
+    libtool --mode=execute $VALGRIND ./"$TEST"
+    testCaseEnd
+done
 
 # The error handling test takes a very long time to run, so run a quick
 # version of the test, unless TEST_MODE is configured.
