@@ -833,10 +833,11 @@ runTests()
         testCaseBegin "Fast signal queueing - $SUPERVISOR"
         SIGNALS="1 2 3 15"
         for SIG in $SIGNALS ; do
+            /bin/echo "Signal $SIG"
             ( ulimit -c 0
                 pidsentry --test=1 -i -dd -- tail -f /dev/null ||
-                { /bin/echo $? ; exit 0 ; }
-                /bin/echo $? ) |
+                { RC=$? ; /bin/echo . ; /bin/echo $RC ; exit 0 ; }
+                RC=$? ; /bin/echo . ; /bin/echo $RC ) |
             {
                 read PARENT SENTRY UMBILICAL
                 while eval kill -"$SIG" "\$$SUPERVISOR" 2>&- ; do
@@ -845,8 +846,10 @@ runTests()
                     sleep 1
                 done >&2
                 read CHILD
-                liveprocess $CHILD || /bin/echo OK
-                read RC
+                { [ x"$CHILD" != x. ] && liveprocess $CHILD ; } || /bin/echo OK
+                while read RC ; do
+                    [ x"$RC" == x. ] || break
+                done
                 /bin/echo "$RC"
             } | {
                 set -x
@@ -863,10 +866,11 @@ runTests()
         testCaseBegin "Slow signal queueing - $SUPERVISOR"
         SIGNALS="1 2 3 15"
         for SIG in $SIGNALS ; do
+            /bin/echo "Signal $SIG"
             ( ulimit -c 0
                 pidsentry -i --test=1 -dd -- tail -f /dev/null ||
-                { /bin/echo $? ; exit 0 ; }
-                /bin/echo $? ) |
+                { RC=$? ; /bin/echo . ; /bin/echo $RC ; exit 0 ; }
+                RC=$? ; /bin/echo . ; /bin/echo $RC ) |
             {
                 read PARENT SENTRY UMBILICAL
                 sleep 1
@@ -876,8 +880,10 @@ runTests()
                     sleep 1
                 done >&2
                 read CHILD
-                liveprocess $CHILD || /bin/echo OK
-                read RC
+                { [ x"$CHILD" != x. ] && liveprocess $CHILD ; } || /bin/echo OK
+                while read RC ; do
+                    [ x"$RC" == x. ] || break
+                done
                 /bin/echo "$RC"
             } | {
                 set -x
