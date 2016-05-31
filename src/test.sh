@@ -1051,7 +1051,7 @@ testLostWatchdogs
 testCaseEnd
 
 testCaseBegin 'Valgrind run over unit tests'
-testOutput "" != "/bin/echo $VALGRIND"
+testOutput "" != "$(/bin/echo $VALGRIND)"
 testCaseEnd
 
 TESTS=$(/bin/echo $(ls -1 _* | grep -v -F .) )
