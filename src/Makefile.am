@@ -68,6 +68,7 @@ check_PROGRAMS     += _fdtest
 check_PROGRAMS     += _fileeventqueuetest
 check_PROGRAMS     += _filetest
 check_PROGRAMS     += _lambdatest
+check_PROGRAMS     += _methodtest
 check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
 check_PROGRAMS     += _processtest
@@ -122,6 +123,9 @@ _filetest_LDADD   = $(TEST_LIBS)
 
 _lambdatest_SOURCES = _lambdatest.cc
 _lambdatest_LDADD   = $(TEST_LIBS)
+
+_methodtest_SOURCES = _methodtest.cc
+_methodtest_LDADD   = $(TEST_LIBS)
 
 _parsetest_SOURCES = _parsetest.cc
 _parsetest_LDADD   = $(TEST_LIBS)
