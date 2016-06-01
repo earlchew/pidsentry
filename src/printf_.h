@@ -103,7 +103,7 @@ PrintfMethodPtr_(const struct PrintfMethod &aMethod)
         {                                                       \
             mType   : &printfMethodType_,                       \
             mMethod : PrintfMethod_((Method_), (Object_)),      \
-                }))                                             \
+        }))                                                     \
 )
 
 /* -------------------------------------------------------------------------- */
