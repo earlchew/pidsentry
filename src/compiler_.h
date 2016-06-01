@@ -75,10 +75,15 @@ abort_(void)
  * Retrieve the type of the expression. This can use decltype() directly
  * in C++ implementations, otherwise __typeinfo__. */
 
-#ifdef __cplusplus
-#define DECLTYPE(Expr_) decltype((Expr_))
-#else
+#if !defined(__cplusplus) || \
+     defined(__GNUC__) && (__GNUC__ < 4 || __GNUC__ == 4 && __GNUC_MINOR__ <= 4)
 #define DECLTYPE(Expr_) __typeof__((Expr_))
+#endif
+
+#ifndef DECLTYPE
+#ifdef  __cplusplus
+#define DECLTYPE(Expr_) decltype((Expr_))
+#endif
 #endif
 
 #endif /* COMPILER_H */
