@@ -55,7 +55,8 @@ reapSentry_(struct Sentry *self)
 }
 
 static CHECKED int
-raiseSentrySignal_(struct Sentry *self, int aSigNum)
+raiseSentrySignal_(
+    struct Sentry *self, int aSigNum, struct Pid aPid, struct Uid aUid)
 {
     /* Propagate the signal to the child. Note that SIGQUIT might cause
      * the child to terminate and dump core. Dump core in sympathy if this

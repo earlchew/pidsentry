@@ -33,6 +33,7 @@
 #include "timescale_.h"
 #include "method_.h"
 #include "pid_.h"
+#include "uid_.h"
 #include "error_.h"
 #include "method_.h"
 
@@ -90,8 +91,10 @@
 #define METHOD_DEFINITION
 #define METHOD_RETURN_WatchProcessSignalMethod    int
 #define METHOD_CONST_WatchProcessSignalMethod
-#define METHOD_ARG_LIST_WatchProcessSignalMethod  (int aSigNum_)
-#define METHOD_CALL_LIST_WatchProcessSignalMethod (aSigNum_)
+#define METHOD_ARG_LIST_WatchProcessSignalMethod  (int aSigNum_,     \
+                                                   struct Pid aPid_, \
+                                                   struct Uid aUid_)
+#define METHOD_CALL_LIST_WatchProcessSignalMethod (aSigNum_, aPid_, aUid_)
 
 #define METHOD_NAME      WatchProcessSignalMethod
 #define METHOD_RETURN    METHOD_RETURN_WatchProcessSignalMethod

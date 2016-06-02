@@ -56,13 +56,15 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static CHECKED int
-raiseJobControlSignal_(struct JobControl *self, int aSigNum)
+raiseJobControlSignal_(
+    struct JobControl *self, int aSigNum, struct Pid aPid, struct Uid aUid)
 {
     int rc = -1;
 
     if ( ! ownWatchProcessSignalMethodNil(self->mRaise.mMethod))
         ERROR_IF(
-            callWatchProcessSignalMethod(self->mRaise.mMethod, aSigNum));
+            callWatchProcessSignalMethod(
+                self->mRaise.mMethod, aSigNum, aPid, aUid));
 
     rc = 0;
 

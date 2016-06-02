@@ -42,7 +42,8 @@
 
 /* -------------------------------------------------------------------------- */
 static CHECKED int
-raiseAgentSignal_(struct Agent *self, int aSigNum)
+raiseAgentSignal_(
+    struct Agent *self, int aSigNum, struct Pid aPid, struct Uid aUid)
 {
     struct Pid agentPid = self->mAgentPid;
 

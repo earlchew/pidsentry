@@ -905,15 +905,22 @@ static struct SignalWatch {
 };
 
 static void
-caughtSignal_(int aSigNum)
+caughtSignal_(int aSigNum, siginfo_t *aSigInfo, void *aUContext_)
 {
     if ( ! ownWatchProcessSignalMethodNil(processWatchedSignalMethod_))
     {
         struct ProcessSignalName sigName;
 
-        debug(1, "observed %s", formatProcessSignalName(&sigName, aSigNum));
+        struct Pid pid = Pid(aSigInfo->si_pid);
+        struct Uid uid = Uid(aSigInfo->si_uid);
 
-        callWatchProcessSignalMethod(processWatchedSignalMethod_, aSigNum);
+        debug(1, "observed %s pid %" PRId_Pid " uid %" PRId_Uid,
+              formatProcessSignalName(&sigName, aSigNum),
+              FMTd_Pid(pid),
+              FMTd_Uid(uid));
+
+        callWatchProcessSignalMethod(
+            processWatchedSignalMethod_, aSigNum, pid, uid);
     }
 }
 
@@ -931,7 +938,8 @@ watchProcessSignals(struct WatchProcessSignalMethod aMethod)
         ERROR_IF(
             changeSigAction_(
                 watchedSig->mSigNum,
-                (struct sigaction) { .sa_handler = caughtSignal_ },
+                (struct sigaction) { .sa_sigaction = caughtSignal_,
+                                     .sa_flags     = SA_SIGINFO },
                 &watchedSig->mSigAction));
 
         watchedSig->mWatched = true;
@@ -1611,14 +1619,20 @@ struct ForkProcessDaemon
 };
 
 static CHECKED int
-forkProcessDaemonSignalHandler_(struct ForkProcessDaemon *self, int aSigNum)
+forkProcessDaemonSignalHandler_(
+    struct ForkProcessDaemon *self,
+    int                       aSigNum,
+    struct Pid                aPid,
+    struct Uid                aUid)
 {
     ++self->mHangUp;
 
     struct ProcessSignalName sigName;
     debug(1,
-          "daemon received %s",
-          formatProcessSignalName(&sigName, aSigNum));
+          "daemon received %s pid %" PRId_Pid " uid %" PRId_Uid,
+          formatProcessSignalName(&sigName, aSigNum),
+          FMTd_Pid(aPid),
+          FMTd_Uid(aUid));
 
     return 0;
 }
