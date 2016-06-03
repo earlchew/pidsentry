@@ -40,8 +40,6 @@
 #define CONCAT_(Lhs_, Rhs_) Lhs_ ## Rhs_
 #define CONCAT(Lhs_, Rhs_)  CONCAT_(Lhs_, Rhs_)
 
-#define AUTO(Var_, Value_) DECLTYPE((Value_)) Var_ = (Value_)
-
 #define CAR(...)        CAR_(__VA_ARGS__)
 #define CDR(...)        CDR_(__VA_ARGS__)
 #define CAR_(Car_, ...) Car_

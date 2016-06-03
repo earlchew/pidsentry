@@ -73,7 +73,7 @@ abort_(void)
 /* Type Introspection
  *
  * Retrieve the type of the expression. This can use decltype() directly
- * in C++ implementations, otherwise __typeinfo__. */
+ * in C++ implementations, otherwise __typeof__. */
 
 #ifndef  __cplusplus
 
@@ -83,6 +83,22 @@ abort_(void)
 
 #include <type_traits>
 #define DECLTYPE(Expr_) std::remove_reference<decltype((Expr_))>::type
+
+#endif
+
+/* -------------------------------------------------------------------------- */
+/* Type Inferred Variables
+ *
+ * Create a variable of type that matches the initialising expression. Use
+ * auto directly in C++ implementations, otherwise __typeof__. */
+
+#ifndef __cplusplus
+
+#define AUTO(Var_, Value_) DECLTYPE((Value_)) Var_ = (Value_)
+
+#else
+
+#define AUTO(Var_, Value_) auto Var_ = (Value_)
 
 #endif
 
