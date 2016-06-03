@@ -51,9 +51,9 @@ struct UmbilicalProcess
 {
     struct Pid           mPid;
     struct Pid           mChildAnchor;
-    struct Pid           mWatchdogAnchor;
-    struct Pid           mWatchdogPid;
-    struct Pgid          mWatchdogPgid;
+    struct Pid           mSentryAnchor;
+    struct Pid           mSentryPid;
+    struct Pgid          mSentryPgid;
     struct ChildProcess *mChildProcess;
     struct SocketPair   *mSocket;
     struct PidServer    *mPidServer;

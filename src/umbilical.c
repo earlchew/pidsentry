@@ -48,11 +48,11 @@
 /* -------------------------------------------------------------------------- */
 /* Umbilical Process
  *
- * The purpose of the umbilical process is to sense if the watchdog itself
- * is performing properly. The umbilical will break if either the watchdog
+ * The purpose of the umbilical process is to sense if the sentry itself
+ * is performing properly. The umbilical will break if either the sentry
  * process terminates, or if the umbilical process terminates. Additionally
  * the umbilical process monitors the umbilical for periodic messages
- * sent by the watchdog, and echoes the messages back to the watchdog.
+ * sent by the sentry, and echoes the messages back to the sentry.
  */
 
 static const char *pollFdNames_[POLL_FD_MONITOR_KINDS] =
@@ -239,7 +239,7 @@ pollFdTimerUmbilical_(
     int rc = -1;
 
     /* If nothing is available from the umbilical connection after the
-     * timeout period expires, then assume that the watchdog itself
+     * timeout period expires, then assume that the sentry itself
      * is stuck. */
 
     struct ProcessState parentState =
@@ -275,7 +275,7 @@ static bool
 pollFdCompletion_(struct UmbilicalMonitor *self)
 {
     /* The umbilical event loop terminates when the connection to the
-     * watchdog is closed, and when there are no more outstanding
+     * sentry is closed, and when there are no more outstanding
      * child process group references. */
 
     return
@@ -367,7 +367,7 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self)
 {
     int rc = -1;
 
-    /* Use a blocking read to wait for the watchdog to signal that the
+    /* Use a blocking read to wait for the sentry to signal that the
      * umbilical monitor should proceed. */
 
     ERROR_IF(
@@ -439,7 +439,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
     self->mPid = ownProcessId();
 
     /* The umbilical process will create an anchor in the process
-     * group of the child and the watchdog so that the pids will uniquely
+     * group of the child and the sentry so that the pids will uniquely
      * identify those process groups while the umbilical exists. */
 
     ERROR_IF(
@@ -456,9 +456,9 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
          -1 == self->mChildAnchor.mPid));
 
     ERROR_IF(
-        (self->mWatchdogAnchor = forkProcessChild(
+        (self->mSentryAnchor = forkProcessChild(
             ForkProcessSetProcessGroup,
-            self->mWatchdogPgid,
+            self->mSentryPgid,
             ForkProcessMethod(
                 LAMBDA(
                     int, (char *this),
@@ -466,16 +466,16 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
                         return EXIT_SUCCESS;
                     }),
                 "")),
-         -1 == self->mWatchdogAnchor.mPid));
+         -1 == self->mSentryAnchor.mPid));
 
     debug(0,
           "umbilical process pid %" PRId_Pid " pgid %" PRId_Pgid,
           FMTd_Pid(ownProcessId()),
           FMTd_Pgid(ownProcessGroupId()));
 
-    /* Indicate to the watchdog that the umbilical monitor has
+    /* Indicate to the sentry that the umbilical monitor has
      * started successfully and bound itself to process group
-     * of the watchdog and child. */
+     * of the sentry and child. */
 
     char buf[1] = { 0 };
 
@@ -530,9 +530,9 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
     struct UmbilicalMonitor monitorpoll;
     ERROR_IF(
         createUmbilicalMonitor(
-            &monitorpoll, STDIN_FILENO, self->mWatchdogPid, self->mPidServer));
+            &monitorpoll, STDIN_FILENO, self->mSentryPid, self->mPidServer));
 
-    /* Synchronise with the watchdog to avoid timing races. The watchdog
+    /* Synchronise with the sentry to avoid timing races. The sentry
      * writes to the umbilical when it is ready to start timing. */
 
     debug(0, "synchronising umbilical");
@@ -545,7 +545,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
     ERROR_IF(
         runUmbilicalMonitor(&monitorpoll));
 
-    /* The umbilical monitor returns when the connection to the watchdog
+    /* The umbilical monitor returns when the connection to the sentry
      * is either lost or no longer active. Only issue a diagnostic if
      * the shutdown was not orderly. */
 
@@ -558,11 +558,11 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
         killChildProcessGroup(self->mChildProcess));
 
     /* If the shutdown was not orderly, assume the worst and attempt to
-     * clean up the watchdog process group. */
+     * clean up the sentry process group. */
 
     if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
         ERROR_IF(
-            signalProcessGroup(self->mWatchdogPgid, SIGKILL));
+            signalProcessGroup(self->mSentryPgid, SIGKILL));
 
     debug(0, "exit umbilical");
 
@@ -590,14 +590,14 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     struct ThreadSigMask  sigMask_;
     struct ThreadSigMask *sigMask = 0;
 
-    self->mPid            = Pid(0);
-    self->mChildAnchor    = Pid(0);
-    self->mWatchdogAnchor = Pid(0);
-    self->mWatchdogPid    = ownProcessId();
-    self->mWatchdogPgid   = ownProcessGroupId();
-    self->mChildProcess   = aChildProcess;
-    self->mSocket         = aUmbilicalSocket;
-    self->mPidServer      = aPidServer;
+    self->mPid          = Pid(0);
+    self->mChildAnchor  = Pid(0);
+    self->mSentryAnchor = Pid(0);
+    self->mSentryPid    = ownProcessId();
+    self->mSentryPgid   = ownProcessGroupId();
+    self->mChildProcess = aChildProcess;
+    self->mSocket       = aUmbilicalSocket;
+    self->mPidServer    = aPidServer;
 
     /* Ensure that SIGHUP is blocked so that the umbilical process
      * will not terminate should it be orphaned when the parent process
