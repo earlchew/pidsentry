@@ -66,7 +66,7 @@ void
 initOptions(void);
 
 CHECKED int
-processOptions(int argc, char **argv, char ***args);
+processOptions(int argc, char **argv, const char * const **args);
 
 /* -------------------------------------------------------------------------- */
 

@@ -62,8 +62,8 @@ createCommand(struct Command *self,
               const char     *aPidFileName);
 
 CHECKED int
-runCommand(struct Command  *self,
-           char           **aCmd);
+runCommand(struct Command     *self,
+           const char * const *aCmd);
 
 CHECKED int
 reapCommand(struct Command  *self,

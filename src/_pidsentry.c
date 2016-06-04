@@ -68,7 +68,9 @@
 
 /* -------------------------------------------------------------------------- */
 static int
-cmdRunCommand(const char *aPidFileName, char **aCmd, struct ExitCode *aExitCode)
+cmdRunCommand(const char         *aPidFileName,
+              const char * const *aCmd,
+              struct ExitCode    *aExitCode)
 {
     int rc = -1;
 
@@ -125,7 +127,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-cmdMonitorChild(char **aCmd, struct ExitCode *aExitCode)
+cmdMonitorChild(const char * const *aCmd, struct ExitCode *aExitCode)
 {
     int rc = -1;
 
@@ -192,7 +194,7 @@ main(int argc, char **argv)
         Process_init(&processModule_, argv[0]));
     processModule = &processModule_;
 
-    char **args;
+    const char * const *args;
     ERROR_IF(
         processOptions(argc, argv, &args),
         {

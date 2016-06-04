@@ -56,7 +56,9 @@ static const char programUsage_[] =
 "\n"
 "mode:\n"
 " --command | -c\n"
-"      Execute a command against a running child process. This option\n"
+"      Execute a command against a running child process. Run as a shell\n"
+"      command if cmd comprises a single word that contains any whitespace\n"
+"      and whose first character is alphanumeric  This option\n"
 "      requires --pidfile to also be specified. [Default: No command]\n"
 "\n"
 "general options:\n"
@@ -248,7 +250,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-processOptions(int argc, char **argv, char ***args)
+processOptions(int argc, char **argv, const char * const **args)
 {
     int rc = -1;
 
@@ -409,7 +411,7 @@ processOptions(int argc, char **argv, char ***args)
         break;
     }
 
-    *args = optind < argc ? argv + optind : 0;
+    *args = (const char * const *) (optind < argc ? argv + optind : 0);
 
     rc = 0;
 

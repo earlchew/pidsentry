@@ -413,7 +413,7 @@ Finally:
 struct ForkChildProcess_
 {
     struct ChildProcess   *mChildProcess;
-    char                 **mCmd;
+    const char * const    *mCmd;
     struct StdFdFiller    *mStdFdFiller;
     struct BellSocketPair *mSyncSocket;
     struct SocketPair     *mUmbilicalSocket;
@@ -427,6 +427,15 @@ runChildProcess_(struct ForkChildProcess_ *self)
     debug(
         0,
         "starting child process pid %" PRId_Pid, FMTd_Pid(ownProcessId()));
+
+    size_t cmdLen = 0;
+    while (self->mCmd[cmdLen])
+        ++cmdLen;
+
+    const char *cmd[cmdLen+1];
+
+    for (size_t ix = 0; ix <= cmdLen; ++ix)
+        cmd[ix] = self->mCmd[ix];
 
     int err;
 
@@ -512,21 +521,21 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
                         char *matchArg = 0;
 
-                        for (unsigned ix = 1; self->mCmd[ix]; ++ix)
+                        for (unsigned ix = 1; cmd[ix]; ++ix)
                         {
-                            matchArg = strstr(self->mCmd[ix], gOptions.mName);
+                            matchArg = strstr(cmd[ix], gOptions.mName);
 
                             if (matchArg)
                             {
                                 char replacedArg[
-                                    strlen(self->mCmd[ix]) -
+                                    strlen(cmd[ix])        -
                                     strlen(gOptions.mName) +
                                     strlen(tetherArg)      + 1];
 
-                                int matchLen = matchArg - self->mCmd[ix];
+                                int matchLen = matchArg - cmd[ix];
 
                                 ERROR_UNLESS(
-                                    self->mCmd[ix] + matchLen == matchArg,
+                                    cmd[ix] + matchLen == matchArg,
                                     {
                                         errno = ERANGE;
                                     });
@@ -534,14 +543,14 @@ runChildProcess_(struct ForkChildProcess_ *self)
                                 sprintf(replacedArg,
                                         "%.*s%s%s",
                                         matchLen,
-                                        self->mCmd[ix],
+                                        cmd[ix],
                                         tetherArg,
                                         matchArg + strlen(gOptions.mName));
 
-                                self->mCmd[ix] = strdup(replacedArg);
+                                cmd[ix] = strdup(replacedArg);
 
                                 ERROR_UNLESS(
-                                    self->mCmd[ix],
+                                    cmd[ix],
                                     {
                                         terminate(
                                             errno,
@@ -605,8 +614,8 @@ runChildProcess_(struct ForkChildProcess_ *self)
          * might need to emit a diagnostic if execProcess() fails. Rely on
          * O_CLOEXEC to close the underlying file descriptors. */
 
-        execProcess(self->mCmd[0], self->mCmd);
-        message(errno, "Unable to execute '%s'", self->mCmd[0]);
+        execProcess(cmd[0], cmd);
+        message(errno, "Unable to execute '%s'", cmd[0]);
 
     } while (0);
 
@@ -623,7 +632,7 @@ Finally:
 int
 forkChildProcess(
     struct ChildProcess   *self,
-    char                 **aCmd,
+    const char * const    *aCmd,
     struct StdFdFiller    *aStdFdFiller,
     struct BellSocketPair *aSyncSocket,
     struct SocketPair     *aUmbilicalSocket)

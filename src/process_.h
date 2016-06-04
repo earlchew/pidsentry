@@ -303,7 +303,10 @@ struct ExitCode
 extractProcessExitStatus(int aStatus, struct Pid aPid);
 
 void
-execProcess(const char *aCmd, char **aArgv);
+execProcess(const char *aCmd, const char * const *aArgv);
+
+void
+execShell(const char *aCmd);
 
 CHECKED int
 signalProcessGroup(struct Pgid aPgid, int aSignal);

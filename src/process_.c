@@ -1812,7 +1812,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-execProcess(const char *aCmd, char **aArgv)
+execProcess(const char *aCmd, const char * const *aArgv)
 {
     /* Call resetProcessSigPipe_() here to ensure that SIGPIPE will be
      * delivered to the new program. Note that it is possible that there
@@ -1825,11 +1825,25 @@ execProcess(const char *aCmd, char **aArgv)
     ERROR_IF(
         errno = pthread_sigmask(SIG_SETMASK, &processSigMask_, 0));
 
-    execvp(aCmd, aArgv);
+    execvp(aCmd, (char * const *) aArgv);
 
 Finally:
 
     FINALLY({});
+}
+
+/* -------------------------------------------------------------------------- */
+void
+execShell(const char *aCmd)
+{
+    const char *shell = getenv("SHELL");
+
+    if ( ! shell)
+        shell = "/bin/sh";
+
+    const char *cmd[] = { shell, "-c", aCmd, 0 };
+
+    execProcess(shell, cmd);
 }
 
 /* -------------------------------------------------------------------------- */

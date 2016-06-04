@@ -81,7 +81,7 @@ superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
 CHECKED int
 forkChildProcess(
     struct ChildProcess   *self,
-    char                 **aCmd,
+    const char * const    *aCmd,
     struct StdFdFiller    *aStdFdFiller,
     struct BellSocketPair *aSyncSocket,
     struct SocketPair     *aUmbilicalSocket);

@@ -150,9 +150,9 @@ Finally:
 /* -------------------------------------------------------------------------- */
 struct RunCommandProcess_
 {
-    struct Command *mCommand;
-    struct Pipe    *mSyncPipe;
-    char          **mCmd;
+    struct Command     *mCommand;
+    struct Pipe        *mSyncPipe;
+    const char * const *mCmd;
 };
 
 static CHECKED int
@@ -213,8 +213,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-runCommand(struct Command *self,
-           char          **aCmd)
+runCommand(struct Command     *self,
+           const char * const *aCmd)
 
 {
     int rc = -1;

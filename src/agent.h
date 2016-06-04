@@ -41,15 +41,15 @@ struct ExitCode;
 /* -------------------------------------------------------------------------- */
 struct Agent
 {
-    char **mCmd;
+    const char * const *mCmd;
 
     struct Pid mAgentPid;
 };
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
-createAgent(struct Agent *self,
-            char         **aCmd);
+createAgent(struct Agent       *self,
+            const char * const *aCmd);
 
 struct Agent *
 closeAgent(struct Agent *self);

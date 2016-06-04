@@ -74,8 +74,8 @@ raiseAgentResume_(struct Agent *self)
 
 /* -------------------------------------------------------------------------- */
 int
-createAgent(struct Agent  *self,
-            char         **aCmd)
+createAgent(struct Agent       *self,
+            const char * const *aCmd)
 {
     int rc = -1;
 

@@ -75,8 +75,8 @@ struct Sentry
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
-createSentry(struct Sentry *self,
-             char         **aCmd);
+createSentry(struct Sentry      *self,
+             const char * const *aCmd);
 
 struct Sentry *
 closeSentry(struct Sentry *self);

@@ -86,8 +86,8 @@ raiseSentrySigCont_(struct Sentry *self)
 
 /* -------------------------------------------------------------------------- */
 int
-createSentry(struct Sentry *self,
-             char         **aCmd)
+createSentry(struct Sentry      *self,
+             const char * const *aCmd)
 {
     int rc = -1;
 
