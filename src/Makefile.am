@@ -52,7 +52,7 @@ TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
 TEST_CXXFLAGS      = $(TEST_FLAGS) $(COMMON_CXXFLAGS)
 TESTS              = $(check_PROGRAMS) $(check_SCRIPTS)
 
-pidsentrydir        = $(datadir)/pidsentry
+pidsentrydir        = $(bindir)
 pidsentry_PROGRAMS  = pidsentry
 check_SCRIPTS       = test.sh
 check_PROGRAMS      = _splicetest
