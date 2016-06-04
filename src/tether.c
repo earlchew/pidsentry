@@ -80,9 +80,13 @@ static const char *pollFdTimerNames_[] =
 
 struct TetherPoll
 {
-    struct TetherThread     *mThread;
-    int                      mSrcFd;
-    int                      mDstFd;
+    struct TetherThread *mThread;
+    int                  mSrcFd;
+    int                  mDstFd;
+    char                *mBuf;
+    size_t               mBufLen;
+    char                *mBufPtr;
+    char                *mBufEnd;
 
     struct pollfd            mPollFds[POLL_FD_TETHER_KINDS];
     struct PollFdAction      mPollFdActions[POLL_FD_TETHER_KINDS];
@@ -119,6 +123,222 @@ Finally:
 }
 
 static CHECKED int
+pollFdDrainCopy_(struct TetherPoll           *self,
+                 const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    int drained = 1;
+
+    do
+    {
+        /* The output file descriptor must have been closed if:
+         *
+         *  o There is no input available, so the poll must have
+         *    returned because an output disconnection event was detected
+         *  o Input was available, but none could be written to the output
+         */
+
+        if (self->mBufPtr == self->mBufEnd)
+        {
+            int available;
+
+            ERROR_IF(
+                ioctl(self->mSrcFd, FIONREAD, &available));
+
+            if ( ! available)
+            {
+                debug(0, "tether drain input empty");
+                break;
+            }
+
+            /* This read(2) call should not block since the file
+             * descriptor is created by the sentry and only read
+             * in this thread. */
+
+            ssize_t rdSize = -1;
+
+            ERROR_IF(
+                (rdSize = read(self->mSrcFd, self->mBuf, self->mBufLen),
+                 -1 == rdSize && EINTR != errno && EWOULDBLOCK != errno));
+
+            /* This is unlikely to happen since the ioctl() reported
+             * data, and this is the only thread that should be reading
+             * the data. Proceed defensively, rather than erroring out. */
+
+            if ( ! rdSize)
+            {
+                debug(0, "tether drain input closed");
+                break;
+            }
+
+            if (-1 != rdSize)
+            {
+                debug(1, "read %zd bytes from fd %d", rdSize, self->mSrcFd);
+
+                ensure(rdSize <= self->mBufLen);
+
+                self->mBufPtr = self->mBuf;
+                self->mBufEnd = self->mBufPtr + rdSize;
+
+                struct pollfd *pollFds = self->mPollFds;
+
+                pollFds[POLL_FD_TETHER_INPUT].events  = POLL_DISCONNECTEVENT;
+                pollFds[POLL_FD_TETHER_OUTPUT].events = POLL_OUTPUTEVENTS;
+            }
+        }
+        else
+        {
+            /* This write(2) call will likely block if it is unable to
+             * write all the data to the output file descriptor
+             * immediately. */
+
+            ssize_t wrSize = -1;
+
+            ERROR_IF(
+                (wrSize = write(self->mDstFd,
+                                self->mBufPtr,
+                                self->mBufEnd - self->mBufPtr),
+                 -1 == wrSize && (EPIPE       != errno &&
+                                  EWOULDBLOCK != errno &&
+                                  EINTR       != errno)));
+            if ( ! wrSize)
+            {
+                debug(0, "tether drain output closed");
+                break;
+            }
+
+            if (-1 == wrSize)
+            {
+                if (EPIPE == errno)
+                {
+                    debug(0, "tether drain output broken");
+                    break;
+                }
+            }
+            else
+            {
+                debug(1, "wrote %zd bytes to fd %d", wrSize, self->mDstFd);
+
+                ensure(wrSize <= self->mBufEnd - self->mBufPtr);
+
+                self->mBufPtr += wrSize;
+
+                if (self->mBufEnd == self->mBufPtr)
+                {
+                    struct pollfd *pollFds = self->mPollFds;
+
+                    pollFds[POLL_FD_TETHER_INPUT].events = POLL_INPUTEVENTS;
+                    pollFds[POLL_FD_TETHER_OUTPUT].events= POLL_DISCONNECTEVENT;
+                }
+            }
+        }
+
+        /* Reach here on input if the read file descriptor is not
+         * yet closed (though the read might not have yielded any
+         * data yet), or on output if there is still some more
+         * data to be written. */
+
+        drained = 0;
+
+    } while (0);
+
+    rc = drained;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
+pollFdDrainSplice_(struct TetherPoll           *self,
+                   const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+#ifndef __linux__
+
+    errno = ENOSYS;
+
+#else
+    int drained = 1;
+
+    do
+    {
+        /* The output file descriptor must have been closed if:
+         *
+         *  o There is no input available, so the poll must have
+         *    returned because an output disconnection event was detected
+         *
+         *  o Input was available, but none could be written to the output
+         */
+
+        int available;
+
+        ERROR_IF(
+            ioctl(self->mSrcFd, FIONREAD, &available));
+
+        if ( ! available)
+        {
+            debug(0, "tether drain input empty");
+            break;
+        }
+
+        /* This splice(2) call will likely block if it is unable to
+         * write all the data to the output file descriptor immediately.
+         * Note that it cannot block on reading the input file descriptor
+         * because that file descriptor is private to this process, the
+         * amount of input available is known and is only read by this
+         * thread. */
+
+        ssize_t bytes;
+
+        ERROR_IF(
+            (bytes = spliceFd(
+                self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE),
+             -1 == bytes &&
+             EPIPE       != errno &&
+             EWOULDBLOCK != errno &&
+             EINTR       != errno));
+
+        if ( ! bytes)
+        {
+            debug(0, "tether drain output closed");
+            break;
+        }
+
+        if (-1 == bytes)
+        {
+            if (EPIPE == errno)
+            {
+                debug(0, "tether drain output broken");
+                break;
+            }
+        }
+        else
+        {
+            debug(1,
+                  "drained %zd bytes from fd %d to fd %d",
+                  bytes, self->mSrcFd, self->mDstFd);
+        }
+
+        drained = 0;
+
+    } while (0);
+
+    rc = drained;
+
+Finally:
+
+    FINALLY({});
+#endif
+
+    return rc;
+}
+
+static CHECKED int
 pollFdDrain_(struct TetherPoll           *self,
              const struct EventClockTime *aPollTime)
 {
@@ -132,69 +352,16 @@ pollFdDrain_(struct TetherPoll           *self,
             lock = unlockMutex(lock);
         }
 
-        bool drained = true;
+        int drained = -1;
 
-        do
-        {
-            /* The output file descriptor must have been closed if:
-             *
-             *  o There is no input available, so the poll must have
-             *    returned because an output disconnection event was detected
-             *  o Input was available, but none could be written to the output
-             */
-
-            int available;
-
+        if (self->mBuf)
             ERROR_IF(
-                ioctl(self->mSrcFd, FIONREAD, &available));
-
-            if ( ! available)
-            {
-                debug(0, "tether drain input empty");
-                break;
-            }
-
-            /* This splice(2) call will likely block if it is unable to
-             * write all the data to the output file descriptor immediately.
-             * Note that it cannot block on reading the input file descriptor
-             * because that file descriptor is private to this process, the
-             * amount of input available is known and is only read by this
-             * thread. */
-
-            ssize_t bytes;
-
+                (drained = pollFdDrainCopy_(self, aPollTime),
+                 -1 == drained));
+        else
             ERROR_IF(
-                (bytes = spliceFd(
-                    self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE),
-                 -1 == bytes &&
-                 EPIPE       != errno &&
-                 EWOULDBLOCK != errno &&
-                 EINTR       != errno));
-
-            if ( ! bytes)
-            {
-                debug(0, "tether drain output closed");
-                break;
-            }
-
-            if (-1 == bytes)
-            {
-                if (EPIPE == errno)
-                {
-                    debug(0, "tether drain output broken");
-                    break;
-                }
-            }
-            else
-            {
-                debug(1,
-                      "drained %zd bytes from fd %d to fd %d",
-                      bytes, self->mSrcFd, self->mDstFd);
-            }
-
-            drained = false;
-
-        } while (0);
+                (drained = pollFdDrainSplice_(self, aPollTime),
+                 -1 == drained));
 
         if (drained)
             self->mPollFds[POLL_FD_TETHER_CONTROL].events = 0;
@@ -268,6 +435,32 @@ tetherThreadMain_(struct TetherThread *self)
 
     ensure(nonBlockingFd(srcFd));
 
+    /* The splice() call is not supported on Linux if stdout is configured
+     * for O_APPEND. In this case, fall back to using the slower
+     * read-write approach to transfer data. For more information
+     * see the following:
+     *
+     * https://bugzilla.kernel.org/show_bug.cgi?id=82841 */
+
+    bool useReadWrite = true;
+
+#ifdef __linux__
+    {
+        int dstFlags = -1;
+
+        ERROR_IF(
+            (dstFlags = ownFdFlags(dstFd),
+             -1 == dstFlags));
+
+        useReadWrite = !! (dstFlags & O_APPEND);
+    }
+#endif
+
+    if (testAction(TestLevelRace))
+        useReadWrite = ! useReadWrite;
+
+    char readWriteBuffer[8 * 1024];
+
     /* The tether thread is configured to receive SIGALRM, but
      * these signals are not delivered until the thread is
      * flushed after the child process has terminated. */
@@ -281,12 +474,16 @@ tetherThreadMain_(struct TetherThread *self)
         .mThread = self,
         .mSrcFd  = srcFd,
         .mDstFd  = dstFd,
+        .mBuf    = useReadWrite ? readWriteBuffer : 0,
+        .mBufLen = sizeof(readWriteBuffer),
+        .mBufPtr = 0,
+        .mBufEnd = 0,
 
         .mPollFds =
         {
             [POLL_FD_TETHER_CONTROL]= {.fd     = controlFd,
                                        .events = POLL_INPUTEVENTS },
-            [POLL_FD_TETHER_INPUT]  = {.fd     =  srcFd,
+            [POLL_FD_TETHER_INPUT]  = {.fd     = srcFd,
                                        .events = POLL_INPUTEVENTS },
             [POLL_FD_TETHER_OUTPUT] = {.fd     = dstFd,
                                        .events = POLL_DISCONNECTEVENT},
