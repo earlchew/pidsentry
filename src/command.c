@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 #include <sys/un.h>
 
@@ -148,6 +149,37 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static CHECKED int
+runCommandShellProcess_(const char * const *aCmd)
+{
+    int rc = -1;
+
+    int err = 0;
+
+    if ( ! aCmd[1])
+    {
+        for (const char *chPtr = aCmd[0]; *chPtr; ++chPtr)
+        {
+            if (isspace((unsigned char) *chPtr))
+            {
+                execShell(aCmd[0]);
+                warn(errno,
+                     "Unable to execute shell command '%s'", aCmd[0]);
+                err = -1;
+            }
+        }
+    }
+
+    rc = err;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 struct RunCommandProcess_
 {
     struct Command     *mCommand;
@@ -198,8 +230,11 @@ runCommandChildProcess_(struct RunCommandProcess_ *self)
 
     if (1 == rdlen)
     {
-        execProcess(self->mCmd[0], self->mCmd);
-        warn(errno, "Unable to execute '%s'", self->mCmd[0]);
+        if ( ! runCommandShellProcess_(self->mCmd))
+        {
+            execProcess(self->mCmd[0], self->mCmd);
+            warn(errno, "Unable to execute '%s'", self->mCmd[0]);
+        }
     }
 
     rc = EXIT_FAILURE;

@@ -777,8 +777,7 @@ runTests()
 
                     randomsleep 1
 
-                    pidsentry -p $PIDFILE -c -- sh -c '
-                        /bin/echo $PIDSENTRY_CHILD_PID' | {
+                    pidsentry -p $PIDFILE -c -- 'echo $PIDSENTRY_CHILD_PID' | {
 
                         read CHILD_PID || {
                             /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
