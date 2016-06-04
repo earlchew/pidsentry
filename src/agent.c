@@ -31,14 +31,10 @@
 #include "sentry.h"
 #include "parentprocess.h"
 
-#include "error_.h"
-#include "fd_.h"
-#include "stdfdfiller_.h"
 
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <stdio.h>
 
 /* -------------------------------------------------------------------------- */
 static CHECKED int
