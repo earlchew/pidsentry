@@ -30,12 +30,7 @@
 #include "childprocess.h"
 #include "umbilical.h"
 #include "tether.h"
-#include "pidserver.h"
 
-#include "thread_.h"
-#include "fd_.h"
-#include "error_.h"
-#include "process_.h"
 #include "macros_.h"
 #include "test_.h"
 #include "socketpair_.h"
@@ -43,6 +38,8 @@
 #include "stdfdfiller_.h"
 #include "eventpipe_.h"
 #include "printf_.h"
+#include "error_.h"
+#include "process_.h"
 
 #include <ctype.h>
 #include <string.h>
