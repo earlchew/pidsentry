@@ -10,7 +10,7 @@ When running services and daemons, commonly encountered scenarios are:
 * To track the pid of the service to find the matching process
 
 The pidsentry is a watchdog that can be used to monitor activity on
-on a specific file descriptor (usually stdout) to infer that the service is blocked.
+on a specific file descriptor (usually stdout) to infer that the service has hung.
 If the monitored file descriptor becomes inactive, the watchdog will terminate
 the child process.
 
