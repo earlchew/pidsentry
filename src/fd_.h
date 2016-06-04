@@ -107,6 +107,9 @@ CHECKED int
 ownFdValid(int aFd);
 
 CHECKED int
+ownFdFlags(int aFd);
+
+CHECKED int
 closeFdOnExec(int aFd, unsigned aCloseOnExec);
 
 CHECKED int

@@ -327,6 +327,27 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+ownFdFlags(int aFd)
+{
+    int rc = -1;
+
+    int flags = -1;
+
+    ERROR_IF(
+        (flags = fcntl(aFd, F_GETFL),
+         -1 == flags));
+
+    rc = flags;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 ownFdValid(int aFd)
 {
     int rc = -1;
@@ -334,7 +355,7 @@ ownFdValid(int aFd)
     int valid = 1;
 
     ERROR_IF(
-        (-1 == fcntl(aFd, F_GETFL) && (valid = 0, EBADF != errno)));
+        (-1 == ownFdFlags(aFd) && (valid = 0, EBADF != errno)));
 
     rc = valid;
 
