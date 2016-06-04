@@ -61,6 +61,7 @@ pid, even if the host reboots.
 * The child process shall run in its own process group.
 * When the child process terminates, the pidsentry shall terminate and propagate the exit code of the child process.
 * When the pidsentry terminates, the pidsentry shall kill the process group of the child.
+* If configured, the pidsentry shall monitor its parent and terminate if it becomes orphaned.
 * If configured to maintain a pid file, the pidsentry shall create a pid file for the child process.
 * A pid file shall uniquely identify a process, even if that process has terminated.
 * The pidsentry shall optionally monitor stdout of the child process.
@@ -77,3 +78,26 @@ pid, even if the host reboots.
 #### Implementation
 
 ![](https://github.com/earlchew/pidsentry/blob/master/pidsentry.png)
+
+The Supervisor represents a parent program that starts the pidsentry. The Supervisor can start more than one PidSentry
+Program, though care must be taken to ensure that instances do not compete over the same resources (eg the same pid file
+in the file system).
+
+If the Supervisor creates the PidSentry Program in its own process group, the PidSentry Program can create its own Sentry,
+otherwise an intermediate Agent is created in its own process group, and the Sentry is held by the Agent.
+
+The Sentry creates an Umbilical in a separate process group. The Sentry and Umbilical monitor each other, and each
+will terminate both itself and the other if the connection between them times out. The Umbilical maintains
+a defunct process anchor in the process group of the Sentry, and the process group of the Child, to ensure that
+those pids remain valid until the Umbilical terminates.
+
+The Sentry creates the Child Process in its own process group and monitors that process.
+
+The Sentry optionally creates a Pid File that uniquely identifies the Child Process, and the address of the
+PidServer interface.
+
+The Umbilical provides a PidServer that can be used to ensure that the pid named in the Pid File remains valid.
+
+The PidSentry Command uses the PidServer to ensure that the pid named in the Pid File is active and is not re-used
+while the Command is running. When the Command terminates, the PidSentry Command terminates and releases its
+reference to the PidServer.
