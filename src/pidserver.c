@@ -31,7 +31,7 @@
 
 #include "error_.h"
 #include "uid_.h"
-#include "timekeeping_.h"
+#include "timescale_.h"
 #include "method_.h"
 
 #include <unistd.h>
@@ -366,10 +366,8 @@ cleanPidServer(struct PidServer *self)
      * queue, and remove those references to the child process group
      * that have expired. */
 
-    struct Duration zeroTimeout = Duration(NanoSeconds(0));
-
     ERROR_IF(
-        pollFileEventQueueActivity(self->mEventQueue, &zeroTimeout));
+        pollFileEventQueueActivity(self->mEventQueue, &ZeroDuration));
 
     /* There is no further need to continue cleaning if there are no
      * more outstanding connections. The last remaining connection

@@ -386,7 +386,7 @@ pollFdTimerDisconnected_(struct TetherPoll           *self,
      * force completion of the tether thread. */
 
     self->mPollFdTimerActions[POLL_FD_TETHER_TIMER_DISCONNECT].mPeriod =
-        Duration(NanoSeconds(0));
+        ZeroDuration;
 
     self->mPollFds[POLL_FD_TETHER_CONTROL].events = 0;
 
@@ -657,7 +657,7 @@ flushTetherThread(struct TetherThread *self)
     debug(0, "flushing tether thread");
 
     ERROR_IF(
-        watchProcessClock(WatchProcessMethodNil(), Duration(NanoSeconds(0))));
+        watchProcessClock(WatchProcessMethodNil(), ZeroDuration));
 
     /* This code will race the tether thread which might finished
      * because it already has detected that the child process has

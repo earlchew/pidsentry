@@ -136,6 +136,8 @@ struct Duration
     struct NanoSeconds duration;
 };
 
+extern const struct Duration ZeroDuration;
+
 /* -------------------------------------------------------------------------- */
 #define EVENTCLOCKTIME_INIT ((struct EventClockTime) { { { ns : 0 } } })
 

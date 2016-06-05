@@ -124,7 +124,7 @@ TEST(TimeKeepingTest, DeadlineRunsOnce)
 {
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-    EXPECT_FALSE(deadlineTimeExpired(&since, Duration(NanoSeconds(0)), 0, 0));
+    EXPECT_FALSE(deadlineTimeExpired(&since, ZeroDuration, 0, 0));
 }
 
 TEST(TimeKeepingTest, DeadlineExpires)
@@ -132,7 +132,7 @@ TEST(TimeKeepingTest, DeadlineExpires)
     auto period = Duration(NSECS(MilliSeconds(1000)));
 
     struct EventClockTime since     = EVENTCLOCKTIME_INIT;
-    struct Duration       remaining = Duration(NanoSeconds(0));
+    struct Duration       remaining = ZeroDuration;
 
     auto startTimeOuter = monotonicTime();
     EXPECT_FALSE(deadlineTimeExpired(&since, period, &remaining, 0));
@@ -184,22 +184,20 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-    EXPECT_FALSE(lapTimeSince(&since, Duration(NanoSeconds(0)), 0).duration.ns);
+    EXPECT_FALSE(lapTimeSince(&since, ZeroDuration, 0).duration.ns);
 
     {
         monotonicSleep(period);
 
         auto lapTime = MSECS(
-            lapTimeSince(&since,
-                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
+            lapTimeSince(&since, ZeroDuration, 0).duration).ms / 100;
 
         auto interval = MSECS(period.duration).ms / 100;
 
         EXPECT_EQ(1 * interval, lapTime);
 
         lapTime = MSECS(
-            lapTimeSince(&since,
-                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
+            lapTimeSince(&since, ZeroDuration, 0).duration).ms / 100;
 
         EXPECT_EQ(1 * interval, lapTime);
     }
@@ -208,16 +206,14 @@ TEST(TimeKeepingTest, LapTimeSinceNoPeriod)
         monotonicSleep(period);
 
         auto lapTime = MSECS(
-            lapTimeSince(&since,
-                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
+            lapTimeSince(&since, ZeroDuration, 0).duration).ms / 100;
 
         auto interval = MSECS(period.duration).ms / 100;
 
         EXPECT_EQ(2 * interval, lapTime);
 
         lapTime = MSECS(
-            lapTimeSince(&since,
-                         Duration(NanoSeconds(0)), 0).duration).ms / 100;
+            lapTimeSince(&since, ZeroDuration, 0).duration).ms / 100;
 
         EXPECT_EQ(2 * interval, lapTime);
     }
@@ -230,8 +226,7 @@ TEST(TimeKeepingTest, LapTimeSinceWithPeriod)
 
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-    EXPECT_FALSE(lapTimeSince(&since,
-                              Duration(NanoSeconds(0)), 0).duration.ns);
+    EXPECT_FALSE(lapTimeSince(&since, ZeroDuration, 0).duration.ns);
 
     {
         monotonicSleep(sleepPeriod);

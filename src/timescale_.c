@@ -33,28 +33,32 @@
 #include <sys/time.h>
 
 /* -------------------------------------------------------------------------- */
+const struct Duration ZeroDuration =
+    { .duration = { { .ns = 0 } } };
+
+/* -------------------------------------------------------------------------- */
 struct NanoSeconds
 NanoSeconds_(uint64_t ns)
 {
-    return (struct NanoSeconds) { { ns : ns } };
+    return (struct NanoSeconds) { { .ns = ns } };
 }
 
 struct MilliSeconds
 MilliSeconds_(uint64_t ms)
 {
-    return (struct MilliSeconds) { { ms : ms } };
+    return (struct MilliSeconds) { { .ms = ms } };
 }
 
 struct Seconds
 Seconds_(uint64_t s)
 {
-    return (struct Seconds) { { s : s } };
+    return (struct Seconds) { { .s = s } };
 }
 
 struct Duration
 Duration_(struct NanoSeconds duration)
 {
-    return (struct Duration) { duration : duration };
+    return (struct Duration) { .duration = duration };
 }
 
 /* -------------------------------------------------------------------------- */

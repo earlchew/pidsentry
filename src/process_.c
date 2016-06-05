@@ -805,7 +805,7 @@ resetProcessClockWatch_(void)
         processClockTickSigAction_.sa_handler = SIG_ERR;
         processClockTickSigAction_.sa_flags = 0;
 
-        processClockTickPeriod_ = Duration(NanoSeconds(0));
+        processClockTickPeriod_ = ZeroDuration;
     }
 
     rc = 0;

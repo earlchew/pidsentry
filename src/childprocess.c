@@ -887,7 +887,7 @@ activateFdTimerTermination_(struct ChildMonitor         *self,
     struct PollFdTimerAction *tetherTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_TETHER];
 
-    tetherTimer->mPeriod = Duration(NanoSeconds(0));
+    tetherTimer->mPeriod = ZeroDuration;
 
     struct PollFdTimerAction *terminationTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_TERMINATION];
@@ -1017,7 +1017,7 @@ pollFdCloseUmbilical_(struct ChildMonitor         *self,
     self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     = -1;
     self->mPollFds[POLL_FD_CHILD_UMBILICAL].events = 0;
 
-    umbilicalTimer->mPeriod = Duration(NanoSeconds(0));
+    umbilicalTimer->mPeriod = ZeroDuration;
 
     activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
 }
@@ -2043,7 +2043,7 @@ monitorChildProcess(struct ChildProcess     *self,
                 .mAction = PollFdCallbackMethod(
                     pollFdTimerTermination_, &childMonitor_),
                 .mSince  = EVENTCLOCKTIME_INIT,
-                .mPeriod = Duration(NanoSeconds(0)),
+                .mPeriod = ZeroDuration,
             },
 
             [POLL_FD_CHILD_TIMER_DISCONNECTION] =
@@ -2051,7 +2051,7 @@ monitorChildProcess(struct ChildProcess     *self,
                 .mAction = PollFdCallbackMethod(
                     pollFdTimerChild_, &childMonitor_),
                 .mSince  = EVENTCLOCKTIME_INIT,
-                .mPeriod = Duration(NanoSeconds(0)),
+                .mPeriod = ZeroDuration,
             },
         },
     };

@@ -136,7 +136,7 @@ runPollFdLoop(struct PollFd *self)
 
         polltm = eventclockTime();
 
-        struct Duration timeout   = Duration(NanoSeconds(0));
+        struct Duration timeout   = ZeroDuration;
         size_t          chosen    = self->mTimerActions.mSize;
         size_t          numActive = 0;
 
@@ -155,7 +155,7 @@ runPollFdLoop(struct PollFd *self)
                         &polltm))
                 {
                     chosen  = ix;
-                    timeout = Duration(NanoSeconds(0));
+                    timeout = ZeroDuration;
                     break;
                 }
 

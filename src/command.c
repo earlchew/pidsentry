@@ -336,12 +336,10 @@ reapCommand(struct Command  *self,
         /* Do not allow a positive result to mask the loss of the
          * reference to the child process group. */
 
-        struct Duration zeroDuration = Duration(NanoSeconds(0));
-
         int rdReady;
         ERROR_IF(
             (rdReady = waitFileReadReady(
-                self->mKeeperTether->mFile, &zeroDuration),
+                self->mKeeperTether->mFile, &ZeroDuration),
              -1 == rdReady));
 
         if (rdReady)

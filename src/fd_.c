@@ -441,8 +441,7 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
     struct EventClockTime since = EVENTCLOCKTIME_INIT;
     struct Duration       remaining;
 
-    const struct Duration timeout =
-        aTimeout ? *aTimeout : Duration(NanoSeconds(0));
+    const struct Duration timeout = aTimeout ? *aTimeout : ZeroDuration;
 
     struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
 

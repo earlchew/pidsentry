@@ -42,9 +42,7 @@ TEST(EventPipeTest, ResetOnce)
 
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
-    struct Duration zeroTimeout = Duration(NanoSeconds(0));
-
-    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     eventPipe = closeEventPipe(eventPipe);
 }
@@ -59,14 +57,12 @@ TEST(EventPipeTest, SetOnce)
 
     EXPECT_EQ(1, setEventPipe(eventPipe));
 
-    struct Duration zeroTimeout = Duration(NanoSeconds(0));
-
-    EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     char buf[1];
     EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1));
 
-    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     eventPipe = closeEventPipe(eventPipe);
 }
@@ -82,14 +78,12 @@ TEST(EventPipeTest, SetTwice)
     EXPECT_EQ(1, setEventPipe(eventPipe));
     EXPECT_EQ(0, setEventPipe(eventPipe));
 
-    struct Duration zeroTimeout = Duration(NanoSeconds(0));
-
-    EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     char buf[1];
     EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1));
 
-    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     eventPipe = closeEventPipe(eventPipe);
 }
@@ -105,9 +99,7 @@ TEST(EventPipeTest, SetOnceResetOnce)
     EXPECT_EQ(1, setEventPipe(eventPipe));
     EXPECT_EQ(1, resetEventPipe(eventPipe));
 
-    struct Duration zeroTimeout = Duration(NanoSeconds(0));
-
-    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
@@ -126,9 +118,7 @@ TEST(EventPipeTest, SetOnceResetTwice)
     EXPECT_EQ(1, resetEventPipe(eventPipe));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
-    struct Duration zeroTimeout = Duration(NanoSeconds(0));
-
-    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
@@ -147,14 +137,12 @@ TEST(EventPipeTest, SetOnceResetOnceSetOnce)
     EXPECT_EQ(1, resetEventPipe(eventPipe));
     EXPECT_EQ(1, setEventPipe(eventPipe));
 
-    struct Duration zeroTimeout = Duration(NanoSeconds(0));
-
-    EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     char buf[1];
     EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1));
 
-    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &zeroTimeout));
+    EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     eventPipe = closeEventPipe(eventPipe);
 }
