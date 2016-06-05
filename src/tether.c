@@ -132,13 +132,6 @@ pollFdDrainCopy_(struct TetherPoll           *self,
 
     do
     {
-        /* The output file descriptor must have been closed if:
-         *
-         *  o There is no input available, so the poll must have
-         *    returned because an output disconnection event was detected
-         *  o Input was available, but none could be written to the output
-         */
-
         if (self->mBufPtr == self->mBufEnd)
         {
             int available;
@@ -267,13 +260,15 @@ pollFdDrainSplice_(struct TetherPoll           *self,
 
     do
     {
-        /* The output file descriptor must have been closed if:
+        /* If there is no input available, the poll must have
+         * returned because either an input disconnection event
+         * or output disconnection event was detected. In either
+         * case, the tether can be considered drained.
          *
-         *  o There is no input available, so the poll must have
-         *    returned because an output disconnection event was detected
-         *
-         *  o Input was available, but none could be written to the output
-         */
+         * If input is available, the input cannot have been
+         * disconnected, though there is the possibility that
+         * the output might have been in which case the splice()
+         * call will fail. */
 
         int available;
 
@@ -286,30 +281,33 @@ pollFdDrainSplice_(struct TetherPoll           *self,
             break;
         }
 
-        /* This splice(2) call will likely block if it is unable to
+        /* Use the amount of data available in the input file descriptor
+         * to specify the amount of data to splice.
+         *
+         * This splice(2) call will likely block if it is unable to
          * write all the data to the output file descriptor immediately.
          * Note that it cannot block on reading the input file descriptor
          * because that file descriptor is private to this process, the
          * amount of input available is known and is only read by this
          * thread. */
 
-        ssize_t bytes;
+        ssize_t splicedBytes;
 
         ERROR_IF(
-            (bytes = spliceFd(
+            (splicedBytes = spliceFd(
                 self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE),
-             -1 == bytes &&
+             -1 == splicedBytes &&
              EPIPE       != errno &&
              EWOULDBLOCK != errno &&
              EINTR       != errno));
 
-        if ( ! bytes)
+        if ( ! splicedBytes)
         {
             debug(0, "tether drain output closed");
             break;
         }
 
-        if (-1 == bytes)
+        if (-1 == splicedBytes)
         {
             if (EPIPE == errno)
             {
@@ -321,7 +319,35 @@ pollFdDrainSplice_(struct TetherPoll           *self,
         {
             debug(1,
                   "drained %zd bytes from fd %d to fd %d",
-                  bytes, self->mSrcFd, self->mDstFd);
+                  splicedBytes, self->mSrcFd, self->mDstFd);
+
+            int srcFdReady = -1;
+            ERROR_IF(
+                (srcFdReady = waitFdReadReady(self->mSrcFd, &ZeroDuration),
+                 -1 == srcFdReady));
+
+            if (srcFdReady)
+            {
+                /* Some data was drained, but there is more input available.
+                 * Perhaps the output file descriptor queues are full,
+                 * so wait until more can be written. */
+
+                struct pollfd *pollFds = self->mPollFds;
+
+                pollFds[POLL_FD_TETHER_INPUT].events  = POLL_DISCONNECTEVENT;
+                pollFds[POLL_FD_TETHER_OUTPUT].events = POLL_OUTPUTEVENTS;
+            }
+            else
+            {
+                /* Some output was drained, and now there is no more input
+                 * available. This must mean that all the input was
+                 * drained, so wait for some more. */
+
+                struct pollfd *pollFds = self->mPollFds;
+
+                pollFds[POLL_FD_TETHER_INPUT].events  = POLL_INPUTEVENTS;
+                pollFds[POLL_FD_TETHER_OUTPUT].events = POLL_DISCONNECTEVENT;
+            }
         }
 
         drained = 0;
