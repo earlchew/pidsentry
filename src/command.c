@@ -98,7 +98,12 @@ createCommand(struct Command *self,
             break;
         }
 
-        /* Obtain a reference to the child process group, and do not proceed
+        /* If the pid file can be read and an authentic pid extracted,
+         * that pid will remain viable because the sentry will not
+         * reap the child process unless it can acquire a lock on
+         * the same pid file.
+         *
+         * Obtain a reference to the child process group, and do not proceed
          * until a positive acknowledgement is received to indicate that
          * the remote keeper has provided a stable reference. */
 
