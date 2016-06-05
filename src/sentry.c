@@ -476,6 +476,12 @@ runSentry(struct Sentry   *self,
     ERROR_IF(
         unwatchJobControlDone(self->mJobControl));
 
+    /* If a pid file is in use, do not reap the child process until
+     * a lock on the pid file can be acquired, and the pid file invalidated.
+     *
+     * On the other side, readers would acquire a lock on the pid file
+     * before reading the pid file and connecting to the pid server. */
+
     if (self->mPidFile)
     {
         ERROR_IF(
