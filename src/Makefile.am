@@ -71,6 +71,7 @@ check_PROGRAMS     += _lambdatest
 check_PROGRAMS     += _methodtest
 check_PROGRAMS     += _unixsockettest
 check_PROGRAMS     += _parsetest
+check_PROGRAMS     += _pidsignaturetest
 check_PROGRAMS     += _processtest
 check_PROGRAMS     += _printftest
 check_PROGRAMS     += _threadtest
@@ -129,6 +130,9 @@ _methodtest_LDADD   = $(TEST_LIBS)
 
 _parsetest_SOURCES = _parsetest.cc
 _parsetest_LDADD   = $(TEST_LIBS)
+
+_pidsignaturetest_SOURCES = _pidsignaturetest.cc
+_pidsignaturetest_LDADD   = $(TEST_LIBS)
 
 _printftest_SOURCES = _printftest.cc
 _printftest_LDADD   = $(TEST_LIBS)
