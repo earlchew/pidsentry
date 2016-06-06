@@ -359,9 +359,6 @@ struct Pgid
 ownProcessGroupId(void);
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
-fetchProcessSignature(struct Pid aPid, char **aSignature);
-
 struct ProcessState
 fetchProcessState(struct Pid aPid);
 
