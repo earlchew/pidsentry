@@ -448,6 +448,11 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
         self->mStdFdFiller = closeStdFdFiller(self->mStdFdFiller);
 
+        /* There is no need to manipulate the umbilical socket
+         * within the contex of the child. */
+
+        self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
+
         /* Wait until the parent has created the pidfile. This
          * invariant can be used to determine if the pidfile
          * is really associated with the process possessing
@@ -480,8 +485,6 @@ runChildProcess_(struct ForkChildProcess_ *self)
              * will not need to be duplicated. */
 
             closePipeReader(self->mChildProcess->mTetherPipe);
-
-            self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
 
             if (gOptions.mTether)
             {
