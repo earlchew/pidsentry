@@ -300,7 +300,7 @@ runSentry(struct Sentry   *self,
         });
     self->mUmbilicalProcess = &self->mUmbilicalProcess_;
 
-    closeSocketPairChild(self->mUmbilicalSocket);
+    ensure( ! self->mUmbilicalSocket->mChildSocket);
 
     /* Beware of the inherent race here between the umbilical starting and
      * terminating, and the recording of the umbilical process. To cover the
