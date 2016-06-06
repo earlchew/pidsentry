@@ -44,6 +44,9 @@ Tid_(pid_t aTid);
 struct Tid
 {
 #ifdef __cplusplus
+    explicit Tid()
+    { *this = Tid_(0); }
+
     explicit Tid(pid_t aTid)
     { *this = Tid_(aTid); }
 #endif
@@ -68,6 +71,9 @@ Pid_(pid_t aPid);
 struct Pid
 {
 #ifdef __cplusplus
+    explicit Pid()
+    { *this = Pid_(0); }
+
     explicit Pid(pid_t aPid)
     { *this = Pid_(aPid); }
 #endif
@@ -92,6 +98,9 @@ Pgid_(pid_t aPgid);
 struct Pgid
 {
 #ifdef __cplusplus
+    explicit Pgid()
+    { *this = Pgid_(0); }
+
     explicit Pgid(pid_t aPgid)
     { *this = Pgid_(aPgid); }
 #endif
