@@ -34,7 +34,7 @@
 #include "test_.h"
 #include "timekeeping_.h"
 #include "parse_.h"
-#include "process_.h"
+#include "pidsignature_.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -105,7 +105,8 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 
     struct Pid pid = Pid(0);
 
-    char *signature = 0;
+    struct PidSignature  signature_;
+    struct PidSignature *signature = 0;
 
     char *endPtr  = strchr(aBuf, 0);
     char *sigPtr  = strchr(aBuf, '\n');
@@ -162,12 +163,13 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 
         int err = 0;
         ERROR_IF(
-            (err = fetchProcessSignature(parsedPid, &signature),
+            (err = createPidSignature(&signature_, parsedPid),
              err && ENOENT != errno));
+        signature = &signature_;
 
         if ( ! err)
         {
-            if ( ! strcmp(pidSignature, signature))
+            if ( ! strcmp(pidSignature, signature->mSignature))
             {
                 debug(0, "pidfile signature %s", pidSignature);
 
@@ -175,7 +177,10 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
                 break;
             }
 
-            debug(0, "pidfile signature %s vs %s", pidSignature, signature);
+            debug(0,
+                  "pidfile signature %s vs %s",
+                  pidSignature,
+                  signature->mSignature);
         }
 
         /* The process either does not exist, or if it does exist the two
@@ -189,7 +194,7 @@ Finally:
 
     FINALLY
     ({
-        free(signature);
+        signature = closePidSignature(signature);
     });
 
     return rc ? Pid(-1) : pid;
@@ -634,8 +639,10 @@ writePidFile_(struct PidFile           *self,
               struct Pid                aPid,
               const struct sockaddr_un *aPidServerAddr)
 {
-    int   rc        = -1;
-    char *signature = 0;
+    int rc = -1;
+
+    struct PidSignature  signature_;
+    struct PidSignature *signature = 0;
 
     ensure(0 < aPid.mPid);
 
@@ -645,7 +652,8 @@ writePidFile_(struct PidFile           *self,
     ensure( aPidServerAddr->sun_path[1]);
 
     ERROR_IF(
-        fetchProcessSignature(aPid, &signature));
+        createPidSignature(&signature_, aPid));
+    signature = &signature_;
 
     char buf[PIDFILE_SIZE_+1];
 
@@ -654,7 +662,7 @@ writePidFile_(struct PidFile           *self,
             buf, sizeof(buf),
             "%" PRId_Pid "\n%s\n%s\n",
             FMTd_Pid(aPid),
-            signature,
+            signature->mSignature,
             &aPidServerAddr->sun_path[1]);
 
     ERROR_IF(
@@ -685,7 +693,7 @@ Finally:
 
     FINALLY
     ({
-        free(signature);
+        signature = closePidSignature(signature);
     });
 
     return rc;
