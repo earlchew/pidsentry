@@ -477,6 +477,8 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
      * started successfully and bound itself to process group
      * of the sentry and child. */
 
+    closeSocketPairParent(self->mSocket);
+
     char buf[1] = { 0 };
 
     ssize_t wrLen;
@@ -618,6 +620,8 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
             ForkProcessMethod(runUmbilicalProcessChild_, self)),
          -1 == umbilicalPid.mPid));
     self->mPid = umbilicalPid;
+
+    closeSocketPairChild(self->mSocket);
 
     ERROR_IF(
         -1 == waitUnixSocketReadReady(self->mSocket->mParentSocket, 0));
