@@ -1538,7 +1538,7 @@ forkProcessChild(enum ForkProcessOption   aOption,
             ERROR_IF(
                 setpgid(childPid, pgid ? pgid : childPid));
 
-        /* On Linux, fetchProcessSignature() uses the process start
+        /* On Linux, struct PidSignature uses the process start
          * time from /proc/pid/stat, but that start time is measured
          * in _SC_CLK_TCK periods which limits the rate at which
          * processes can be forked without causing ambiguity. Although
