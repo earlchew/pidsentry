@@ -2,6 +2,8 @@
 
 set -eu
 
+TIMEOUT=5
+
 random()
 {
     printf '%s' $(( 0x$(openssl rand -hex 4) ))
@@ -14,7 +16,11 @@ pidsentry()
 
 pidsentrytest()
 {
-    pidsentry -dd --test=2 -- dd if=/dev/zero bs=64K count=4
+    set --
+    set -- "$@" -dd
+    set -- "$@" --test=2
+    set -- "$@" -t $TIMEOUT,$TIMEOUT,$TIMEOUT,$TIMEOUT
+    pidsentry "$@" -- dd if=/dev/zero bs=64K count=4
 }
 
 testLostWatchdogs()
@@ -87,6 +93,8 @@ while [ $TRIGGER -lt $RANGE ] ; do
         [ $RC -eq 143 ] && continue # SIGTERM
         exit 1
     }
+
+    sleep $TIMEOUT
 
     testLostWatchdogs
 
