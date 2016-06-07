@@ -156,7 +156,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 struct PidSignature *
-createPidSignature(struct Pid aPid, struct PidFile *aPidFile)
+createPidSignature(struct Pid aPid, const char *aSignature)
 {
     int rc = -1;
 
@@ -169,8 +169,12 @@ createPidSignature(struct Pid aPid, struct PidFile *aPidFile)
     self->mPid       = aPid;
     self->mSignature = 0;
 
-    ERROR_IF(
-        fetchProcessSignature_(aPid, &signature));
+    if (aSignature)
+        ERROR_UNLESS(
+            signature = strdup(aSignature));
+    else if (self->mPid.mPid)
+        ERROR_IF(
+            fetchProcessSignature_(aPid, &signature));
 
     self->mSignature = signature;
     signature        = 0;

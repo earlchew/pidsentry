@@ -36,8 +36,14 @@ TEST(PidSignatureTest, CreateSignature)
 {
     struct PidSignature *pidSignature = 0;
 
-    EXPECT_FALSE(createPidSignature(Pid(0), 0));
+    EXPECT_FALSE(createPidSignature(Pid(-1), 0));
     EXPECT_EQ(ENOENT, errno);
+
+    EXPECT_TRUE((pidSignature = createPidSignature(Pid(0), 0)));
+    pidSignature = destroyPidSignature(pidSignature);
+
+    EXPECT_TRUE((pidSignature = createPidSignature(Pid(-1), "")));
+    pidSignature = destroyPidSignature(pidSignature);
 
     EXPECT_TRUE((pidSignature = createPidSignature(ownProcessId(), 0)));
 
