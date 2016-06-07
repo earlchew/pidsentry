@@ -170,7 +170,8 @@ createSentry(struct Sentry      *self,
         self->mPidFile = &self->mPidFile_;
 
         ERROR_IF(
-            createPidServer(&self->mPidServer_));
+            createPidServer(&self->mPidServer_,
+                            self->mChildProcess->mPid));
         self->mPidServer = &self->mPidServer_;
     }
 

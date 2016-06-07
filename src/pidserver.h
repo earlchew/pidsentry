@@ -32,6 +32,7 @@
 #include "compiler_.h"
 #include "unixsocket_.h"
 #include "fileeventqueue_.h"
+#include "pidsignature_.h"
 
 #include <sys/un.h>
 #include <sys/queue.h>
@@ -108,12 +109,15 @@ struct PidServer
     struct FileEventQueue  mEventQueue_;
     struct FileEventQueue *mEventQueue;
 
+    struct PidSignature  mPidSignature_;
+    struct PidSignature *mPidSignature;
+
     struct PidServerClientActivityList_ mClients;
 };
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
-createPidServer(struct PidServer *self);
+createPidServer(struct PidServer *self, struct Pid aPid);
 
 struct PidServer *
 closePidServer(struct PidServer *self);

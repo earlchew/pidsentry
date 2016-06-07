@@ -167,14 +167,19 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-createPidServer(struct PidServer *self)
+createPidServer(struct PidServer *self, struct Pid aPid)
 {
     int rc = -1;
 
-    self->mSocket     = 0;
-    self->mEventQueue = 0;
+    self->mSocket       = 0;
+    self->mEventQueue   = 0;
+    self->mPidSignature = 0;
 
     TAILQ_INIT(&self->mClients);
+
+    ERROR_IF(
+        createPidSignature(&self->mPidSignature_, aPid));
+    self->mPidSignature = &self->mPidSignature_;
 
     ERROR_IF(
         createUnixSocket(&self->mSocket_, 0, 0, 0));
@@ -199,10 +204,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            self->mEventQueue = closeFileEventQueue(self->mEventQueue);
-            self->mSocket     = closeUnixSocket(self->mSocket);
-        }
+            self = closePidServer(self);
     });
 
     return rc;
@@ -277,8 +279,9 @@ closePidServer(struct PidServer *self)
             activity = discardPidServerConnection_(self, activity);
         }
 
-        self->mEventQueue = closeFileEventQueue(self->mEventQueue);
-        self->mSocket     = closeUnixSocket(self->mSocket);
+        self->mEventQueue   = closeFileEventQueue(self->mEventQueue);
+        self->mSocket       = closeUnixSocket(self->mSocket);
+        self->mPidSignature = closePidSignature(self->mPidSignature);
    }
 
     return 0;
