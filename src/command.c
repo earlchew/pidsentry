@@ -33,6 +33,7 @@
 #include "pipe_.h"
 #include "env_.h"
 #include "pidfile_.h"
+#include "pidsignature_.h"
 #include "timescale_.h"
 #include "process_.h"
 
@@ -54,6 +55,8 @@ createCommand(struct Command *self,
 
     self->mPid          = Pid(0);
     self->mKeeperTether = 0;
+
+    struct PidSignature *pidSignature = 0;
 
     struct PidFile  pidFile_;
     struct PidFile *pidFile = 0;
@@ -87,12 +90,10 @@ createCommand(struct Command *self,
             acquirePidFileReadLock(pidFile));
 
         struct sockaddr_un pidKeeperAddr;
-        struct Pid         pid;
-        ERROR_IF(
-            (pid = readPidFile(pidFile, &pidKeeperAddr),
-             -1 == pid.mPid));
+        ERROR_UNLESS(
+            pidSignature = readPidFile(pidFile, &pidKeeperAddr));
 
-        if ( ! pid.mPid)
+        if ( ! pidSignature->mPid.mPid)
         {
             status = CommandStatusZombiePidFile;
             break;
@@ -127,7 +128,7 @@ createCommand(struct Command *self,
             (err = readFile(self->mKeeperTether->mFile, buf, 1),
              -1 == err || (errno = 0, 1 != err)));
 
-        self->mChildPid = pid;
+        self->mChildPid = pidSignature->mPid;
 
     } while (0);
 
@@ -148,6 +149,8 @@ Finally:
          * sole requirement. */
 
         pidFile = destroyPidFile(pidFile);
+
+        pidSignature = destroyPidSignature(pidSignature);
     });
 
     return status;

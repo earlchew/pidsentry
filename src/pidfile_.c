@@ -98,12 +98,10 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct Pid
+static CHECKED struct PidSignature *
 readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 {
     int rc = -1;
-
-    struct Pid pid = Pid(0);
 
     struct PidSignature *signature = 0;
 
@@ -169,8 +167,6 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
             if ( ! strcmp(pidSignature, signature->mSignature))
             {
                 debug(0, "pidfile signature %s", pidSignature);
-
-                pid = parsedPid;
                 break;
             }
 
@@ -183,7 +179,13 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
         /* The process either does not exist, or if it does exist the two
          * process signatures do not match. */
 
+        signature = destroyPidSignature(signature);
+
     } while (0);
+
+    if ( ! signature)
+        ERROR_UNLESS(
+            signature = createPidSignature(Pid(0), 0));
 
     rc = 0;
 
@@ -191,18 +193,20 @@ Finally:
 
     FINALLY
     ({
-        signature = destroyPidSignature(signature);
+        if (rc)
+            signature = destroyPidSignature(signature);
     });
 
-    return rc ? Pid(-1) : pid;
+    return signature;
 }
 
-struct Pid
+struct PidSignature *
 readPidFile(const struct PidFile *self,
             struct sockaddr_un   *aPidKeeperAddr)
 {
-    int        rc  = -1;
-    struct Pid pid = Pid(0);
+    int rc  = -1;
+
+    struct PidSignature *signature = 0;
 
     char *bufcpy = 0;
 
@@ -231,16 +235,18 @@ readPidFile(const struct PidFile *self,
             if ( ! lastlen)
             {
                 buf[buflen] = 0;
-                ERROR_IF(
-                    (pid = readPidFile_(buf, aPidKeeperAddr),
-                     -1 == pid.mPid));
+                ERROR_UNLESS(
+                    signature = readPidFile_(buf, aPidKeeperAddr));
                 break;
             }
         }
 
-        pid = Pid(0);
+        ensure( ! signature);
+        signature = createPidSignature(Pid(0), 0);
 
     } while (0);
+
+    ensure(signature);
 
     rc = 0;
 
@@ -249,9 +255,12 @@ Finally:
     FINALLY
     ({
         free(bufcpy);
+
+        if (rc)
+            signature = destroyPidSignature(signature);
     });
 
-    return rc ? Pid(-1) : pid;
+    return signature;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -415,6 +424,8 @@ openPidFile(struct PidFile *self, unsigned aFlags)
 {
     int rc = -1;
 
+    struct PidSignature *pidSignature = 0;
+
     ERROR_IF(
         self->mFile || self->mLock,
         {
@@ -472,13 +483,11 @@ openPidFile(struct PidFile *self, unsigned aFlags)
              * that non longer exists, and so can be deleted. */
 
             struct sockaddr_un pidKeeperAddr;
-            struct Pid         pid;
-            ERROR_IF(
-                (pid = readPidFile(self, &pidKeeperAddr),
-                 -1 == pid.mPid));
+            ERROR_UNLESS(
+                pidSignature = readPidFile(self, &pidKeeperAddr));
 
             ERROR_IF(
-                pid.mPid,
+                pidSignature->mPid.mPid,
                 {
                     errno = EEXIST;
                 });
@@ -538,6 +547,8 @@ Finally:
             self->mFile = closeFile(self->mFile);
             self->mLock = 0;
         }
+
+        pidSignature = destroyPidSignature(pidSignature);
     });
 
     return rc;

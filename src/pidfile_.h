@@ -39,6 +39,8 @@ BEGIN_C_SCOPE;
 
 struct sockaddr_un;
 
+struct PidSignature;
+
 struct PidFile
 {
     struct PathName        mPathName_;
@@ -72,7 +74,7 @@ openPidFile(struct PidFile *self, unsigned aFlags);
 CHECKED int
 closePidFile(struct PidFile *self);
 
-CHECKED struct Pid
+CHECKED struct PidSignature *
 readPidFile(const struct PidFile *self, struct sockaddr_un *aPidServerAddr);
 
 CHECKED int
