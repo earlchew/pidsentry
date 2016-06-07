@@ -109,7 +109,6 @@ struct PidServer
     struct FileEventQueue  mEventQueue_;
     struct FileEventQueue *mEventQueue;
 
-    struct PidSignature  mPidSignature_;
     struct PidSignature *mPidSignature;
 
     struct PidServerClientActivityList_ mClients;

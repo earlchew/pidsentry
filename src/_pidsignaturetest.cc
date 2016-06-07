@@ -34,33 +34,25 @@
 
 TEST(PidSignatureTest, CreateSignature)
 {
-    struct PidSignature  pidSignature_;
     struct PidSignature *pidSignature = 0;
 
-    EXPECT_EQ(-1, createPidSignature(&pidSignature_, Pid(-1)));
+    EXPECT_FALSE(createPidSignature(Pid(0), 0));
     EXPECT_EQ(ENOENT, errno);
 
-    EXPECT_EQ(0, createPidSignature(&pidSignature_, Pid(0)));
-    pidSignature = &pidSignature_;
-    pidSignature = closePidSignature(pidSignature);
-
-    EXPECT_EQ(0, createPidSignature(&pidSignature_, ownProcessId()));
-    pidSignature = &pidSignature_;
+    EXPECT_TRUE((pidSignature = createPidSignature(ownProcessId(), 0)));
 
     EXPECT_TRUE(pidSignature->mSignature);
     EXPECT_TRUE(strlen(pidSignature->mSignature));
 
     {
-        struct PidSignature  altSignature_;
         struct PidSignature *altSignature = 0;
 
-        EXPECT_EQ(0, createPidSignature(&altSignature_, ownProcessId()));
-        altSignature = &altSignature_;
+        EXPECT_TRUE((altSignature = createPidSignature(ownProcessId(), 0)));
 
         EXPECT_EQ(0, strcmp(pidSignature->mSignature,
                             altSignature->mSignature));
 
-        altSignature = closePidSignature(altSignature);
+        altSignature = destroyPidSignature(altSignature);
     }
 
     sigset_t sigMask;
@@ -123,17 +115,13 @@ TEST(PidSignatureTest, CreateSignature)
     EXPECT_EQ(0, releaseProcessAppLock());
     EXPECT_EQ(0u, ownProcessAppLockCount());
 
-    struct PidSignature  firstChildSignature_;
     struct PidSignature *firstChildSignature = 0;
 
-    EXPECT_EQ(0, createPidSignature(&firstChildSignature_, firstChild));
-    firstChildSignature = &firstChildSignature_;
+    EXPECT_TRUE((firstChildSignature = createPidSignature(firstChild, 0)));
 
-    struct PidSignature  secondChildSignature_;
     struct PidSignature *secondChildSignature = 0;
 
-    EXPECT_EQ(0, createPidSignature(&secondChildSignature_, secondChild));
-    secondChildSignature = &secondChildSignature_;
+    EXPECT_TRUE((secondChildSignature = createPidSignature(secondChild, 0)));
 
     EXPECT_NE(std::string(firstChildSignature->mSignature),
               std::string(secondChildSignature->mSignature));
@@ -159,9 +147,9 @@ TEST(PidSignatureTest, CreateSignature)
     EXPECT_TRUE(WIFEXITED(status));
     EXPECT_EQ(0, WEXITSTATUS(status));
 
-    secondChildSignature = closePidSignature(secondChildSignature);
-    firstChildSignature  = closePidSignature(firstChildSignature);
-    pidSignature         = closePidSignature(pidSignature);
+    secondChildSignature = destroyPidSignature(secondChildSignature);
+    firstChildSignature  = destroyPidSignature(firstChildSignature);
+    pidSignature         = destroyPidSignature(pidSignature);
 }
 
 #include "../googletest/src/gtest_main.cc"

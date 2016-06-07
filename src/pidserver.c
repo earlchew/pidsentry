@@ -177,9 +177,8 @@ createPidServer(struct PidServer *self, struct Pid aPid)
 
     TAILQ_INIT(&self->mClients);
 
-    ERROR_IF(
-        createPidSignature(&self->mPidSignature_, aPid));
-    self->mPidSignature = &self->mPidSignature_;
+    ERROR_UNLESS(
+        self->mPidSignature = createPidSignature(aPid, 0));
 
     ERROR_IF(
         createUnixSocket(&self->mSocket_, 0, 0, 0));
@@ -281,7 +280,7 @@ closePidServer(struct PidServer *self)
 
         self->mEventQueue   = closeFileEventQueue(self->mEventQueue);
         self->mSocket       = closeUnixSocket(self->mSocket);
-        self->mPidSignature = closePidSignature(self->mPidSignature);
+        self->mPidSignature = destroyPidSignature(self->mPidSignature);
    }
 
     return 0;

@@ -105,7 +105,6 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 
     struct Pid pid = Pid(0);
 
-    struct PidSignature  signature_;
     struct PidSignature *signature = 0;
 
     char *endPtr  = strchr(aBuf, 0);
@@ -161,13 +160,11 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 
         debug(0, "pidfile address %s", &aPidKeeperAddr->sun_path[1]);
 
-        int err = 0;
         ERROR_IF(
-            (err = createPidSignature(&signature_, parsedPid),
-             err && ENOENT != errno));
-        signature = &signature_;
+            (signature = createPidSignature(parsedPid, 0),
+             ! signature && ENOENT != errno));
 
-        if ( ! err)
+        if (signature)
         {
             if ( ! strcmp(pidSignature, signature->mSignature))
             {
@@ -194,7 +191,7 @@ Finally:
 
     FINALLY
     ({
-        signature = closePidSignature(signature);
+        signature = destroyPidSignature(signature);
     });
 
     return rc ? Pid(-1) : pid;
@@ -641,7 +638,6 @@ writePidFile_(struct PidFile           *self,
 {
     int rc = -1;
 
-    struct PidSignature  signature_;
     struct PidSignature *signature = 0;
 
     ensure(0 < aPid.mPid);
@@ -651,9 +647,8 @@ writePidFile_(struct PidFile           *self,
     ensure( ! aPidServerAddr->sun_path[sizeof(aPidServerAddr->sun_path)-1]);
     ensure( aPidServerAddr->sun_path[1]);
 
-    ERROR_IF(
-        createPidSignature(&signature_, aPid));
-    signature = &signature_;
+    ERROR_UNLESS(
+        signature = createPidSignature(aPid, 0));
 
     char buf[PIDFILE_SIZE_+1];
 
@@ -693,7 +688,7 @@ Finally:
 
     FINALLY
     ({
-        signature = closePidSignature(signature);
+        signature = destroyPidSignature(signature);
     });
 
     return rc;

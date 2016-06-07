@@ -155,24 +155,25 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
-createPidSignature(struct PidSignature *self, struct Pid aPid)
+struct PidSignature *
+createPidSignature(struct Pid aPid, struct PidFile *aPidFile)
 {
     int rc = -1;
 
     char *signature = 0;
 
+    struct PidSignature *self = 0;
+    ERROR_UNLESS(
+        self = malloc(sizeof(*self)));
+
     self->mPid       = aPid;
     self->mSignature = 0;
 
-    if (self->mPid.mPid)
-    {
-        ERROR_IF(
-            fetchProcessSignature_(aPid, &signature));
+    ERROR_IF(
+        fetchProcessSignature_(aPid, &signature));
 
-        self->mSignature = signature;
-        signature        = 0;
-    }
+    self->mSignature = signature;
+    signature        = 0;
 
     rc = 0;
 
@@ -181,21 +182,22 @@ Finally:
     FINALLY
     ({
         if (rc)
-            self = closePidSignature(self);
+            self = destroyPidSignature(self);
 
         free(signature);
     });
 
-    return rc;
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
 struct PidSignature *
-closePidSignature(struct PidSignature *self)
+destroyPidSignature(struct PidSignature *self)
 {
     if (self)
     {
         free(self->mSignature);
+        free(self);
     }
 
     return 0;
