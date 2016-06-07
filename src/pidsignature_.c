@@ -165,11 +165,14 @@ createPidSignature(struct PidSignature *self, struct Pid aPid)
     self->mPid       = aPid;
     self->mSignature = 0;
 
-    ERROR_IF(
-        fetchProcessSignature_(aPid, &signature));
+    if (self->mPid.mPid)
+    {
+        ERROR_IF(
+            fetchProcessSignature_(aPid, &signature));
 
-    self->mSignature = signature;
-    signature        = 0;
+        self->mSignature = signature;
+        signature        = 0;
+    }
 
     rc = 0;
 
