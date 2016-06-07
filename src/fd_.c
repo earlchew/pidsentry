@@ -546,7 +546,9 @@ readFd(int aFd, char *aBuf, size_t aLen)
 
         ERROR_IF(
             (len = read(aFd, bufPtr, bufEnd - bufPtr),
-             -1 == len && EINTR != errno && bufPtr == aBuf));
+             -1 == len && (EINTR       != errno &&
+                           EWOULDBLOCK != errno &&
+                           EAGAIN      != errno) && bufPtr == aBuf));
 
         if ( ! len)
             break;
@@ -555,6 +557,17 @@ readFd(int aFd, char *aBuf, size_t aLen)
         {
             if (EINTR == errno)
                 continue;
+
+            if (EWOULDBLOCK == errno || EAGAIN == errno)
+            {
+                int rdReady;
+                ERROR_IF(
+                    (rdReady = waitFdReadReady(aFd, 0),
+                     -1 == rdReady && bufPtr == aBuf));
+
+                if (0 <= rdReady)
+                    continue;
+            }
 
             break;
         }
@@ -586,7 +599,9 @@ writeFd(int aFd, const char *aBuf, size_t aLen)
 
         ERROR_IF(
             (len = write(aFd, bufPtr, bufEnd - bufPtr),
-             -1 == len && EINTR != errno && bufPtr == aBuf));
+             -1 == len && (EINTR       != errno &&
+                           EWOULDBLOCK != errno &&
+                           EAGAIN      != errno) && bufPtr == aBuf));
 
         if ( ! len)
             break;
@@ -595,6 +610,17 @@ writeFd(int aFd, const char *aBuf, size_t aLen)
         {
             if (EINTR == errno)
                 continue;
+
+            if (EWOULDBLOCK == errno || EAGAIN == errno)
+            {
+                int wrReady;
+                ERROR_IF(
+                    (wrReady = waitFdWriteReady(aFd, 0),
+                     -1 == wrReady && bufPtr == aBuf));
+
+                if (0 <= wrReady)
+                    continue;
+            }
 
             break;
         }
