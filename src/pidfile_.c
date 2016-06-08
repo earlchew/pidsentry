@@ -218,7 +218,7 @@ readPidFile(const struct PidFile *self,
 
         ssize_t buflen;
         ERROR_IF(
-            (buflen = readFile(self->mFile, buf, sizeof(buf)),
+            (buflen = readFile(self->mFile, buf, sizeof(buf), 0),
              -1 == buflen));
 
         if (sizeof(buf) > buflen)
@@ -228,8 +228,7 @@ readPidFile(const struct PidFile *self,
 
             ssize_t lastlen;
             ERROR_IF(
-                (lastlen = readFile(
-                    self->mFile, buf + buflen, 1),
+                (lastlen = readFile(self->mFile, buf + buflen, 1, 0),
                  -1 == lastlen));
 
             if ( ! lastlen)
@@ -688,7 +687,7 @@ writePidFile_(struct PidFile           *self,
      * error, or an IO error. */
 
     ERROR_IF(
-        writeFile(self->mFile, buf, buflen) != buflen,
+        writeFile(self->mFile, buf, buflen, 0) != buflen,
         {
             errno = EIO;
         });

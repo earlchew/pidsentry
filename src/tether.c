@@ -693,7 +693,7 @@ flushTetherThread(struct TetherThread *self)
 
     ssize_t wrlen;
     ERROR_IF(
-        (wrlen = writeFile(self->mControlPipe->mWrFile, buf, sizeof(buf)),
+        (wrlen = writeFile(self->mControlPipe->mWrFile, buf, sizeof(buf), 0),
          -1 == wrlen
          ? EPIPE != errno
          : (errno = 0, sizeof(buf) != wrlen)));

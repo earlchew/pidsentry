@@ -125,7 +125,7 @@ createCommand(struct Command *self,
 
         char buf[1];
         ERROR_IF(
-            (err = readFile(self->mKeeperTether->mFile, buf, 1),
+            (err = readFile(self->mKeeperTether->mFile, buf, sizeof(buf), 0),
              -1 == err || (errno = 0, 1 != err)));
 
         self->mChildPid = pidSignature->mPid;
@@ -225,7 +225,7 @@ runCommandChildProcess_(struct RunCommandProcess_ *self)
 
     ssize_t rdlen;
     ERROR_IF(
-        (rdlen = readFile(self->mSyncPipe->mRdFile, buf, 1),
+        (rdlen = readFile(self->mSyncPipe->mRdFile, buf, sizeof(buf), 0),
          -1 == rdlen));
 
     self->mSyncPipe = closePipe(self->mSyncPipe);
@@ -305,7 +305,7 @@ runCommand(struct Command     *self,
 
         ssize_t wrlen;
         ERROR_IF(
-            (wrlen = writeFile(syncPipe->mWrFile, buf, 1),
+            (wrlen = writeFile(syncPipe->mWrFile, buf, sizeof(buf), 0),
              -1 == wrlen || (errno = EIO, 1 != wrlen)));
     }
 

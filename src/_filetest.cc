@@ -40,12 +40,12 @@ TEST(FileTest, TemporaryFile)
     ASSERT_EQ(0, temporaryFile(&file_));
     file = &file_;
 
-    EXPECT_EQ(1, writeFile(file, "A", 1));
+    EXPECT_EQ(1, writeFile(file, "A", 1, 0));
 
     EXPECT_EQ(0, lseekFile(file, 0, WhenceTypeStart));
 
     char buf[1];
-    EXPECT_EQ(1, readFile(file, buf, 1));
+    EXPECT_EQ(1, readFile(file, buf, 1, 0));
 
     EXPECT_EQ('A', buf[0]);
 

@@ -112,10 +112,12 @@ CHECKED int
 ownFileCloseOnExec(const struct File *self);
 
 CHECKED ssize_t
-writeFile(struct File *self, const char *aBuf, size_t aLen);
+writeFile(struct File *self,
+          const char *aBuf, size_t aLen, const struct Duration *aTimeout);
 
 CHECKED ssize_t
-readFile(struct File *self, char *aBuf, size_t aLen);
+readFile(struct File *self,
+         char *aBuf, size_t aLen, const struct Duration *aTimeout);
 
 CHECKED off_t
 lseekFile(struct File *self, off_t aOffset, struct WhenceType aWhenceType);

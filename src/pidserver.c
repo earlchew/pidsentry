@@ -336,10 +336,11 @@ acceptPidServerConnection(struct PidServer *self)
 
     char buf[1] = { 0 };
 
-    int err;
+    int wrBytes;
     ERROR_IF(
-        (err = writeFile(activity->mClient->mSocket->mFile, buf, 1),
-         -1 == err || (errno = EIO, 1 != err)));
+        (wrBytes = writeFile(
+            activity->mClient->mSocket->mFile, buf, sizeof(buf), 0),
+         -1 == wrBytes || (errno = EIO, sizeof(buf) != wrBytes)));
 
     ERROR_IF(
         enqueuePidServerConnection_(self, activity));

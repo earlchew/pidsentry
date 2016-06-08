@@ -60,7 +60,7 @@ TEST(EventPipeTest, SetOnce)
     EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     char buf[1];
-    EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1));
+    EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1, 0));
 
     EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
@@ -81,7 +81,7 @@ TEST(EventPipeTest, SetTwice)
     EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     char buf[1];
-    EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1));
+    EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1, 0));
 
     EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
@@ -140,7 +140,7 @@ TEST(EventPipeTest, SetOnceResetOnceSetOnce)
     EXPECT_EQ(1, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
     char buf[1];
-    EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1));
+    EXPECT_EQ(1, readFile(eventPipe->mPipe->mRdFile, buf, 1, 0));
 
     EXPECT_EQ(0, waitFileReadReady(eventPipe->mPipe->mRdFile, &ZeroDuration));
 
