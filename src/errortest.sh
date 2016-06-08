@@ -65,8 +65,9 @@ VALGRINDOPT="--log-file=scratch/errortest.log"
 # when running the test.
 
 RANGE=$(
-    VALGRINDOPT="--log-file=/dev/null"
-    pidsentrytest 2>&1 >/dev/null | tail -1)
+    VALGRINDOPT="--log-file=scratch/errortestpreview.log"
+    pidsentrytest 2> "scratch/errortesterr.log" > "scratch/errortestout.log"
+    tail -1 < "scratch/errortesterr.log" )
 RANGE=$(( (RANGE + 999) / 500 * 500 ))
 
 if [ x"$TRIGGER" = x"once" ] ; then
