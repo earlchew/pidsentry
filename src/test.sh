@@ -1025,7 +1025,7 @@ if [ -n "${TEST_MODE++}" ] ; then
 fi
 unset TEST_MODE
 
-trap 'RC=$? ; [ x$RC = x0 ] || rm -rf scratch/* || : ; exit $RC' 0
+trap 'RC=$? ; [ x$RC != x0 ] || rm -rf scratch/* || : ; exit $RC' 0
 mkdir -p scratch
 
 PIDFILE=scratch/pidfile
