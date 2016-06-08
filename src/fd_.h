@@ -119,10 +119,12 @@ CHECKED ssize_t
 spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 
 CHECKED ssize_t
-writeFd(int aFd, const char *aBuf, size_t aLen);
+writeFd(int aFd,
+        const char *aBuf, size_t aLen, const struct Duration *aTimeout);
 
 CHECKED ssize_t
-readFd(int aFd, char *aBuf, size_t aLen);
+readFd(int aFd,
+       char *aBuf, size_t aLen, const struct Duration *aTimeout);
 
 CHECKED off_t
 lseekFd(int aFd, off_t aOffset, struct WhenceType aWhenceType);

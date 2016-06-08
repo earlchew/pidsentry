@@ -533,15 +533,48 @@ waitFdReadReady(int aFd, const struct Duration *aTimeout)
 
 /* -------------------------------------------------------------------------- */
 ssize_t
-readFd(int aFd, char *aBuf, size_t aLen)
+readFd(int aFd,
+       char *aBuf, size_t aLen, const struct Duration *aTimeout)
 {
     ssize_t rc = -1;
 
     char *bufPtr = aBuf;
     char *bufEnd = bufPtr + aLen;
 
+    struct EventClockTime since = EVENTCLOCKTIME_INIT;
+    struct Duration       remaining;
+
+    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
+
     while (bufPtr != bufEnd)
     {
+        if (aTimeout)
+        {
+            struct EventClockTime tm = eventclockTime();
+
+            if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
+            {
+                if (checkProcessSigContTracker(&sigContTracker))
+                {
+                    since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                    continue;
+                }
+
+                break;
+            }
+
+            int rdReady = -1;
+            ERROR_IF(
+                (rdReady = waitFdReadReady(aFd, &remaining),
+                 -1 == rdReady && bufPtr == aBuf));
+
+            if (-1 == rdReady)
+                break;
+
+            if ( ! rdReady)
+                continue;
+        }
+
         ssize_t len;
 
         ERROR_IF(
@@ -586,15 +619,48 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 ssize_t
-writeFd(int aFd, const char *aBuf, size_t aLen)
+writeFd(int aFd,
+        const char *aBuf, size_t aLen, const struct Duration *aTimeout)
 {
     ssize_t rc = -1;
 
     const char *bufPtr = aBuf;
     const char *bufEnd = bufPtr + aLen;
 
+    struct EventClockTime since = EVENTCLOCKTIME_INIT;
+    struct Duration       remaining;
+
+    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
+
     while (bufPtr != bufEnd)
     {
+        if (aTimeout)
+        {
+            struct EventClockTime tm = eventclockTime();
+
+            if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
+            {
+                if (checkProcessSigContTracker(&sigContTracker))
+                {
+                    since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                    continue;
+                }
+
+                break;
+            }
+
+            int wrReady = -1;
+            ERROR_IF(
+                (wrReady = waitFdWriteReady(aFd, &remaining),
+                 -1 == wrReady && bufPtr == aBuf));
+
+            if (-1 == wrReady)
+                break;
+
+            if ( ! wrReady)
+                continue;
+        }
+
         ssize_t len;
 
         ERROR_IF(
@@ -669,7 +735,7 @@ readFdFully(int aFd, char **aBuf, size_t aBufSize)
 
         ssize_t rdlen;
         ERROR_IF(
-            (rdlen = readFd(aFd, end, avail),
+            (rdlen = readFd(aFd, end, avail, 0),
              -1 == rdlen));
         if ( ! rdlen)
             break;

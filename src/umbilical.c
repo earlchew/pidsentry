@@ -197,7 +197,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
             ERROR_IF(
                 (wrlen = writeFd(
                     self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
-                    buf, rdlen),
+                    buf, rdlen, 0),
                  -1 == wrlen
                  ? EPIPE != errno
                  : (errno = 0, wrlen != rdlen)));

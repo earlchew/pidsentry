@@ -521,7 +521,7 @@ print_(
             fflush(printBuf_.mFile);
 
             if (printBuf_.mSize != writeFd(STDERR_FILENO,
-                                           printBuf_.mBuf, printBuf_.mSize))
+                                           printBuf_.mBuf, printBuf_.mSize, 0))
                 abortProcess();
         }
 

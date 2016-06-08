@@ -103,7 +103,7 @@ pollFdControl_(struct TetherPoll           *self,
 
     ERROR_IF(
         -1 == readFd(
-            self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf)));
+            self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf), 0));
 
     debug(0, "tether disconnection request received");
 

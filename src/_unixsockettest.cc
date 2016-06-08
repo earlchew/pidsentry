@@ -136,7 +136,7 @@ TEST(UnixSocketTest, AbstractServer)
     EXPECT_EQ(1, writeFile(pipe->mWrFile, buf, sizeof(buf)));
     buf[0] = 0;
     EXPECT_EQ(1, waitFdReadReady(fd, 0));
-    EXPECT_EQ(1, readFd(fd, buf, sizeof(buf)));
+    EXPECT_EQ(1, readFd(fd, buf, sizeof(buf), 0));
     EXPECT_EQ('A', buf[0]);
 
     fd = closeFd(fd);

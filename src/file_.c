@@ -572,14 +572,14 @@ ownFileRegionLocked(const struct File *self, off_t aPos, off_t aLen)
 ssize_t
 writeFile(struct File *self, const char *aBuf, size_t aLen)
 {
-    return writeFd(self->mFd, aBuf, aLen);
+    return writeFd(self->mFd, aBuf, aLen, 0);
 }
 
 /* -------------------------------------------------------------------------- */
 ssize_t
 readFile(struct File *self, char *aBuf, size_t aLen)
 {
-    return readFd(self->mFd, aBuf, aLen);
+    return readFd(self->mFd, aBuf, aLen, 0);
 }
 
 /* -------------------------------------------------------------------------- */

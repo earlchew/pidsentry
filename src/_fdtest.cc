@@ -69,7 +69,7 @@ TEST(FdTest, ReadFully)
         EXPECT_EQ(0, createPipe(&pipe_, 0));
         pipe = &pipe_;
 
-        EXPECT_EQ(1, writeFd(pipe->mWrFile->mFd, "1", 1));
+        EXPECT_EQ(1, writeFd(pipe->mWrFile->mFd, "1", 1, 0));
         closePipeWriter(pipe);
 
         EXPECT_EQ(1, readFdFully(pipe->mRdFile->mFd, &buf, 0));
@@ -90,7 +90,7 @@ TEST(FdTest, ReadFully)
         EXPECT_EQ(0, createPipe(&pipe_, 0));
         pipe = &pipe_;
 
-        EXPECT_EQ(4, writeFd(pipe->mWrFile->mFd, "1234", 4));
+        EXPECT_EQ(4, writeFd(pipe->mWrFile->mFd, "1234", 4, 0));
         closePipeWriter(pipe);
 
         EXPECT_EQ(4, readFdFully(pipe->mRdFile->mFd, &buf, 0));
@@ -111,7 +111,7 @@ TEST(FdTest, ReadFully)
         EXPECT_EQ(0, createPipe(&pipe_, 0));
         pipe = &pipe_;
 
-        EXPECT_EQ(5, writeFd(pipe->mWrFile->mFd, "12345", 5));
+        EXPECT_EQ(5, writeFd(pipe->mWrFile->mFd, "12345", 5, 0));
         closePipeWriter(pipe);
 
         EXPECT_EQ(5, readFdFully(pipe->mRdFile->mFd, &buf, 0));
