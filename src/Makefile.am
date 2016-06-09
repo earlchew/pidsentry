@@ -57,6 +57,7 @@ pidsentry_PROGRAMS  = pidsentry
 check_SCRIPTS       = test.sh
 check_PROGRAMS      = _splicetest
 check_PROGRAMS     += _isblockingtest
+check_PROGRAMS     += _deadlinetest
 check_PROGRAMS     += _ensuretest
 check_PROGRAMS     += _systemtest
 check_PROGRAMS     += _timekeepingtest
@@ -97,6 +98,9 @@ _splicetest_SOURCES = _splicetest.c
 
 _timekeepingtest_SOURCES = _timekeepingtest.cc
 _timekeepingtest_LDADD   = $(TEST_LIBS)
+
+_deadlinetest_SOURCES = _deadlinetest.cc
+_deadlinetest_LDADD   = $(TEST_LIBS)
 
 _envtest_SOURCES = _envtest.cc
 _envtest_LDADD   = $(TEST_LIBS)
