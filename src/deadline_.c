@@ -76,15 +76,12 @@ checkDeadlineExpired(struct Deadline *self,
 
     TEST_RACE
     ({
-        int ready = 0;
+        int ready;
 
-        if (self->mDuration)
-        {
-            ready = -1;
-            ERROR_IF(
-                (ready = callDeadlinePollMethod(aPollMethod),
-                 -1 == ready));
-        }
+        ready = -1;
+        ERROR_IF(
+            (ready = callDeadlinePollMethod(aPollMethod),
+             -1 == ready));
 
         if ( ! ready)
         {
