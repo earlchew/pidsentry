@@ -552,27 +552,44 @@ readFd(int aFd,
         {
             struct EventClockTime tm = eventclockTime();
 
-            if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
-            {
-                if (checkProcessSigContTracker(&sigContTracker))
+            TEST_RACE
+            ({
+                int rdReady;
+
+                /* In case the process is stopped after the time is
+                 * latched, check once more if the fds are ready
+                 * before checking the deadline. */
+
+                rdReady = -1;
+                ERROR_IF(
+                    (rdReady = waitFdReadReady(aFd, &ZeroDuration),
+                     -1 == rdReady && bufPtr == aBuf));
+
+                if ( ! rdReady)
                 {
-                    since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
-                    continue;
+                    if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
+                    {
+                        if (checkProcessSigContTracker(&sigContTracker))
+                        {
+                            since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    rdReady = -1;
+                    ERROR_IF(
+                        (rdReady = waitFdReadReady(aFd, &remaining),
+                         -1 == rdReady && bufPtr == aBuf));
                 }
 
-                break;
-            }
+                if (-1 == rdReady)
+                    break;
 
-            int rdReady = -1;
-            ERROR_IF(
-                (rdReady = waitFdReadReady(aFd, &remaining),
-                 -1 == rdReady && bufPtr == aBuf));
-
-            if (-1 == rdReady)
-                break;
-
-            if ( ! rdReady)
-                continue;
+                if ( ! rdReady)
+                    continue;
+            });
         }
 
         ssize_t len;
@@ -638,27 +655,44 @@ writeFd(int aFd,
         {
             struct EventClockTime tm = eventclockTime();
 
-            if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
-            {
-                if (checkProcessSigContTracker(&sigContTracker))
+            TEST_RACE
+            ({
+                int wrReady;
+
+                /* In case the process is stopped after the time is
+                 * latched, check once more if the fds are ready
+                 * before checking the deadline. */
+
+                wrReady = -1;
+                ERROR_IF(
+                    (wrReady = waitFdWriteReady(aFd, &ZeroDuration),
+                     -1 == wrReady && bufPtr == aBuf));
+
+                if ( ! wrReady)
                 {
-                    since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
-                    continue;
+                    if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
+                    {
+                        if (checkProcessSigContTracker(&sigContTracker))
+                        {
+                            since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    wrReady = -1;
+                    ERROR_IF(
+                        (wrReady = waitFdWriteReady(aFd, &remaining),
+                         -1 == wrReady && bufPtr == aBuf));
                 }
 
-                break;
-            }
+                if (-1 == wrReady)
+                    break;
 
-            int wrReady = -1;
-            ERROR_IF(
-                (wrReady = waitFdWriteReady(aFd, &remaining),
-                 -1 == wrReady && bufPtr == aBuf));
-
-            if (-1 == wrReady)
-                break;
-
-            if ( ! wrReady)
-                continue;
+                if ( ! wrReady)
+                    continue;
+            });
         }
 
         ssize_t len;
