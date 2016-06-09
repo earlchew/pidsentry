@@ -43,8 +43,11 @@ struct itimerval;
 #ifndef __cplusplus
 #define TIMESCALE_CTOR_(Struct_, Type_, Field_)
 #else
-#define TIMESCALE_CTOR_(Struct_, Type_, Field_) \
-    Struct_(Type_ Field_ ## _)                  \
+#define TIMESCALE_CTOR_(Struct_, Type_, Field_)         \
+    Struct_()                                           \
+    { *this = Struct_ ## _(static_cast<Type_>(0)); }    \
+                                                        \
+    Struct_(Type_ Field_ ## _)                          \
     { *this = Struct_ ## _(Field_ ## _); }
 #endif
 
@@ -128,6 +131,10 @@ Duration_(struct NanoSeconds duration);
 struct Duration
 {
 #ifdef __cplusplus
+    explicit Duration()
+    : duration(NanoSeconds(0))
+    { }
+
     explicit Duration(struct NanoSeconds duration_)
     : duration(duration_)
     { }
