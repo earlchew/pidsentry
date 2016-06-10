@@ -379,4 +379,70 @@ TEST_F(DeadlineTest, NonZeroTimeout)
     deadline = closeDeadline(deadline);
 }
 
+TEST_F(DeadlineTest, NonZeroTimeoutAlwaysReady)
+{
+    class DeadlineTest *fixture = this;
+
+    struct Deadline  deadline_;
+    struct Deadline *deadline = 0;
+
+    struct Duration oneNanosecond = Duration(NanoSeconds(1));
+
+    EXPECT_EQ(0, createDeadline(&deadline_, &oneNanosecond));
+    deadline = &deadline_;
+
+    // Verify that the first iteration always succeeds.
+
+    EXPECT_EQ(1,
+              checkDeadlineExpired(
+                  deadline,
+                  DeadlinePollMethod(
+                      LAMBDA(
+                          int, (class DeadlineTest *),
+                          {
+                              return 1;
+                          }),
+                      fixture),
+                  DeadlineWaitMethod(
+                      LAMBDA(
+                          int, (class DeadlineTest *,
+                                const struct Duration *aTimeout),
+                          {
+                              EXPECT_FALSE(aTimeout);
+                              EXPECT_TRUE(false);
+                              return 0;
+                          }),
+                      fixture)));
+    EXPECT_FALSE(ownDeadlineExpired(deadline));
+
+    // Verify that the second iteration expires.
+
+    monotonicSleep(Duration(NSECS(Seconds(1))));
+
+    EXPECT_EQ(-1,
+              checkDeadlineExpired(
+                  deadline,
+                  DeadlinePollMethod(
+                      LAMBDA(
+                          int, (class DeadlineTest *),
+                          {
+                              return 1;
+                          }),
+                      fixture),
+                  DeadlineWaitMethod(
+                      LAMBDA(
+                          int, (class DeadlineTest *,
+                                const struct Duration *aTimeout),
+                          {
+                              EXPECT_FALSE(aTimeout);
+                              EXPECT_TRUE(false);
+                              return 0;
+                          }),
+                      fixture)));
+    EXPECT_EQ(ETIMEDOUT, errno);
+    EXPECT_TRUE(ownDeadlineExpired(deadline));
+
+    deadline = closeDeadline(deadline);
+}
+
 #include "../googletest/src/gtest_main.cc"

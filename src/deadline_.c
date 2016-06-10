@@ -79,41 +79,48 @@ checkDeadlineExpired(struct Deadline *self,
     ({
         do
         {
+            /* In case the process is stopped after the time is
+             * latched, check once more if the fds are ready
+             * before checking the deadline. */
+
             ready = -1;
+
             ERROR_IF(
                 (ready = callDeadlinePollMethod(aPollMethod),
                  -1 == ready));
 
-            if ( ! ready)
+            if (self->mDuration)
             {
-                if (self->mDuration)
+                /* Rely on deadlineTimeExpired() to always indicate
+                 * that the deadline has not yet expired on the first
+                 * iteration. */
+
+                if (deadlineTimeExpired(
+                        &self->mSince,
+                        *self->mDuration, &self->mRemaining, &self->mTime))
                 {
-                    if (deadlineTimeExpired(
-                            &self->mSince,
-                            *self->mDuration, &self->mRemaining, &self->mTime))
+                    if (checkProcessSigContTracker(&self->mSigContTracker))
                     {
-                        if (checkProcessSigContTracker(&self->mSigContTracker))
-                        {
-                            self->mSince =
-                                (struct EventClockTime) EVENTCLOCKTIME_INIT;
+                        self->mSince =
+                            (struct EventClockTime) EVENTCLOCKTIME_INIT;
 
-                            ready = 0;
-                            break;
-                        }
-
-                        self->mExpired = true;
-
-                        ready = -ETIMEDOUT;
+                        ready = 0;
                         break;
                     }
-                }
 
+                    self->mExpired = true;
+
+                    ready = -ETIMEDOUT;
+                    break;
+                }
+            }
+
+            if ( ! ready)
                 ERROR_IF(
                     (ready = callDeadlineWaitMethod(
                         aWaitMethod,
                         self->mDuration ? &self->mRemaining : 0),
                      -1 == ready));
-            }
 
             ensure(1 == ready || 0 == ready);
 
