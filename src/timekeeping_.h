@@ -74,6 +74,9 @@ struct PushedIntervalTimer
 };
 
 /* -------------------------------------------------------------------------- */
+#define EVENTCLOCKTIME_INIT ((struct EventClockTime) { { { ns : 0 } } })
+
+/* -------------------------------------------------------------------------- */
 void
 monotonicSleep(struct Duration aPeriod);
 
