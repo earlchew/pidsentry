@@ -127,3 +127,10 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+bool
+ownDeadlineExpired(const struct Deadline *self)
+{
+    return self->mSince.eventclock.ns && ! self->mRemaining.duration.ns;
+}
+
+/* -------------------------------------------------------------------------- */

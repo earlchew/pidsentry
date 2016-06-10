@@ -106,6 +106,9 @@ checkDeadlineExpired(struct Deadline *self,
                      struct DeadlinePollMethod aPollMethod,
                      struct DeadlineWaitMethod aWaitMethod);
 
+bool
+ownDeadlineExpired(const struct Deadline *self);
+
 CHECKED struct Deadline *
 closeDeadline(struct Deadline *self);
 
