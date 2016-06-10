@@ -244,7 +244,7 @@ TEST_F(DeadlineTest, ZeroTimeout)
                       fixture)));
     EXPECT_FALSE(ownDeadlineExpired(deadline));
 
-    EXPECT_EQ(1,
+    EXPECT_EQ(-1,
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
@@ -263,11 +263,12 @@ TEST_F(DeadlineTest, ZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_EQ(ETIMEDOUT, errno);
     EXPECT_TRUE(ownDeadlineExpired(deadline));
 
     // Verify that once expired, the deadline remains expired.
 
-    EXPECT_EQ(1,
+    EXPECT_EQ(-1,
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
@@ -286,6 +287,7 @@ TEST_F(DeadlineTest, ZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_EQ(ETIMEDOUT, errno);
     EXPECT_TRUE(ownDeadlineExpired(deadline));
 
     deadline = closeDeadline(deadline);
@@ -352,7 +354,7 @@ TEST_F(DeadlineTest, NonZeroTimeout)
 
     // Verify that the deadline is expired on the third iteration.
 
-    EXPECT_EQ(1,
+    EXPECT_EQ(-1,
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
@@ -371,6 +373,7 @@ TEST_F(DeadlineTest, NonZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_EQ(ETIMEDOUT, errno);
     EXPECT_TRUE(ownDeadlineExpired(deadline));
 
     deadline = closeDeadline(deadline);

@@ -103,7 +103,7 @@ checkDeadlineExpired(struct Deadline *self,
 
                         self->mExpired = true;
 
-                        ready = 1;
+                        ready = -ETIMEDOUT;
                         break;
                     }
                 }
@@ -115,10 +115,30 @@ checkDeadlineExpired(struct Deadline *self,
                      -1 == ready));
             }
 
+            ensure(1 == ready || 0 == ready);
+
         } while (0);
     });
 
-    ensure(1 == ready || 0 == ready);
+    /* The return value covers the following states:
+     *
+     *  1  The deadline has not expired, no error occurred, and the
+     *     underlying event is ready.
+     *
+     *  0  The deadline has not expired, no error occurred, and the
+     *     underlying event is not ready.
+     *
+     * -1  Either the deadline timed out or an error occurred. If the
+     *     deadline expired, ownDeadlineExpired() will return true and
+     *     errno will be set to ETIMEDOUT. If another error occurred,
+     *     ownDeadlineExpired() will return false, and errno will take
+     *     on an arbitrary value. */
+
+    if (0 > ready)
+    {
+        errno = -ready;
+        ready = -1;
+    }
 
     rc = ready;
 
