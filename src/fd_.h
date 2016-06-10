@@ -37,6 +37,7 @@
 
 BEGIN_C_SCOPE;
 
+struct Deadline;
 struct Duration;
 
 /* -------------------------------------------------------------------------- */
@@ -120,11 +121,11 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 
 CHECKED ssize_t
 writeFd(int aFd,
-        const char *aBuf, size_t aLen, const struct Duration *aTimeout);
+        const char *aBuf, size_t aLen, struct Deadline *aDeadline);
 
 CHECKED ssize_t
 readFd(int aFd,
-       char *aBuf, size_t aLen, const struct Duration *aTimeout);
+       char *aBuf, size_t aLen, struct Deadline *aDeadline);
 
 CHECKED off_t
 lseekFd(int aFd, off_t aOffset, struct WhenceType aWhenceType);

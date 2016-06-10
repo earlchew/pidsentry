@@ -33,6 +33,7 @@
 #include "timekeeping_.h"
 #include "test_.h"
 #include "process_.h"
+#include "deadline_.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -534,62 +535,44 @@ waitFdReadReady(int aFd, const struct Duration *aTimeout)
 /* -------------------------------------------------------------------------- */
 ssize_t
 readFd(int aFd,
-       char *aBuf, size_t aLen, const struct Duration *aTimeout)
+       char *aBuf, size_t aLen, struct Deadline *aDeadline)
 {
     ssize_t rc = -1;
 
     char *bufPtr = aBuf;
     char *bufEnd = bufPtr + aLen;
 
-    struct EventClockTime since = EVENTCLOCKTIME_INIT;
-    struct Duration       remaining;
-
-    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
-
     while (bufPtr != bufEnd)
     {
-        if (aTimeout)
+        if (aDeadline)
         {
-            struct EventClockTime tm = eventclockTime();
+            int ready = -1;
 
-            TEST_RACE
-            ({
-                int rdReady;
+            ERROR_IF(
+                (ready = checkDeadlineExpired(
+                    aDeadline,
+                    DeadlinePollMethod(
+                        LAMBDA(
+                            int, (int *fd),
+                            {
+                                return waitFdReadReady(*fd, &ZeroDuration);
+                            }),
+                        &aFd),
+                    DeadlineWaitMethod(
+                        LAMBDA(
+                            int, (int *fd,
+                                  const struct Duration *aTimeout),
+                            {
+                                return waitFdReadReady(*fd, aTimeout);
+                            }),
+                        &aFd)),
+                 -1 == ready && bufPtr == aBuf));
 
-                /* In case the process is stopped after the time is
-                 * latched, check once more if the fds are ready
-                 * before checking the deadline. */
+            if (-1 == ready)
+                break;
 
-                rdReady = -1;
-                ERROR_IF(
-                    (rdReady = waitFdReadReady(aFd, &ZeroDuration),
-                     -1 == rdReady && bufPtr == aBuf));
-
-                if ( ! rdReady)
-                {
-                    if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
-                    {
-                        if (checkProcessSigContTracker(&sigContTracker))
-                        {
-                            since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    rdReady = -1;
-                    ERROR_IF(
-                        (rdReady = waitFdReadReady(aFd, &remaining),
-                         -1 == rdReady && bufPtr == aBuf));
-                }
-
-                if (-1 == rdReady)
-                    break;
-
-                if ( ! rdReady)
-                    continue;
-            });
+            if ( ! ready)
+                continue;
         }
 
         ssize_t len;
@@ -637,62 +620,44 @@ Finally:
 /* -------------------------------------------------------------------------- */
 ssize_t
 writeFd(int aFd,
-        const char *aBuf, size_t aLen, const struct Duration *aTimeout)
+        const char *aBuf, size_t aLen, struct Deadline *aDeadline)
 {
     ssize_t rc = -1;
 
     const char *bufPtr = aBuf;
     const char *bufEnd = bufPtr + aLen;
 
-    struct EventClockTime since = EVENTCLOCKTIME_INIT;
-    struct Duration       remaining;
-
-    struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
-
     while (bufPtr != bufEnd)
     {
-        if (aTimeout)
+        if (aDeadline)
         {
-            struct EventClockTime tm = eventclockTime();
+            int ready = -1;
 
-            TEST_RACE
-            ({
-                int wrReady;
+            ERROR_IF(
+                (ready = checkDeadlineExpired(
+                    aDeadline,
+                    DeadlinePollMethod(
+                        LAMBDA(
+                            int, (int *fd),
+                            {
+                                return waitFdWriteReady(*fd, &ZeroDuration);
+                            }),
+                        &aFd),
+                    DeadlineWaitMethod(
+                        LAMBDA(
+                            int, (int *fd,
+                                  const struct Duration *aTimeout),
+                            {
+                                return waitFdWriteReady(*fd, aTimeout);
+                            }),
+                        &aFd)),
+                 -1 == ready && bufPtr == aBuf));
 
-                /* In case the process is stopped after the time is
-                 * latched, check once more if the fds are ready
-                 * before checking the deadline. */
+            if (-1 == ready)
+                break;
 
-                wrReady = -1;
-                ERROR_IF(
-                    (wrReady = waitFdWriteReady(aFd, &ZeroDuration),
-                     -1 == wrReady && bufPtr == aBuf));
-
-                if ( ! wrReady)
-                {
-                    if (deadlineTimeExpired(&since, *aTimeout, &remaining, &tm))
-                    {
-                        if (checkProcessSigContTracker(&sigContTracker))
-                        {
-                            since = (struct EventClockTime) EVENTCLOCKTIME_INIT;
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    wrReady = -1;
-                    ERROR_IF(
-                        (wrReady = waitFdWriteReady(aFd, &remaining),
-                         -1 == wrReady && bufPtr == aBuf));
-                }
-
-                if (-1 == wrReady)
-                    break;
-
-                if ( ! wrReady)
-                    continue;
-            });
+            if ( ! ready)
+                continue;
         }
 
         ssize_t len;
