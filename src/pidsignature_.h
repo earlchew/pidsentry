@@ -36,6 +36,9 @@
 /* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
 
+struct File;
+struct Deadline;
+
 struct PidSignature
 {
     struct Pid mPid;
@@ -48,6 +51,15 @@ createPidSignature(struct Pid aPid, const char *aSignature);
 
 CHECKED struct PidSignature *
 destroyPidSignature(struct PidSignature *self);
+
+/* -------------------------------------------------------------------------- */
+CHECKED int
+sendPidSignature(struct File *aFile,
+                 const struct PidSignature *aPidSignature,
+                 struct Deadline           *aDeadline);
+
+CHECKED struct PidSignature *
+recvPidSignature(struct File *aFile, struct Deadline *aDeadline);
 
 /* -------------------------------------------------------------------------- */
 

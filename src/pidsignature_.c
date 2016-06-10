@@ -33,11 +33,20 @@
 #include "process_.h"
 #include "system_.h"
 #include "fd_.h"
+#include "file_.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include <ctype.h>
+
+/* -------------------------------------------------------------------------- */
+struct MarshalledPidSignature
+{
+    pid_t  mPid;
+    size_t mSignatureLen;
+    char   mSignature[1024+1];
+};
 
 /* -------------------------------------------------------------------------- */
 static CHECKED int
@@ -205,6 +214,113 @@ destroyPidSignature(struct PidSignature *self)
     }
 
     return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+sendPidSignature(struct File *aFile,
+                 const struct PidSignature *aPidSignature,
+                 struct Deadline           *aDeadline)
+{
+    int rc = -1;
+
+    struct MarshalledPidSignature marshalled =
+    {
+        .mPid          = aPidSignature->mPid.mPid,
+        .mSignatureLen = strlen(aPidSignature->mSignature),
+    };
+
+    ERROR_IF(
+        sizeof(marshalled.mSignature) <= marshalled.mSignatureLen,
+        {
+            errno = EINVAL;
+        });
+
+    ERROR_UNLESS(
+        sizeof(marshalled.mPid) == writeFile(
+            aFile,
+            (void *) &marshalled.mPid,
+            sizeof(marshalled.mPid), aDeadline));
+
+    ERROR_UNLESS(
+        sizeof(marshalled.mSignatureLen) == writeFile(
+            aFile,
+            (void *) &marshalled.mSignatureLen,
+            sizeof(marshalled.mSignatureLen), aDeadline));
+
+    ERROR_UNLESS(
+        marshalled.mSignatureLen == writeFile(
+            aFile,
+            aPidSignature->mSignature,
+            marshalled.mSignatureLen, aDeadline));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct PidSignature *
+recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
+{
+    int rc = -1;
+
+    struct PidSignature *pidSignature = 0;
+
+    struct MarshalledPidSignature marshalled;
+
+    ERROR_UNLESS(
+        sizeof(marshalled.mPid) == readFile(
+            aFile,
+            (void *) &marshalled.mPid,
+            sizeof(marshalled.mPid), aDeadline));
+
+    ERROR_UNLESS(
+        sizeof(marshalled.mSignatureLen) == readFile(
+            aFile,
+            (void *) &marshalled.mSignatureLen,
+            sizeof(marshalled.mSignatureLen), aDeadline));
+
+    ERROR_IF(
+        sizeof(marshalled.mSignature) <= marshalled.mSignatureLen,
+        {
+            errno = EINVAL;
+        });
+
+    ERROR_UNLESS(
+        marshalled.mSignatureLen == readFile(
+            aFile,
+            marshalled.mSignature,
+            marshalled.mSignatureLen, aDeadline));
+
+    marshalled.mSignature[marshalled.mSignatureLen] = 0;
+
+    ERROR_UNLESS(
+        strlen(marshalled.mSignature) == marshalled.mSignatureLen,
+        {
+            errno = ERANGE;
+        });
+
+    ERROR_UNLESS(
+        pidSignature = createPidSignature(
+            Pid(marshalled.mPid),
+            marshalled.mSignature));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            pidSignature = destroyPidSignature(pidSignature);
+    });
+
+    return pidSignature;
 }
 
 /* -------------------------------------------------------------------------- */
