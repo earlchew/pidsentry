@@ -31,7 +31,7 @@
 
 #include "error_.h"
 #include "uid_.h"
-#include "timescale_.h"
+#include "deadline_.h"
 #include "method_.h"
 
 #include <unistd.h>
@@ -301,8 +301,12 @@ acceptPidServerConnection(struct PidServer *self)
      * to store the connection record, but pause rather than allowing
      * the event loop to spin wildly. */
 
-    struct PidServerClient_         *client   = 0;
-    struct PidServerClientActivity_ *activity = 0;
+    struct PidServerClient_         *client    = 0;
+    struct PidServerClientActivity_ *activity  = 0;
+    struct PidSignature             *signature = 0;
+
+    struct Deadline  deadline_;
+    struct Deadline *deadline = 0;
 
     ERROR_UNLESS(
         (client = createPidServerClient_(self->mSocket)));
@@ -314,6 +318,15 @@ acceptPidServerConnection(struct PidServer *self)
                  "Discarding connection from %" PRIs_ucred,
                  FMTs_ucred(client->mCred));
         });
+
+    struct Duration pidSignatureTimeout = Duration(NSECS(Seconds(30)));
+
+    ERROR_IF(
+        createDeadline(&deadline_, &pidSignatureTimeout));
+    deadline = &deadline_;
+
+    ERROR_UNLESS(
+        signature = recvPidSignature(client->mSocket->mFile, deadline));
 
     ERROR_UNLESS(
         (activity = createPidServerClientActivity_(
@@ -352,8 +365,10 @@ Finally:
 
     FINALLY
     ({
-        activity = discardPidServerConnection_(self, activity);
-        client   = closePidServerClient_(client);
+        signature = destroyPidSignature(signature);
+        activity  = discardPidServerConnection_(self, activity);
+        deadline  = closeDeadline(deadline);
+        client    = closePidServerClient_(client);
     });
 
     return rc;

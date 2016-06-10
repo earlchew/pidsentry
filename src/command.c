@@ -106,7 +106,12 @@ createCommand(struct Command *self,
          *
          * Obtain a reference to the child process group, and do not proceed
          * until a positive acknowledgement is received to indicate that
-         * the remote keeper has provided a stable reference. */
+         * the remote keeper has provided a stable reference.
+         *
+         * Note that there is a window here between checking the content
+         * of the pid file, and connecting to the name pid server, that
+         * allows for a race where the pid server is replaced by another
+         * program servicing the same connection address. */
 
         ERROR_IF(
             (err = connectUnixSocket(&self->mKeeperTether_,
@@ -118,6 +123,13 @@ createCommand(struct Command *self,
         ERROR_IF(
             (err = waitUnixSocketWriteReady(self->mKeeperTether, 0),
              -1 == err || (errno = 0, ! err)));
+
+        /* In case a connection race occurs, send the pid signature
+         * to allow the pid server to verify that it is serving a valid
+         * client. */
+
+        ERROR_IF(
+            sendPidSignature(self->mKeeperTether->mFile, pidSignature, 0));
 
         ERROR_IF(
             (err = waitUnixSocketReadReady(self->mKeeperTether, 0),
