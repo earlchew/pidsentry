@@ -41,6 +41,7 @@ createDeadline(struct Deadline *self, const struct Duration *aDuration)
     self->mSigContTracker = ProcessSigContTracker();
     self->mDuration_      = aDuration ? *aDuration : ZeroDuration;
     self->mDuration       = aDuration ? &self->mDuration_ : 0;
+    self->mExpired        = false;
 
     rc = 0;
 
@@ -70,54 +71,56 @@ checkDeadlineExpired(struct Deadline *self,
 {
     int rc = -1;
 
-    int expired = -1;
-
     self->mTime = eventclockTime();
+
+    int ready;
 
     TEST_RACE
     ({
-        int ready;
-
-        ready = -1;
-        ERROR_IF(
-            (ready = callDeadlinePollMethod(aPollMethod),
-             -1 == ready));
-
-        if ( ! ready)
+        do
         {
-            if (self->mDuration)
-            {
-                if (deadlineTimeExpired(
-                        &self->mSince,
-                        *self->mDuration, &self->mRemaining, &self->mTime))
-                {
-                    if (checkProcessSigContTracker(&self->mSigContTracker))
-                    {
-                        self->mSince =
-                            (struct EventClockTime) EVENTCLOCKTIME_INIT;
+            ready = -1;
+            ERROR_IF(
+                (ready = callDeadlinePollMethod(aPollMethod),
+                 -1 == ready));
 
-                        expired = 0;
+            if ( ! ready)
+            {
+                if (self->mDuration)
+                {
+                    if (deadlineTimeExpired(
+                            &self->mSince,
+                            *self->mDuration, &self->mRemaining, &self->mTime))
+                    {
+                        if (checkProcessSigContTracker(&self->mSigContTracker))
+                        {
+                            self->mSince =
+                                (struct EventClockTime) EVENTCLOCKTIME_INIT;
+
+                            ready = 0;
+                            break;
+                        }
+
+                        self->mExpired = true;
+
+                        ready = 1;
                         break;
                     }
-
-                    expired = 1;
-                    break;
                 }
+
+                ERROR_IF(
+                    (ready = callDeadlineWaitMethod(
+                        aWaitMethod,
+                        self->mDuration ? &self->mRemaining : 0),
+                     -1 == ready));
             }
 
-            ERROR_IF(
-                (ready = callDeadlineWaitMethod(
-                    aWaitMethod,
-                    self->mDuration ? &self->mRemaining : 0),
-                 -1 == ready));
-        }
-
-        expired = ready;
+        } while (0);
     });
 
-    ensure(1 == expired || 0 == expired);
+    ensure(1 == ready || 0 == ready);
 
-    rc = expired;
+    rc = ready;
 
 Finally:
 
@@ -130,7 +133,7 @@ Finally:
 bool
 ownDeadlineExpired(const struct Deadline *self)
 {
-    return self->mSince.eventclock.ns && ! self->mRemaining.duration.ns;
+    return self->mExpired;
 }
 
 /* -------------------------------------------------------------------------- */

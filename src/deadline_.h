@@ -34,6 +34,8 @@
 #include "process_.h"
 #include "method_.h"
 
+#include <stdbool.h>
+
 BEGIN_C_SCOPE;
 struct Duration;
 END_C_SCOPE;
@@ -95,6 +97,7 @@ struct Deadline
     struct ProcessSigContTracker mSigContTracker;
     struct Duration              mDuration_;
     struct Duration             *mDuration;
+    bool                         mExpired;
 };
 
 /* -------------------------------------------------------------------------- */

@@ -143,6 +143,7 @@ TEST_F(DeadlineTest, SuccessReturn)
                           }),
                       fixture)));
     EXPECT_EQ(1, mResult);
+    EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     // Verify a successful return from the wait method.
 
@@ -166,6 +167,7 @@ TEST_F(DeadlineTest, SuccessReturn)
                           }),
                       fixture)));
     EXPECT_EQ(2, mResult);
+    EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     deadline = closeDeadline(deadline);
 }
@@ -183,6 +185,7 @@ TEST_F(DeadlineTest, InfiniteTimeout)
     // Verify that an infinite timeout does not expire.
 
     for (unsigned ix = 0; 100 > ix; ++ix)
+    {
         EXPECT_EQ(0,
                   checkDeadlineExpired(
                       deadline,
@@ -202,6 +205,8 @@ TEST_F(DeadlineTest, InfiniteTimeout)
                                   return 0;
                               }),
                           fixture)));
+        EXPECT_FALSE(ownDeadlineExpired(deadline));
+    }
 
     deadline = closeDeadline(deadline);
 }
@@ -237,6 +242,7 @@ TEST_F(DeadlineTest, ZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     EXPECT_EQ(1,
               checkDeadlineExpired(
@@ -257,6 +263,7 @@ TEST_F(DeadlineTest, ZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_TRUE(ownDeadlineExpired(deadline));
 
     // Verify that once expired, the deadline remains expired.
 
@@ -279,6 +286,7 @@ TEST_F(DeadlineTest, ZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_TRUE(ownDeadlineExpired(deadline));
 
     deadline = closeDeadline(deadline);
 }
@@ -316,6 +324,7 @@ TEST_F(DeadlineTest, NonZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     // Verify that the deadline is not expired on the second iteration.
 
@@ -339,6 +348,7 @@ TEST_F(DeadlineTest, NonZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     // Verify that the deadline is expired on the third iteration.
 
@@ -361,6 +371,7 @@ TEST_F(DeadlineTest, NonZeroTimeout)
                               return 0;
                           }),
                       fixture)));
+    EXPECT_TRUE(ownDeadlineExpired(deadline));
 
     deadline = closeDeadline(deadline);
 }
