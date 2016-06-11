@@ -94,9 +94,8 @@ while [ $TRIGGER -lt $RANGE ] ; do
         [ $RC -eq 143 ] && continue # SIGTERM
         exit 1
     }
-
-    sleep $TIMEOUT
-
-    testLostWatchdogs
-
 done
+
+sleep $TIMEOUT
+
+testLostWatchdogs
