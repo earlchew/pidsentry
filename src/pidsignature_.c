@@ -264,6 +264,30 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+int
+printPidSignature(const struct PidSignature *self, FILE *aFile)
+{
+    return fprintf(
+        aFile,
+        "<%" PRId_Pid " %s>",
+        FMTd_Pid(self->mPid), self->mSignature);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+rankPidSignature(const struct PidSignature *self,
+                 const struct PidSignature *other)
+{
+    if (self->mPid.mPid < other->mPid.mPid)
+        return -1;
+
+    if (self->mPid.mPid > other->mPid.mPid)
+        return 1;
+
+    return strcmp(self->mSignature, other->mSignature);
+}
+
+/* -------------------------------------------------------------------------- */
 struct PidSignature *
 recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
 {

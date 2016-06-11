@@ -180,6 +180,10 @@ createPidServer(struct PidServer *self, struct Pid aPid)
     ERROR_UNLESS(
         self->mPidSignature = createPidSignature(aPid, 0));
 
+    debug(0,
+          "create pid server for %" PRIs_Method,
+          FMTs_Method(printPidSignature, self->mPidSignature));
+
     ERROR_IF(
         createUnixSocket(&self->mSocket_, 0, 0, 0));
     self->mSocket = &self->mSocket_;
@@ -327,6 +331,14 @@ acceptPidServerConnection(struct PidServer *self)
 
     ERROR_UNLESS(
         signature = recvPidSignature(client->mSocket->mFile, deadline));
+
+    ERROR_IF(
+        rankPidSignature(self->mPidSignature, signature),
+        {
+            warn(0,
+                 "Discarding connection for %" PRIs_Method,
+                 FMTs_Method(printPidSignature, signature));
+        });
 
     ERROR_UNLESS(
         (activity = createPidServerClientActivity_(

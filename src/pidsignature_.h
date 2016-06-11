@@ -33,6 +33,8 @@
 
 #include "pid_.h"
 
+#include <stdio.h>
+
 /* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
 
@@ -51,6 +53,13 @@ createPidSignature(struct Pid aPid, const char *aSignature);
 
 CHECKED struct PidSignature *
 destroyPidSignature(struct PidSignature *self);
+
+int
+printPidSignature(const struct PidSignature *self, FILE *aFile);
+
+int
+rankPidSignature(const struct PidSignature *self,
+                 const struct PidSignature *other);
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
