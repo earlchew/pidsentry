@@ -91,6 +91,7 @@ pidsentry_SOURCES  += command.c
 pidsentry_SOURCES  += parentprocess.c
 pidsentry_SOURCES  += pidserver.c
 pidsentry_SOURCES  += sentry.c
+pidsentry_SOURCES  += shellcommand.c
 pidsentry_SOURCES  += tether.c
 pidsentry_SOURCES  += umbilical.c
 
