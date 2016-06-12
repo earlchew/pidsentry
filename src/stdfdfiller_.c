@@ -89,10 +89,7 @@ Finally:
         fd[1] = closeFd(fd[1]);
 
         if (rc)
-        {
-            for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
-                self->mFile[ix] = closeFile(self->mFile[ix]);
-        }
+            self = closeStdFdFiller(self);
     });
 
     return rc;
@@ -105,9 +102,7 @@ closeStdFdFiller(struct StdFdFiller *self)
     if (self)
     {
         for (unsigned ix = 0; NUMBEROF(self->mFile) > ix; ++ix)
-        {
             self->mFile[ix] = closeFile(self->mFile[ix]);
-        }
     }
 
     return 0;
