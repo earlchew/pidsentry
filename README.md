@@ -45,8 +45,8 @@ pid, even if the host reboots.
 
 | Example | Scenario |
 | ------- |----------|
-| ```pidsentry -s -p /var/run/server.pid -- /usr/bin/server``` | Run server with pid file and monitor stdout |
-| ```pidsentry -s -p /var/run/server.pid -u -- /usr/bin/server``` | Run server with pid file and but without monitoring |
+| ```pidsentry -s -p /var/run/server.pid -- /usr/local/bin/server``` | Run server with pid file and monitor stdout |
+| ```pidsentry -s -p /var/run/server.pid -u -- 'PATH="/usr/local/bin:$PATH" && server'``` | Run server with pid file and but without monitoring |
 
 ##### Examples for Clients
 
