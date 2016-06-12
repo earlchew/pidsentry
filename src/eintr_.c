@@ -33,6 +33,7 @@
 #include "test_.h"
 
 #include <unistd.h>
+#include <stdlib.h>
 
 /* -------------------------------------------------------------------------- */
 static unsigned moduleInit_;
@@ -84,8 +85,11 @@ initSystemCall(struct SystemCall *self)
     {
         const char *err;
 
-        ensure(
-            findDlSymbol(self->mName, &addr, &err));
+        char *libName = findDlSymbol(self->mName, &addr, &err);
+
+        ensure(libName);
+
+        free(libName);
 
         self->mAddr = addr;
     }
