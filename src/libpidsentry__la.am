@@ -1,4 +1,4 @@
-libpidsentry__la_SOURCES_CKSUM_1_ = 3833764060 761
+libpidsentry__la_SOURCES_CKSUM_1_ = 2476981837 779
 libpidsentry__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
 libpidsentry__la_SOURCES = \
   abort_.c \
@@ -9,6 +9,8 @@ libpidsentry__la_SOURCES = \
   deadline_.h \
   dl_.c \
   dl_.h \
+  eintr_.c \
+  eintr_.h \
   env_.c \
   env_.h \
   error_.c \
