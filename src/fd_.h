@@ -158,6 +158,13 @@ CHECKED int
 waitFdReadReady(int aFd, const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */
+CHECKED int
+waitFdWriteReadyDeadline(int aFd, struct Deadline *aDeadline);
+
+CHECKED int
+waitFdReadReadyDeadline(int aFd, struct Deadline *aDeadline);
+
+/* -------------------------------------------------------------------------- */
 
 END_C_SCOPE;
 

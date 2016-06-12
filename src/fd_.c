@@ -533,6 +533,76 @@ waitFdReadReady(int aFd, const struct Duration *aTimeout)
 }
 
 /* -------------------------------------------------------------------------- */
+static CHECKED int
+waitFdReadyDeadline_(int aFd, unsigned aPollMask, struct Deadline *aDeadline)
+{
+    int rc = -1;
+
+    int ready = -1;
+
+    if ( ! aDeadline)
+        ready = waitFdReady_(aFd, aPollMask, 0);
+    else
+    {
+        struct FdReadyDeadline
+        {
+            int      mFd;
+            unsigned mPollMask;
+
+        } readyDeadline = {
+            .mFd       = aFd,
+            .mPollMask = aPollMask,
+        };
+
+        ERROR_IF(
+            (ready = checkDeadlineExpired(
+                aDeadline,
+                DeadlinePollMethod(
+                    LAMBDA(
+                        int, (struct FdReadyDeadline *self_),
+                        {
+                            return waitFdReady_(
+                                self_->mFd,
+                                self_->mPollMask,
+                                &ZeroDuration);
+                        }),
+                    &readyDeadline),
+                DeadlineWaitMethod(
+                    LAMBDA(
+                        int, (struct FdReadyDeadline *self_,
+                              const struct Duration  *aTimeout),
+                        {
+                            return waitFdReady_(
+                                self_->mFd,
+                                self_->mPollMask,
+                                aTimeout);
+                        }),
+                    &readyDeadline)),
+             -1 == ready));
+    }
+
+    rc = ready;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+waitFdWriteReadyDeadline(int aFd, struct Deadline *aDeadline)
+{
+    return waitFdReadyDeadline_(aFd, POLLOUT, aDeadline);
+}
+
+int
+waitFdReadReadyDeadline(int aFd, struct Deadline *aDeadline)
+{
+    return waitFdReadyDeadline_(aFd, POLLPRI | POLLIN, aDeadline);
+}
+
+/* -------------------------------------------------------------------------- */
 ssize_t
 readFd(int aFd,
        char *aBuf, size_t aLen, struct Deadline *aDeadline)
@@ -595,7 +665,7 @@ readFd(int aFd,
             {
                 int rdReady;
                 ERROR_IF(
-                    (rdReady = waitFdReadReady(aFd, 0),
+                    (rdReady = waitFdReadReadyDeadline(aFd, aDeadline),
                      -1 == rdReady && bufPtr == aBuf));
 
                 if (0 <= rdReady)
@@ -680,7 +750,7 @@ writeFd(int aFd,
             {
                 int wrReady;
                 ERROR_IF(
-                    (wrReady = waitFdWriteReady(aFd, 0),
+                    (wrReady = waitFdWriteReadyDeadline(aFd, aDeadline),
                      -1 == wrReady && bufPtr == aBuf));
 
                 if (0 <= wrReady)
