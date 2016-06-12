@@ -237,19 +237,19 @@ sendPidSignature(struct File *aFile,
         });
 
     ERROR_UNLESS(
-        sizeof(marshalled.mPid) == writeFile(
+        sizeof(marshalled.mPid) == writeFileDeadline(
             aFile,
             (void *) &marshalled.mPid,
             sizeof(marshalled.mPid), aDeadline));
 
     ERROR_UNLESS(
-        sizeof(marshalled.mSignatureLen) == writeFile(
+        sizeof(marshalled.mSignatureLen) == writeFileDeadline(
             aFile,
             (void *) &marshalled.mSignatureLen,
             sizeof(marshalled.mSignatureLen), aDeadline));
 
     ERROR_UNLESS(
-        marshalled.mSignatureLen == writeFile(
+        marshalled.mSignatureLen == writeFileDeadline(
             aFile,
             aPidSignature->mSignature,
             marshalled.mSignatureLen, aDeadline));
@@ -298,13 +298,13 @@ recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
     struct MarshalledPidSignature marshalled;
 
     ERROR_UNLESS(
-        sizeof(marshalled.mPid) == readFile(
+        sizeof(marshalled.mPid) == readFileDeadline(
             aFile,
             (void *) &marshalled.mPid,
             sizeof(marshalled.mPid), aDeadline));
 
     ERROR_UNLESS(
-        sizeof(marshalled.mSignatureLen) == readFile(
+        sizeof(marshalled.mSignatureLen) == readFileDeadline(
             aFile,
             (void *) &marshalled.mSignatureLen,
             sizeof(marshalled.mSignatureLen), aDeadline));
@@ -316,7 +316,7 @@ recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
         });
 
     ERROR_UNLESS(
-        marshalled.mSignatureLen == readFile(
+        marshalled.mSignatureLen == readFileDeadline(
             aFile,
             marshalled.mSignature,
             marshalled.mSignatureLen, aDeadline));
