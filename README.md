@@ -59,7 +59,8 @@ pid, even if the host reboots.
 
 * The pidsentry shall run a child process.
 * The child process shall run in its own process group.
-* When the child process terminates, the pidsentry shall terminate and propagate the exit code of the child process.
+* When the child process exits, the pidsentry shall exit with the exit code of the child process.
+* If the child process is terminated by signal number S, the pidsentry shall exit with exit code 128+S.
 * When the pidsentry terminates, the pidsentry shall kill the process group of the child.
 * If configured, the pidsentry shall monitor its parent and terminate if it becomes orphaned.
 * If configured to maintain a pid file, the pidsentry shall create a pid file for the child process.
@@ -73,8 +74,6 @@ pid, even if the host reboots.
 * If the pidsentry receives SIGTSTP, the pidsentry shall stop the child process.
 * If the pidsentry receives SIGCONT, the pidsentry shall continue the child process.
 * If the child process terminates due to SIGQUIT, and if the child process dumped core, the pidsentry shall terminate with SIGQUIT.
-* When the monitored child process exits, the pidsentry shall exit with the same exit code.
-* If the monitored child process is terminated by signal number S, the pidsentry shall exit with exit code 128+S.
 * If the pid file identifies a child process that is currently running, the pidsentry shall allow a command to run and provide the environment variable PIDSENTRY_PID to identify child process.
 
 #### Implementation
