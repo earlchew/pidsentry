@@ -209,7 +209,7 @@ runTests()
     for SUPERVISOR in PARENT SENTRY ; do
         testCaseBegin "Dead process in pid file - $SUPERVISOR"
         rm -f $PIDFILE
-        pidsentry -s -i -u -p $PIDFILE -- sh -c 'while : ; do sleep 1 ; done' | {
+        pidsentry -s -i -u -p $PIDFILE -- 'while : ; do sleep 1 ; done' | {
             read PARENT SENTRY UMBILICAL
             read CHILD
             eval kill -9 \$$SUPERVISOR
@@ -232,8 +232,7 @@ runTests()
     testCaseBegin 'Existing process in pid file'
     rm -f $PIDFILE
     testOutput "OK" = '$(
-        pidsentry -s -i -p $PIDFILE -u -- sh -c "
-            while : ; do sleep 1 ; done" | {
+        pidsentry -s -i -p $PIDFILE -u -- "while : ; do sleep 1 ; done" | {
                 read PARENT SENTRY UMBILICAL
                 read CHILD
                 pidsentry -s -p $PIDFILE -- true || /bin/echo OK
@@ -285,7 +284,7 @@ runTests()
         /bin/echo $$
         set --
         set -- "$@" '"$VALGRIND"'
-        set -- "$@" ./pidsentry -s --test=1 -i -- sh -c '\''/bin/echo $$'\'
+        set -- "$@" ./pidsentry -s --test=1 -i -- '\''/bin/echo $$'\'
         exec libtool --mode=execute "$@"
       {
         read REALSENTRY
@@ -327,17 +326,17 @@ runTests()
 
     testCaseBegin 'Environment propagation'
     testOutput '0' = '"$(
-        pidsentry -s -- sh -c '\''date ; printenv'\'' |
+        pidsentry -s -- '\''date ; printenv'\'' |
             grep "^PIDSENTRY_" |
             wc -l)"'
     testCaseEnd
 
     testCaseBegin 'Exit code propagation'
-    testExit 2 pidsentry -s --test=1 -- sh -c 'exit 2'
+    testExit 2 pidsentry -s --test=1 -- 'exit 2'
     testCaseEnd
 
     testCaseBegin 'Signal exit code propagation'
-    testExit $((128 + 9)) pidsentry -s --test=1 -- sh -c '
+    testExit $((128 + 9)) pidsentry -s --test=1 -- '
         /bin/echo Killing $$ ; kill -9 $$'
     testCaseEnd
 
@@ -368,7 +367,7 @@ runTests()
     # ii.  stdout
     # iii. stderr
     [ -n "$VALGRIND" ] || testOutput "4" = '$(
-        pidsentry -s --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry -s --test=3 -i -- "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL
             read CHILD
@@ -394,8 +393,7 @@ runTests()
     # iv.  pid server socket
     # v.   pid server poll
     [ -n "$VALGRIND" ] || testOutput "6" = '$(
-        pidsentry -s --test=3 -p $PIDFILE -i -- sh -c "
-            while : ; do sleep 1 ; done" |
+        pidsentry -s --test=3 -p $PIDFILE -i -- "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL
             read CHILD
@@ -421,7 +419,7 @@ runTests()
     # iv.  Agent tether
     # v.   Umbilical tether
     [ -n "$VALGRIND" ] || testOutput "6" = '$(
-        pidsentry -s --test=3 -i -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry -s --test=3 -i -- "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL
             read CHILD
@@ -447,7 +445,7 @@ runTests()
     # iv.  Agent tether
     # v.   Umbilical tether
     [ -n "$VALGRIND" ] || testOutput "6" = '$(
-        pidsentry -s --test=3 -i -u -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry -s --test=3 -i -u -- "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL
             read CHILD
@@ -482,7 +480,7 @@ runTests()
     # iii. stderr
     [ -n "$VALGRIND" ] || testOutput '$(
         ls -l /proc/self/fd | grep "[0-9][0-9]" | wc -l)' = '$(
-        pidsentry -s -i -u -p $PIDFILE -- sh -c "while : ; do sleep 1 ; done" |
+        pidsentry -s -i -u -p $PIDFILE -- "while : ; do sleep 1 ; done" |
         {
             read PARENT SENTRY UMBILICAL
             read CHILD
@@ -607,8 +605,8 @@ runTests()
     REPLY=$(
       exec 3>&1
       {
-        if pidsentry -s --test=1 -d -i -- sh -c '
-            while : ; do : ; done ; exit 0' 3>&- ; then
+        if pidsentry -s --test=1 -d -i -- 'while : ; do : ; done ; exit 0' 3>&-
+        then
           /bin/echo 0 >&3
         else
           /bin/echo $? >&3
@@ -624,7 +622,7 @@ runTests()
 
     testCaseBegin 'Stopped child'
     testOutput OK = '"$(
-        pidsentry -s --test=1 -i -d -t 2,,2 -- sh -c '\''kill -STOP $$'\'' | {
+        pidsentry -s --test=1 -i -d -t 2,,2 -- '\''kill -STOP $$'\'' | {
             read PARENT SENTRY UMBILICAL
             read CHILD
             sleep 8
@@ -952,7 +950,7 @@ runTests()
     testCaseBegin 'Test EPIPE propagates to child'
     testOutput "X-2" = '$(
         exec 3>&1
-        if pidsentry -s -dd -- sh -c "
+        if pidsentry -s -dd -- "
             sleep 1 ;
             while : ; do
                 /bin/echo X || exit 2
@@ -974,7 +972,7 @@ runTests()
             dd if=/dev/zero bs=$((64 * 1024)) count=1
             ( sleep 2
                 dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
-            pidsentry exec -s -dd -- sh -c "
+            pidsentry exec -s -dd -- "
                trap '\''/bin/echo -n AA >&3; exit 2'\'' 15
                sleep 2
                dd if=/dev/zero bs=$((64 * 1024)) count=1 &
@@ -1003,7 +1001,7 @@ runTests()
     testCaseBegin 'Timeout with data that must be flushed after 6s'
     REPLY=$(
         START=$(date +%s)
-        pidsentry -s --test=1 -t 4 -- sh -c 'trap : 6 ; sleep 6'
+        pidsentry -s --test=1 -t 4 -- 'trap : 6 ; sleep 6'
         STOP=$(date +%s)
         /bin/echo $(( STOP - START))
     )
