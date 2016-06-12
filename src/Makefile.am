@@ -46,7 +46,7 @@ COMMON_CFLAGS     += -Wmissing-prototypes -Wmissing-declarations
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=gnu++0x
 COMMON_CXXFLAGS   += -Wno-variadic-macros -Wno-long-long
 COMMON_LINKFLAGS   = -Wl,--gc-sections
-TEST_LIBS          = libpidsentry_.la libgoogletest.la -lpthread -lrt
+TEST_LIBS          = libpidsentry_.la libgoogletest.la -ldl -lpthread -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
 TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
 TEST_CXXFLAGS      = $(TEST_FLAGS) $(COMMON_CXXFLAGS)
@@ -83,7 +83,7 @@ lib_LTLIBRARIES     =
 
 pidsentry_CFLAGS    = $(COMMON_CFLAGS)
 pidsentry_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,pidsentry.map -Wl,-cref
-pidsentry_LDADD     = libpidsentry_.la -lrt -lpthread
+pidsentry_LDADD     = libpidsentry_.la -ldl -lrt -lpthread
 pidsentry_SOURCES   = _pidsentry.c
 pidsentry_SOURCES  += agent.c
 pidsentry_SOURCES  += childprocess.c
