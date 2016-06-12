@@ -492,8 +492,8 @@ runTests()
     testCaseEnd
 
     testCaseBegin 'Untethered child process with 8M data'
-    testOutput 8192000 = '$(
-      pidsentry -s --test=1 -u -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+    testOutput '$(cksum < scratch/8M.dat)' = '$(
+      pidsentry -s --test=1 -u -- dd bs=8K < scratch/8M.dat | cksum)'
     testCaseEnd
 
     testCaseBegin 'Tether with new file descriptor'
@@ -519,13 +519,13 @@ runTests()
     testCaseEnd
 
     testCaseBegin 'Tether using stdout with 8M data'
-    testOutput 8192000 = '$(
-      pidsentry -s --test=1 -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+    testOutput '$(cksum < scratch/8M.dat)' = '$(
+      pidsentry -s --test=1 -- dd bs=8K < scratch/8M.dat | cksum)'
     testCaseEnd
 
     testCaseBegin 'Tether quietly using stdout with 8M data'
     testOutput 0 = '$(
-      pidsentry -s --test=1 -q -- dd if=/dev/zero bs=8K count=1000 | wc -c)'
+      pidsentry -s --test=1 -q -- dd bs=8K < scratch/8M.dat | wc -c)'
     testCaseEnd
 
     testCaseBegin 'Tether named in environment'
@@ -775,7 +775,7 @@ runTests()
 
                     randomsleep 1
 
-                    pidsentry -c -- $PIDFILE 'echo $PIDSENTRY_CHILD_PID' | {
+                    pidsentry -c -- $PIDFILE 'echo $PIDSENTRY_PID' | {
 
                         read CHILD_PID || {
                             /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
@@ -1027,6 +1027,8 @@ trap 'RC=$? ; [ x$RC != x0 ] || rm -rf scratch/* || : ; exit $RC' 0
 mkdir -p scratch
 
 PIDFILE=scratch/pidfile
+
+dd bs=1M count=8 < /dev/urandom > scratch/8M.dat
 
 testCaseBegin 'No running watchdogs'
 testLostWatchdogs
