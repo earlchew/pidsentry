@@ -65,7 +65,7 @@ pid, even if the host reboots.
 * If configured to maintain a pid file, the pidsentry shall create a pid file for the child process.
 * A pid file shall uniquely identify a process, even if that process has terminated.
 * The pidsentry shall optionally monitor stdout of the child process.
-* If the pidsentry is monitoring stdout of the child process, and if the child process has terminated, the pidsentry shall drain stdout before terminating.
+* If the pidsentry is monitoring stdout of the child process, and if the child process has terminated, the pidsentry shall use a timeout interval to drain stdout before terminating.
 * If the pidsentry is monitoring stdout of the child process, and if the child process has stopped, the pidsentry wait for the child to continue before continuing to monitor stdout of the child process.
 * If the pidsentry is monitoring stdout of the child process, and if stdout of the child process is silent for a timeout interval, the pidsentry shall kill the child process.
 * If the pidsentry hangs, the pidsentry shall kill itself and all processes in the child process group.
@@ -73,7 +73,9 @@ pid, even if the host reboots.
 * If the pidsentry receives SIGTSTP, the pidsentry shall stop the child process.
 * If the pidsentry receives SIGCONT, the pidsentry shall continue the child process.
 * If the child process terminates due to SIGQUIT, and if the child process dumped core, the pidsentry shall terminate with SIGQUIT.
-* If the pid file identifies a child process that is currently running, the pidsentry shall allow a command to run and provide the environment variable PIDSENTRY_CHILD_PID to identify child process.
+* When the monitored child process exits, the pidsentry shall exit with the same exit code.
+* If the monitored child process is terminated by signal number S, the pidsentry shall exit with exit code 128+S.
+* If the pid file identifies a child process that is currently running, the pidsentry shall allow a command to run and provide the environment variable PIDSENTRY_PID to identify child process.
 
 #### Implementation
 
