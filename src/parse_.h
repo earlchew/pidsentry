@@ -48,6 +48,9 @@ struct ParseArgList
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
+createParseArgListCopy(struct ParseArgList *self, const char * const *aArgv);
+
+CHECKED int
 createParseArgListCSV(struct ParseArgList *self, const char *aArg);
 
 CHECKED struct ParseArgList *

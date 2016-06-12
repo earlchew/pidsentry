@@ -261,6 +261,12 @@ createParseArgListCSV(struct ParseArgList *self, const char *aArg)
 
         ensure(self->mArgc == wordcount);
 
+        /* Take care of the case where there appears to be one word, but
+         * that word is in fact empty. */
+
+        if (1 == wordcount && ! self->mArgv[0][0])
+            self->mArgc = 0;
+
         self->mArgv[self->mArgc] = 0;
     }
 
@@ -271,9 +277,67 @@ Finally:
     FINALLY
     ({
         if (rc)
+            self = closeParseArgList(self);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+createParseArgListCopy(struct ParseArgList *self, const char * const *aArgv)
+{
+    int rc = -1;
+
+    char **argv = 0;
+
+    self->mArgs = 0;
+    self->mArgv = 0;
+    self->mArgc = 0;
+
+    if (aArgv)
+    {
+        unsigned argc = 0;
+
+        while (aArgv[argc])
+            ++argc;
+
+        ERROR_UNLESS(
+            argv = malloc(sizeof(*argv) * (1+argc)));
+        argv[argc] = 0;
+
+        for (unsigned ax = 0; ax < argc; ++ax)
+            argv[ax] = 0;
+
+        for (unsigned ax = 0; ax < argc; ++ax)
+            ERROR_UNLESS(
+                argv[ax] = strdup(aArgv[ax]));
+
+        self->mArgc = argc;
+        self->mArgv = argv;
+        argv        = 0;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            self = closeParseArgList(self);
+
+        if (argv)
         {
-            free(self->mArgs);
-            free(self->mArgv);
+            char **arg = argv;
+
+            while (*arg)
+            {
+                free(*arg);
+                ++arg;
+            }
+
+            free(argv);
         }
     });
 
@@ -286,6 +350,20 @@ closeParseArgList(struct ParseArgList *self)
 {
     if (self)
     {
+        if ( ! self->mArgs)
+        {
+            char **arg = self->mArgv;
+
+            if (arg)
+            {
+                while (*arg)
+                {
+                    free(*arg);
+                    ++arg;
+                }
+            }
+        }
+
         free(self->mArgs);
         free(self->mArgv);
     }
