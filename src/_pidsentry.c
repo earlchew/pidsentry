@@ -48,6 +48,7 @@
 #include "dl_.h"
 #include "process_.h"
 #include "jobcontrol_.h"
+#include "eintr_.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -173,6 +174,9 @@ main(int argc, char **argv)
 {
     struct ExitCode exitCode = { EXIT_FAILURE };
 
+    struct EintrModule  eintrModule_;
+    struct EintrModule *eintrModule = 0;
+
     struct TestModule  testModule_;
     struct TestModule *testModule = 0;
 
@@ -181,6 +185,10 @@ main(int argc, char **argv)
 
     struct ProcessModule  processModule_;
     struct ProcessModule *processModule = 0;
+
+    ABORT_IF(
+        Eintr_init(&eintrModule_));
+    eintrModule = &eintrModule_;
 
     ABORT_IF(
         Test_init(&testModule_, "PIDSENTRY_TEST_ERROR"));
@@ -225,7 +233,9 @@ Finally:
 
     if (testMode(TestLevelError))
         dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());
+
     testModule = Test_exit(testModule);
+    eintrModule = Eintr_exit(eintrModule);
 
     return exitCode.mStatus;
 }
