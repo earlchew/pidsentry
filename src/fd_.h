@@ -119,19 +119,29 @@ ownFdCloseOnExec(int aFd);
 CHECKED ssize_t
 spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);
 
-CHECKED ssize_t
-writeFd(int aFd,
-        const char *aBuf, size_t aLen, struct Deadline *aDeadline);
-
-CHECKED ssize_t
-readFd(int aFd,
-       char *aBuf, size_t aLen, struct Deadline *aDeadline);
-
 CHECKED off_t
 lseekFd(int aFd, off_t aOffset, struct WhenceType aWhenceType);
 
 CHECKED ssize_t
 readFdFully(int aFd, char **aBuf, size_t aBufSize);
+
+/* -------------------------------------------------------------------------- */
+CHECKED ssize_t
+writeFd(int aFd,
+        const char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
+CHECKED ssize_t
+readFd(int aFd,
+       char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
+/* -------------------------------------------------------------------------- */
+CHECKED ssize_t
+writeFdDeadline(int aFd,
+                const char *aBuf, size_t aLen, struct Deadline *aDeadline);
+
+CHECKED ssize_t
+readFdDeadline(int aFd,
+               char *aBuf, size_t aLen, struct Deadline *aDeadline);
 
 /* -------------------------------------------------------------------------- */
 CHECKED int

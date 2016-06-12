@@ -604,8 +604,8 @@ waitFdReadReadyDeadline(int aFd, struct Deadline *aDeadline)
 
 /* -------------------------------------------------------------------------- */
 ssize_t
-readFd(int aFd,
-       char *aBuf, size_t aLen, struct Deadline *aDeadline)
+readFdDeadline(int aFd,
+               char *aBuf, size_t aLen, struct Deadline *aDeadline)
 {
     ssize_t rc = -1;
 
@@ -689,8 +689,8 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 ssize_t
-writeFd(int aFd,
-        const char *aBuf, size_t aLen, struct Deadline *aDeadline)
+writeFdDeadline(int aFd,
+                const char *aBuf, size_t aLen, struct Deadline *aDeadline)
 {
     ssize_t rc = -1;
 
@@ -768,6 +768,64 @@ writeFd(int aFd,
 Finally:
 
     FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+readFd(int aFd,
+       char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    ssize_t rc = -1;
+
+    struct Deadline  deadline_;
+    struct Deadline *deadline = 0;
+
+    if (aTimeout)
+    {
+        ERROR_IF(
+            createDeadline(&deadline_, aTimeout));
+        deadline = &deadline_;
+    }
+
+    rc = readFdDeadline(aFd, aBuf, aLen, deadline);
+
+Finally:
+
+    FINALLY
+    ({
+        deadline = closeDeadline(deadline);
+    });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+writeFd(int aFd,
+        const char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    ssize_t rc = -1;
+
+    struct Deadline  deadline_;
+    struct Deadline *deadline = 0;
+
+    if (aTimeout)
+    {
+        ERROR_IF(
+            createDeadline(&deadline_, aTimeout));
+        deadline = &deadline_;
+    }
+
+    rc = writeFdDeadline(aFd, aBuf, aLen, deadline);
+
+Finally:
+
+    FINALLY
+    ({
+        deadline = closeDeadline(deadline);
+    });
 
     return rc;
 }
