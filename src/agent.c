@@ -235,6 +235,9 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
         parentProcess = &parentProcess_;
     }
 
+    /* Ensure that the parent pipe does not inadvertently become
+     * stdin, stdout or stderr. */
+
     {
         ERROR_IF(
             createStdFdFiller(&stdFdFiller_));
@@ -299,6 +302,26 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
             closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
 
         appLock = destroyProcessAppLock(appLock);
+    }
+
+    /* Hold a reference to stderr, but do not hold references to the
+     * original stdin and stdout to allow the monitored process to control
+     * when those file descriptors are released. */
+
+    {
+        ERROR_IF(
+            createStdFdFiller(&stdFdFiller_));
+        stdFdFiller = &stdFdFiller_;
+
+        ERROR_IF(
+            STDIN_FILENO != dup2(
+                stdFdFiller->mFile[0]->mFd, STDIN_FILENO));
+
+        ERROR_IF(
+            STDOUT_FILENO != dup2(
+                stdFdFiller->mFile[1]->mFd, STDOUT_FILENO));
+
+        stdFdFiller = closeStdFdFiller(stdFdFiller);
     }
 
     {
