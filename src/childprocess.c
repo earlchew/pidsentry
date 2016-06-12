@@ -30,6 +30,7 @@
 #include "childprocess.h"
 #include "umbilical.h"
 #include "tether.h"
+#include "shellcommand.h"
 
 #include "macros_.h"
 #include "test_.h"
@@ -421,6 +422,9 @@ runChildProcess_(struct ForkChildProcess_ *self)
 {
     int rc = -1;
 
+    struct ShellCommand  shellCommand_;
+    struct ShellCommand *shellCommand = 0;
+
     debug(
         0,
         "starting child process pid %" PRId_Pid, FMTd_Pid(ownProcessId()));
@@ -585,6 +589,10 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
         } while (0);
 
+        ERROR_IF(
+            createShellCommand(&shellCommand_, cmd));
+        shellCommand = &shellCommand_;
+
         /* Wait until the watchdog has had a chance to announce the
          * child pid before proceeding. This allows external programs,
          * notably the unit test, to know that the child process
@@ -614,8 +622,9 @@ runChildProcess_(struct ForkChildProcess_ *self)
          * might need to emit a diagnostic if execProcess() fails. Rely on
          * O_CLOEXEC to close the underlying file descriptors. */
 
-        execProcess(cmd[0], cmd);
-        message(errno, "Unable to execute '%s'", cmd[0]);
+        execShellCommand(shellCommand);
+        message(errno,
+                "Unable to execute '%s'", ownShellCommandText(shellCommand));
 
     } while (0);
 
@@ -623,7 +632,10 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        shellCommand = closeShellCommand(shellCommand);
+    });
 
     return rc;
 }
