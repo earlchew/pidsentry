@@ -17,6 +17,7 @@ pidsentry()
 pidsentrytest()
 {
     set --
+    set -- "$@" -s
     set -- "$@" -dd
     set -- "$@" --test=2
     set -- "$@" -t $TIMEOUT,$TIMEOUT,$TIMEOUT,$TIMEOUT

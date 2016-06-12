@@ -29,6 +29,7 @@
 
 #include "shellcommand.h"
 
+#include "parse_.h"
 #include "error_.h"
 #include "process_.h"
 
@@ -43,25 +44,19 @@ createShellCommand(struct ShellCommand *self,
 {
     int rc = -1;
 
-    self->mCmd = 0;
+    self->mArgList = 0;
 
-    char *cmd = 0;
-
-    if ( ! aCmd[1])
-    {
-        for (const char *chPtr = aCmd[0]; *chPtr; ++chPtr)
+    ERROR_UNLESS(
+        aCmd && aCmd[0] && aCmd[0][0],
         {
-            if (isspace((unsigned char) *chPtr))
-            {
-                ERROR_UNLESS(
-                    cmd = strdup(aCmd[0]));
-                break;
-            }
-        }
-    }
+            errno = EINVAL;
+        });
 
-    self->mCmd = cmd;
-    cmd        = 0;
+    ERROR_IF(
+        createParseArgListCopy(&self->mArgList_, aCmd));
+    self->mArgList = &self->mArgList_;
+
+    ensure(self->mArgList->mArgv && self->mArgList->mArgv[0]);
 
     rc = 0;
 
@@ -69,7 +64,8 @@ Finally:
 
     FINALLY
     ({
-        free(cmd);
+        if (rc)
+            self = closeShellCommand(self);
     });
 
     return rc;
@@ -79,14 +75,33 @@ Finally:
 const char *
 ownShellCommandText(const struct ShellCommand *self)
 {
-    return self->mCmd;
+    return self->mArgList->mArgv[0];
 }
 
 /* -------------------------------------------------------------------------- */
 void
 execShellCommand(struct ShellCommand *self)
 {
-    execShell(self->mCmd);
+    if ( ! self->mArgList->mArgv[1])
+    {
+        for (const char *chPtr = self->mArgList->mArgv[0]; *chPtr; ++chPtr)
+        {
+            if (isspace((unsigned char) *chPtr))
+            {
+                ERROR_IF(
+                    (execShell(self->mArgList->mArgv[0]), true));
+            }
+        }
+    }
+
+    const char * const *argv = ownParseArgListArgv(self->mArgList);
+
+    ERROR_IF(
+        (execProcess(argv[0], argv), true));
+
+Finally:
+
+    FINALLY({});
 }
 
 /* -------------------------------------------------------------------------- */
@@ -94,7 +109,7 @@ struct ShellCommand *
 closeShellCommand(struct ShellCommand *self)
 {
     if (self)
-        free(self->mCmd);
+        self->mArgList = closeParseArgList(self->mArgList);
 
     return 0;
 }

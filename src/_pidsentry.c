@@ -203,7 +203,7 @@ main(int argc, char **argv)
                         "Unable to parse command line");
         });
 
-    if (gOptions.mCommand)
+    if (gOptions.mClient)
         ABORT_IF(
             cmdRunCommand(gOptions.mPidFile, args, &exitCode),
             {

@@ -50,24 +50,27 @@ struct Options gOptions;
 
 /* -------------------------------------------------------------------------- */
 static const char programUsage_[] =
-"usage : %s [ monitoring-options | general-options ] cmd ...\n"
-"        %s { --pidfile file | -p file } [ general-options ]\n"
-"        %s { --pidfile file | -p file } [ general-options ] -c cmd ... \n"
+"usage : %s { --server | -s } [ monitoring-options | "
+                               "general-options ] cmd ...\n"
+"        %s { --client | -c } [ general-options ] file cmd ... \n"
 "\n"
 "mode:\n"
-" --command | -c\n"
-"      Execute a command against a running child process. Run as a shell\n"
-"      command if cmd comprises a single word that contains any whitespace\n"
-"      and whose first character is alphanumeric  This option\n"
-"      requires --pidfile to also be specified. [Default: No command]\n"
+" --server | -s\n"
+"      Start and monitor a server process using the specified command.\n"
+" --client | -c\n"
+"      Execute a client command against a running child process.\n"
+"      The pid of the child process will be retrieved from the named file.\n"
+"\n"
+"      For both -s and -c, run as a shell command if cmd comprises\n"
+"      a single word that contains any whitespace and whose first character\n"
+"      is alphanumeric.\n"
 "\n"
 "general options:\n"
 "  --debug | -d\n"
 "      Print debug information. Specify the option multiple times to\n"
-"      increase the debug level.\n"
-"  --pidfile file | -p file\n"
-"      The pid of the child is stored in the specified file, and the files\n"
-"      is removed when the child terminates. [Default: No pidfile]\n"
+"      increase the debug level. [Default: No debug]\n"
+"  --test N\n"
+"      Run in test mode using a non-zero test level. [Default: No test]\n"
 "\n"
 "monitoring options:\n"
 "  --fd N | -f N\n"
@@ -87,11 +90,12 @@ static const char programUsage_[] =
 "      If this process ever becomes a child of init(8), terminate the\n"
 "      child process. This option is only useful if the parent of this\n"
 "      process is not init(8). [Default: Allow this process to be orphaned]\n"
+"  --pidfile file | -p file\n"
+"      The pid of the child is stored in the specified file, and the files\n"
+"      is removed when the child terminates. [Default: No pidfile]\n"
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
-"  --test N\n"
-"      Run in test mode using a non-zero test level. [Default: No test]\n"
 "  --timeout L | -t L\n"
 "      Specify the timeout list L. The list L comprises up to four\n"
 "      comma separated values: T, U, V and W. Each of the values is either\n"
@@ -112,7 +116,7 @@ static const char programUsage_[] =
 "";
 
 static const char shortOptions_[] =
-    "+cD:df:iL::n:op:qTt:u";
+    "+cD:df:iL::n:op:qsTt:u";
 
 enum OptionKind
 {
@@ -121,7 +125,7 @@ enum OptionKind
 
 static struct option longOptions_[] =
 {
-    { "command",    no_argument,       0, 'c' },
+    { "client",     no_argument,       0, 'c' },
     { "debug",      no_argument,       0, 'd' },
     { "fd",         required_argument, 0, 'f' },
     { "identify",   no_argument,       0, 'i' },
@@ -129,6 +133,7 @@ static struct option longOptions_[] =
     { "orphaned",   no_argument,       0, 'o' },
     { "pidfile",    required_argument, 0, 'p' },
     { "quiet",      no_argument,       0, 'q' },
+    { "server",     no_argument,       0, 's' },
     { "test",       required_argument, 0, OptionTest },
     { "timeout",    required_argument, 0, 't' },
     { "untethered", no_argument,       0, 'u' },
@@ -142,7 +147,6 @@ enum OptionMode
     OptionModeUnknown = 0,
 
     OptionModeMonitorChild,
-    OptionModePrintPid,
     OptionModeRunCommand
 };
 
@@ -176,7 +180,7 @@ showUsage_(void)
 {
     const char *arg0 = ownProcessName();
 
-    dprintf(STDERR_FILENO, programUsage_, arg0, arg0, arg0);
+    dprintf(STDERR_FILENO, programUsage_, arg0, arg0);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -260,7 +264,11 @@ processOptions(int argc, char **argv, const char * const **args)
 
     while (1)
     {
-        ERROR_IF(OptionModeError == mode);
+        ERROR_IF(
+            OptionModeError == mode,
+            {
+                errno = EINVAL;
+            });
 
         int longOptIndex = NUMBEROF(longOptions_) - 1;
 
@@ -293,7 +301,7 @@ processOptions(int argc, char **argv, const char * const **args)
         case 'c':
             mode = setOptionMode(
                 mode, OptionModeRunCommand, longOptName, opt);
-            gOptions.mCommand = true;
+            gOptions.mClient = true;
             break;
 
         case 'd':
@@ -346,6 +354,14 @@ processOptions(int argc, char **argv, const char * const **args)
             break;
 
         case 'p':
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
+            ERROR_UNLESS(
+                optarg[0],
+                {
+                    errno = EINVAL;
+                    message(0, "Empty pid file name");
+                });
             gOptions.mPidFile = optarg;
             break;
 
@@ -353,6 +369,12 @@ processOptions(int argc, char **argv, const char * const **args)
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mQuiet = true;
+            break;
+
+        case 's':
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
+            gOptions.mServer = true;
             break;
 
         case OptionTest:
@@ -389,27 +411,46 @@ processOptions(int argc, char **argv, const char * const **args)
         }
     }
 
-    /* If no option has been detected that specifically sets the mode
-     * of operation, force the default mode of operation. */
-
-    if (OptionModeUnknown == mode)
-        mode = OptionModeMonitorChild;
+    ERROR_IF(
+        OptionModeUnknown == mode,
+        {
+            errno = EINVAL;
+            message(0, "Unspecified mode of operation");
+        });
 
     switch (mode)
     {
     default:
+        ensure(false);
         break;
 
     case OptionModeRunCommand:
-    case OptionModeMonitorChild:
         ERROR_IF(
             optind >= argc,
             {
                 errno = EINVAL;
-                message(0, "Missing command for execution");
+                message(0, "Missing pid file for command");
+            });
+
+        gOptions.mPidFile = argv[optind++];
+        break;
+
+    case OptionModeMonitorChild:
+        ERROR_UNLESS(
+            gOptions.mServer,
+            {
+                errno = EINVAL;
+                message(0, "Server mode not specified");
             });
         break;
     }
+
+    ERROR_IF(
+        optind >= argc,
+        {
+            errno = EINVAL;
+            message(0, "Missing command for execution");
+        });
 
     *args = (const char * const *) (optind < argc ? argv + optind : 0);
 

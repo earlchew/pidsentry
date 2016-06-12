@@ -31,13 +31,16 @@
 
 #include "compiler_.h"
 
+#include "parse_.h"
+
 #include <stdbool.h>
 
 BEGIN_C_SCOPE;
 
 struct ShellCommand
 {
-    char *mCmd;
+    struct ParseArgList  mArgList_;
+    struct ParseArgList *mArgList;
 };
 
 /* -------------------------------------------------------------------------- */
