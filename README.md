@@ -45,15 +45,15 @@ pid, even if the host reboots.
 
 | Example | Scenario |
 | ------- |----------|
-| ```pidsentry -p /var/run/server.pid -- /usr/bin/server``` | Run server with pid file and monitor stdout |
-| ```pidsentry -p /var/run/server.pid -u -- /usr/bin/server``` | Run server with pid file and but without monitoring |
+| ```pidsentry -s -p /var/run/server.pid -- /usr/bin/server``` | Run server with pid file and monitor stdout |
+| ```pidsentry -s -p /var/run/server.pid -u -- /usr/bin/server``` | Run server with pid file and but without monitoring |
 
 ##### Examples for Clients
 
 | Example | Scenario |
 | ------- |----------|
-| ```pidsentry -p /var/run/server.pid -c -- 'kill $PIDSENTRY_CHILD_PID'``` | Run shell command against process |
-| ```pidsentry -p /var/run/server.pid -c -- /usr/bin/perl command.pl``` | Run program against process |
+| ```pidsentry -c -- /var/run/server.pid 'kill $PIDSENTRY_PID'``` | Run shell command against process |
+| ```pidsentry -c -- /var/run/server.pid /usr/bin/perl command.pl``` | Run program against process |
 
 #### Functional Specification
 
