@@ -111,14 +111,6 @@ closeFileOnExec(struct File *self, unsigned aCloseOnExec);
 CHECKED int
 ownFileCloseOnExec(const struct File *self);
 
-CHECKED ssize_t
-writeFile(struct File *self,
-          const char *aBuf, size_t aLen, struct Deadline *aDeadline);
-
-CHECKED ssize_t
-readFile(struct File *self,
-         char *aBuf, size_t aLen, struct Deadline *aDeadline);
-
 CHECKED off_t
 lseekFile(struct File *self, off_t aOffset, struct WhenceType aWhenceType);
 
@@ -133,6 +125,24 @@ ftruncateFile(struct File *self, off_t aLength);
 
 bool
 ownFileValid(const struct File *self);
+
+/* -------------------------------------------------------------------------- */
+CHECKED ssize_t
+writeFile(struct File *self,
+          const char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
+CHECKED ssize_t
+readFile(struct File *self,
+         char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
+/* -------------------------------------------------------------------------- */
+CHECKED ssize_t
+writeFileDeadline(struct File *self,
+                  const char *aBuf, size_t aLen, struct Deadline *aDeadline);
+
+CHECKED ssize_t
+readFileDeadline(struct File *self,
+                 char *aBuf, size_t aLen, struct Deadline *aDeadline);
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
