@@ -162,3 +162,82 @@ Eintr_exit(struct EintrModule *self)
 }
 
 /* -------------------------------------------------------------------------- */
+#if 0
+           * read(2), readv(2), write(2), writev(2),  and  ioctl(2)  calls  on
+             "slow"  devices.   A  "slow" device is one where the I/O call may
+             block for an indefinite time, for example, a terminal,  pipe,  or
+             socket.   (A  disk is not a slow device according to this defini-
+             tion.)  If an I/O call on a slow device has  already  transferred
+             some data by the time it is interrupted by a signal handler, then
+             the call will return a success status (normally,  the  number  of
+             bytes transferred).
+
+           * open(2),  if  it  can  block  (e.g.,  when  opening  a  FIFO; see
+             fifo(7)).
+
+           * wait(2), wait3(2), wait4(2), waitid(2), and waitpid(2).
+
+           * Socket interfaces: accept(2), connect(2),  recv(2),  recvfrom(2),
+             recvmsg(2),  send(2), sendto(2), and sendmsg(2), unless a timeout
+             has been set on the socket (see below).
+
+           * File locking interfaces: flock(2) and fcntl(2) F_SETLKW.
+
+           * POSIX   message   queue   interfaces:   mq_receive(3),   mq_time-
+             dreceive(3), mq_send(3), and mq_timedsend(3).
+
+           * futex(2)  FUTEX_WAIT  (since  Linux  2.6.22;  beforehand,  always
+             failed with EINTR).
+
+           * POSIX  semaphore  interfaces:  sem_wait(3)  and  sem_timedwait(3)
+             (since Linux 2.6.22; beforehand, always failed with EINTR).
+       The following interfaces are never restarted after being interrupted by
+       a signal handler, regardless of the use of SA_RESTART; they always fail
+       with the error EINTR when interrupted by a signal handler:
+
+           * Socket  interfaces,  when  a  timeout  has been set on the socket
+             using  setsockopt(2):  accept(2),   recv(2),   recvfrom(2),   and
+             recvmsg(2), if a receive timeout (SO_RCVTIMEO) has been set; con-
+             nect(2), send(2), sendto(2), and sendmsg(2), if  a  send  timeout
+             (SO_SNDTIMEO) has been set.
+
+           * Interfaces  used  to  wait  for signals: pause(2), sigsuspend(2),
+             sigtimedwait(2), and sigwaitinfo(2).
+
+           * File   descriptor   multiplexing    interfaces:    epoll_wait(2),
+             epoll_pwait(2), poll(2), ppoll(2), select(2), and pselect(2).
+
+           * System V IPC interfaces: msgrcv(2), msgsnd(2), semop(2), and sem-
+             timedop(2).
+
+           * Sleep   interfaces:   clock_nanosleep(2),    nanosleep(2),    and
+             usleep(3).
+
+           * read(2) from an inotify(7) file descriptor.
+
+           * io_getevents(2).
+
+       The  sleep(3) function is also never restarted if interrupted by a han-
+       dler, but gives a success return: the number of  seconds  remaining  to
+       sleep.
+           * Socket interfaces, when a timeout has  been  set  on  the  socket
+             using   setsockopt(2):   accept(2),   recv(2),  recvfrom(2),  and
+             recvmsg(2), if a receive timeout (SO_RCVTIMEO) has been set; con-
+             nect(2),  send(2),  sendto(2),  and sendmsg(2), if a send timeout
+             (SO_SNDTIMEO) has been set.
+
+           * epoll_wait(2), epoll_pwait(2).
+
+           * semop(2), semtimedop(2).
+
+           * sigtimedwait(2), sigwaitinfo(2).
+
+           * read(2) from an inotify(7) file descriptor.
+
+           * Linux 2.6.21 and earlier: futex(2) FUTEX_WAIT,  sem_timedwait(3),
+             sem_wait(3).
+
+           * Linux 2.6.8 and earlier: msgrcv(2), msgsnd(2).
+
+           * Linux 2.4 and earlier: nanosleep(2).
+#endif
