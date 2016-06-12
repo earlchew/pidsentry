@@ -36,7 +36,7 @@
 BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
-const char *
+char *
 findDlSymbol(const char *aSymName, uintptr_t *aSymAddr, const char **aErr);
 
 /* -------------------------------------------------------------------------- */

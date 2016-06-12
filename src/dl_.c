@@ -84,10 +84,10 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-const char *
+char *
 findDlSymbol(const char *aSymName, uintptr_t *aSymAddr, const char **aErr)
 {
-    const char *rc = 0;
+    char *rc = 0;
 
     if (aErr)
         *aErr = 0;
