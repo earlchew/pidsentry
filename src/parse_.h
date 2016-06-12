@@ -41,9 +41,9 @@ struct Pid;
 
 struct ParseArgList
 {
-    unsigned mArgc;
-    char   **mArgv;
-    char    *mArgs;
+    unsigned  mArgc;
+    char    **mArgv;
+    char     *mArgs;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -55,6 +55,9 @@ createParseArgListCSV(struct ParseArgList *self, const char *aArg);
 
 CHECKED struct ParseArgList *
 closeParseArgList(struct ParseArgList *self);
+
+const char * const *
+ownParseArgListArgv(const struct ParseArgList *self);
 
 /* -------------------------------------------------------------------------- */
 CHECKED int

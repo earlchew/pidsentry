@@ -345,6 +345,13 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+const char * const *
+ownParseArgListArgv(const struct ParseArgList *self)
+{
+    return (void *) self->mArgv;
+}
+
+/* -------------------------------------------------------------------------- */
 struct ParseArgList *
 closeParseArgList(struct ParseArgList *self)
 {
