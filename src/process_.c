@@ -282,6 +282,17 @@ changeSigAction_(unsigned          aSigNum,
         else
             nextAction.sa_handler = dispatchSigHandler_;
 
+        /* Require that signal delivery not restart system calls.
+         * This is important so that event loops have a chance
+         * to re-compute their deadlines. See restart_syscalls()
+         * for related information pertaining to SIGCONT.
+         *
+         * See the wrappers in eintr_.c that wrap system calls
+         * to ensure that restart semantics are available. */
+
+        ERROR_IF(
+            (nextAction.sa_flags & SA_RESTART));
+
         /* Require that signal delivery is not recursive to avoid
          * having to deal with too many levels of re-entrancy. */
 

@@ -34,6 +34,7 @@
 #include "test_.h"
 #include "process_.h"
 #include "deadline_.h"
+#include "eintr_.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -393,7 +394,7 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
 
         do
             ERROR_IF(
-                (bytes = read(aSrcFd, buffer, len),
+                (bytes = read_eintr(aSrcFd, buffer, len),
                  -1 == bytes && EINTR != errno));
         while (-1 == bytes);
 
@@ -408,7 +409,7 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
 
                 do
                     ERROR_IF(
-                        (wrote = write(aDstFd, bufptr, bufend - bufptr),
+                        (wrote = write_eintr(aDstFd, bufptr, bufend - bufptr),
                          -1 == wrote && EINTR != errno));
                 while (-1 == wrote);
 
@@ -648,7 +649,7 @@ readFdDeadline(int aFd,
         ssize_t len;
 
         ERROR_IF(
-            (len = read(aFd, bufPtr, bufEnd - bufPtr),
+            (len = read_eintr(aFd, bufPtr, bufEnd - bufPtr),
              -1 == len && (EINTR       != errno &&
                            EWOULDBLOCK != errno &&
                            EAGAIN      != errno) && bufPtr == aBuf));
@@ -733,7 +734,7 @@ writeFdDeadline(int aFd,
         ssize_t len;
 
         ERROR_IF(
-            (len = write(aFd, bufPtr, bufEnd - bufPtr),
+            (len = write_eintr(aFd, bufPtr, bufEnd - bufPtr),
              -1 == len && (EINTR       != errno &&
                            EWOULDBLOCK != errno &&
                            EAGAIN      != errno) && bufPtr == aBuf));

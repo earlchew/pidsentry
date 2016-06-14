@@ -39,6 +39,7 @@
 #include "error_.h"
 #include "macros_.h"
 #include "process_.h"
+#include "eintr_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -146,7 +147,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
 
     ssize_t rdlen;
     ERROR_IF(
-        (rdlen = read(
+        (rdlen = read_eintr(
             self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno

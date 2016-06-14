@@ -41,6 +41,7 @@
 #include "printf_.h"
 #include "error_.h"
 #include "process_.h"
+#include "eintr_.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -1057,7 +1058,7 @@ pollFdUmbilical_(struct ChildMonitor         *self,
 
     ssize_t rdlen;
     ERROR_IF(
-        (rdlen = read(
+        (rdlen = read_eintr(
             self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno
@@ -1161,7 +1162,7 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
 
     ssize_t wrlen;
     ERROR_IF(
-        (wrlen = write(
+        (wrlen = write_eintr(
             self->mUmbilical.mFile->mFd, buf, sizeof(buf)),
          -1 == wrlen && pollFdWriteUmbilicalError_(errno)));
 

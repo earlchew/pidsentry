@@ -33,6 +33,7 @@
 #include "error_.h"
 #include "thread_.h"
 #include "timekeeping_.h"
+#include "eintr_.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -103,7 +104,7 @@ setEventPipe(struct EventPipe *self)
 
         ssize_t rv = 0;
         ERROR_IF(
-            (rv = write(self->mPipe->mWrFile->mFd, buf, sizeof(buf)),
+            (rv = write_eintr(self->mPipe->mWrFile->mFd, buf, sizeof(buf)),
              1 != rv),
             {
                 errno = -1 == rv ? errno : EIO;
@@ -142,7 +143,7 @@ resetEventPipe_(struct EventPipe *self)
 
         ssize_t rv = 0;
         ERROR_IF(
-            (rv = read(self->mPipe->mRdFile->mFd, buf, sizeof(buf)),
+            (rv = read_eintr(self->mPipe->mRdFile->mFd, buf, sizeof(buf)),
              1 != rv),
             {
                 errno = -1 == rv ? errno : EIO;

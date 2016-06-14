@@ -34,6 +34,7 @@
 #include "error_.h"
 #include "thread_.h"
 #include "process_.h"
+#include "eintr_.h"
 
 #include <unistd.h>
 #include <errno.h>
@@ -152,7 +153,7 @@ pollFdDrainCopy_(struct TetherPoll           *self,
             ssize_t rdSize = -1;
 
             ERROR_IF(
-                (rdSize = read(self->mSrcFd, self->mBuf, self->mBufLen),
+                (rdSize = read_eintr(self->mSrcFd, self->mBuf, self->mBufLen),
                  -1 == rdSize && EINTR != errno && EWOULDBLOCK != errno));
 
             /* This is unlikely to happen since the ioctl() reported
@@ -189,9 +190,9 @@ pollFdDrainCopy_(struct TetherPoll           *self,
             ssize_t wrSize = -1;
 
             ERROR_IF(
-                (wrSize = write(self->mDstFd,
-                                self->mBufPtr,
-                                self->mBufEnd - self->mBufPtr),
+                (wrSize = write_eintr(self->mDstFd,
+                                      self->mBufPtr,
+                                      self->mBufEnd - self->mBufPtr),
                  -1 == wrSize && (EPIPE       != errno &&
                                   EWOULDBLOCK != errno &&
                                   EINTR       != errno)));
