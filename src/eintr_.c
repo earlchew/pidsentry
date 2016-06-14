@@ -27,6 +27,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#define EINTR_MODULE_DEFN_
 #include "eintr_.h"
 #include "dl_.h"
 #include "error_.h"
@@ -37,6 +38,24 @@
 
 /* -------------------------------------------------------------------------- */
 static unsigned moduleInit_;
+
+/* -------------------------------------------------------------------------- */
+#define EINTR_FUNCTION_DEFN_(Enum_, Return_, Name_, Signature_, Args_)  \
+                                                                        \
+Return_                                                                 \
+Name_ Signature_                                                        \
+{                                                                       \
+    SYSCALL_RESTART(Enum_, Name_, Args_);                               \
+}                                                                       \
+                                                                        \
+Return_                                                                 \
+Name_ ## _eintr Signature_                                              \
+{                                                                       \
+    return                                                              \
+        SYSCALL_EINTR(Enum_, Name_) Args_;                              \
+}                                                                       \
+                                                                        \
+struct EintrModule
 
 /* -------------------------------------------------------------------------- */
 /* Interrupted System Calls
@@ -52,13 +71,27 @@ struct SystemCall
 
 enum SystemCallKind
 {
+    SYSTEMCALL_PREAD,
+    SYSTEMCALL_PREADV,
+    SYSTEMCALL_PWRITE,
+    SYSTEMCALL_PWRITEV,
     SYSTEMCALL_READ,
+    SYSTEMCALL_READV,
+    SYSTEMCALL_WRITE,
+    SYSTEMCALL_WRITEV,
     SYSTEMCALL_KINDS
 };
 
 static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
-    [SYSTEMCALL_READ] = { "read" },
+    [SYSTEMCALL_PREAD]   = { "pread" },
+    [SYSTEMCALL_PREADV]  = { "preadv" },
+    [SYSTEMCALL_PWRITE]  = { "pwrite" },
+    [SYSTEMCALL_PWRITEV] = { "pwritev" },
+    [SYSTEMCALL_READ]    = { "read" },
+    [SYSTEMCALL_READV]   = { "readv" },
+    [SYSTEMCALL_WRITE]   = { "write" },
+    [SYSTEMCALL_WRITEV]  = { "writev" },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -74,6 +107,21 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
                                                                 \
         (DECLTYPE(Function_) *) syscall_;                       \
     })
+
+/* -------------------------------------------------------------------------- */
+#define SYSCALL_RESTART(Kind_, Function_, Args_)                \
+    do                                                          \
+    {                                                           \
+        while (1)                                               \
+        {                                                       \
+            uintptr_t syscall_ = invokeSystemCall((Kind_));     \
+                                                                \
+            AUTO(rc, ((DECLTYPE(Function_) *) syscall_) Args_); \
+                                                                \
+            if (-1 != rc || EINTR != errno)                     \
+                return rc;                                      \
+        }                                                       \
+    } while (0)
 
 /* -------------------------------------------------------------------------- */
 static uintptr_t
@@ -114,12 +162,71 @@ interruptSystemCall(enum SystemCallKind aKind)
 }
 
 /* -------------------------------------------------------------------------- */
-ssize_t
-read(int aFd, void *aBuf, size_t aCount)
+static uintptr_t
+invokeSystemCall(enum SystemCallKind aKind)
 {
-    return
-        SYSCALL_EINTR(SYSTEMCALL_READ, read)(aFd, aBuf, aCount);
+    return initSystemCall(&systemCall_[aKind]);
 }
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_PREAD,
+    ssize_t,
+    pread,
+    (int aFd, void *aBuf, size_t aCount, off_t aOffset),
+    (aFd, aBuf, aCount, aOffset));
+
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_PWRITE,
+    ssize_t,
+    pwrite,
+    (int aFd, const void *aBuf, size_t aCount, off_t aOffset),
+    (aFd, aBuf, aCount, aOffset));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_READ,
+    ssize_t,
+    read,
+    (int aFd, void *aBuf, size_t aCount),
+    (aFd, aBuf, aCount));
+
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_WRITE,
+    ssize_t,
+    write,
+    (int aFd, const void *aBuf, size_t aCount),
+    (aFd, aBuf, aCount));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_READV,
+    ssize_t,
+    readv,
+    (int aFd, const struct iovec *aVec, int aCount),
+    (aFd, aVec, aCount));
+
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_WRITEV,
+    ssize_t,
+    writev,
+    (int aFd, const struct iovec *aVec, int aCount),
+    (aFd, aVec, aCount));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_PREADV,
+    ssize_t,
+    preadv,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
+    (aFd, aVec, aCount, aOffset));
+
+EINTR_FUNCTION_DEFN_(
+    SYSTEMCALL_PWRITEV,
+    ssize_t,
+    pwritev,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
+    (aFd, aVec, aCount, aOffset));
 
 /* -------------------------------------------------------------------------- */
 int

@@ -29,11 +29,32 @@
 #ifndef EINTR_H
 #define EINTR_H
 
-#define read           __read
-#include <unistd.h>
-#undef  read
-
 #include "compiler_.h"
+
+#ifdef EINTR_MODULE_DEFN_
+#define pread          __pread
+#define pwrite         __pwrite
+#define preadv         __preadv
+#define pwritev        __pwritev
+#define read           __read
+#define readv          __readv
+#define write          __write
+#define writev         __writev
+#endif
+
+#include <unistd.h>
+#include <sys/uio.h>
+
+#ifdef EINTR_MODULE_DEFN_
+#undef  pread
+#undef  preadv
+#undef  pwrite
+#undef  pwritev
+#undef  read
+#undef  readv
+#undef  write
+#undef  writev
+#endif
 
 /* -------------------------------------------------------------------------- */
 struct EintrModule
@@ -42,8 +63,50 @@ struct EintrModule
 };
 
 /* -------------------------------------------------------------------------- */
-ssize_t
-read(int aFd, void *aBuf, size_t aCount);
+#ifndef EINTR_MODULE_DEFN_
+#define EINTR_FUNCTION_DECL_(Return_, Name_, Signature_) \
+    Return_ Name_ ## _eintr Signature_;                  \
+    struct EintrModule
+#else
+#define EINTR_FUNCTION_DECL_(Return_, Name_, Signature_) \
+    Return_ Name_           Signature_;                  \
+    Return_ Name_ ## _eintr Signature_;                  \
+    struct EintrModule
+#endif
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DECL_(
+    ssize_t, read,
+    (int aFd, void *aBuf, size_t aCount));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, write,
+    (int aFd, const void *aBuf, size_t aCount));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, pread,
+    (int aFd, void *aBuf, size_t aCount, off_t aOffset));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, pwrite,
+    (int aFd, const void *aBuf, size_t aCount, off_t aOffset));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DECL_(
+    ssize_t, readv,
+    (int aFd, const struct iovec *aVec, int aCount));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, writev,
+    (int aFd, const struct iovec *aVec, int aCount));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, preadv,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, pwritev,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset));
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
