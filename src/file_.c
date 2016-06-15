@@ -194,9 +194,7 @@ Finally:
 
     FINALLY
     ({
-        if (-1 == dirFd)
-            ABORT_IF(
-                close(dirFd));
+        dirFd = closeFd(dirFd);
     });
 
     return rc;
