@@ -32,8 +32,10 @@
 #include "compiler_.h"
 #include "pipe_.h"
 #include "thread_.h"
+#include "eventlatch_.h"
 
 #include <stdbool.h>
+#include <sys/queue.h>
 
 BEGIN_C_SCOPE;
 
@@ -44,6 +46,9 @@ struct EventPipe
     struct Pipe            mPipe_;
     struct Pipe           *mPipe;
     bool                   mSignalled;
+
+    struct EventLatchList   mLatchList_;
+    struct EventLatchList  *mLatchList;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -58,6 +63,15 @@ setEventPipe(struct EventPipe *self);
 
 CHECKED int
 resetEventPipe(struct EventPipe *self);
+
+/* -------------------------------------------------------------------------- */
+void
+attachEventPipeLatch_(struct EventPipe           *self,
+                      struct EventLatchListEntry *aEntry);
+
+void
+detachEventPipeLatch_(struct EventPipe           *self,
+                      struct EventLatchListEntry *aEntry);
 
 /* -------------------------------------------------------------------------- */
 

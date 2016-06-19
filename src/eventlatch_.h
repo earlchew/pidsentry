@@ -32,16 +32,31 @@
 #include "compiler_.h"
 #include "thread_.h"
 
+#include <sys/queue.h>
+
 BEGIN_C_SCOPE;
 
 struct EventPipe;
+struct EventLatch;
+
+struct EventLatchListEntry
+{
+    struct EventLatch              *mLatch;
+    LIST_ENTRY(EventLatchListEntry) mEntry;
+};
+
+struct EventLatchList
+{
+    LIST_HEAD(, EventLatchListEntry) mList;
+};
 
 struct EventLatch
 {
-    struct ThreadSigMutex  mMutex_;
-    struct ThreadSigMutex *mMutex;
-    unsigned               mEvent;
-    struct EventPipe      *mPipe;
+    struct ThreadSigMutex       mMutex_;
+    struct ThreadSigMutex      *mMutex;
+    unsigned                    mEvent;
+    struct EventPipe           *mPipe;
+    struct EventLatchListEntry  mList;
 };
 
 enum EventLatchSetting

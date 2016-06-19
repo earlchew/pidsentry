@@ -28,6 +28,7 @@
 */
 
 #include "eventpipe_.h"
+#include "eventlatch_.h"
 #include "macros_.h"
 #include "error_.h"
 #include "thread_.h"
@@ -45,6 +46,9 @@ createEventPipe(struct EventPipe *self, unsigned aFlags)
     self->mSignalled = false;
     self->mMutex     = createThreadSigMutex(&self->mMutex_);
 
+    LIST_INIT(&self->mLatchList_.mList);
+    self->mLatchList = &self->mLatchList_;
+
     ERROR_IF(
         createPipe(&self->mPipe_, aFlags));
     self->mPipe = &self->mPipe_;
@@ -56,10 +60,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-        {
-            self->mPipe  = closePipe(self->mPipe);
-            self->mMutex = destroyThreadSigMutex(self->mMutex);
-        }
+            self = closeEventPipe(self);
     });
 
     return rc;
@@ -71,6 +72,10 @@ closeEventPipe(struct EventPipe *self)
 {
     if (self)
     {
+        if (self->mLatchList)
+            ensure(LIST_EMPTY(&self->mLatchList->mList));
+        self->mLatchList = 0;
+
         self->mPipe  = closePipe(self->mPipe);
         self->mMutex = destroyThreadSigMutex(self->mMutex);
     }
@@ -154,6 +159,30 @@ Finally:
      });
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+attachEventPipeLatch_(struct EventPipe           *self,
+                      struct EventLatchListEntry *aEntry)
+{
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
+
+    LIST_INSERT_HEAD(&self->mLatchList->mList, aEntry, mEntry);
+
+    lock = unlockThreadSigMutex(self->mMutex);
+}
+
+/* -------------------------------------------------------------------------- */
+void
+detachEventPipeLatch_(struct EventPipe           *self,
+                      struct EventLatchListEntry *aEntry)
+{
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
+
+    LIST_REMOVE(aEntry, mEntry);
+
+    lock = unlockThreadSigMutex(self->mMutex);
 }
 
 /* -------------------------------------------------------------------------- */

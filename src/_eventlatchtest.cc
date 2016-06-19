@@ -187,11 +187,11 @@ TEST(EventLatchTest, Pipe)
     struct EventPipe  eventPipe_;
     struct EventPipe *eventPipe = 0;
 
-    EXPECT_EQ(0, createEventLatch(&eventLatch_));
-    eventLatch = &eventLatch_;
-
     EXPECT_EQ(0, createEventPipe(&eventPipe_, 0));
     eventPipe = &eventPipe_;
+
+    EXPECT_EQ(0, createEventLatch(&eventLatch_));
+    eventLatch = &eventLatch_;
 
     EXPECT_EQ(EventLatchSettingOff,
               bindEventLatchPipe(eventLatch, eventPipe));
@@ -227,8 +227,8 @@ TEST(EventLatchTest, Pipe)
               resetEventLatch(eventLatch));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
-    eventPipe = closeEventPipe(eventPipe);
     eventLatch = closeEventLatch(eventLatch);
+    eventPipe = closeEventPipe(eventPipe);
 }
 
 #include "../googletest/src/gtest_main.cc"

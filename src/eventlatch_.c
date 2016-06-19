@@ -45,9 +45,10 @@
 int
 createEventLatch(struct EventLatch *self)
 {
-    self->mMutex = createThreadSigMutex(&self->mMutex_);
-    self->mEvent = 0;
-    self->mPipe  = 0;
+    self->mMutex       = createThreadSigMutex(&self->mMutex_);
+    self->mEvent       = 0;
+    self->mPipe        = 0;
+    self->mList.mLatch = self;
 
     return 0;
 }
@@ -87,14 +88,22 @@ bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
             ? EventLatchSettingOn
             : EventLatchSettingOff;
 
-    if (aPipe)
+    if (self->mPipe != aPipe)
     {
-        if (EventLatchSettingOff != setting)
-            ERROR_IF(
-                -1 == setEventPipe(aPipe));
-    }
+        if (self->mPipe)
+            detachEventPipeLatch_(self->mPipe, &self->mList);
 
-    self->mPipe = aPipe;
+        self->mPipe = aPipe;
+
+        if (self->mPipe)
+        {
+            attachEventPipeLatch_(self->mPipe, &self->mList);
+
+            if (EventLatchSettingOff != setting)
+                ERROR_IF(
+                    -1 == setEventPipe(self->mPipe));
+        }
+    }
 
     rc = setting;
 

@@ -1881,12 +1881,12 @@ monitorChildProcess(struct ChildProcess     *self,
     tetherThread = &tetherThread_;
 
     ERROR_IF(
-        createEventLatch(&contLatch_));
-    contLatch = &contLatch_;
-
-    ERROR_IF(
         createEventPipe(&eventPipe_, O_CLOEXEC | O_NONBLOCK));
     eventPipe = &eventPipe_;
+
+    ERROR_IF(
+        createEventLatch(&contLatch_));
+    contLatch = &contLatch_;
 
     ERROR_IF(
         EventLatchSettingError == bindEventLatchPipe(
@@ -2141,8 +2141,8 @@ Finally:
             EventLatchSettingError == bindEventLatchPipe(
                 self->mChildLatch, 0));
 
-        eventPipe = closeEventPipe(eventPipe);
         contLatch = closeEventLatch(contLatch);
+        eventPipe = closeEventPipe(eventPipe);
 
         tetherThread = closeTetherThread(tetherThread);
 
