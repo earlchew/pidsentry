@@ -64,6 +64,10 @@ setEventPipe(struct EventPipe *self);
 CHECKED int
 resetEventPipe(struct EventPipe *self);
 
+CHECKED int
+pollEventPipe(struct EventPipe            *self,
+              const struct EventClockTime *aPollTime);
+
 /* -------------------------------------------------------------------------- */
 void
 attachEventPipeLatch_(struct EventPipe           *self,

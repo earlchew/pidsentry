@@ -106,11 +106,11 @@ createChildProcess(struct ChildProcess *self)
     self->mChildMonitor.mMonitor = 0;
 
     ERROR_IF(
-        createEventLatch(&self->mChildLatch_));
+        createEventLatch(&self->mChildLatch_, "child"));
     self->mChildLatch = &self->mChildLatch_;
 
     ERROR_IF(
-        createEventLatch(&self->mUmbilicalLatch_));
+        createEventLatch(&self->mUmbilicalLatch_, "umbilical"));
     self->mUmbilicalLatch = &self->mUmbilicalLatch_;
 
     self->mChildMonitor.mMutex = createThreadSigMutex(
@@ -857,8 +857,8 @@ struct ChildMonitor
 
     struct
     {
-        struct EventLatch *mChildLatch;
-        struct EventLatch *mUmbilicalLatch;
+        bool mChildLatchDisabled;
+        bool mUmbilicalLatchDisabled;
     } mEvent;
 
     struct
@@ -1190,12 +1190,12 @@ Finally:
 
 static CHECKED int
 pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
-                          int                          aEvent,
+                          bool                         aEnabled,
                           const struct EventClockTime *aPollTime)
 {
     int rc = -1;
 
-    if (aEvent)
+    if (aEnabled)
     {
         /* The umbilical process is running again after being stopped for
          * some time. Restart the tether timeout so that the stoppage
@@ -1215,6 +1215,8 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor         *self,
         debug(0,
               "umbilical pid %" PRId_Pid " has terminated",
               FMTd_Pid(self->mUmbilical.mPid));
+
+        self->mEvent.mUmbilicalLatchDisabled = true;
     }
 
     rc = 0;
@@ -1373,12 +1375,14 @@ Finally:
 
 static CHECKED int
 pollFdContEvent_(struct ChildMonitor         *self,
-                 int                          aEvent,
+                 bool                         aEnabled,
                  const struct EventClockTime *aPollTime)
 {
     int rc = -1;
 
-    ensure(aEvent);
+    ensure(aEnabled);
+
+    debug(0, "detected continuation after stoppage");
 
     ERROR_IF(
         pollFdContUmbilical_(self, aPollTime));
@@ -1571,8 +1575,8 @@ pollFdCompletion_(struct ChildMonitor *self)
      * has completed. */
 
     return
-        ! (self->mEvent.mChildLatch ||
-           self->mPollFds[POLL_FD_CHILD_TETHER].events);
+        self->mEvent.mChildLatchDisabled &&
+        ! self->mPollFds[POLL_FD_CHILD_TETHER].events;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1586,12 +1590,12 @@ pollFdCompletion_(struct ChildMonitor *self)
 
 static CHECKED int
 pollFdReapChildEvent_(struct ChildMonitor         *self,
-                      int                          aEvent,
+                      bool                         aEnabled,
                       const struct EventClockTime *aPollTime)
 {
     int rc = -1;
 
-    if (aEvent)
+    if (aEnabled)
     {
         /* The child process is running again after being stopped for
          * some time. Restart the tether timeout so that the stoppage
@@ -1611,6 +1615,8 @@ pollFdReapChildEvent_(struct ChildMonitor         *self,
         debug(0,
               "child pid %" PRId_Pid " has terminated",
               FMTd_Pid(self->mChildPid));
+
+        self->mEvent.mChildLatchDisabled = true;
 
         /* Record when the child has terminated, but do not exit
          * the event loop until all the IO has been flushed. With the
@@ -1670,44 +1676,6 @@ Finally:
  * multiple events. */
 
 static CHECKED int
-pollFdEventLatch_(
-    struct EventLatch **aLatch, const char *aRole, int *aSignalled)
-{
-    int rc = -1;
-
-    int signalled = 0;
-
-    if (*aLatch)
-    {
-        enum EventLatchSetting setting;
-        ERROR_IF(
-            (setting = resetEventLatch(*aLatch),
-             EventLatchSettingError == setting),
-            {
-                warn(errno, "Unable to reset %s event latch", aRole);
-            });
-
-        if (EventLatchSettingOn == setting)
-            signalled = 1;
-        else if (EventLatchSettingDisabled == setting)
-        {
-            signalled = -1;
-            *aLatch = 0;
-        }
-    }
-
-    *aSignalled = signalled;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-static CHECKED int
 pollFdEventPipe_(struct ChildMonitor         *self,
                  const struct EventClockTime *aPollTime)
 {
@@ -1725,60 +1693,10 @@ pollFdEventPipe_(struct ChildMonitor         *self,
 
     if ( ! testSleep(TestLevelRace))
     {
-        do
-        {
-            debug(0, "checking event pipe");
+        debug(0, "checking event pipe");
 
-            int err;
-            ERROR_IF(
-                (err = resetEventPipe(self->mEventPipe),
-                 -1 == err && EINTR != errno));
-
-            if ( ! err)
-                continue;
-
-            struct
-            {
-                const char         *mRole;
-                struct EventLatch **mLatch;
-                int               (*mPoll)(
-                    struct ChildMonitor *,
-                    int,
-                    const struct EventClockTime *);
-            }
-            eventLatches[] =
-            {
-                { "child",
-                  &self->mEvent.mChildLatch, pollFdReapChildEvent_ },
-
-                { "umbilical",
-                  &self->mEvent.mUmbilicalLatch, pollFdReapUmbilicalEvent_ },
-
-                { "continuation",
-                  &self->mContLatch, pollFdContEvent_ },
-            };
-
-            for (unsigned ix = 0; NUMBEROF(eventLatches) > ix; ++ix)
-            {
-                AUTO(eventLatch, &eventLatches[ix]);
-
-                int signalled;
-
-                ERROR_IF(
-                    pollFdEventLatch_(
-                        eventLatch->mLatch, eventLatch->mRole, &signalled));
-
-                if (signalled)
-                    ERROR_IF(
-                        eventLatch->mPoll(self, signalled > 0, aPollTime),
-                        {
-                            warn(errno,
-                                 "Unable to poll %s event latch",
-                                 eventLatch->mRole);
-                        });
-            }
-        }
-        while (0);
+        ERROR_IF(
+            -1 == pollEventPipe(self->mEventPipe, aPollTime));
     }
 
     rc = 0;
@@ -1885,19 +1803,8 @@ monitorChildProcess(struct ChildProcess     *self,
     eventPipe = &eventPipe_;
 
     ERROR_IF(
-        createEventLatch(&contLatch_));
+        createEventLatch(&contLatch_, "continue"));
     contLatch = &contLatch_;
-
-    ERROR_IF(
-        EventLatchSettingError == bindEventLatchPipe(
-            self->mChildLatch, eventPipe));
-
-    ERROR_IF(
-        EventLatchSettingError == bindEventLatchPipe(
-            self->mUmbilicalLatch, eventPipe));
-
-    ERROR_IF(
-        EventLatchSettingError == bindEventLatchPipe(contLatch, eventPipe));
 
     /* Divide the timeout into two cycles so that if the child process is
      * stopped, the first cycle will have a chance to detect it and
@@ -1920,8 +1827,8 @@ monitorChildProcess(struct ChildProcess     *self,
 
         .mEvent =
         {
-            .mChildLatch     = self->mChildLatch,
-            .mUmbilicalLatch = self->mUmbilicalLatch,
+            .mChildLatchDisabled     = false,
+            .mUmbilicalLatchDisabled = false,
         },
 
         .mTermination =
@@ -2072,6 +1979,27 @@ monitorChildProcess(struct ChildProcess     *self,
     };
     childMonitor = &childMonitor_;
 
+    ERROR_IF(
+        EventLatchSettingError == bindEventLatchPipe(
+            self->mChildLatch, eventPipe,
+            EventLatchMethod(
+                pollFdReapChildEvent_,
+                childMonitor)));
+
+    ERROR_IF(
+        EventLatchSettingError == bindEventLatchPipe(
+            self->mUmbilicalLatch, eventPipe,
+            EventLatchMethod(
+                pollFdReapUmbilicalEvent_,
+                childMonitor)));
+
+    ERROR_IF(
+        EventLatchSettingError == bindEventLatchPipe(
+            contLatch, eventPipe,
+            EventLatchMethod(
+                pollFdContEvent_,
+                childMonitor)));
+
     if ( ! gOptions.mTether)
         disconnectPollFdTether_(childMonitor);
 
@@ -2134,12 +2062,12 @@ Finally:
         pollfd = closePollFd(pollfd);
 
         ABORT_IF(
-            EventLatchSettingError == bindEventLatchPipe(
-                self->mUmbilicalLatch, 0));
+            EventLatchSettingError == unbindEventLatchPipe(
+                self->mUmbilicalLatch));
 
         ABORT_IF(
-            EventLatchSettingError == bindEventLatchPipe(
-                self->mChildLatch, 0));
+            EventLatchSettingError == unbindEventLatchPipe(
+                self->mChildLatch));
 
         contLatch = closeEventLatch(contLatch);
         eventPipe = closeEventPipe(eventPipe);

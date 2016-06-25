@@ -33,6 +33,8 @@
 #include "error_.h"
 
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* -------------------------------------------------------------------------- */
 #define EVENTLATCH_DISABLE_BIT_ 0
@@ -43,12 +45,32 @@
 
 /* -------------------------------------------------------------------------- */
 int
-createEventLatch(struct EventLatch *self)
+createEventLatch(struct EventLatch *self, const char *aName)
 {
-    self->mMutex       = createThreadSigMutex(&self->mMutex_);
-    self->mEvent       = 0;
-    self->mPipe        = 0;
-    self->mList.mLatch = self;
+    int rc = -1;
+
+    self->mMutex = createThreadSigMutex(&self->mMutex_);
+    self->mEvent = 0;
+    self->mPipe  = 0;
+    self->mName  = 0;
+    self->mList  = (struct EventLatchListEntry)
+    {
+        .mMethod = EventLatchMethodNil(),
+        .mLatch = self,
+    };
+
+    ERROR_UNLESS(
+        self->mName = strdup(aName));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            self = closeEventLatch(self);
+    });
 
     return 0;
 }
@@ -61,17 +83,58 @@ closeEventLatch(struct EventLatch *self)
     {
         if (self->mPipe)
             ABORT_IF(
-                EventLatchSettingError == bindEventLatchPipe(self, 0));
+                EventLatchSettingError == unbindEventLatchPipe(self));
 
         self->mMutex = destroyThreadSigMutex(self->mMutex);
+
+        free(self->mName);
     }
 
     return 0;
 }
 
 /* -------------------------------------------------------------------------- */
-enum EventLatchSetting
-bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
+int
+printEventLatch(const struct EventLatch *self, FILE *aFile)
+{
+    return fprintf(aFile, "<%p %s>", self, self->mName);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+signalEventLatch_(struct EventLatch *self)
+{
+    int rc = -1;
+
+    if (self->mPipe)
+    {
+        int signalled;
+
+        do
+        {
+            signalled = -1;
+
+            ERROR_IF(
+                (signalled = setEventPipe(self->mPipe),
+                 -1 == signalled && EINTR != errno));
+
+        } while (-1 == signalled);
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static enum EventLatchSetting
+bindEventLatchPipe_(struct EventLatch       *self,
+                    struct EventPipe        *aPipe,
+                    struct EventLatchMethod  aMethod)
 {
     enum EventLatchSetting rc = EventLatchSettingError;
 
@@ -91,17 +154,21 @@ bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe)
     if (self->mPipe != aPipe)
     {
         if (self->mPipe)
+        {
             detachEventPipeLatch_(self->mPipe, &self->mList);
+            self->mList.mMethod = EventLatchMethodNil();
+        }
 
         self->mPipe = aPipe;
 
         if (self->mPipe)
         {
+            self->mList.mMethod = aMethod;
             attachEventPipeLatch_(self->mPipe, &self->mList);
 
             if (EventLatchSettingOff != setting)
                 ERROR_IF(
-                    -1 == setEventPipe(self->mPipe));
+                    signalEventLatch_(self));
         }
     }
 
@@ -115,6 +182,23 @@ Finally:
     });
 
     return rc;
+}
+
+enum EventLatchSetting
+bindEventLatchPipe(struct EventLatch       *self,
+                   struct EventPipe        *aPipe,
+                   struct EventLatchMethod  aMethod)
+{
+    ensure(aPipe);
+    ensure( ! self->mPipe);
+
+    return bindEventLatchPipe_(self, aPipe, aMethod);
+}
+
+enum EventLatchSetting
+unbindEventLatchPipe(struct EventLatch *self)
+{
+    return bindEventLatchPipe_(self, 0, EventLatchMethodNil());
 }
 
 /* -------------------------------------------------------------------------- */
@@ -137,9 +221,8 @@ disableEventLatch(struct EventLatch *self)
             ? EventLatchSettingOn
             : EventLatchSettingOff;
 
-        if (self->mPipe)
-            ERROR_IF(
-                -1 == setEventPipe(self->mPipe));
+        ERROR_IF(
+            signalEventLatch_(self));
 
         self->mEvent = event ^ EVENTLATCH_DISABLE_MASK_;
     }
@@ -174,14 +257,10 @@ setEventLatch(struct EventLatch *self)
         setting = EventLatchSettingOn;
     else
     {
-        setting = (event & EVENTLATCH_DATA_MASK_)
-            ? EventLatchSettingOn
-            : EventLatchSettingOff;
         setting = EventLatchSettingOff;
 
-        if (self->mPipe)
-            ERROR_IF(
-                -1 == setEventPipe(self->mPipe));
+        ERROR_IF(
+            signalEventLatch_(self));
 
         self->mEvent = event ^ EVENTLATCH_DATA_MASK_;
     }
@@ -262,6 +341,58 @@ Finally:
     ({
         lock = unlockThreadSigMutex(lock);
     });
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+pollEventLatchListEntry(struct EventLatchListEntry  *self,
+                        const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    int called = 0;
+
+    if (self->mLatch)
+    {
+        enum EventLatchSetting setting;
+        ERROR_IF(
+            (setting = resetEventLatch(self->mLatch),
+             EventLatchSettingError == setting),
+            {
+                warn(errno,
+                     "Unable to reset event latch %" PRIs_Method,
+                     FMTs_Method(printEventLatch, self->mLatch));
+            });
+
+        if (EventLatchSettingOff != setting)
+        {
+            bool enabled;
+
+            if (EventLatchSettingOn == setting)
+                enabled = true;
+            else
+            {
+                ensure(EventLatchSettingDisabled == setting);
+
+                self->mLatch = 0;
+
+                enabled = false;
+            }
+
+            called = 1;
+
+            ERROR_IF(
+                callEventLatchMethod(self->mMethod, enabled, aPollTime));
+        }
+    }
+
+    rc = called;
+
+Finally:
+
+    FINALLY({});
 
     return rc;
 }

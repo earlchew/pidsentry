@@ -35,6 +35,7 @@
 #include "timekeeping_.h"
 
 #include <errno.h>
+#include <unistd.h>
 
 /* -------------------------------------------------------------------------- */
 int
@@ -95,11 +96,14 @@ setEventPipe(struct EventPipe *self)
 
     if ( ! self->mSignalled)
     {
+        /* Use write() so that the caller can optionally restart the
+         * the operation on EINTR. */
+
         char buf[1] = { 0 };
 
         ssize_t rv = 0;
         ERROR_IF(
-            (rv = writeFile(self->mPipe->mWrFile, buf, 1, 0),
+            (rv = write(self->mPipe->mWrFile->mFd, buf, sizeof(buf)),
              1 != rv),
             {
                 errno = -1 == rv ? errno : EIO;
@@ -122,22 +126,23 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
-resetEventPipe(struct EventPipe *self)
+static int
+resetEventPipe_(struct EventPipe *self)
 {
     int rc = -1;
-
-    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
     int signalled = 0;
 
     if (self->mSignalled)
     {
+        /* Use read() so that the caller can optionally restart the
+         * the operation on EINTR. */
+
         char buf[1];
 
         ssize_t rv = 0;
         ERROR_IF(
-            (rv = readFile(self->mPipe->mRdFile, buf, 1, 0),
+            (rv = read(self->mPipe->mRdFile->mFd, buf, sizeof(buf)),
              1 != rv),
             {
                 errno = -1 == rv ? errno : EIO;
@@ -148,6 +153,27 @@ resetEventPipe(struct EventPipe *self)
         self->mSignalled = false;
         signalled        = 1;
     }
+
+    rc = signalled;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+resetEventPipe(struct EventPipe *self)
+{
+    int rc = -1;
+
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
+
+    int signalled;
+    ERROR_IF(
+        (signalled = resetEventPipe_(self),
+         -1 == signalled));
 
     rc = signalled;
 
@@ -183,6 +209,49 @@ detachEventPipeLatch_(struct EventPipe           *self,
     LIST_REMOVE(aEntry, mEntry);
 
     lock = unlockThreadSigMutex(self->mMutex);
+}
+
+int
+pollEventPipe(struct EventPipe            *self,
+              const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
+
+    int signalled;
+    ERROR_IF(
+        (signalled = resetEventPipe_(self),
+         -1 == signalled));
+
+    int pollCount = 0;
+
+    if (signalled)
+    {
+        struct EventLatchListEntry *iter;
+
+        LIST_FOREACH(iter, &self->mLatchList->mList, mEntry)
+        {
+            int called;
+            ERROR_IF(
+                (called = pollEventLatchListEntry(iter, aPollTime),
+                 -1 == called));
+
+            if (called)
+                ++pollCount;
+        }
+    }
+
+    rc = pollCount;
+
+Finally:
+
+    FINALLY
+    ({
+        lock = unlockThreadSigMutex(self->mMutex);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

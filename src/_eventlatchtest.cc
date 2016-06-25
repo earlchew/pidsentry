@@ -29,6 +29,7 @@
 
 #include "eventlatch_.h"
 #include "eventpipe_.h"
+#include "timekeeping_.h"
 
 #include "gtest/gtest.h"
 
@@ -37,7 +38,7 @@ TEST(EventLatchTest, SetReset)
     struct EventLatch  eventLatch_;
     struct EventLatch *eventLatch = 0;
 
-    EXPECT_EQ(0, createEventLatch(&eventLatch_));
+    EXPECT_EQ(0, createEventLatch(&eventLatch_, "test"));
     eventLatch = &eventLatch_;
 
     EXPECT_EQ(EventLatchSettingOff,
@@ -80,7 +81,7 @@ TEST(EventLatchTest, DisableSetReset)
     struct EventLatch  eventLatch_;
     struct EventLatch *eventLatch = 0;
 
-    EXPECT_EQ(0, createEventLatch(&eventLatch_));
+    EXPECT_EQ(0, createEventLatch(&eventLatch_, "test"));
     eventLatch = &eventLatch_;
 
     EXPECT_EQ(EventLatchSettingOff,
@@ -106,7 +107,7 @@ TEST(EventLatchTest, SetDisableSetReset)
     struct EventLatch  eventLatch_;
     struct EventLatch *eventLatch = 0;
 
-    EXPECT_EQ(0, createEventLatch(&eventLatch_));
+    EXPECT_EQ(0, createEventLatch(&eventLatch_, "test"));
     eventLatch = &eventLatch_;
 
     EXPECT_EQ(EventLatchSettingOff,
@@ -140,46 +141,49 @@ TEST(EventLatchTest, PipeBindUnbind)
     struct EventPipe  eventPipe_;
     struct EventPipe *eventPipe = 0;
 
-    EXPECT_EQ(0, createEventLatch(&eventLatch_));
+    EXPECT_EQ(0, createEventLatch(&eventLatch_, "test"));
     eventLatch = &eventLatch_;
 
     EXPECT_EQ(0, createEventPipe(&eventPipe_, 0));
     eventPipe = &eventPipe_;
 
     EXPECT_EQ(EventLatchSettingOff,
-              bindEventLatchPipe(eventLatch, eventPipe));
+              bindEventLatchPipe(eventLatch, eventPipe,
+                                 EventLatchMethodNil()));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
     EXPECT_EQ(EventLatchSettingOff,
-              bindEventLatchPipe(eventLatch, 0));
+              unbindEventLatchPipe(eventLatch));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
     EXPECT_EQ(EventLatchSettingOff,
               setEventLatch(eventLatch));
     EXPECT_EQ(EventLatchSettingOn,
-              bindEventLatchPipe(eventLatch, eventPipe));
+              bindEventLatchPipe(eventLatch, eventPipe,
+                                 EventLatchMethodNil()));
     EXPECT_EQ(1, resetEventPipe(eventPipe));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
     EXPECT_EQ(EventLatchSettingOn,
-              bindEventLatchPipe(eventLatch, 0));
+              unbindEventLatchPipe(eventLatch));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
     EXPECT_EQ(EventLatchSettingOn,
               disableEventLatch(eventLatch));
     EXPECT_EQ(EventLatchSettingDisabled,
-              bindEventLatchPipe(eventLatch, eventPipe));
+              bindEventLatchPipe(eventLatch, eventPipe,
+                                 EventLatchMethodNil()));
     EXPECT_EQ(1, resetEventPipe(eventPipe));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
     EXPECT_EQ(EventLatchSettingDisabled,
-              bindEventLatchPipe(eventLatch, 0));
+              unbindEventLatchPipe(eventLatch));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
 
     eventPipe = closeEventPipe(eventPipe);
     eventLatch = closeEventLatch(eventLatch);
 }
 
-TEST(EventLatchTest, Pipe)
+TEST(EventLatchTest, PipeBinding)
 {
     struct EventLatch  eventLatch_;
     struct EventLatch *eventLatch = 0;
@@ -190,11 +194,12 @@ TEST(EventLatchTest, Pipe)
     EXPECT_EQ(0, createEventPipe(&eventPipe_, 0));
     eventPipe = &eventPipe_;
 
-    EXPECT_EQ(0, createEventLatch(&eventLatch_));
+    EXPECT_EQ(0, createEventLatch(&eventLatch_, "test"));
     eventLatch = &eventLatch_;
 
     EXPECT_EQ(EventLatchSettingOff,
-              bindEventLatchPipe(eventLatch, eventPipe));
+              bindEventLatchPipe(eventLatch, eventPipe,
+                                 EventLatchMethodNil()));
 
     EXPECT_EQ(EventLatchSettingOff,
               ownEventLatchSetting(eventLatch));
@@ -226,6 +231,84 @@ TEST(EventLatchTest, Pipe)
     EXPECT_EQ(EventLatchSettingOff,
               resetEventLatch(eventLatch));
     EXPECT_EQ(0, resetEventPipe(eventPipe));
+
+    eventLatch = closeEventLatch(eventLatch);
+    eventPipe = closeEventPipe(eventPipe);
+}
+
+struct PipePolling
+{
+    static int Count;
+
+    static int countPoll(struct PipePolling          *self,
+                         bool                         aEnabled,
+                         const struct EventClockTime *aPollTime_)
+    {
+        ++Count;
+        return 0;
+    }
+};
+
+int PipePolling::Count;
+
+TEST(EventLatchTest, PipePolling)
+{
+    struct EventLatch  eventLatch_;
+    struct EventLatch *eventLatch = 0;
+
+    struct EventPipe  eventPipe_;
+    struct EventPipe *eventPipe = 0;
+
+    struct PipePolling pipePolling;
+
+    EXPECT_EQ(0, createEventPipe(&eventPipe_, 0));
+    eventPipe = &eventPipe_;
+
+    EXPECT_EQ(0, createEventLatch(&eventLatch_, "test"));
+    eventLatch = &eventLatch_;
+
+    EXPECT_EQ(EventLatchSettingOff,
+              bindEventLatchPipe(eventLatch, eventPipe,
+                                 EventLatchMethod(
+                                     PipePolling::countPoll,
+                                     &pipePolling)));
+
+    struct EventClockTime  pollTime_ = eventclockTime();
+    struct EventClockTime *pollTime = &pollTime_;
+
+    EXPECT_EQ(0, pollEventPipe(eventPipe, pollTime));
+    EXPECT_EQ(0, PipePolling::Count);
+
+    EXPECT_EQ(EventLatchSettingOff,
+              setEventLatch(eventLatch));
+    EXPECT_EQ(1, pollEventPipe(eventPipe, pollTime));
+    EXPECT_EQ(1, PipePolling::Count);
+
+    EXPECT_EQ(0, pollEventPipe(eventPipe, pollTime));
+    EXPECT_EQ(1, PipePolling::Count);
+
+    /* Set the latch, then reset before polling the pipe */
+
+    EXPECT_EQ(EventLatchSettingOff,
+              setEventLatch(eventLatch));
+    EXPECT_EQ(EventLatchSettingOn,
+              resetEventLatch(eventLatch));
+    EXPECT_EQ(0, pollEventPipe(eventPipe, pollTime));
+    EXPECT_EQ(1, PipePolling::Count);
+
+    /* Ensure the latch is not set, then disable before polling the pipe */
+
+    EXPECT_EQ(0, pollEventPipe(eventPipe, pollTime));
+    EXPECT_EQ(1, PipePolling::Count);
+    EXPECT_EQ(EventLatchSettingOff,
+              disableEventLatch(eventLatch));
+    EXPECT_EQ(1, pollEventPipe(eventPipe, pollTime));
+    EXPECT_EQ(2, PipePolling::Count);
+
+    /* With the latch still disabled, try another poll */
+
+    EXPECT_EQ(0, pollEventPipe(eventPipe, pollTime));
+    EXPECT_EQ(2, PipePolling::Count);
 
     eventLatch = closeEventLatch(eventLatch);
     eventPipe = closeEventPipe(eventPipe);

@@ -31,9 +31,41 @@
 
 #include "compiler_.h"
 #include "thread_.h"
+#include "method_.h"
 
+#include <stdio.h>
 #include <sys/queue.h>
 
+/* -------------------------------------------------------------------------- */
+BEGIN_C_SCOPE;
+struct EventClockTime;
+END_C_SCOPE;
+
+#define METHOD_DEFINITION
+#define METHOD_RETURN_EventLatchMethod    int
+#define METHOD_CONST_EventLatchMethod
+#define METHOD_ARG_LIST_EventLatchMethod  (     \
+    bool                         aEnabled_,     \
+    const struct EventClockTime *aPollTime_)
+#define METHOD_CALL_LIST_EventLatchMethod (aEnabled_, aPollTime_)
+
+#define METHOD_NAME      EventLatchMethod
+#define METHOD_RETURN    METHOD_RETURN_EventLatchMethod
+#define METHOD_CONST     METHOD_CONST_EventLatchMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_EventLatchMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_EventLatchMethod
+#include "method_.h"
+
+#define EventLatchMethod(Method_, Object_)     \
+    METHOD_TRAMPOLINE(                          \
+        Method_, Object_,                       \
+        EventLatchMethod_,                     \
+        METHOD_RETURN_EventLatchMethod,        \
+        METHOD_CONST_EventLatchMethod,         \
+        METHOD_ARG_LIST_EventLatchMethod,      \
+        METHOD_CALL_LIST_EventLatchMethod)
+
+/* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
 
 struct EventPipe;
@@ -42,6 +74,7 @@ struct EventLatch;
 struct EventLatchListEntry
 {
     struct EventLatch              *mLatch;
+    struct EventLatchMethod         mMethod;
     LIST_ENTRY(EventLatchListEntry) mEntry;
 };
 
@@ -56,6 +89,7 @@ struct EventLatch
     struct ThreadSigMutex      *mMutex;
     unsigned                    mEvent;
     struct EventPipe           *mPipe;
+    char                       *mName;
     struct EventLatchListEntry  mList;
 };
 
@@ -69,13 +103,26 @@ enum EventLatchSetting
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
-createEventLatch(struct EventLatch *self);
+pollEventLatchListEntry(struct EventLatchListEntry  *self,
+                        const struct EventClockTime *aPollTime);
+
+/* -------------------------------------------------------------------------- */
+CHECKED int
+createEventLatch(struct EventLatch *self, const char *aName);
 
 CHECKED struct EventLatch *
 closeEventLatch(struct EventLatch *self);
 
+int
+printEventLatch(const struct EventLatch *self, FILE *aFile);
+
 CHECKED enum EventLatchSetting
-bindEventLatchPipe(struct EventLatch *self, struct EventPipe *aPipe);
+bindEventLatchPipe(struct EventLatch       *self,
+                   struct EventPipe        *aPipe,
+                   struct EventLatchMethod  aMethod);
+
+CHECKED enum EventLatchSetting
+unbindEventLatchPipe(struct EventLatch *self);
 
 CHECKED enum EventLatchSetting
 disableEventLatch(struct EventLatch *self);
