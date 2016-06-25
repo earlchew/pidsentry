@@ -219,26 +219,42 @@ pollEventPipe(struct EventPipe            *self,
 
     struct ThreadSigMutex *lock = lockThreadSigMutex(self->mMutex);
 
-    int signalled;
-    ERROR_IF(
-        (signalled = resetEventPipe_(self),
-         -1 == signalled));
-
     int pollCount = 0;
 
-    if (signalled)
+    if (self->mSignalled)
     {
         struct EventLatchListEntry *iter;
 
+        int called = 0;
+
         LIST_FOREACH(iter, &self->mLatchList->mList, mEntry)
         {
-            int called;
+            called = -1;
+
             ERROR_IF(
                 (called = pollEventLatchListEntry(iter, aPollTime),
-                 -1 == called));
+                 -1 == called && ! pollCount));
 
-            if (called)
+            if (-1 == called)
+                break;
+
+            if (0 < called)
                 ++pollCount;
+        }
+
+        /* Leave the event pipe set if any one latch could not be polled.
+         * In particular, if the latch poll returns EINTR, the event
+         * pipe will remain set and cause the pipe the be polled again. */
+
+        if (-1 != called)
+        {
+            int signalled = -1;
+
+            ERROR_IF(
+                (signalled = resetEventPipe_(self),
+                 -1 == signalled));
+
+            ensure(0 < signalled);
         }
     }
 
