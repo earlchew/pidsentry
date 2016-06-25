@@ -44,6 +44,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 /* -------------------------------------------------------------------------- */
 /* Umbilical Process
@@ -60,6 +61,7 @@ static const char *pollFdNames_[POLL_FD_MONITOR_KINDS] =
     [POLL_FD_MONITOR_UMBILICAL] = "umbilical",
     [POLL_FD_MONITOR_PIDSERVER] = "pidserver",
     [POLL_FD_MONITOR_PIDCLIENT] = "pidclient",
+    [POLL_FD_MONITOR_EVENTPIPE] = "event pipe",
 };
 
 static const char *pollFdTimerNames_[POLL_FD_MONITOR_TIMER_KINDS] =
@@ -77,7 +79,7 @@ pollFdPidServer_(struct UmbilicalMonitor     *self,
     ERROR_IF(
         acceptPidServerConnection(self->mPidServer));
 
-    struct pollfd *pollFd = &self->mPollFds[POLL_FD_MONITOR_PIDCLIENT];
+    struct pollfd *pollFd = &self->mPoll.mFds[POLL_FD_MONITOR_PIDCLIENT];
 
     if ( ! pollFd->events)
     {
@@ -103,7 +105,7 @@ pollFdPidClient_(struct UmbilicalMonitor     *self,
 
     if (cleanPidServer(self->mPidServer))
     {
-        struct pollfd *pollFd = &self->mPollFds[POLL_FD_MONITOR_PIDCLIENT];
+        struct pollfd *pollFd = &self->mPoll.mFds[POLL_FD_MONITOR_PIDCLIENT];
 
         pollFd->fd     = -1;
         pollFd->events = 0;
@@ -124,14 +126,14 @@ closeFdUmbilical_(struct UmbilicalMonitor *self)
 {
     ABORT_IF(
         shutdown(
-            self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
+            self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd,
             SHUT_WR));
 
-    self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd     = -1;
-    self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
+    self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd     = -1;
+    self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].events = 0;
 
-    self->mPollFds[POLL_FD_MONITOR_PIDSERVER].fd     = -1;
-    self->mPollFds[POLL_FD_MONITOR_PIDSERVER].events = 0;
+    self->mPoll.mFds[POLL_FD_MONITOR_PIDSERVER].fd     = -1;
+    self->mPoll.mFds[POLL_FD_MONITOR_PIDSERVER].events = 0;
 }
 
 static CHECKED int
@@ -145,7 +147,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
     ssize_t rdlen;
     ERROR_IF(
         (rdlen = read(
-            self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
+            self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno
          : (errno = 0, rdlen && sizeof(buf) != rdlen)));
@@ -189,18 +191,12 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
         {
             debug(1, "umbilical connection echo request");
 
-            /* Receiving EPIPE means that the umbilical connection
-             * has been closed. Rely on the umbilical connection
-             * reader to reactivate and detect the closed connection. */
+            /* Requests for echoes are posted so that they can
+             * be retried on EINTR. */
 
-            ssize_t wrlen;
             ERROR_IF(
-                (wrlen = writeFd(
-                    self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd,
-                    buf, rdlen, 0),
-                 -1 == wrlen
-                 ? EPIPE != errno
-                 : (errno = 0, wrlen != rdlen)));
+                EventLatchSettingError == setEventLatch(
+                    self->mLatch.mEchoRequest));
         }
 
         /* Once activity is detected on the umbilical, reset the
@@ -210,7 +206,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
          * finish. */
 
         struct PollFdTimerAction *umbilicalTimer =
-            &self->mPollFdTimerActions[POLL_FD_MONITOR_TIMER_UMBILICAL];
+            &self->mPoll.mFdTimerActions[POLL_FD_MONITOR_TIMER_UMBILICAL];
 
         lapTimeTrigger(&umbilicalTimer->mSince,
                        umbilicalTimer->mPeriod, aPollTime);
@@ -271,6 +267,69 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+pollFdSendEcho_(struct UmbilicalMonitor     *self,
+                bool                         aEnabled,
+                const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    ensure(aEnabled);
+
+    /* Receiving EPIPE means that the umbilical connection
+     * has been closed. Rely on the umbilical connection
+     * reader to reactivate and detect the closed connection. */
+
+    char buf[1] = { '.' };
+
+    ssize_t wrlen;
+    ERROR_IF(
+        (wrlen = writeFd(
+            self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd,
+            buf, sizeof(buf), 0),
+         -1 == wrlen
+         ? EPIPE != errno
+         : (errno = 0, sizeof(buf) != wrlen)));
+
+    debug(0, "sent umbilical echo");
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED int
+pollFdEventPipe_(struct UmbilicalMonitor     *self,
+                 const struct EventClockTime *aPollTime)
+{
+    int rc = -1;
+
+    /* Actively test races by occasionally delaying this activity
+     * when in test mode. */
+
+    if ( ! testSleep(TestLevelRace))
+    {
+        debug(0, "checking event pipe");
+
+        ERROR_IF(
+            -1 == pollEventPipe(self->mEventPipe, aPollTime));
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 static bool
 pollFdCompletion_(struct UmbilicalMonitor *self)
 {
@@ -279,9 +338,9 @@ pollFdCompletion_(struct UmbilicalMonitor *self)
      * child process group references. */
 
     return
-        ! self->mPollFds[POLL_FD_MONITOR_UMBILICAL].events &&
-        ! self->mPollFds[POLL_FD_MONITOR_PIDSERVER].events &&
-        ! self->mPollFds[POLL_FD_MONITOR_PIDCLIENT].events;
+        ! self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].events &&
+        ! self->mPoll.mFds[POLL_FD_MONITOR_PIDSERVER].events &&
+        ! self->mPoll.mFds[POLL_FD_MONITOR_PIDCLIENT].events;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -296,18 +355,34 @@ createUmbilicalMonitor(
 
     unsigned cycleLimit = 2;
 
-    *self = (struct UmbilicalMonitor)
+    self->mPidServer = aPidServer;
+    self->mEventPipe = 0;
+
+    ERROR_IF(
+        createEventLatch(&self->mLatch.mEchoRequest_, "echo request"));
+    self->mLatch.mEchoRequest = &self->mLatch.mEchoRequest_;
+
+    ERROR_IF(
+        createEventPipe(&self->mEventPipe_, O_CLOEXEC | O_NONBLOCK));
+    self->mEventPipe = &self->mEventPipe_;
+
+    ERROR_IF(
+        EventLatchSettingError == bindEventLatchPipe(
+            self->mLatch.mEchoRequest, self->mEventPipe,
+            EventLatchMethod(
+                pollFdSendEcho_,
+                self)));
+
+    self->mUmbilical = (DECLTYPE(self->mUmbilical))
     {
-        .mUmbilical =
-        {
-            .mCycleLimit = cycleLimit,
-            .mParentPid  = aParentPid,
-            .mClosed     = false,
-        },
+        .mCycleLimit = cycleLimit,
+        .mParentPid  = aParentPid,
+        .mClosed     = false,
+    };
 
-        .mPidServer = aPidServer,
-
-        .mPollFds =
+    self->mPoll = (DECLTYPE(self->mPoll))
+    {
+        .mFds =
         {
             [POLL_FD_MONITOR_UMBILICAL] =
             {
@@ -326,9 +401,15 @@ createUmbilicalMonitor(
                 .fd     = -1,
                 .events = 0,
             },
+
+            [POLL_FD_MONITOR_EVENTPIPE] =
+            {
+                .fd     = self->mEventPipe->mPipe->mRdFile->mFd,
+                .events = POLL_INPUTEVENTS,
+            },
         },
 
-        .mPollFdActions =
+        .mFdActions =
         {
             [POLL_FD_MONITOR_UMBILICAL] = {
                 PollFdCallbackMethod(pollFdUmbilical_, self) },
@@ -336,9 +417,11 @@ createUmbilicalMonitor(
                 PollFdCallbackMethod(pollFdPidServer_, self) },
             [POLL_FD_MONITOR_PIDCLIENT] = {
                 PollFdCallbackMethod(pollFdPidClient_, self) },
+            [POLL_FD_MONITOR_EVENTPIPE] = {
+                PollFdCallbackMethod(pollFdEventPipe_, self) },
         },
 
-        .mPollFdTimerActions =
+        .mFdTimerActions =
         {
             [POLL_FD_MONITOR_TIMER_UMBILICAL] =
             {
@@ -356,9 +439,30 @@ createUmbilicalMonitor(
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        if (rc)
+            self = closeUmbilicalMonitor(self);
+    });
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct UmbilicalMonitor *
+closeUmbilicalMonitor(struct UmbilicalMonitor *self)
+{
+    if (self)
+    {
+        ABORT_IF(
+            EventLatchSettingError == unbindEventLatchPipe(
+                self->mLatch.mEchoRequest));
+
+        self->mEventPipe          = closeEventPipe(self->mEventPipe);
+        self->mLatch.mEchoRequest = closeEventLatch(self->mLatch.mEchoRequest);
+    }
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -371,7 +475,8 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self)
      * umbilical monitor should proceed. */
 
     ERROR_IF(
-        -1 == waitFdReadReady(self->mPollFds[POLL_FD_MONITOR_UMBILICAL].fd, 0));
+        -1 == waitFdReadReady(
+            self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd, 0));
 
     ERROR_IF(
         pollFdUmbilical_(self, 0));
@@ -397,14 +502,13 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
     ERROR_IF(
         createPollFd(
             &pollfd_,
-            self->mPollFds,
-            self->mPollFdActions,
+            self->mPoll.mFds,
+            self->mPoll.mFdActions,
             pollFdNames_, POLL_FD_MONITOR_KINDS,
-            self->mPollFdTimerActions,
+            self->mPoll.mFdTimerActions,
             pollFdTimerNames_, POLL_FD_MONITOR_TIMER_KINDS,
             PollFdCompletionMethod(pollFdCompletion_, self)));
     pollfd = &pollfd_;
-
 
     ERROR_IF(
         runPollFdLoop(pollfd));

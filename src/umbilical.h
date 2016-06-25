@@ -32,6 +32,8 @@
 #include "compiler_.h"
 #include "pollfd_.h"
 #include "pid_.h"
+#include "eventpipe_.h"
+#include "eventlatch_.h"
 
 #include <poll.h>
 #include <stdbool.h>
@@ -65,6 +67,7 @@ enum PollFdMonitorKind
     POLL_FD_MONITOR_UMBILICAL,
     POLL_FD_MONITOR_PIDSERVER,
     POLL_FD_MONITOR_PIDCLIENT,
+    POLL_FD_MONITOR_EVENTPIPE,
     POLL_FD_MONITOR_KINDS
 };
 
@@ -87,9 +90,21 @@ struct UmbilicalMonitor
 
     struct PidServer *mPidServer;
 
-    struct pollfd             mPollFds[POLL_FD_MONITOR_KINDS];
-    struct PollFdAction       mPollFdActions[POLL_FD_MONITOR_KINDS];
-    struct PollFdTimerAction  mPollFdTimerActions[POLL_FD_MONITOR_TIMER_KINDS];
+    struct
+    {
+        struct EventLatch  mEchoRequest_;
+        struct EventLatch *mEchoRequest;
+    } mLatch;
+
+    struct EventPipe  mEventPipe_;
+    struct EventPipe *mEventPipe;
+
+    struct
+    {
+        struct pollfd            mFds[POLL_FD_MONITOR_KINDS];
+        struct PollFdAction      mFdActions[POLL_FD_MONITOR_KINDS];
+        struct PollFdTimerAction mFdTimerActions[POLL_FD_MONITOR_TIMER_KINDS];
+    } mPoll;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -99,6 +114,9 @@ createUmbilicalMonitor(
     int                      aStdinFd,
     struct Pid               aParentPid,
     struct PidServer        *aPidServer);
+
+CHECKED struct UmbilicalMonitor *
+closeUmbilicalMonitor(struct UmbilicalMonitor *self);
 
 CHECKED int
 synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self);
