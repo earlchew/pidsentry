@@ -56,6 +56,8 @@
 #undef  writev
 #endif
 
+#include <stdbool.h>
+
 /* -------------------------------------------------------------------------- */
 struct EintrModule
 {
@@ -114,6 +116,9 @@ Eintr_init(struct EintrModule *self);
 
 CHECKED struct EintrModule *
 Eintr_exit(struct EintrModule *self);
+
+bool
+Eintr_active(void);
 
 /* -------------------------------------------------------------------------- */
 
