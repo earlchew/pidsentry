@@ -277,22 +277,30 @@ pollFdSendEcho_(struct UmbilicalMonitor     *self,
 
     ensure(aEnabled);
 
-    /* Receiving EPIPE means that the umbilical connection
-     * has been closed. Rely on the umbilical connection
-     * reader to reactivate and detect the closed connection. */
+    /* The umbilical connection might have been closed by the time
+     * this code runs. */
 
-    char buf[1] = { '.' };
+    if (-1 == self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd)
+        debug(0, "skipping umbilical echo");
+    else
+    {
+        /* Receiving EPIPE means that the umbilical connection
+         * has been closed. Rely on the umbilical connection
+         * reader to reactivate and detect the closed connection. */
 
-    ssize_t wrlen;
-    ERROR_IF(
-        (wrlen = writeFd(
-            self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd,
-            buf, sizeof(buf), 0),
-         -1 == wrlen
-         ? EPIPE != errno
-         : (errno = 0, sizeof(buf) != wrlen)));
+        char buf[1] = { '.' };
 
-    debug(0, "sent umbilical echo");
+        ssize_t wrlen;
+        ERROR_IF(
+            (wrlen = writeFd(
+                self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd,
+                buf, sizeof(buf), 0),
+             -1 == wrlen
+             ? EPIPE != errno
+             : (errno = 0, sizeof(buf) != wrlen)));
+
+        debug(0, "sent umbilical echo");
+    }
 
     rc = 0;
 
@@ -318,7 +326,7 @@ pollFdEventPipe_(struct UmbilicalMonitor     *self,
         debug(0, "checking event pipe");
 
         ERROR_IF(
-            -1 == pollEventPipe(self->mEventPipe, aPollTime));
+            -1 == pollEventPipe(self->mEventPipe, aPollTime) && EINTR != errno);
     }
 
     rc = 0;
@@ -541,6 +549,9 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
 
     struct ProcessAppLock *appLock = 0;
 
+    struct UmbilicalMonitor  umbilicalMonitor_;
+    struct UmbilicalMonitor *umbilicalMonitor = 0;
+
     self->mPid = ownProcessId();
 
     /* The umbilical process will create an anchor in the process
@@ -634,10 +645,11 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
      * process group as the child process and use the process group as
      * a means of controlling the cild process. */
 
-    struct UmbilicalMonitor monitorpoll;
     ERROR_IF(
         createUmbilicalMonitor(
-            &monitorpoll, STDIN_FILENO, self->mSentryPid, self->mPidServer));
+            &umbilicalMonitor_,
+            STDIN_FILENO, self->mSentryPid, self->mPidServer));
+    umbilicalMonitor = &umbilicalMonitor_;
 
     /* Synchronise with the sentry to avoid timing races. The sentry
      * writes to the umbilical when it is ready to start timing. */
@@ -645,18 +657,18 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
     debug(0, "synchronising umbilical");
 
     ERROR_IF(
-        synchroniseUmbilicalMonitor(&monitorpoll));
+        synchroniseUmbilicalMonitor(umbilicalMonitor));
 
     debug(0, "synchronised umbilical");
 
     ERROR_IF(
-        runUmbilicalMonitor(&monitorpoll));
+        runUmbilicalMonitor(umbilicalMonitor));
 
     /* The umbilical monitor returns when the connection to the sentry
      * is either lost or no longer active. Only issue a diagnostic if
      * the shutdown was not orderly. */
 
-    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
+    if ( ! ownUmbilicalMonitorClosedOrderly(umbilicalMonitor))
         warn(0,
              "Killing child pgid %" PRId_Pgid " from umbilical",
              FMTd_Pgid(self->mChildProcess->mPgid));
@@ -667,7 +679,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
     /* If the shutdown was not orderly, assume the worst and attempt to
      * clean up the sentry process group. */
 
-    if ( ! ownUmbilicalMonitorClosedOrderly(&monitorpoll))
+    if ( ! ownUmbilicalMonitorClosedOrderly(umbilicalMonitor))
         ERROR_IF(
             signalProcessGroup(self->mSentryPgid, SIGKILL));
 
@@ -679,6 +691,8 @@ Finally:
 
     FINALLY
     ({
+        umbilicalMonitor = closeUmbilicalMonitor(umbilicalMonitor);
+
         appLock = destroyProcessAppLock(appLock);
     });
 
