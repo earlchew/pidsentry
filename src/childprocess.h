@@ -52,10 +52,13 @@ struct ChildProcess
     struct Pid  mPid;
     struct Pgid mPgid;
 
-    struct EventLatch  mChildLatch_;
-    struct EventLatch *mChildLatch;
-    struct EventLatch  mUmbilicalLatch_;
-    struct EventLatch *mUmbilicalLatch;
+    struct
+    {
+        struct EventLatch  mChild_;
+        struct EventLatch *mChild;
+        struct EventLatch  mUmbilical_;
+        struct EventLatch *mUmbilical;
+    } mLatch;
 
     struct Pipe  mTetherPipe_;
     struct Pipe *mTetherPipe;

@@ -60,16 +60,16 @@ enum PollFdChildKind
     POLL_FD_CHILD_TETHER,
     POLL_FD_CHILD_UMBILICAL,
     POLL_FD_CHILD_PARENT,
-    POLL_FD_CHILD_EVENT_PIPE,
+    POLL_FD_CHILD_EVENTPIPE,
     POLL_FD_CHILD_KINDS
 };
 
 static const char *pollFdNames_[POLL_FD_CHILD_KINDS] =
 {
-    [POLL_FD_CHILD_TETHER]     = "tether",
-    [POLL_FD_CHILD_UMBILICAL]  = "umbilical",
-    [POLL_FD_CHILD_PARENT]     = "parent",
-    [POLL_FD_CHILD_EVENT_PIPE] = "event pipe",
+    [POLL_FD_CHILD_TETHER]    = "tether",
+    [POLL_FD_CHILD_UMBILICAL] = "umbilical",
+    [POLL_FD_CHILD_PARENT]    = "parent",
+    [POLL_FD_CHILD_EVENTPIPE] = "event pipe",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -99,20 +99,20 @@ createChildProcess(struct ChildProcess *self)
     self->mPid  = Pid(0);
     self->mPgid = Pgid(0);
 
-    self->mTetherPipe     = 0;
-    self->mChildLatch     = 0;
-    self->mUmbilicalLatch = 0;
+    self->mTetherPipe       = 0;
+    self->mLatch.mChild     = 0;
+    self->mLatch.mUmbilical = 0;
 
     self->mChildMonitor.mMutex   = 0;
     self->mChildMonitor.mMonitor = 0;
 
     ERROR_IF(
-        createEventLatch(&self->mChildLatch_, "child"));
-    self->mChildLatch = &self->mChildLatch_;
+        createEventLatch(&self->mLatch.mChild_, "child"));
+    self->mLatch.mChild = &self->mLatch.mChild_;
 
     ERROR_IF(
-        createEventLatch(&self->mUmbilicalLatch_, "umbilical"));
-    self->mUmbilicalLatch = &self->mUmbilicalLatch_;
+        createEventLatch(&self->mLatch.mUmbilical_, "umbilical"));
+    self->mLatch.mUmbilical = &self->mLatch.mUmbilical_;
 
     self->mChildMonitor.mMutex = createThreadSigMutex(
         &self->mChildMonitor.mMutex_);
@@ -143,8 +143,9 @@ Finally:
             self->mTetherPipe          = closePipe(self->mTetherPipe);
             self->mChildMonitor.mMutex =
                 destroyThreadSigMutex(self->mChildMonitor.mMutex);
-            self->mUmbilicalLatch      = closeEventLatch(self->mUmbilicalLatch);
-            self->mChildLatch          = closeEventLatch(self->mChildLatch);
+
+            self->mLatch.mUmbilical = closeEventLatch(self->mLatch.mUmbilical);
+            self->mLatch.mChild     = closeEventLatch(self->mLatch.mChild);
         }
     });
 
@@ -274,12 +275,12 @@ superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid)
     if (aUmbilicalPid.mPid)
         ERROR_IF(
             (processState = superviseChildProcess_(
-                self, "umbilical", aUmbilicalPid, self->mUmbilicalLatch),
+                self, "umbilical", aUmbilicalPid, self->mLatch.mUmbilical),
              ChildProcessStateError == processState.mChildStatus));
 
     ERROR_IF(
         (processState = superviseChildProcess_(
-            self, "child", self->mPid, self->mChildLatch),
+            self, "child", self->mPid, self->mLatch.mChild),
          ChildProcessStateError == processState.mChildStatus));
 
     /* If the monitored child process has been killed by SIGQUIT and
@@ -799,8 +800,8 @@ closeChildProcess(struct ChildProcess *self)
 
         closeChildFiles_(self);
 
-        self->mUmbilicalLatch = closeEventLatch(self->mUmbilicalLatch);
-        self->mChildLatch     = closeEventLatch(self->mChildLatch);
+        self->mLatch.mUmbilical = closeEventLatch(self->mLatch.mUmbilical);
+        self->mLatch.mChild     = closeEventLatch(self->mLatch.mChild);
     }
 
     return 0;
@@ -1886,7 +1887,7 @@ monitorChildProcess(struct ChildProcess     *self,
                 .events = POLL_INPUTEVENTS,
             },
 
-            [POLL_FD_CHILD_EVENT_PIPE] =
+            [POLL_FD_CHILD_EVENTPIPE] =
             {
                 .fd     = eventPipe->mPipe->mRdFile->mFd,
                 .events = POLL_INPUTEVENTS,
@@ -1905,7 +1906,7 @@ monitorChildProcess(struct ChildProcess     *self,
                 PollFdCallbackMethod(pollFdUmbilical_, &childMonitor_) },
             [POLL_FD_CHILD_PARENT]     = {
                 PollFdCallbackMethod(pollFdParent_, &childMonitor_) },
-            [POLL_FD_CHILD_EVENT_PIPE] = {
+            [POLL_FD_CHILD_EVENTPIPE] = {
                 PollFdCallbackMethod(pollFdEventPipe_, &childMonitor_) },
             [POLL_FD_CHILD_TETHER]     = {
                 PollFdCallbackMethod(pollFdTether_, &childMonitor_) },
@@ -1960,14 +1961,14 @@ monitorChildProcess(struct ChildProcess     *self,
 
     ERROR_IF(
         EventLatchSettingError == bindEventLatchPipe(
-            self->mChildLatch, eventPipe,
+            self->mLatch.mChild, eventPipe,
             EventLatchMethod(
                 pollFdReapChildEvent_,
                 childMonitor)));
 
     ERROR_IF(
         EventLatchSettingError == bindEventLatchPipe(
-            self->mUmbilicalLatch, eventPipe,
+            self->mLatch.mUmbilical, eventPipe,
             EventLatchMethod(
                 pollFdReapUmbilicalEvent_,
                 childMonitor)));
@@ -2042,11 +2043,11 @@ Finally:
 
         ABORT_IF(
             EventLatchSettingError == unbindEventLatchPipe(
-                self->mUmbilicalLatch));
+                self->mLatch.mUmbilical));
 
         ABORT_IF(
             EventLatchSettingError == unbindEventLatchPipe(
-                self->mChildLatch));
+                self->mLatch.mChild));
 
         contLatch = closeEventLatch(contLatch);
         eventPipe = closeEventPipe(eventPipe);
