@@ -35,6 +35,7 @@
 #include "thread_.h"
 #include "printf_.h"
 #include "process_.h"
+#include "eintr_.h"
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -384,6 +385,25 @@ print_(
     const char *aFunction, const char *aFile, unsigned aLine,
     const char *aFmt, va_list aArgs)
 {
+    /* The glibc implementation does not re-issue IO from libio:
+     *
+     * https://lists.debian.org/debian-glibc/2007/06/msg00165.html
+     * https://gcc.gnu.org/ml/libstdc++/2000-q2/msg00184.html
+     *
+     *   No.  The write functions must be able to time out.  Setting alarm()
+     *   and try writing, returning after a while because the device does
+     *   not respond.  Leave libio as it is.
+     *
+     * Additionally http://www.openwall.com/lists/musl/2015/06/05/11
+     *
+     *   My unpopular but firm opinion, which I already have expressed here,
+     *   is that stdio is a toy interface that should not be used for any
+     *   output that requires the simplest hint of reliability.
+     *
+     * In the normal case, output will be generated using open_memstream() and
+     * writeFd(). Use of dprintf() is restricted to error cases, and in
+     * these cases output can be truncated do to EINTR. */
+
     FINALLY
     ({
         struct Pid pid = ownProcessId();
@@ -520,8 +540,22 @@ print_(
                 fprintf(printBuf_.mFile, " - errno %d\n", aErrCode);
             fflush(printBuf_.mFile);
 
-            if (printBuf_.mSize != writeFd(STDERR_FILENO,
-                                           printBuf_.mBuf, printBuf_.mSize, 0))
+            /* If EINTR injection is active, writeFd() will retry but
+             * debug messages might cause this error messages to be
+             * triggered in a recursive way. */
+
+            size_t      bufLen = printBuf_.mSize;
+            const char *bufPtr = printBuf_.mBuf;
+
+            char buf[bufLen ? bufLen : 1];
+
+            if (Eintr_active())
+            {
+                memcpy(buf, bufPtr, bufLen);
+                bufPtr = buf;
+            }
+
+            if (printBuf_.mSize != writeFd(STDERR_FILENO, bufPtr, bufLen, 0))
                 abortProcess();
         }
 
@@ -752,6 +786,47 @@ errorTerminate(
 }
 
 /* -------------------------------------------------------------------------- */
+static struct ErrorModule *
+Error_exit_(struct ErrorModule *self)
+{
+    if (self)
+    {
+        struct ProcessAppLock *appLock = createProcessAppLock();
+
+        FILE *file = printBuf_.mFile;
+
+        if (file)
+        {
+            ABORT_IF(
+                fclose(file));
+
+            free(printBuf_.mBuf);
+
+            printBuf_.mFile = 0;
+        }
+
+        appLock = destroyProcessAppLock(appLock);
+
+        self->mPrintfModule = Printf_exit(self->mPrintfModule);
+    }
+
+    return 0;
+}
+
+struct ErrorModule *
+Error_exit(struct ErrorModule *self)
+{
+    if (self)
+    {
+        if (0 == --moduleInit_)
+            self = Error_exit_(self);
+    }
+
+    return 0;
+}
+
+
+/* -------------------------------------------------------------------------- */
 int
 Error_init(struct ErrorModule *self)
 {
@@ -767,6 +842,9 @@ Error_init(struct ErrorModule *self)
         ERROR_IF(
             Printf_init(&self->mPrintfModule_));
         self->mPrintfModule = &self->mPrintfModule_;
+
+        printBuf_.mBuf  = 0;
+        printBuf_.mSize = 0;
 
         FILE *file;
         ERROR_UNLESS(
@@ -788,54 +866,10 @@ Finally:
         appLock = destroyProcessAppLock(appLock);
 
         if (rc)
-        {
-            FILE *file = printBuf_.mFile;
-
-            if (file)
-            {
-                printBuf_.mFile = 0;
-                printBuf_.mBuf  = 0;
-                printBuf_.mSize = 0;
-
-                ABORT_IF(
-                    fclose(file));
-            }
-
-            self->mPrintfModule = Printf_exit(self->mPrintfModule);
-        }
+            self = Error_exit_(self);
     });
 
     return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-struct ErrorModule *
-Error_exit(struct ErrorModule *self)
-{
-    if (self)
-    {
-        if (0 == --moduleInit_)
-        {
-            struct ProcessAppLock *appLock = createProcessAppLock();
-
-            FILE *file = printBuf_.mFile;
-
-            printBuf_.mFile = 0;
-            printBuf_.mBuf  = 0;
-            printBuf_.mSize = 0;
-
-            ABORT_IF(
-                fclose(file));
-
-            free(printBuf_.mBuf);
-
-            appLock = destroyProcessAppLock(appLock);
-
-            self->mPrintfModule = Printf_exit(self->mPrintfModule);
-        }
-    }
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
