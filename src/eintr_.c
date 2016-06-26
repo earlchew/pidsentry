@@ -35,24 +35,33 @@
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 /* -------------------------------------------------------------------------- */
 static unsigned moduleInit_;
 
 /* -------------------------------------------------------------------------- */
-#define EINTR_FUNCTION_DEFN_(Enum_, Return_, Name_, Signature_, Args_)  \
+#define EINTR_FUNCTION_DEFN_(                                           \
+    Eintr_, Enum_, Return_, Name_, Signature_, Args_)                   \
                                                                         \
 Return_                                                                 \
 Name_ Signature_                                                        \
 {                                                                       \
-    SYSCALL_RESTART(Enum_, Name_, Args_);                               \
+    SYSCALL_RESTART_(Enum_, Name_, Args_);                              \
 }                                                                       \
                                                                         \
 Return_                                                                 \
 Name_ ## _eintr Signature_                                              \
 {                                                                       \
     return                                                              \
-        SYSCALL_EINTR(Enum_, Name_) Args_;                              \
+        SYSCALL_EINTR_(Eintr_, Enum_, Name_) Args_;                     \
+}                                                                       \
+                                                                        \
+static bool                                                             \
+Name_ ## _check_(void)                                                  \
+{                                                                       \
+    return __builtin_types_compatible_p(                                \
+        DECLTYPE(Name_), DECLTYPE(Name_ ## _));                         \
 }                                                                       \
                                                                         \
 struct EintrModule
@@ -60,56 +69,66 @@ struct EintrModule
 /* -------------------------------------------------------------------------- */
 /* Interrupted System Calls
  *
- * These interceptors provide a way to inject EINTR to obtain substantially
- * more test coverage when unit tests are run. */
-
-struct SystemCall
-{
-    const char *mName;
-    uintptr_t   mAddr;
-};
+ * These interceptors provide key functionality in two key areas:
+ *
+ * o Retry EINTR so that application code can be agnostic about SA_RESTART
+ * o Inject EINTR so improve unit test coverage in application code
+ *
+ * Using close() as an example, application code calling close() will
+ * never expect to see EINTR The interceptor here will retry close() if
+ * EINTR is received from the underlying implementation.
+ *
+ * Application code can call close_eintr() if it wishes to deal with
+ * EINTR directly. This might be the case where the application is running
+ * an event loop, and should be updating deadlines when IO is interrupted,
+ * of if the application must deal with SIGALRM. */
 
 enum SystemCallKind
 {
+    SYSTEMCALL_CLOSE,
+    SYSTEMCALL_IOCTL,
+    SYSTEMCALL_OPEN,
     SYSTEMCALL_PREAD,
     SYSTEMCALL_PREADV,
     SYSTEMCALL_PWRITE,
     SYSTEMCALL_PWRITEV,
     SYSTEMCALL_READ,
     SYSTEMCALL_READV,
+    SYSTEMCALL_WAIT,
     SYSTEMCALL_WRITE,
     SYSTEMCALL_WRITEV,
     SYSTEMCALL_KINDS
 };
 
-static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
-{
-    [SYSTEMCALL_PREAD]   = { "pread" },
-    [SYSTEMCALL_PREADV]  = { "preadv" },
-    [SYSTEMCALL_PWRITE]  = { "pwrite" },
-    [SYSTEMCALL_PWRITEV] = { "pwritev" },
-    [SYSTEMCALL_READ]    = { "read" },
-    [SYSTEMCALL_READV]   = { "readv" },
-    [SYSTEMCALL_WRITE]   = { "write" },
-    [SYSTEMCALL_WRITEV]  = { "writev" },
-};
+static uintptr_t
+invokeSystemCall(enum SystemCallKind aKind);
+
+static uintptr_t
+interruptSystemCall(enum SystemCallKind aKind);
 
 /* -------------------------------------------------------------------------- */
-#define SYSCALL_EINTR(Kind_, Function_)                         \
-    ({                                                          \
-        uintptr_t syscall_ = interruptSystemCall((Kind_));      \
-                                                                \
-        if ( ! syscall_)                                        \
-        {                                                       \
-            errno = EINTR;                                      \
-            return -1;                                          \
-        }                                                       \
-                                                                \
-        (DECLTYPE(Function_) *) syscall_;                       \
+#define SYSCALL_EINTR_(Eintr_, Kind_, Function_)        \
+    ({                                                  \
+        uintptr_t syscall_;                             \
+                                                        \
+        if ( ! (Eintr_))                                \
+            syscall_ = invokeSystemCall((Kind_));       \
+        else                                            \
+        {                                               \
+            syscall_ = interruptSystemCall((Kind_));    \
+                                                        \
+            if ( ! syscall_)                            \
+            {                                           \
+                errno = (Eintr_);                       \
+                return -1;                              \
+            }                                           \
+        }                                               \
+                                                        \
+        (DECLTYPE(Function_) *) syscall_;               \
     })
 
 /* -------------------------------------------------------------------------- */
-#define SYSCALL_RESTART(Kind_, Function_, Args_)                \
+#define SYSCALL_RESTART_(Kind_, Function_, Args_)               \
     do                                                          \
     {                                                           \
         while (1)                                               \
@@ -124,6 +143,246 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     } while (0)
 
 /* -------------------------------------------------------------------------- */
+static int
+local_open_(const char *aPath, int aFlags, mode_t aMode)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_OPEN,
+    static int,
+    local_open,
+    (const char *aPath, int aFlags, mode_t aMode),
+    (aPath, aFlags, aMode));
+
+#define EINTR_OPEN_DEFN_(Name_)                         \
+int                                                     \
+Name_(const char *aPath, int aFlags, ...)               \
+{                                                       \
+    mode_t mode;                                        \
+                                                        \
+    va_list argp;                                       \
+                                                        \
+    va_start(argp, aFlags);                             \
+    mode = (                                            \
+        sizeof(mode_t) < sizeof(int)                    \
+        ? va_arg(argp, int)                             \
+        : va_arg(argp, mode_t));                        \
+    va_end(argp);                                       \
+                                                        \
+    return local_ ## Name_(aPath, aFlags, mode);        \
+}                                                       \
+struct EintrModule
+
+EINTR_OPEN_DEFN_(open);
+EINTR_OPEN_DEFN_(open_eintr);
+
+/* -------------------------------------------------------------------------- */
+static int
+local_ioctl_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, uintptr_t aArg)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_IOCTL,
+    static int,
+    local_ioctl,
+    (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, uintptr_t aArg),
+    (aFd, aRequest, aArg));
+
+#define EINTR_IOCTL_DEFN_(Name_)                                \
+int                                                             \
+Name_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, ...)            \
+{                                                               \
+    void *arg;                                                  \
+                                                                \
+    va_list argp;                                               \
+                                                                \
+    va_start(argp, aRequest);                                   \
+    arg = va_arg(argp, void *);                                 \
+    va_end(argp);                                               \
+                                                                \
+    return local_ ## Name_(aFd, aRequest, (uintptr_t) arg);     \
+}                                                               \
+struct EintrModule
+
+EINTR_IOCTL_DEFN_(ioctl);
+EINTR_IOCTL_DEFN_(ioctl_eintr);
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PREAD,
+    ssize_t,
+    pread,
+    (int aFd, void *aBuf, size_t aCount, off_t aOffset),
+    (aFd, aBuf, aCount, aOffset));
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PWRITE,
+    ssize_t,
+    pwrite,
+    (int aFd, const void *aBuf, size_t aCount, off_t aOffset),
+    (aFd, aBuf, aCount, aOffset));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_READ,
+    ssize_t,
+    read,
+    (int aFd, void *aBuf, size_t aCount),
+    (aFd, aBuf, aCount));
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_WRITE,
+    ssize_t,
+    write,
+    (int aFd, const void *aBuf, size_t aCount),
+    (aFd, aBuf, aCount));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_READV,
+    ssize_t,
+    readv,
+    (int aFd, const struct iovec *aVec, int aCount),
+    (aFd, aVec, aCount));
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_WRITEV,
+    ssize_t,
+    writev,
+    (int aFd, const struct iovec *aVec, int aCount),
+    (aFd, aVec, aCount));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PREADV,
+    ssize_t,
+    preadv,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
+    (aFd, aVec, aCount, aOffset));
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PWRITEV,
+    ssize_t,
+    pwritev,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
+    (aFd, aVec, aCount, aOffset));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_WAIT,
+    pid_t,
+    wait,
+    (int *aStatus),
+    (aStatus));
+
+/* -------------------------------------------------------------------------- */
+static int
+local_close_(int aFd)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_FUNCTION_DEFN_(
+    0,
+    SYSTEMCALL_CLOSE,
+    static int,
+    local_close,
+    (int aFd),
+    (aFd));
+
+int
+close(int aFd)
+{
+    int rc;
+
+    do
+        rc = close_eintr(aFd);
+    while (rc && EINTR == errno);
+
+    return rc && EINPROGRESS != errno ? -1 : 0;
+}
+
+int
+close_eintr(int aFd)
+{
+    /* From http://austingroupbugs.net/view.php?id=529
+     *
+     * If close( ) is interrupted by a signal that is to be caught, then it
+     * is unspecified whether it returns -1 with errno set to [EINTR] with
+     * fildes remaining open, or returns -1 with errno set to [EINPROGRESS]
+     * with fildes being closed, or returns 0 to indicate successful
+     * completion; except that if POSIX_CLOSE_RESTART is defined as 0, then
+     * the option of returning -1 with errno set to [EINTR] and fildes
+     * remaining open shall not occur. If close() returns -1 with errno set
+     * to [EINTR], it is unspecified whether fildes can subsequently be
+     * passed to any function except close( ) or posix_close( ) without error.
+     * For all other error situations (except for [EBADF] where fildes was
+     * invalid), fildes shall be closed. If fildes was closed even though
+     * the close operation is incomplete, the close operation shall continue
+     * asynchronously and the process shall have no further ability to track
+     * the completion or final status of the close operation. */
+
+    if ( ! interruptSystemCall(SYSTEMCALL_CLOSE))
+    {
+        errno = EINTR;
+        return -1;
+    }
+
+    return
+        ! local_close_eintr(aFd)
+        ? 0
+#ifdef __linux__
+        : EINTR == errno ? 0 /* https://lwn.net/Articles/576478/ */
+#endif
+        : EINPROGRESS == errno ? 0 : -1;
+}
+
+/* -------------------------------------------------------------------------- */
+#define SYSCALL_ENTRY_(Prefix_, Name_)        \
+    { Prefix_ ## Name_ ## _check_, STRINGIFY(Name_), }
+
+struct SystemCall
+{
+    bool      (*mCheck)(void);
+    const char *mName;
+    uintptr_t   mAddr;
+};
+
+static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
+{
+    [SYSTEMCALL_CLOSE]   = SYSCALL_ENTRY_(local_, close),
+    [SYSTEMCALL_IOCTL]   = SYSCALL_ENTRY_(local_, ioctl),
+    [SYSTEMCALL_OPEN]    = SYSCALL_ENTRY_(local_, open),
+    [SYSTEMCALL_PREAD]   = SYSCALL_ENTRY_(, pread),
+    [SYSTEMCALL_PREADV]  = SYSCALL_ENTRY_(, preadv),
+    [SYSTEMCALL_PWRITE]  = SYSCALL_ENTRY_(, pwrite),
+    [SYSTEMCALL_PWRITEV] = SYSCALL_ENTRY_(, pwritev),
+    [SYSTEMCALL_READ]    = SYSCALL_ENTRY_(, read),
+    [SYSTEMCALL_READV]   = SYSCALL_ENTRY_(, readv),
+    [SYSTEMCALL_WAIT]    = SYSCALL_ENTRY_(, wait),
+    [SYSTEMCALL_WRITE]   = SYSCALL_ENTRY_(, write),
+    [SYSTEMCALL_WRITEV]  = SYSCALL_ENTRY_(, writev),
+};
+
+/* -------------------------------------------------------------------------- */
 static uintptr_t
 initSystemCall(struct SystemCall *self)
 {
@@ -131,6 +390,8 @@ initSystemCall(struct SystemCall *self)
 
     if ( ! addr)
     {
+        ensure(self->mCheck());
+
         const char *err;
 
         char *libName = findDlSymbol(self->mName, &addr, &err);
@@ -167,66 +428,6 @@ invokeSystemCall(enum SystemCallKind aKind)
 {
     return initSystemCall(&systemCall_[aKind]);
 }
-
-/* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_PREAD,
-    ssize_t,
-    pread,
-    (int aFd, void *aBuf, size_t aCount, off_t aOffset),
-    (aFd, aBuf, aCount, aOffset));
-
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_PWRITE,
-    ssize_t,
-    pwrite,
-    (int aFd, const void *aBuf, size_t aCount, off_t aOffset),
-    (aFd, aBuf, aCount, aOffset));
-
-/* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_READ,
-    ssize_t,
-    read,
-    (int aFd, void *aBuf, size_t aCount),
-    (aFd, aBuf, aCount));
-
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_WRITE,
-    ssize_t,
-    write,
-    (int aFd, const void *aBuf, size_t aCount),
-    (aFd, aBuf, aCount));
-
-/* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_READV,
-    ssize_t,
-    readv,
-    (int aFd, const struct iovec *aVec, int aCount),
-    (aFd, aVec, aCount));
-
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_WRITEV,
-    ssize_t,
-    writev,
-    (int aFd, const struct iovec *aVec, int aCount),
-    (aFd, aVec, aCount));
-
-/* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_PREADV,
-    ssize_t,
-    preadv,
-    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
-    (aFd, aVec, aCount, aOffset));
-
-EINTR_FUNCTION_DEFN_(
-    SYSTEMCALL_PWRITEV,
-    ssize_t,
-    pwritev,
-    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
-    (aFd, aVec, aCount, aOffset));
 
 /* -------------------------------------------------------------------------- */
 bool

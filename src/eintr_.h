@@ -32,28 +32,40 @@
 #include "compiler_.h"
 
 #ifdef EINTR_MODULE_DEFN_
-#define pread          __pread
-#define pwrite         __pwrite
-#define preadv         __preadv
-#define pwritev        __pwritev
-#define read           __read
-#define readv          __readv
-#define write          __write
-#define writev         __writev
+#define close   close_
+#define ioctl   ioctl_
+#define open    open_
+#define pread   pread_
+#define pwrite  pwrite_
+#define preadv  preadv_
+#define pwritev pwritev_
+#define read    read_
+#define readv   readv_
+#define wait    wait_
+#define write   write_
+#define writev  writev_
 #endif
 
 #include <unistd.h>
+
+#include <sys/stat.h>
 #include <sys/uio.h>
+#include <sys/ioctl.h>
+#include <sys/wait.h>
 
 #ifdef EINTR_MODULE_DEFN_
-#undef  pread
-#undef  preadv
-#undef  pwrite
-#undef  pwritev
-#undef  read
-#undef  readv
-#undef  write
-#undef  writev
+#undef close
+#undef ioctl
+#undef open
+#undef pread
+#undef preadv
+#undef pwrite
+#undef pwritev
+#undef read
+#undef readv
+#undef wait
+#undef write
+#undef writev
 #endif
 
 #include <stdbool.h>
@@ -75,6 +87,33 @@ struct EintrModule
     Return_ Name_ ## _eintr Signature_;                  \
     struct EintrModule
 #endif
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DECL_(
+    int, close, (int aFd));
+
+EINTR_FUNCTION_DECL_(
+    int, open, (const char *aPath, int aFlags, ...));
+
+EINTR_FUNCTION_DECL_(
+    pid_t, wait, (int *aStatus));
+
+/* -------------------------------------------------------------------------- */
+#ifndef __GLIBC__
+#define EINTR_IOCTL_REQUEST_T_ int
+#else
+/* Unfortunately the header file does not match the documentation:
+ *
+ *     https://sourceware.org/bugzilla/show_bug.cgi?id=14362
+ *
+ * It does not seem that this will be fixed any time soon. */
+
+#define EINTR_IOCTL_REQUEST_T_ unsigned long int
+#endif
+
+EINTR_FUNCTION_DECL_(
+    int, ioctl,
+    (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, ...));
 
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DECL_(
