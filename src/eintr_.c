@@ -153,7 +153,7 @@ interruptSystemCall(enum SystemCallKind aKind)
 
     uintptr_t addr = 0;
 
-    if (testAction(TestLevelRace))
+    if (testAction(TestLevelRace) && 1 > random() % 10)
         debug(0, "inject EINTR into %s", sysCall->mName);
     else
         addr = initSystemCall(sysCall);
@@ -227,6 +227,13 @@ EINTR_FUNCTION_DEFN_(
     pwritev,
     (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
     (aFd, aVec, aCount, aOffset));
+
+/* -------------------------------------------------------------------------- */
+bool
+Eintr_active(void)
+{
+    return testMode(TestLevelRace);
+}
 
 /* -------------------------------------------------------------------------- */
 int
