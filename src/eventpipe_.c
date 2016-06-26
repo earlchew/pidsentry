@@ -197,7 +197,7 @@ attachEventPipeLatch_(struct EventPipe           *self,
 
     LIST_INSERT_HEAD(&self->mLatchList->mList, aEntry, mEntry);
 
-    lock = unlockThreadSigMutex(self->mMutex);
+    lock = unlockThreadSigMutex(lock);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -209,7 +209,7 @@ detachEventPipeLatch_(struct EventPipe           *self,
 
     LIST_REMOVE(aEntry, mEntry);
 
-    lock = unlockThreadSigMutex(self->mMutex);
+    lock = unlockThreadSigMutex(lock);
 }
 
 int
@@ -265,7 +265,7 @@ Finally:
 
     FINALLY
     ({
-        lock = unlockThreadSigMutex(self->mMutex);
+        lock = unlockThreadSigMutex(lock);
     });
 
     return rc;
