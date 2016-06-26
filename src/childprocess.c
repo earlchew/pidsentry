@@ -1121,36 +1121,6 @@ Finally:
     return rc;
 }
 
-static CHECKED bool
-pollFdWriteUmbilicalError_(int aErrno)
-{
-    bool error = false;
-
-    FINALLY
-    ({
-        switch (aErrno)
-        {
-        default:
-            error = true;
-            break;
-
-        case EPIPE:
-            warn(1, "Umbilical connection closed");
-            break;
-
-        case EWOULDBLOCK:
-            debug(1, "writing to umbilical blocked");
-            break;
-
-        case EINTR:
-            debug(1, "umbilical write interrupted");
-            break;
-        }
-    });
-
-    return error;
-}
-
 static CHECKED int
 pollFdWriteUmbilical_(struct ChildMonitor *self)
 {
@@ -1164,27 +1134,20 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
     ERROR_IF(
         (wrlen = write_eintr(
             self->mUmbilical.mFile->mFd, buf, sizeof(buf)),
-         -1 == wrlen && pollFdWriteUmbilicalError_(errno)));
+         -1 == wrlen || (errno = EIO, sizeof(buf) != wrlen)));
 
-    if (-1 != wrlen)
-    {
-        debug(1, "sent umbilical ping %zd", wrlen);
-        ensure(sizeof(buf) == wrlen);
+    debug(0, "sent umbilical ping");
 
-        /* Once a message is written on the umbilical connection, expect
-         * an echo to be returned from the umbilical monitor. */
+    /* Once a message is written on the umbilical connection, expect
+     * an echo to be returned from the umbilical monitor. */
 
-        self->mUmbilical.mCycleCount = 0;
-    }
+    self->mUmbilical.mCycleCount = 0;
 
     rc = 0;
 
 Finally:
 
-    FINALLY
-    ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
-    });
+    FINALLY({});
 
     return rc;
 }
@@ -1325,7 +1288,14 @@ pollFdTimerUmbilical_(struct ChildMonitor         *self,
     }
     else
     {
-        if (pollFdWriteUmbilical_(self))
+        int wrErr;
+        ERROR_IF(
+            (wrErr = pollFdWriteUmbilical_(self),
+             -1 == wrErr && (EPIPE       != errno &&
+                             EINTR       != errno &&
+                             EWOULDBLOCK != errno)));
+
+        if (-1 == wrErr)
         {
             struct PollFdTimerAction *umbilicalTimer =
                 &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
@@ -1335,9 +1305,15 @@ pollFdTimerUmbilical_(struct ChildMonitor         *self,
             default:
                 break;
 
+            case EWOULDBLOCK:
+                debug(1, "blocked write to umbilical");
+                break;
+
             case EPIPE:
                 /* The umbilical monitor is no longer running and has
                  * closed the umbilical connection. */
+
+                warn(0, "Umbilical connection closed");
 
                 pollFdCloseUmbilical_(self, aPollTime);
                 break;
@@ -1347,6 +1323,8 @@ pollFdTimerUmbilical_(struct ChildMonitor         *self,
                  * to take care that the monitoring loop is
                  * non-blocking. Instead, mark the timer as expired
                  * for force the monitoring loop to retry immediately. */
+
+                debug(1, "interrupted write to umbilical");
 
                 lapTimeTrigger(&umbilicalTimer->mSince,
                                umbilicalTimer->mPeriod, aPollTime);
@@ -1697,7 +1675,7 @@ pollFdEventPipe_(struct ChildMonitor         *self,
         debug(0, "checking event pipe");
 
         ERROR_IF(
-            -1 == pollEventPipe(self->mEventPipe, aPollTime));
+            -1 == pollEventPipe(self->mEventPipe, aPollTime) && EINTR != errno);
     }
 
     rc = 0;
