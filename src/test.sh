@@ -16,7 +16,15 @@ trap 'PIDSENTRY_TEST_FAILED= ; trap - 15' 15
 pidsentryexec()
 {
     unset PIDSENTRY_TEST_ERROR
-    exec libtool --mode=execute $VALGRIND ./pidsentry "$@"
+    set -- libtool --mode=execute $VALGRIND ./pidsentry "$@"
+    set -- PATH="$PATH" "$@"
+    set -- ${USER+      USER="$USER"}    "$@"
+    set -- ${LOGNAME+LOGNAME="$LOGNAME"} "$@"
+    set -- ${HOME+      HOME="$HOME"}    "$@"
+    set -- ${LANG+      LANG="$LANG"}    "$@"
+    set -- ${SHELL+    SHELL="$SHELL"}   "$@"
+    set -- ${TERM+      TERM="$TERM"}    "$@"
+    exec env - "$@"
 }
 
 pidsentry()
