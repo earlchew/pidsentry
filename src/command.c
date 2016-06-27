@@ -199,7 +199,7 @@ runCommandChildProcess_(struct RunCommandProcess_ *self)
         (watchdogChildPid = setEnvPid(
             "PIDSENTRY_PID", self->mCommand->mChildPid)));
 
-    debug(0, "PIDSENTRY__PID=%s", watchdogChildPid);
+    debug(0, "PIDSENTRY_PID=%s", watchdogChildPid);
 
     /* Wait here until the parent process has completed its
      * initialisation, and sends a positive acknowledgement. */
