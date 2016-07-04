@@ -42,6 +42,7 @@
 #define read    read_
 #define readv   readv_
 #define wait    wait_
+#define wait3   wait3_
 #define write   write_
 #define writev  writev_
 #endif
@@ -64,6 +65,7 @@
 #undef read
 #undef readv
 #undef wait
+#undef wait3
 #undef write
 #undef writev
 #endif
@@ -97,6 +99,9 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     pid_t, wait, (int *aStatus));
+
+EINTR_FUNCTION_DECL_(
+    pid_t, wait3, (int *aStatus, int aOptions, struct rusage *aRusage));
 
 /* -------------------------------------------------------------------------- */
 #ifndef __GLIBC__
