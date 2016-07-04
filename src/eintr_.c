@@ -96,6 +96,7 @@ enum SystemCallKind
     SYSTEMCALL_READV,
     SYSTEMCALL_WAIT,
     SYSTEMCALL_WAIT3,
+    SYSTEMCALL_WAIT4,
     SYSTEMCALL_WRITE,
     SYSTEMCALL_WRITEV,
     SYSTEMCALL_KINDS
@@ -303,6 +304,15 @@ EINTR_FUNCTION_DEFN_(
     (aStatus, aOptions, aRusage));
 
 /* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_WAIT4,
+    pid_t,
+    wait4,
+    (pid_t aPid, int *aStatus, int aOptions, struct rusage *aRusage),
+    (aPid, aStatus, aOptions, aRusage));
+
+/* -------------------------------------------------------------------------- */
 static int
 local_close_(int aFd)
 {
@@ -389,6 +399,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_READV]   = SYSCALL_ENTRY_(, readv),
     [SYSTEMCALL_WAIT]    = SYSCALL_ENTRY_(, wait),
     [SYSTEMCALL_WAIT3]   = SYSCALL_ENTRY_(, wait3),
+    [SYSTEMCALL_WAIT4]   = SYSCALL_ENTRY_(, wait4),
     [SYSTEMCALL_WRITE]   = SYSCALL_ENTRY_(, write),
     [SYSTEMCALL_WRITEV]  = SYSCALL_ENTRY_(, writev),
 };
