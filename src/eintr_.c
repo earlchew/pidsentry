@@ -88,6 +88,7 @@ enum SystemCallKind
     SYSTEMCALL_ACCEPT,
     SYSTEMCALL_ACCEPT4,
     SYSTEMCALL_CLOSE,
+    SYSTEMCALL_CONNECT,
     SYSTEMCALL_IOCTL,
     SYSTEMCALL_OPEN,
     SYSTEMCALL_PREAD,
@@ -165,6 +166,15 @@ EINTR_FUNCTION_DEFN_(
     accept4,
     (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen, int aOptions),
     (aFd, aAddr, aAddrLen, aOptions));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_CONNECT,
+    int,
+    connect,
+    (int aFd, const struct sockaddr *aAddr, socklen_t aAddrLen),
+    (aFd, aAddr, aAddrLen));
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -431,6 +441,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_ACCEPT]  = SYSCALL_ENTRY_(, accept),
     [SYSTEMCALL_ACCEPT4] = SYSCALL_ENTRY_(, accept4),
     [SYSTEMCALL_CLOSE]   = SYSCALL_ENTRY_(local_, close),
+    [SYSTEMCALL_CONNECT] = SYSCALL_ENTRY_(, connect),
     [SYSTEMCALL_IOCTL]   = SYSCALL_ENTRY_(local_, ioctl),
     [SYSTEMCALL_OPEN]    = SYSCALL_ENTRY_(local_, open),
     [SYSTEMCALL_PREAD]   = SYSCALL_ENTRY_(, pread),

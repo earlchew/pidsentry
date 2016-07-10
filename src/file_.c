@@ -638,7 +638,13 @@ bindFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
 int
 connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
 {
-    return connect(self->mFd, aAddr, aAddrLen);
+    int rc;
+
+    do
+        rc = connect_eintr(self->mFd, aAddr, aAddrLen);
+    while (rc && EINTR == errno);
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

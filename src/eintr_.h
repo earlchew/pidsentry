@@ -35,6 +35,7 @@
 #define accept  accept_
 #define accept4 accept4_
 #define close   close_
+#define connect connect_
 #define ioctl   ioctl_
 #define open    open_
 #define pread   pread_
@@ -64,6 +65,7 @@
 #undef accept
 #undef accept4
 #undef close
+#undef connect
 #undef ioctl
 #undef open
 #undef pread
@@ -103,7 +105,7 @@ struct EintrModule
 
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DECL_(
-    int, accept, (int aFd, struct sockaddr *aAddr, socklen_t *aAddLen));
+    int, accept, (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen));
 
 EINTR_FUNCTION_DECL_(
     int, accept4,
@@ -111,6 +113,9 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, close, (int aFd));
+
+EINTR_FUNCTION_DECL_(
+    int, connect, (int aFd, const struct sockaddr *aAddr, socklen_t aAddrLen));
 
 EINTR_FUNCTION_DECL_(
     int, open, (const char *aPath, int aFlags, ...));
