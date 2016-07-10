@@ -1448,10 +1448,20 @@ monitorProcessChild(struct Pid aPid)
 
     siginfo_t siginfo;
 
-    siginfo.si_pid = 0;
-    ERROR_IF(
-        waitid_eintr(P_PID, aPid.mPid, &siginfo,
-               WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT));
+    while (1)
+    {
+        siginfo.si_pid = 0;
+
+        int waitErr;
+        ERROR_IF(
+            (waitErr = waitid_eintr(P_PID, aPid.mPid, &siginfo,
+                   WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT),
+            waitErr && EINTR != errno));
+        if (waitErr)
+            continue;
+
+        break;
+    }
 
     if (siginfo.si_pid != aPid.mPid)
         rc.mChildState = ChildProcessStateRunning;

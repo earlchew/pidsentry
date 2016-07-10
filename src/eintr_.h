@@ -32,6 +32,8 @@
 #include "compiler_.h"
 
 #ifdef EINTR_MODULE_DEFN_
+#define accept  accept_
+#define accept4 accept4_
 #define close   close_
 #define ioctl   ioctl_
 #define open    open_
@@ -56,8 +58,11 @@
 #include <sys/uio.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
 
 #ifdef EINTR_MODULE_DEFN_
+#undef accept
+#undef accept4
 #undef close
 #undef ioctl
 #undef open
@@ -97,6 +102,13 @@ struct EintrModule
 #endif
 
 /* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DECL_(
+    int, accept, (int aFd, struct sockaddr *aAddr, socklen_t *aAddLen));
+
+EINTR_FUNCTION_DECL_(
+    int, accept4,
+    (int aFd, struct sockaddr *aAddr, socklen_t *aAddLen, int aOptions));
+
 EINTR_FUNCTION_DECL_(
     int, close, (int aFd));
 

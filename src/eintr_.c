@@ -85,6 +85,8 @@ struct EintrModule
 
 enum SystemCallKind
 {
+    SYSTEMCALL_ACCEPT,
+    SYSTEMCALL_ACCEPT4,
     SYSTEMCALL_CLOSE,
     SYSTEMCALL_IOCTL,
     SYSTEMCALL_OPEN,
@@ -145,6 +147,24 @@ interruptSystemCall(enum SystemCallKind aKind);
                 return rc;                                      \
         }                                                       \
     } while (0)
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_ACCEPT,
+    int,
+    accept,
+    (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen),
+    (aFd, aAddr, aAddrLen));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_ACCEPT4,
+    int,
+    accept4,
+    (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen, int aOptions),
+    (aFd, aAddr, aAddrLen, aOptions));
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -408,6 +428,8 @@ struct SystemCall
 
 static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
+    [SYSTEMCALL_ACCEPT]  = SYSCALL_ENTRY_(, accept),
+    [SYSTEMCALL_ACCEPT4] = SYSCALL_ENTRY_(, accept4),
     [SYSTEMCALL_CLOSE]   = SYSCALL_ENTRY_(local_, close),
     [SYSTEMCALL_IOCTL]   = SYSCALL_ENTRY_(local_, ioctl),
     [SYSTEMCALL_OPEN]    = SYSCALL_ENTRY_(local_, open),

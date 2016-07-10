@@ -36,6 +36,7 @@
 #include "thread_.h"
 #include "timekeeping_.h"
 #include "socketpair_.h"
+#include "eintr_.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -666,16 +667,28 @@ acceptFileSocket(struct File *self, unsigned aFlags)
     }
 
     if ( ! RUNNING_ON_VALGRIND)
-        ERROR_IF(
-            (fd = accept4(self->mFd, 0, 0, flags),
-             -1 == fd));
+    {
+        while (1)
+        {
+            ERROR_IF(
+                (fd = accept4_eintr(self->mFd, 0, 0, flags),
+                 -1 == fd && EINTR != errno));
+            if (-1 != fd)
+                break;
+        }
+    }
     else
     {
         appLock = createProcessAppLock();
 
-        ERROR_IF(
-            (fd = accept(self->mFd, 0, 0),
-             -1 == fd));
+        while (1)
+        {
+            ERROR_IF(
+                (fd = accept_eintr(self->mFd, 0, 0),
+                 -1 == fd && EINTR != errno));
+            if (-1 != fd)
+                break;
+        }
 
         if (flags & SOCK_CLOEXEC)
             ERROR_IF(
