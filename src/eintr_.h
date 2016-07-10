@@ -114,7 +114,7 @@ EINTR_FUNCTION_DECL_(
     (pid_t aPid, int *aStatus, int aOptions, struct rusage *aRusage));
 
 EINTR_FUNCTION_DECL_(
-    pid_t, waitid,
+    int, waitid,
     (idtype_t aIdType, id_t aId, siginfo_t *aInfo, int aOptions));
 
 EINTR_FUNCTION_DECL_(

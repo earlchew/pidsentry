@@ -97,6 +97,7 @@ enum SystemCallKind
     SYSTEMCALL_WAIT,
     SYSTEMCALL_WAIT3,
     SYSTEMCALL_WAIT4,
+    SYSTEMCALL_WAITID,
     SYSTEMCALL_WAITPID,
     SYSTEMCALL_WRITE,
     SYSTEMCALL_WRITEV,
@@ -316,6 +317,15 @@ EINTR_FUNCTION_DEFN_(
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
+    SYSTEMCALL_WAITID,
+    int,
+    waitid,
+    (idtype_t aIdType, id_t aId, siginfo_t *aInfo, int aOptions),
+    (aIdType, aId, aInfo, aOptions));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
     SYSTEMCALL_WAITPID,
     pid_t,
     waitpid,
@@ -410,6 +420,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_WAIT]    = SYSCALL_ENTRY_(, wait),
     [SYSTEMCALL_WAIT3]   = SYSCALL_ENTRY_(, wait3),
     [SYSTEMCALL_WAIT4]   = SYSCALL_ENTRY_(, wait4),
+    [SYSTEMCALL_WAITID]  = SYSCALL_ENTRY_(, waitid),
     [SYSTEMCALL_WAITPID] = SYSCALL_ENTRY_(, waitpid),
     [SYSTEMCALL_WRITE]   = SYSCALL_ENTRY_(, write),
     [SYSTEMCALL_WRITEV]  = SYSCALL_ENTRY_(, writev),

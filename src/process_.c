@@ -1419,7 +1419,7 @@ waitProcessChild(struct Pid aPid)
     {
         siginfo.si_pid = 0;
         ERROR_IF(
-            waitid(P_PID, aPid.mPid, &siginfo, WEXITED | WNOWAIT) &&
+            waitid_eintr(P_PID, aPid.mPid, &siginfo, WEXITED | WNOWAIT) &&
             EINTR != errno);
 
     } while (siginfo.si_pid != aPid.mPid);
@@ -1450,7 +1450,7 @@ monitorProcessChild(struct Pid aPid)
 
     siginfo.si_pid = 0;
     ERROR_IF(
-        waitid(P_PID, aPid.mPid, &siginfo,
+        waitid_eintr(P_PID, aPid.mPid, &siginfo,
                WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT));
 
     if (siginfo.si_pid != aPid.mPid)
