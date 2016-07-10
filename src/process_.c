@@ -41,6 +41,7 @@
 #include "thread_.h"
 #include "system_.h"
 #include "lambda_.h"
+#include "eintr_.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1365,7 +1366,7 @@ reapProcessChild(struct Pid aPid, int *aStatus)
     do
     {
         ERROR_IF(
-            (pid = waitpid(aPid.mPid, aStatus, __WALL),
+            (pid = waitpid_eintr(aPid.mPid, aStatus, __WALL),
              -1 == pid && EINTR != errno));
     } while (pid != aPid.mPid);
 

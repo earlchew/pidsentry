@@ -44,6 +44,8 @@
 #define wait    wait_
 #define wait3   wait3_
 #define wait4   wait4_
+#define waitid  waitid_
+#define waitpid waitpid_
 #define write   write_
 #define writev  writev_
 #endif
@@ -68,6 +70,8 @@
 #undef wait
 #undef wait3
 #undef wait4
+#undef waitid
+#undef waitpid
 #undef write
 #undef writev
 #endif
@@ -108,6 +112,14 @@ EINTR_FUNCTION_DECL_(
 EINTR_FUNCTION_DECL_(
     pid_t, wait4,
     (pid_t aPid, int *aStatus, int aOptions, struct rusage *aRusage));
+
+EINTR_FUNCTION_DECL_(
+    pid_t, waitid,
+    (idtype_t aIdType, id_t aId, siginfo_t *aInfo, int aOptions));
+
+EINTR_FUNCTION_DECL_(
+    pid_t, waitpid,
+    (pid_t aPid, int *aStatus, int aOptions));
 
 /* -------------------------------------------------------------------------- */
 #ifndef __GLIBC__
