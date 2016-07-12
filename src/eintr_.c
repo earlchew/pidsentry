@@ -37,6 +37,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+#include <sys/file.h>
+
 /* -------------------------------------------------------------------------- */
 static unsigned moduleInit_;
 
@@ -89,6 +91,7 @@ enum SystemCallKind
     SYSTEMCALL_ACCEPT4,
     SYSTEMCALL_CLOSE,
     SYSTEMCALL_CONNECT,
+    SYSTEMCALL_FLOCK,
     SYSTEMCALL_IOCTL,
     SYSTEMCALL_OPEN,
     SYSTEMCALL_PREAD,
@@ -219,6 +222,49 @@ struct EintrModule
 
 EINTR_OPEN_DEFN_(open);
 EINTR_OPEN_DEFN_(open_eintr);
+
+/* -------------------------------------------------------------------------- */
+static int
+local_flock_(int aFd, int aOp)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_FLOCK,
+    static int,
+    local_flock,
+    (int aFd, int aOp),
+    (aFd, aOp));
+
+int
+flock(int aFd, int aOp)
+{
+    int rc;
+
+    do
+        rc = flock_eintr(aFd, aOp);
+    while (rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+flock_eintr(int aFd, int aOp)
+{
+    if ((LOCK_UN | LOCK_NB) != aOp && LOCK_UN != aOp)
+    {
+        if ( ! interruptSystemCall(SYSTEMCALL_FLOCK))
+        {
+            errno = EINTR;
+            return -1;
+        }
+    }
+
+    return local_flock_eintr(aFd, aOp);
+}
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -504,6 +550,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_ACCEPT4] = SYSCALL_ENTRY_(, accept4),
     [SYSTEMCALL_CLOSE]   = SYSCALL_ENTRY_(local_, close),
     [SYSTEMCALL_CONNECT] = SYSCALL_ENTRY_(, connect),
+    [SYSTEMCALL_FLOCK]   = SYSCALL_ENTRY_(local_, flock),
     [SYSTEMCALL_IOCTL]   = SYSCALL_ENTRY_(local_, ioctl),
     [SYSTEMCALL_OPEN]    = SYSCALL_ENTRY_(local_, open),
     [SYSTEMCALL_PREAD]   = SYSCALL_ENTRY_(, pread),

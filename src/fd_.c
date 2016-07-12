@@ -948,8 +948,8 @@ lockFd(int aFd, struct LockType aLockType)
     int err;
     do
         ERROR_IF(
-            (err = flock(aFd, lockType),
-             -1 == err && EINTR != errno));
+            (err = flock_eintr(aFd, lockType),
+             err && EINTR != errno));
     while (err);
 
     rc = 0;
@@ -968,7 +968,7 @@ unlockFd(int aFd)
     int rc = -1;
 
     ERROR_IF(
-        flock(aFd, LOCK_UN));
+        flock_eintr(aFd, LOCK_UN));
 
     rc = 0;
 
