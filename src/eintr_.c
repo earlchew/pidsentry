@@ -98,6 +98,7 @@ enum SystemCallKind
     SYSTEMCALL_READ,
     SYSTEMCALL_READV,
     SYSTEMCALL_RECV,
+    SYSTEMCALL_RECVFROM,
     SYSTEMCALL_WAIT,
     SYSTEMCALL_WAIT3,
     SYSTEMCALL_WAIT4,
@@ -330,6 +331,16 @@ EINTR_FUNCTION_DEFN_(
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
+    SYSTEMCALL_RECVFROM,
+    ssize_t,
+    recvfrom,
+    (int aFd, void *aBufPtr, size_t aBufLen, int aOptions,
+     struct sockaddr *aAddr, socklen_t *aAddrLen),
+    (aFd, aBufPtr, aBufLen, aOptions, aAddr, aAddrLen));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
     SYSTEMCALL_WAIT,
     pid_t,
     wait,
@@ -461,6 +472,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_READ]    = SYSCALL_ENTRY_(, read),
     [SYSTEMCALL_READV]   = SYSCALL_ENTRY_(, readv),
     [SYSTEMCALL_RECV]    = SYSCALL_ENTRY_(, recv),
+    [SYSTEMCALL_RECVFROM]= SYSCALL_ENTRY_(, recvfrom),
     [SYSTEMCALL_WAIT]    = SYSCALL_ENTRY_(, wait),
     [SYSTEMCALL_WAIT3]   = SYSCALL_ENTRY_(, wait3),
     [SYSTEMCALL_WAIT4]   = SYSCALL_ENTRY_(, wait4),

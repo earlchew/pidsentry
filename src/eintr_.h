@@ -32,26 +32,27 @@
 #include "compiler_.h"
 
 #ifdef EINTR_MODULE_DEFN_
-#define accept  accept_
-#define accept4 accept4_
-#define close   close_
-#define connect connect_
-#define ioctl   ioctl_
-#define open    open_
-#define pread   pread_
-#define pwrite  pwrite_
-#define preadv  preadv_
-#define pwritev pwritev_
-#define read    read_
-#define readv   readv_
-#define recv    recv_
-#define wait    wait_
-#define wait3   wait3_
-#define wait4   wait4_
-#define waitid  waitid_
-#define waitpid waitpid_
-#define write   write_
-#define writev  writev_
+#define accept   accept_
+#define accept4  accept4_
+#define close    close_
+#define connect  connect_
+#define ioctl    ioctl_
+#define open     open_
+#define pread    pread_
+#define pwrite   pwrite_
+#define preadv   preadv_
+#define pwritev  pwritev_
+#define read     read_
+#define readv    readv_
+#define recv     recv_
+#define recvfrom recvfrom_
+#define wait     wait_
+#define wait3    wait3_
+#define wait4    wait4_
+#define waitid   waitid_
+#define waitpid  waitpid_
+#define write    write_
+#define writev   writev_
 #endif
 
 #include <unistd.h>
@@ -76,6 +77,7 @@
 #undef read
 #undef readv
 #undef recv
+#undef recvfrom
 #undef wait
 #undef wait3
 #undef wait4
@@ -124,6 +126,10 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     ssize_t, recv, (int aFd, void *aBufPtr, size_t aBufLen, int aFlags));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, recvfrom, (int aFd, void *aBufPtr, size_t aBufLen, int aFlags,
+                        struct sockaddr *aAddr, socklen_t *aAddrLen));
 
 EINTR_FUNCTION_DECL_(
     pid_t, wait, (int *aStatus));
