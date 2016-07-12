@@ -841,7 +841,13 @@ sendFileSocketMsg(struct File *self, const struct msghdr *aMsg, int aFlags)
 ssize_t
 recvFileSocketMsg(struct File *self, struct msghdr *aMsg, int aFlags)
 {
-    return recvmsg(self->mFd, aMsg, aFlags);
+    ssize_t rc;
+
+    do
+        rc = recvmsg_eintr(self->mFd, aMsg, aFlags);
+    while (-1 == rc && EINTR == errno);
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

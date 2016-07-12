@@ -46,6 +46,7 @@
 #define readv    readv_
 #define recv     recv_
 #define recvfrom recvfrom_
+#define recvmsg  recvmsg_
 #define wait     wait_
 #define wait3    wait3_
 #define wait4    wait4_
@@ -78,6 +79,7 @@
 #undef readv
 #undef recv
 #undef recvfrom
+#undef recvmsg
 #undef wait
 #undef wait3
 #undef wait4
@@ -130,6 +132,9 @@ EINTR_FUNCTION_DECL_(
 EINTR_FUNCTION_DECL_(
     ssize_t, recvfrom, (int aFd, void *aBufPtr, size_t aBufLen, int aFlags,
                         struct sockaddr *aAddr, socklen_t *aAddrLen));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, recvmsg, (int aFd, struct msghdr *aMsg, int aFlags));
 
 EINTR_FUNCTION_DECL_(
     pid_t, wait, (int *aStatus));
