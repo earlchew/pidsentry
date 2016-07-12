@@ -44,6 +44,7 @@
 #define pwritev pwritev_
 #define read    read_
 #define readv   readv_
+#define recv    recv_
 #define wait    wait_
 #define wait3   wait3_
 #define wait4   wait4_
@@ -74,6 +75,7 @@
 #undef pwritev
 #undef read
 #undef readv
+#undef recv
 #undef wait
 #undef wait3
 #undef wait4
@@ -119,6 +121,9 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, open, (const char *aPath, int aFlags, ...));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, recv, (int aFd, void *aBufPtr, size_t aBufLen, int aFlags));
 
 EINTR_FUNCTION_DECL_(
     pid_t, wait, (int *aStatus));

@@ -821,7 +821,13 @@ sendFileSocket(struct File *self, const char *aBuf, size_t aLen)
 ssize_t
 recvFileSocket(struct File *self, char *aBuf, size_t aLen)
 {
-    return recv(self->mFd, aBuf, aLen, 0);
+    ssize_t rc;
+
+    do
+        rc = recv_eintr(self->mFd, aBuf, aLen, 0);
+    while (-1 == rc && EINTR == errno);
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
