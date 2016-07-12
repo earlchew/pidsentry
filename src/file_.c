@@ -814,7 +814,13 @@ ownFileSocketPeerName(const struct File *self,
 ssize_t
 sendFileSocket(struct File *self, const char *aBuf, size_t aLen)
 {
-    return send(self->mFd, aBuf, aLen, 0);
+    ssize_t rc;
+
+    do
+        rc = send_eintr(self->mFd, aBuf, aLen, 0);
+    while (-1 == rc && EINTR == errno);
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
