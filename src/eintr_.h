@@ -49,6 +49,7 @@
 #define recvmsg  recvmsg_
 #define send     send_
 #define sendto   sendto_
+#define sendmsg  sendmsg_
 #define wait     wait_
 #define wait3    wait3_
 #define wait4    wait4_
@@ -84,6 +85,7 @@
 #undef recvmsg
 #undef send
 #undef sendto
+#undef sendmsg
 #undef wait
 #undef wait3
 #undef wait4
@@ -146,6 +148,9 @@ EINTR_FUNCTION_DECL_(
 EINTR_FUNCTION_DECL_(
     ssize_t, sendto, (int aFd, const void *aBufPtr, size_t aBufLen, int aFlags,
                       const struct sockaddr *aAddr, socklen_t aAddrLen));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, sendmsg, (int aFd, const struct msghdr *aMsg, int aFlags));
 
 EINTR_FUNCTION_DECL_(
     pid_t, wait, (int *aStatus));
