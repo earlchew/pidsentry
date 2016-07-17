@@ -268,7 +268,7 @@ flock_eintr(int aFd, int aOp)
 
 /* -------------------------------------------------------------------------- */
 static int
-local_ioctl_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, uintptr_t aArg)
+local_ioctl_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg)
 {
     errno = ENOSYS;
     return -1;
@@ -279,7 +279,7 @@ EINTR_FUNCTION_DEFN_(
     SYSTEMCALL_IOCTL,
     static int,
     local_ioctl,
-    (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, uintptr_t aArg),
+    (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg),
     (aFd, aRequest, aArg));
 
 #define EINTR_IOCTL_DEFN_(Name_)                                \
@@ -294,7 +294,7 @@ Name_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, ...)            \
     arg = va_arg(argp, void *);                                 \
     va_end(argp);                                               \
                                                                 \
-    return local_ ## Name_(aFd, aRequest, (uintptr_t) arg);     \
+    return local_ ## Name_(aFd, aRequest, arg);                 \
 }                                                               \
 struct EintrModule
 
