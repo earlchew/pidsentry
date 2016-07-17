@@ -224,20 +224,12 @@ EINTR_OPEN_DEFN_(open);
 EINTR_OPEN_DEFN_(open_eintr);
 
 /* -------------------------------------------------------------------------- */
-static int
-local_flock_(int aFd, int aOp)
+static bool
+local_flock_check_(void)
 {
-    errno = ENOSYS;
-    return -1;
+    return __builtin_types_compatible_p(
+        DECLTYPE(flock), DECLTYPE(flock_eintr));
 }
-
-EINTR_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_FLOCK,
-    static int,
-    local_flock,
-    (int aFd, int aOp),
-    (aFd, aOp));
 
 int
 flock(int aFd, int aOp)
@@ -254,16 +246,22 @@ flock(int aFd, int aOp)
 int
 flock_eintr(int aFd, int aOp)
 {
-    if ((LOCK_UN | LOCK_NB) != aOp && LOCK_UN != aOp)
+    uintptr_t flock_;
+
+    if ((LOCK_UN | LOCK_NB) == aOp || LOCK_UN == aOp)
+        flock_ = invokeSystemCall(SYSTEMCALL_FLOCK);
+    else
     {
-        if ( ! interruptSystemCall(SYSTEMCALL_FLOCK))
+        flock_ = interruptSystemCall(SYSTEMCALL_FLOCK);
+
+        if ( ! flock_)
         {
             errno = EINTR;
             return -1;
         }
     }
 
-    return local_flock_eintr(aFd, aOp);
+    return ((DECLTYPE(flock) *) flock_)(aFd, aOp);
 }
 
 /* -------------------------------------------------------------------------- */
