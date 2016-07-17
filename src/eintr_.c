@@ -471,20 +471,12 @@ EINTR_FUNCTION_DEFN_(
     (aPid, aStatus, aOptions));
 
 /* -------------------------------------------------------------------------- */
-static int
-local_close_(int aFd)
+static bool
+local_close_check_(void)
 {
-    errno = ENOSYS;
-    return -1;
+    return __builtin_types_compatible_p(
+        DECLTYPE(close), DECLTYPE(close_eintr));
 }
-
-EINTR_FUNCTION_DEFN_(
-    0,
-    SYSTEMCALL_CLOSE,
-    static int,
-    local_close,
-    (int aFd),
-    (aFd));
 
 int
 close(int aFd)
@@ -518,14 +510,16 @@ close_eintr(int aFd)
      * asynchronously and the process shall have no further ability to track
      * the completion or final status of the close operation. */
 
-    if ( ! interruptSystemCall(SYSTEMCALL_CLOSE))
+    uintptr_t close_ = interruptSystemCall(SYSTEMCALL_CLOSE);
+
+    if ( ! close_)
     {
         errno = EINTR;
         return -1;
     }
 
     return
-        ! local_close_eintr(aFd)
+        ! ((DECLTYPE(close) *) close_)(aFd)
         ? 0
 #ifdef __linux__
         : EINTR == errno ? 0 /* https://lwn.net/Articles/576478/ */
