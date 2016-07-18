@@ -617,7 +617,7 @@ fstatFile(struct File *self, struct stat *aStat)
 int
 fcntlFileGetFlags(struct File *self)
 {
-    return fcntl(self->mFd, F_GETFL);
+    return fcntl_eintr(self->mFd, F_GETFL);
 }
 
 /* -------------------------------------------------------------------------- */

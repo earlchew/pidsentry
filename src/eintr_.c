@@ -91,6 +91,7 @@ enum SystemCallKind
     SYSTEMCALL_ACCEPT4,
     SYSTEMCALL_CLOSE,
     SYSTEMCALL_CONNECT,
+    SYSTEMCALL_FCNTL,
     SYSTEMCALL_FLOCK,
     SYSTEMCALL_IOCTL,
     SYSTEMCALL_OPEN,
@@ -222,6 +223,137 @@ struct EintrModule
 
 EINTR_OPEN_DEFN_(open);
 EINTR_OPEN_DEFN_(open_eintr);
+
+/* -------------------------------------------------------------------------- */
+static bool
+fcntl_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(fcntl), DECLTYPE(fcntl_eintr));
+}
+
+static int
+fcntl_call_(uintptr_t aFcntl, int aFd, int aCmd, va_list aArgs)
+{
+    int rc = -1;
+
+    AUTO(fcntlp, (DECLTYPE(fcntl) *) aFcntl);
+
+    switch (aCmd)
+    {
+    default:
+        errno = ENOSYS;
+        break;
+
+#ifdef F_GETPIPE_SZ
+    case F_GETPIPE_SZ:
+#endif
+#ifdef F_GETLEASE
+    case F_GETLEASE:
+#endif
+#ifdef F_GETSIG
+    case F_GETSIG:
+#endif
+#ifdef F_DUPFD_CLOEXEC
+    case F_DUPFD_CLOEXEC:
+#endif
+    case F_DUPFD:
+    case F_GETFD:
+    case F_GETFL:
+    case F_GETOWN:
+        rc = fcntlp(aFd, aCmd);
+        break;
+
+#ifdef F_SETPIPE_SZ
+    case F_SETPIPE_SZ:
+#endif
+#ifdef F_NOTIFY
+    case F_NOTIFY:
+#endif
+#ifdef F_SETLEASE
+    case F_SETLEASE:
+#endif
+#ifdef F_SETSIG
+    case F_SETSIG:
+#endif
+    case F_SETFD:
+    case F_SETFL:
+    case F_SETOWN:
+        {
+            int arg = va_arg(aArgs, int);
+
+            rc = fcntlp(aFd, aCmd, arg);
+        }
+        break;
+
+#ifdef F_GETOWN_EX
+    case F_GETOWN_EX:
+#endif
+#ifdef F_SETOWN_EX
+    case F_SETOWN_EX:
+#endif
+    case F_GETLK:
+    case F_SETLK:
+    case F_SETLKW:
+        {
+            void *arg = va_arg(aArgs, void *);
+
+            rc = fcntlp(aFd, aCmd, arg);
+        }
+        break;
+    }
+
+    return rc;
+}
+
+int
+fcntl(int aFd, int aCmd, ...)
+{
+    int rc;
+
+    va_list args;
+
+    uintptr_t fcntl_ = invokeSystemCall(SYSTEMCALL_FCNTL);
+
+    do
+    {
+        va_start(args, aCmd);
+        rc = fcntl_call_(fcntl_, aFd, aCmd, args);
+        va_end(args);
+    }
+    while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+fcntl_eintr(int aFd, int aCmd, ...)
+{
+    int rc;
+
+    uintptr_t fcntl_;
+
+    if (F_SETLKW != aCmd)
+        fcntl_ = invokeSystemCall(SYSTEMCALL_FCNTL);
+    else
+    {
+        fcntl_ = interruptSystemCall(SYSTEMCALL_FCNTL);
+
+        if ( ! fcntl_)
+        {
+            errno = EINTR;
+            return -1;
+        }
+    }
+
+    va_list args;
+
+    va_start(args, aCmd);
+    rc = fcntl_call_(fcntl_, aFd, aCmd, args);
+    va_end(args);
+
+    return rc;
+}
 
 /* -------------------------------------------------------------------------- */
 static bool
@@ -538,32 +670,33 @@ struct SystemCall
 
 static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
-    [SYSTEMCALL_ACCEPT]  = SYSCALL_ENTRY_(, accept),
-    [SYSTEMCALL_ACCEPT4] = SYSCALL_ENTRY_(, accept4),
-    [SYSTEMCALL_CLOSE]   = SYSCALL_ENTRY_(local_, close),
-    [SYSTEMCALL_CONNECT] = SYSCALL_ENTRY_(, connect),
-    [SYSTEMCALL_FLOCK]   = SYSCALL_ENTRY_(local_, flock),
-    [SYSTEMCALL_IOCTL]   = SYSCALL_ENTRY_(local_, ioctl),
-    [SYSTEMCALL_OPEN]    = SYSCALL_ENTRY_(local_, open),
-    [SYSTEMCALL_PREAD]   = SYSCALL_ENTRY_(, pread),
-    [SYSTEMCALL_PREADV]  = SYSCALL_ENTRY_(, preadv),
-    [SYSTEMCALL_PWRITE]  = SYSCALL_ENTRY_(, pwrite),
-    [SYSTEMCALL_PWRITEV] = SYSCALL_ENTRY_(, pwritev),
-    [SYSTEMCALL_READ]    = SYSCALL_ENTRY_(, read),
-    [SYSTEMCALL_READV]   = SYSCALL_ENTRY_(, readv),
-    [SYSTEMCALL_RECV]    = SYSCALL_ENTRY_(, recv),
-    [SYSTEMCALL_RECVFROM]= SYSCALL_ENTRY_(, recvfrom),
-    [SYSTEMCALL_RECVMSG] = SYSCALL_ENTRY_(, recvmsg),
-    [SYSTEMCALL_SEND]    = SYSCALL_ENTRY_(, send),
-    [SYSTEMCALL_SENDTO]  = SYSCALL_ENTRY_(, sendto),
-    [SYSTEMCALL_SENDMSG] = SYSCALL_ENTRY_(, sendmsg),
-    [SYSTEMCALL_WAIT]    = SYSCALL_ENTRY_(, wait),
-    [SYSTEMCALL_WAIT3]   = SYSCALL_ENTRY_(, wait3),
-    [SYSTEMCALL_WAIT4]   = SYSCALL_ENTRY_(, wait4),
-    [SYSTEMCALL_WAITID]  = SYSCALL_ENTRY_(, waitid),
-    [SYSTEMCALL_WAITPID] = SYSCALL_ENTRY_(, waitpid),
-    [SYSTEMCALL_WRITE]   = SYSCALL_ENTRY_(, write),
-    [SYSTEMCALL_WRITEV]  = SYSCALL_ENTRY_(, writev),
+    [SYSTEMCALL_ACCEPT]      = SYSCALL_ENTRY_(, accept),
+    [SYSTEMCALL_ACCEPT4]     = SYSCALL_ENTRY_(, accept4),
+    [SYSTEMCALL_CLOSE]       = SYSCALL_ENTRY_(local_, close),
+    [SYSTEMCALL_CONNECT]     = SYSCALL_ENTRY_(, connect),
+    [SYSTEMCALL_FCNTL]       = SYSCALL_ENTRY_(, fcntl),
+    [SYSTEMCALL_FLOCK]       = SYSCALL_ENTRY_(local_, flock),
+    [SYSTEMCALL_IOCTL]       = SYSCALL_ENTRY_(local_, ioctl),
+    [SYSTEMCALL_OPEN]        = SYSCALL_ENTRY_(local_, open),
+    [SYSTEMCALL_PREAD]       = SYSCALL_ENTRY_(, pread),
+    [SYSTEMCALL_PREADV]      = SYSCALL_ENTRY_(, preadv),
+    [SYSTEMCALL_PWRITE]      = SYSCALL_ENTRY_(, pwrite),
+    [SYSTEMCALL_PWRITEV]     = SYSCALL_ENTRY_(, pwritev),
+    [SYSTEMCALL_READ]        = SYSCALL_ENTRY_(, read),
+    [SYSTEMCALL_READV]       = SYSCALL_ENTRY_(, readv),
+    [SYSTEMCALL_RECV]        = SYSCALL_ENTRY_(, recv),
+    [SYSTEMCALL_RECVFROM]    = SYSCALL_ENTRY_(, recvfrom),
+    [SYSTEMCALL_RECVMSG]     = SYSCALL_ENTRY_(, recvmsg),
+    [SYSTEMCALL_SEND]        = SYSCALL_ENTRY_(, send),
+    [SYSTEMCALL_SENDTO]      = SYSCALL_ENTRY_(, sendto),
+    [SYSTEMCALL_SENDMSG]     = SYSCALL_ENTRY_(, sendmsg),
+    [SYSTEMCALL_WAIT]        = SYSCALL_ENTRY_(, wait),
+    [SYSTEMCALL_WAIT3]       = SYSCALL_ENTRY_(, wait3),
+    [SYSTEMCALL_WAIT4]       = SYSCALL_ENTRY_(, wait4),
+    [SYSTEMCALL_WAITID]      = SYSCALL_ENTRY_(, waitid),
+    [SYSTEMCALL_WAITPID]     = SYSCALL_ENTRY_(, waitpid),
+    [SYSTEMCALL_WRITE]       = SYSCALL_ENTRY_(, write),
+    [SYSTEMCALL_WRITEV]      = SYSCALL_ENTRY_(, writev),
 };
 
 /* -------------------------------------------------------------------------- */

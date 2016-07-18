@@ -36,6 +36,7 @@
 #define accept4  accept4_
 #define close    close_
 #define connect  connect_
+#define fcntl    fcntl_
 #define flock    flock_
 #define ioctl    ioctl_
 #define open     open_
@@ -73,6 +74,7 @@
 #undef accept4
 #undef close
 #undef connect
+#undef fcntl
 #undef flock
 #undef ioctl
 #undef open
@@ -130,6 +132,9 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, connect, (int aFd, const struct sockaddr *aAddr, socklen_t aAddrLen));
+
+EINTR_FUNCTION_DECL_(
+    int, fcntl, (int aFd, int aCmd, ...));
 
 EINTR_FUNCTION_DECL_(
     int, flock, (int aFd, int aOp));

@@ -185,11 +185,11 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
 
     int flags;
     ERROR_IF(
-        (flags = fcntl(aFd, F_GETFD),
+        (flags = fcntl_eintr(aFd, F_GETFD),
          -1 == flags));
 
     ERROR_IF(
-        fcntl(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec));
+        fcntl_eintr(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec));
 
     rc = 0;
 
@@ -255,12 +255,12 @@ nonBlockingFd(int aFd)
 
     int statusFlags;
     ERROR_IF(
-        (statusFlags = fcntl(aFd, F_GETFL),
+        (statusFlags = fcntl_eintr(aFd, F_GETFL),
          -1 == statusFlags));
 
     int descriptorFlags;
     ERROR_IF(
-        (descriptorFlags = fcntl(aFd, F_GETFD),
+        (descriptorFlags = fcntl_eintr(aFd, F_GETFD),
          -1 == descriptorFlags));
 
     /* Because O_NONBLOCK affects the underlying open file, to get some
@@ -276,7 +276,7 @@ nonBlockingFd(int aFd)
 
     if ( ! (statusFlags & O_NONBLOCK))
         ERROR_IF(
-            fcntl(aFd, F_SETFL, statusFlags | O_NONBLOCK));
+            fcntl_eintr(aFd, F_SETFL, statusFlags | O_NONBLOCK));
 
     rc = 0;
 
@@ -295,7 +295,7 @@ ownFdNonBlocking(int aFd)
 
     int flags;
     ERROR_IF(
-        (flags = fcntl(aFd, F_GETFL),
+        (flags = fcntl_eintr(aFd, F_GETFL),
          -1 == flags));
 
     rc = flags & O_NONBLOCK ? 1 : 0;
@@ -315,7 +315,7 @@ ownFdCloseOnExec(int aFd)
 
     int flags;
     ERROR_IF(
-        (flags = fcntl(aFd, F_GETFD),
+        (flags = fcntl_eintr(aFd, F_GETFD),
          -1 == flags));
 
     rc = flags & FD_CLOEXEC ? 1 : 0;
@@ -336,7 +336,7 @@ ownFdFlags(int aFd)
     int flags = -1;
 
     ERROR_IF(
-        (flags = fcntl(aFd, F_GETFL),
+        (flags = fcntl_eintr(aFd, F_GETFL),
          -1 == flags));
 
     rc = flags;
@@ -1012,7 +1012,7 @@ lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen)
     int err;
     do
         ERROR_IF(
-            (err = fcntl(aFd, F_SETLKW, &lockRegion),
+            (err = fcntl_eintr(aFd, F_SETLKW, &lockRegion),
              -1 == err && EINTR != errno));
     while (err);
 
@@ -1040,7 +1040,7 @@ unlockFdRegion(int aFd, off_t aPos, off_t aLen)
     };
 
     ERROR_IF(
-        fcntl(aFd, F_SETLK, &lockRegion));
+        fcntl_eintr(aFd, F_SETLK, &lockRegion));
 
     rc = 0;
 
@@ -1068,7 +1068,7 @@ ownFdRegionLocked(int aFd, off_t aPos, off_t aLen)
     };
 
     ERROR_IF(
-        fcntl(aFd, F_GETLK, &lockRegion));
+        fcntl_eintr(aFd, F_GETLK, &lockRegion));
 
     switch (lockRegion.l_type)
     {
