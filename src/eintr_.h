@@ -32,36 +32,42 @@
 #include "compiler_.h"
 
 #ifdef EINTR_MODULE_DEFN_
-#define accept   accept_
-#define accept4  accept4_
-#define close    close_
-#define connect  connect_
-#define fcntl    fcntl_
-#define flock    flock_
-#define ioctl    ioctl_
-#define open     open_
-#define pread    pread_
-#define pwrite   pwrite_
-#define preadv   preadv_
-#define pwritev  pwritev_
-#define read     read_
-#define readv    readv_
-#define recv     recv_
-#define recvfrom recvfrom_
-#define recvmsg  recvmsg_
-#define send     send_
-#define sendto   sendto_
-#define sendmsg  sendmsg_
-#define wait     wait_
-#define wait3    wait3_
-#define wait4    wait4_
-#define waitid   waitid_
-#define waitpid  waitpid_
-#define write    write_
-#define writev   writev_
+#define accept          accept_
+#define accept4         accept4_
+#define close           close_
+#define connect         connect_
+#define fcntl           fcntl_
+#define flock           flock_
+#define ioctl           ioctl_
+#define mq_receive      mq_receive_
+#define mq_send         mq_send_
+#define mq_timedreceive mq_timedreceive_
+#define mq_timedsend    mq_timedsend_
+#define open            open_
+#define pread           pread_
+#define pwrite          pwrite_
+#define preadv          preadv_
+#define pwritev         pwritev_
+#define read            read_
+#define readv           readv_
+#define recv            recv_
+#define recvfrom        recvfrom_
+#define recvmsg         recvmsg_
+#define send            send_
+#define sendto          sendto_
+#define sendmsg         sendmsg_
+#define wait            wait_
+#define wait3           wait3_
+#define wait4           wait4_
+#define waitid          waitid_
+#define waitpid         waitpid_
+#define write           write_
+#define writev          writev_
 #endif
 
+#include <mqueue.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -77,6 +83,10 @@
 #undef fcntl
 #undef flock
 #undef ioctl
+#undef mq_receive
+#undef mq_send
+#undef mq_timedreceive
+#undef mq_timedsend
 #undef open
 #undef pread
 #undef preadv
@@ -138,6 +148,24 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, flock, (int aFd, int aOp));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, mq_receive,
+    (mqd_t aMq, char *aMsgPtr, size_t aMsgLen, unsigned *aPriority));
+
+EINTR_FUNCTION_DECL_(
+    int, mq_send,
+    (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, mq_timedreceive,
+    (mqd_t aMq, char *aMsgPtr, size_t aMsgLen, unsigned *aPriority,
+     const struct timespec *aTimeout));
+
+EINTR_FUNCTION_DECL_(
+    int, mq_timedsend,
+    (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority,
+     const struct timespec *aTimeout));
 
 EINTR_FUNCTION_DECL_(
     int, open, (const char *aPath, int aFlags, ...));

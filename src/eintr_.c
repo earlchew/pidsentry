@@ -95,6 +95,10 @@ enum SystemCallKind
     SYSTEMCALL_FLOCK,
     SYSTEMCALL_IOCTL,
     SYSTEMCALL_OPEN,
+    SYSTEMCALL_MQRECEIVE,
+    SYSTEMCALL_MQSEND,
+    SYSTEMCALL_MQTIMEDRECEIVE,
+    SYSTEMCALL_MQTIMEDSEND,
     SYSTEMCALL_PREAD,
     SYSTEMCALL_PREADV,
     SYSTEMCALL_PWRITE,
@@ -434,6 +438,44 @@ EINTR_IOCTL_DEFN_(ioctl_eintr);
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
+    SYSTEMCALL_MQRECEIVE,
+    ssize_t,
+    mq_receive,
+    (mqd_t aMq, char *aMsgPtr, size_t aMsgLen, unsigned *aPriority),
+    (aMq, aMsgPtr, aMsgLen, aPriority));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_MQSEND,
+    int,
+    mq_send,
+    (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority),
+    (aMq, aMsgPtr, aMsgLen, aPriority));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_MQTIMEDRECEIVE,
+    ssize_t,
+    mq_timedreceive,
+    (mqd_t aMq, char *aMsgPtr, size_t aMsgLen, unsigned *aPriority,
+     const struct timespec *aTimeout),
+    (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_MQTIMEDSEND,
+    int,
+    mq_timedsend,
+    (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority,
+     const struct timespec *aTimeout),
+    (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
     SYSTEMCALL_PREAD,
     ssize_t,
     pread,
@@ -670,33 +712,37 @@ struct SystemCall
 
 static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
-    [SYSTEMCALL_ACCEPT]      = SYSCALL_ENTRY_(, accept),
-    [SYSTEMCALL_ACCEPT4]     = SYSCALL_ENTRY_(, accept4),
-    [SYSTEMCALL_CLOSE]       = SYSCALL_ENTRY_(local_, close),
-    [SYSTEMCALL_CONNECT]     = SYSCALL_ENTRY_(, connect),
-    [SYSTEMCALL_FCNTL]       = SYSCALL_ENTRY_(, fcntl),
-    [SYSTEMCALL_FLOCK]       = SYSCALL_ENTRY_(local_, flock),
-    [SYSTEMCALL_IOCTL]       = SYSCALL_ENTRY_(local_, ioctl),
-    [SYSTEMCALL_OPEN]        = SYSCALL_ENTRY_(local_, open),
-    [SYSTEMCALL_PREAD]       = SYSCALL_ENTRY_(, pread),
-    [SYSTEMCALL_PREADV]      = SYSCALL_ENTRY_(, preadv),
-    [SYSTEMCALL_PWRITE]      = SYSCALL_ENTRY_(, pwrite),
-    [SYSTEMCALL_PWRITEV]     = SYSCALL_ENTRY_(, pwritev),
-    [SYSTEMCALL_READ]        = SYSCALL_ENTRY_(, read),
-    [SYSTEMCALL_READV]       = SYSCALL_ENTRY_(, readv),
-    [SYSTEMCALL_RECV]        = SYSCALL_ENTRY_(, recv),
-    [SYSTEMCALL_RECVFROM]    = SYSCALL_ENTRY_(, recvfrom),
-    [SYSTEMCALL_RECVMSG]     = SYSCALL_ENTRY_(, recvmsg),
-    [SYSTEMCALL_SEND]        = SYSCALL_ENTRY_(, send),
-    [SYSTEMCALL_SENDTO]      = SYSCALL_ENTRY_(, sendto),
-    [SYSTEMCALL_SENDMSG]     = SYSCALL_ENTRY_(, sendmsg),
-    [SYSTEMCALL_WAIT]        = SYSCALL_ENTRY_(, wait),
-    [SYSTEMCALL_WAIT3]       = SYSCALL_ENTRY_(, wait3),
-    [SYSTEMCALL_WAIT4]       = SYSCALL_ENTRY_(, wait4),
-    [SYSTEMCALL_WAITID]      = SYSCALL_ENTRY_(, waitid),
-    [SYSTEMCALL_WAITPID]     = SYSCALL_ENTRY_(, waitpid),
-    [SYSTEMCALL_WRITE]       = SYSCALL_ENTRY_(, write),
-    [SYSTEMCALL_WRITEV]      = SYSCALL_ENTRY_(, writev),
+    [SYSTEMCALL_ACCEPT]         = SYSCALL_ENTRY_(, accept),
+    [SYSTEMCALL_ACCEPT4]        = SYSCALL_ENTRY_(, accept4),
+    [SYSTEMCALL_CLOSE]          = SYSCALL_ENTRY_(local_, close),
+    [SYSTEMCALL_CONNECT]        = SYSCALL_ENTRY_(, connect),
+    [SYSTEMCALL_FCNTL]          = SYSCALL_ENTRY_(, fcntl),
+    [SYSTEMCALL_FLOCK]          = SYSCALL_ENTRY_(local_, flock),
+    [SYSTEMCALL_IOCTL]          = SYSCALL_ENTRY_(local_, ioctl),
+    [SYSTEMCALL_MQRECEIVE]      = SYSCALL_ENTRY_(, mq_receive),
+    [SYSTEMCALL_MQSEND]         = SYSCALL_ENTRY_(, mq_send),
+    [SYSTEMCALL_MQTIMEDRECEIVE] = SYSCALL_ENTRY_(, mq_timedreceive),
+    [SYSTEMCALL_MQTIMEDSEND]    = SYSCALL_ENTRY_(, mq_timedsend),
+    [SYSTEMCALL_OPEN]           = SYSCALL_ENTRY_(local_, open),
+    [SYSTEMCALL_PREAD]          = SYSCALL_ENTRY_(, pread),
+    [SYSTEMCALL_PREADV]         = SYSCALL_ENTRY_(, preadv),
+    [SYSTEMCALL_PWRITE]         = SYSCALL_ENTRY_(, pwrite),
+    [SYSTEMCALL_PWRITEV]        = SYSCALL_ENTRY_(, pwritev),
+    [SYSTEMCALL_READ]           = SYSCALL_ENTRY_(, read),
+    [SYSTEMCALL_READV]          = SYSCALL_ENTRY_(, readv),
+    [SYSTEMCALL_RECV]           = SYSCALL_ENTRY_(, recv),
+    [SYSTEMCALL_RECVFROM]       = SYSCALL_ENTRY_(, recvfrom),
+    [SYSTEMCALL_RECVMSG]        = SYSCALL_ENTRY_(, recvmsg),
+    [SYSTEMCALL_SEND]           = SYSCALL_ENTRY_(, send),
+    [SYSTEMCALL_SENDTO]         = SYSCALL_ENTRY_(, sendto),
+    [SYSTEMCALL_SENDMSG]        = SYSCALL_ENTRY_(, sendmsg),
+    [SYSTEMCALL_WAIT]           = SYSCALL_ENTRY_(, wait),
+    [SYSTEMCALL_WAIT3]          = SYSCALL_ENTRY_(, wait3),
+    [SYSTEMCALL_WAIT4]          = SYSCALL_ENTRY_(, wait4),
+    [SYSTEMCALL_WAITID]         = SYSCALL_ENTRY_(, waitid),
+    [SYSTEMCALL_WAITPID]        = SYSCALL_ENTRY_(, waitpid),
+    [SYSTEMCALL_WRITE]          = SYSCALL_ENTRY_(, write),
+    [SYSTEMCALL_WRITEV]         = SYSCALL_ENTRY_(, writev),
 };
 
 /* -------------------------------------------------------------------------- */
