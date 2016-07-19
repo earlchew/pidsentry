@@ -43,8 +43,34 @@
 static unsigned moduleInit_;
 
 /* -------------------------------------------------------------------------- */
+#define EINTR_FUNCTION_DEFN_(                                           \
+    Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_)       \
+                                                                        \
+Return_                                                                 \
+Name_ Signature_                                                        \
+{                                                                       \
+    return Name_ ## _eintr Args_;                                       \
+}                                                                       \
+                                                                        \
+Return_                                                                 \
+Name_ ## _eintr Signature_                                              \
+{                                                                       \
+    return                                                              \
+        SYSCALL_EINTR_(Eintr_, Enum_, Name_, Predicate_) Args_;         \
+}                                                                       \
+                                                                        \
+static bool                                                             \
+Name_ ## _check_(void)                                                  \
+{                                                                       \
+    return __builtin_types_compatible_p(                                \
+        DECLTYPE(Name_), DECLTYPE(Name_ ## _));                         \
+}                                                                       \
+                                                                        \
+struct EintrModule
+
+/* -------------------------------------------------------------------------- */
 #define EINTR_RETRY_FUNCTION_DEFN_(                                     \
-    Eintr_, Enum_, Return_, Name_, Signature_, Args_)                   \
+    Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_)       \
                                                                         \
 Return_                                                                 \
 Name_ Signature_                                                        \
@@ -56,7 +82,7 @@ Return_                                                                 \
 Name_ ## _eintr Signature_                                              \
 {                                                                       \
     return                                                              \
-        SYSCALL_EINTR_(Eintr_, Enum_, Name_) Args_;                     \
+        SYSCALL_EINTR_(Eintr_, Enum_, Name_, Predicate_) Args_;         \
 }                                                                       \
                                                                         \
 static bool                                                             \
@@ -134,24 +160,24 @@ static uintptr_t
 interruptSystemCall(enum SystemCallKind aKind);
 
 /* -------------------------------------------------------------------------- */
-#define SYSCALL_EINTR_(Eintr_, Kind_, Function_)        \
-    ({                                                  \
-        uintptr_t syscall_;                             \
-                                                        \
-        if ( ! (Eintr_))                                \
-            syscall_ = invokeSystemCall((Kind_));       \
-        else                                            \
-        {                                               \
-            syscall_ = interruptSystemCall((Kind_));    \
-                                                        \
-            if ( ! syscall_)                            \
-            {                                           \
-                errno = (Eintr_);                       \
-                return -1;                              \
-            }                                           \
-        }                                               \
-                                                        \
-        (DECLTYPE(Function_) *) syscall_;               \
+#define SYSCALL_EINTR_(Eintr_, Kind_, Function_, Predicate_) \
+    ({                                                       \
+        uintptr_t syscall_;                                  \
+                                                             \
+        if ( ! (Eintr_) || (Predicate_))                     \
+            syscall_ = invokeSystemCall((Kind_));            \
+        else                                                 \
+        {                                                    \
+            syscall_ = interruptSystemCall((Kind_));         \
+                                                             \
+            if ( ! syscall_)                                 \
+            {                                                \
+                errno = (Eintr_);                            \
+                return -1;                                   \
+            }                                                \
+        }                                                    \
+                                                             \
+        (DECLTYPE(Function_) *) syscall_;                    \
     })
 
 /* -------------------------------------------------------------------------- */
@@ -176,7 +202,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     int,
     accept,
     (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen),
-    (aFd, aAddr, aAddrLen));
+    (aFd, aAddr, aAddrLen),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -185,14 +212,15 @@ EINTR_RETRY_FUNCTION_DEFN_(
     int,
     accept4,
     (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen, int aOptions),
-    (aFd, aAddr, aAddrLen, aOptions));
+    (aFd, aAddr, aAddrLen, aOptions),
+    false);
 
 /* -------------------------------------------------------------------------- */
 static bool
 close_check_(void)
 {
     return __builtin_types_compatible_p(
-        DECLTYPE(close), DECLTYPE(close_eintr));
+        DECLTYPE(close), DECLTYPE(close_));
 }
 
 int
@@ -251,14 +279,15 @@ EINTR_RETRY_FUNCTION_DEFN_(
     int,
     connect,
     (int aFd, const struct sockaddr *aAddr, socklen_t aAddrLen),
-    (aFd, aAddr, aAddrLen));
+    (aFd, aAddr, aAddrLen),
+    false);
 
 /* -------------------------------------------------------------------------- */
 static bool
 fcntl_check_(void)
 {
     return __builtin_types_compatible_p(
-        DECLTYPE(fcntl), DECLTYPE(fcntl_eintr));
+        DECLTYPE(fcntl), DECLTYPE(fcntl_));
 }
 
 static int
@@ -385,45 +414,14 @@ fcntl_eintr(int aFd, int aCmd, ...)
 }
 
 /* -------------------------------------------------------------------------- */
-static bool
-flock_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(flock), DECLTYPE(flock_eintr));
-}
-
-int
-flock(int aFd, int aOp)
-{
-    int rc;
-
-    do
-        rc = flock_eintr(aFd, aOp);
-    while (rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-flock_eintr(int aFd, int aOp)
-{
-    uintptr_t flock_;
-
-    if ((LOCK_UN | LOCK_NB) == aOp || LOCK_UN == aOp)
-        flock_ = invokeSystemCall(SYSTEMCALL_FLOCK);
-    else
-    {
-        flock_ = interruptSystemCall(SYSTEMCALL_FLOCK);
-
-        if ( ! flock_)
-        {
-            errno = EINTR;
-            return -1;
-        }
-    }
-
-    return ((DECLTYPE(flock) *) flock_)(aFd, aOp);
-}
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_FLOCK,
+    int,
+    flock,
+    (int aFd, int aOp),
+    (aFd, aOp),
+    (LOCK_UN | LOCK_NB) == aOp || LOCK_UN == aOp);
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -439,7 +437,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     static int,
     local_ioctl,
     (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg),
-    (aFd, aRequest, aArg));
+    (aFd, aRequest, aArg),
+    false);
 
 #define EINTR_IOCTL_DEFN_(Name_)                                \
 int                                                             \
@@ -467,7 +466,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     mq_receive,
     (mqd_t aMq, char *aMsgPtr, size_t aMsgLen, unsigned *aPriority),
-    (aMq, aMsgPtr, aMsgLen, aPriority));
+    (aMq, aMsgPtr, aMsgLen, aPriority),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -476,7 +476,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     int,
     mq_send,
     (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority),
-    (aMq, aMsgPtr, aMsgLen, aPriority));
+    (aMq, aMsgPtr, aMsgLen, aPriority),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -486,7 +487,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     mq_timedreceive,
     (mqd_t aMq, char *aMsgPtr, size_t aMsgLen, unsigned *aPriority,
      const struct timespec *aTimeout),
-    (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout));
+    (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -496,7 +498,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     mq_timedsend,
     (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority,
      const struct timespec *aTimeout),
-    (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout));
+    (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout),
+    false);
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -512,7 +515,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     static int,
     local_open,
     (const char *aPath, int aFlags, mode_t aMode),
-    (aPath, aFlags, aMode));
+    (aPath, aFlags, aMode),
+    false);
 
 #define EINTR_OPEN_DEFN_(Name_)                         \
 int                                                     \
@@ -537,32 +541,14 @@ EINTR_OPEN_DEFN_(open);
 EINTR_OPEN_DEFN_(open_eintr);
 
 /* -------------------------------------------------------------------------- */
-static bool
-pause_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(pause), DECLTYPE(pause_eintr));
-}
-
-int
-pause(void)
-{
-    return pause_eintr();
-}
-
-int
-pause_eintr(void)
-{
-    uintptr_t pause_ = interruptSystemCall(SYSTEMCALL_PAUSE);
-
-    if ( ! pause_)
-    {
-        errno = EINTR;
-        return -1;
-    }
-
-    return ((DECLTYPE(pause) *) pause_)();
-}
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PAUSE,
+    int,
+    pause,
+    (void),
+    (),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -571,7 +557,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     pread,
     (int aFd, void *aBuf, size_t aCount, off_t aOffset),
-    (aFd, aBuf, aCount, aOffset));
+    (aFd, aBuf, aCount, aOffset),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -580,7 +567,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     preadv,
     (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
-    (aFd, aVec, aCount, aOffset));
+    (aFd, aVec, aCount, aOffset),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -589,7 +577,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     pwrite,
     (int aFd, const void *aBuf, size_t aCount, off_t aOffset),
-    (aFd, aBuf, aCount, aOffset));
+    (aFd, aBuf, aCount, aOffset),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -598,7 +587,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     pwritev,
     (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
-    (aFd, aVec, aCount, aOffset));
+    (aFd, aVec, aCount, aOffset),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -607,7 +597,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     read,
     (int aFd, void *aBuf, size_t aCount),
-    (aFd, aBuf, aCount));
+    (aFd, aBuf, aCount),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -616,7 +607,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     readv,
     (int aFd, const struct iovec *aVec, int aCount),
-    (aFd, aVec, aCount));
+    (aFd, aVec, aCount),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -625,7 +617,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     recv,
     (int aFd, void *aBufPtr, size_t aBufLen, int aOptions),
-    (aFd, aBufPtr, aBufLen, aOptions));
+    (aFd, aBufPtr, aBufLen, aOptions),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -635,7 +628,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     recvfrom,
     (int aFd, void *aBufPtr, size_t aBufLen, int aOptions,
      struct sockaddr *aAddr, socklen_t *aAddrLen),
-    (aFd, aBufPtr, aBufLen, aOptions, aAddr, aAddrLen));
+    (aFd, aBufPtr, aBufLen, aOptions, aAddr, aAddrLen),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -644,7 +638,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     recvmsg,
     (int aFd, struct msghdr *aMsg, int aOptions),
-    (aFd, aMsg, aOptions));
+    (aFd, aMsg, aOptions),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -653,7 +648,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     int,
     sem_wait,
     (sem_t *aSem),
-    (aSem));
+    (aSem),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -662,7 +658,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     int,
     sem_timedwait,
     (sem_t *aSem, const struct timespec *aDeadline),
-    (aSem, aDeadline));
+    (aSem, aDeadline),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -671,7 +668,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     send,
     (int aFd, const void *aBufPtr, size_t aBufLen, int aOptions),
-    (aFd, aBufPtr, aBufLen, aOptions));
+    (aFd, aBufPtr, aBufLen, aOptions),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -681,7 +679,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     sendto,
     (int aFd, const void *aBufPtr, size_t aBufLen, int aOptions,
      const struct sockaddr *aAddr, socklen_t aAddrLen),
-    (aFd, aBufPtr, aBufLen, aOptions, aAddr, aAddrLen));
+    (aFd, aBufPtr, aBufLen, aOptions, aAddr, aAddrLen),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -690,93 +689,38 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     sendmsg,
     (int aFd, const struct msghdr *aMsg, int aOptions),
-    (aFd, aMsg, aOptions));
+    (aFd, aMsg, aOptions),
+    false);
 
 /* -------------------------------------------------------------------------- */
-static bool
-sigsuspend_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(sigsuspend), DECLTYPE(sigsuspend_eintr));
-}
-
-int
-sigsuspend(const sigset_t *aSet)
-{
-    return sigsuspend_eintr(aSet);
-}
-
-int
-sigsuspend_eintr(const sigset_t *aSet)
-{
-    uintptr_t sigsuspend_ = interruptSystemCall(SYSTEMCALL_SIGSUSPEND);
-
-    if ( ! sigsuspend_)
-    {
-        errno = EINTR;
-        return -1;
-    }
-
-    return ((DECLTYPE(sigsuspend) *) sigsuspend_)(aSet);
-}
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SIGSUSPEND,
+    int,
+    sigsuspend,
+    (const sigset_t *aSet),
+    (aSet),
+    false);
 
 /* -------------------------------------------------------------------------- */
-static bool
-sigwaitinfo_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(sigwaitinfo), DECLTYPE(sigwaitinfo_eintr));
-}
-
-int
-sigwaitinfo(const sigset_t *aSet, siginfo_t *aInfo)
-{
-    return sigwaitinfo_eintr(aSet, aInfo);
-}
-
-int
-sigwaitinfo_eintr(const sigset_t *aSet, siginfo_t *aInfo)
-{
-    uintptr_t sigwaitinfo_ = interruptSystemCall(SYSTEMCALL_SIGWAITINFO);
-
-    if ( ! sigwaitinfo_)
-    {
-        errno = EINTR;
-        return -1;
-    }
-
-    return ((DECLTYPE(sigwaitinfo) *) sigwaitinfo_)(aSet, aInfo);
-}
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SIGSUSPEND,
+    int,
+    sigwaitinfo,
+    (const sigset_t *aSet, siginfo_t *aInfo),
+    (aSet, aInfo),
+    false);
 
 /* -------------------------------------------------------------------------- */
-static bool
-sigtimedwait_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(sigtimedwait), DECLTYPE(sigtimedwait_eintr));
-}
-
-int
-sigtimedwait(const sigset_t *aSet, siginfo_t *aInfo,
-             const struct timespec *aTimeout)
-{
-    return sigtimedwait_eintr(aSet, aInfo, aTimeout);
-}
-
-int
-sigtimedwait_eintr(const sigset_t *aSet, siginfo_t *aInfo,
-                   const struct timespec *aTimeout)
-{
-    uintptr_t sigtimedwait_ = interruptSystemCall(SYSTEMCALL_SIGTIMEDWAIT);
-
-    if ( ! sigtimedwait_)
-    {
-        errno = EINTR;
-        return -1;
-    }
-
-    return ((DECLTYPE(sigtimedwait) *) sigtimedwait_)(aSet, aInfo, aTimeout);
-}
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SIGTIMEDWAIT,
+    int,
+    sigtimedwait,
+    (const sigset_t *aSet, siginfo_t *aInfo, const struct timespec *aTimeout),
+    (aSet, aInfo, aTimeout),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -785,7 +729,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     pid_t,
     wait,
     (int *aStatus),
-    (aStatus));
+    (aStatus),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -794,7 +739,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     pid_t,
     wait3,
     (int *aStatus, int aOptions, struct rusage *aRusage),
-    (aStatus, aOptions, aRusage));
+    (aStatus, aOptions, aRusage),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -803,7 +749,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     pid_t,
     wait4,
     (pid_t aPid, int *aStatus, int aOptions, struct rusage *aRusage),
-    (aPid, aStatus, aOptions, aRusage));
+    (aPid, aStatus, aOptions, aRusage),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -812,7 +759,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     int,
     waitid,
     (idtype_t aIdType, id_t aId, siginfo_t *aInfo, int aOptions),
-    (aIdType, aId, aInfo, aOptions));
+    (aIdType, aId, aInfo, aOptions),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -821,7 +769,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     pid_t,
     waitpid,
     (pid_t aPid, int *aStatus, int aOptions),
-    (aPid, aStatus, aOptions));
+    (aPid, aStatus, aOptions),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -830,7 +779,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     write,
     (int aFd, const void *aBuf, size_t aCount),
-    (aFd, aBuf, aCount));
+    (aFd, aBuf, aCount),
+    false);
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -839,7 +789,8 @@ EINTR_RETRY_FUNCTION_DEFN_(
     ssize_t,
     writev,
     (int aFd, const struct iovec *aVec, int aCount),
-    (aFd, aVec, aCount));
+    (aFd, aVec, aCount),
+    false);
 
 /* -------------------------------------------------------------------------- */
 #define SYSCALL_ENTRY_(Prefix_, Name_)        \

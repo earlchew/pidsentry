@@ -77,6 +77,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
