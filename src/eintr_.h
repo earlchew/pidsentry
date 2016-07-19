@@ -53,6 +53,8 @@
 #define recv            recv_
 #define recvfrom        recvfrom_
 #define recvmsg         recvmsg_
+#define sem_wait        sem_wait_
+#define sem_timedwait   sem_timedwait_
 #define send            send_
 #define sendto          sendto_
 #define sendmsg         sendmsg_
@@ -65,15 +67,16 @@
 #define writev          writev_
 #endif
 
-#include <mqueue.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <mqueue.h>
+#include <semaphore.h>
+#include <unistd.h>
 
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
-#include <sys/ioctl.h>
 #include <sys/wait.h>
-#include <sys/socket.h>
 
 #ifdef EINTR_MODULE_DEFN_
 #undef accept
@@ -97,6 +100,8 @@
 #undef recv
 #undef recvfrom
 #undef recvmsg
+#undef sem_wait
+#undef sem_timedwait
 #undef send
 #undef sendto
 #undef sendmsg
@@ -179,6 +184,12 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     ssize_t, recvmsg, (int aFd, struct msghdr *aMsg, int aFlags));
+
+EINTR_FUNCTION_DECL_(
+    int, sem_wait, (sem_t *aSem));
+
+EINTR_FUNCTION_DECL_(
+    int, sem_timedwait, (sem_t *aSem, const struct timespec *aDeadline));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, send, (int aFd, const void *aBufPtr, size_t aBufLen, int aFlags));

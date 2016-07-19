@@ -108,6 +108,8 @@ enum SystemCallKind
     SYSTEMCALL_RECV,
     SYSTEMCALL_RECVFROM,
     SYSTEMCALL_RECVMSG,
+    SYSTEMCALL_SEMWAIT,
+    SYSTEMCALL_SEMTIMEDWAIT,
     SYSTEMCALL_SEND,
     SYSTEMCALL_SENDTO,
     SYSTEMCALL_SENDMSG,
@@ -572,6 +574,24 @@ EINTR_FUNCTION_DEFN_(
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
+    SYSTEMCALL_SEMWAIT,
+    int,
+    sem_wait,
+    (sem_t *aSem),
+    (aSem));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SEMTIMEDWAIT,
+    int,
+    sem_timedwait,
+    (sem_t *aSem, const struct timespec *aDeadline),
+    (aSem, aDeadline));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
     SYSTEMCALL_SEND,
     ssize_t,
     send,
@@ -733,6 +753,8 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_RECV]           = SYSCALL_ENTRY_(, recv),
     [SYSTEMCALL_RECVFROM]       = SYSCALL_ENTRY_(, recvfrom),
     [SYSTEMCALL_RECVMSG]        = SYSCALL_ENTRY_(, recvmsg),
+    [SYSTEMCALL_SEMWAIT]        = SYSCALL_ENTRY_(, sem_wait),
+    [SYSTEMCALL_SEMTIMEDWAIT]   = SYSCALL_ENTRY_(, sem_timedwait),
     [SYSTEMCALL_SEND]           = SYSCALL_ENTRY_(, send),
     [SYSTEMCALL_SENDTO]         = SYSCALL_ENTRY_(, sendto),
     [SYSTEMCALL_SENDMSG]        = SYSCALL_ENTRY_(, sendmsg),
