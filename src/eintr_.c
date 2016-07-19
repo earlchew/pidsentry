@@ -31,6 +31,7 @@
 #include "eintr_.h"
 #include "dl_.h"
 #include "error_.h"
+#include "timekeeping_.h"
 #include "test_.h"
 
 #include <unistd.h>
@@ -117,6 +118,8 @@ enum SystemCallKind
     SYSTEMCALL_ACCEPT4,
     SYSTEMCALL_CLOSE,
     SYSTEMCALL_CONNECT,
+    SYSTEMCALL_EPOLLWAIT,
+    SYSTEMCALL_EPOLLPWAIT,
     SYSTEMCALL_FCNTL,
     SYSTEMCALL_FLOCK,
     SYSTEMCALL_IOCTL,
@@ -281,6 +284,116 @@ EINTR_RETRY_FUNCTION_DEFN_(
     (int aFd, const struct sockaddr *aAddr, socklen_t aAddrLen),
     (aFd, aAddr, aAddrLen),
     false);
+
+/* -------------------------------------------------------------------------- */
+static int
+local_epoll_wait_(
+    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_EPOLLWAIT,
+    static int,
+    local_epoll_wait,
+    (int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout),
+    (aFd, aEvents, aMaxEvents, aTimeout),
+    false);
+
+int
+epoll_wait(
+    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout)
+{
+    if (0 ==aTimeout || -1 == aTimeout)
+        return local_epoll_wait(aFd, aEvents, aMaxEvents, aTimeout);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   = Duration(NSECS(MilliSeconds(aTimeout)));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        rc = local_epoll_wait_eintr(
+            aFd, aEvents, aMaxEvents, MSECS(remaining.duration).ms);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+epoll_wait_eintr(
+    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout)
+{
+    return local_epoll_wait_eintr(aFd, aEvents, aMaxEvents, aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+local_epoll_pwait_(
+    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
+    const sigset_t *aMask)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_EPOLLPWAIT,
+    static int,
+    local_epoll_pwait,
+    (int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
+     const sigset_t *aMask),
+    (aFd, aEvents, aMaxEvents, aTimeout, aMask),
+    false);
+
+int
+epoll_pwait(
+    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
+    const sigset_t *aMask)
+{
+    if (0 ==aTimeout || -1 == aTimeout)
+        return local_epoll_pwait(aFd, aEvents, aMaxEvents, aTimeout, aMask);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   = Duration(NSECS(MilliSeconds(aTimeout)));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        rc = local_epoll_pwait_eintr(
+            aFd, aEvents, aMaxEvents, MSECS(remaining.duration).ms, aMask);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+epoll_pwait_eintr(
+    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
+    const sigset_t *aMask)
+{
+    return local_epoll_pwait_eintr(aFd, aEvents, aMaxEvents, aTimeout, aMask);
+}
 
 /* -------------------------------------------------------------------------- */
 static bool
@@ -809,6 +922,8 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_ACCEPT4]        = SYSCALL_ENTRY_(, accept4),
     [SYSTEMCALL_CLOSE]          = SYSCALL_ENTRY_(, close),
     [SYSTEMCALL_CONNECT]        = SYSCALL_ENTRY_(, connect),
+    [SYSTEMCALL_EPOLLWAIT]      = SYSCALL_ENTRY_(local_, epoll_wait),
+    [SYSTEMCALL_EPOLLPWAIT]     = SYSCALL_ENTRY_(local_, epoll_pwait),
     [SYSTEMCALL_FCNTL]          = SYSCALL_ENTRY_(, fcntl),
     [SYSTEMCALL_FLOCK]          = SYSCALL_ENTRY_(, flock),
     [SYSTEMCALL_IOCTL]          = SYSCALL_ENTRY_(local_, ioctl),

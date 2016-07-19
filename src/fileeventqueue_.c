@@ -31,6 +31,7 @@
 #include "error_.h"
 #include "malloc_.h"
 #include "timescale_.h"
+#include "eintr_.h"
 
 #include <limits.h>
 #include <sys/epoll.h>
@@ -246,9 +247,12 @@ pollFileEventQueueActivity(struct FileEventQueue *self,
 
         int polledEvents;
         ERROR_IF(
-            (polledEvents = epoll_wait(
+            (polledEvents = epoll_wait_eintr(
                self->mFile->mFd, self->mQueue, self->mQueueSize, timeout_ms),
-             -1 == polledEvents));
+             -1 == polledEvents && EINTR != errno));
+
+        if (0 > polledEvents)
+            polledEvents = 0;
 
         for (int ix = 0; ix < polledEvents; ++ix)
         {

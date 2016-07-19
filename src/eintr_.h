@@ -36,6 +36,8 @@
 #define accept4         accept4_
 #define close           close_
 #define connect         connect_
+#define epoll_pwait     epoll_pwait_
+#define epoll_wait      epoll_wait_
 #define fcntl           fcntl_
 #define flock           flock_
 #define ioctl           ioctl_
@@ -77,6 +79,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include <sys/epoll.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -89,6 +92,8 @@
 #undef accept4
 #undef close
 #undef connect
+#undef epoll_pwait
+#undef epoll_wait
 #undef fcntl
 #undef flock
 #undef ioctl
@@ -170,6 +175,14 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, connect, (int aFd, const struct sockaddr *aAddr, socklen_t aAddrLen));
+
+EINTR_FUNCTION_DECL_(
+    int, epoll_pwait, (int aFd, struct epoll_event *aEvents,
+                       int aMaxEvents, int aTimeout, const sigset_t *aMask));
+
+EINTR_FUNCTION_DECL_(
+    int, epoll_wait, (int aFd, struct epoll_event *aEvents,
+                      int aMaxEvents, int aTimeout));
 
 EINTR_FUNCTION_DECL_(
     int, fcntl, (int aFd, int aCmd, ...));
