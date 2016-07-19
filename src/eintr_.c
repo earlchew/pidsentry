@@ -99,6 +99,7 @@ enum SystemCallKind
     SYSTEMCALL_MQSEND,
     SYSTEMCALL_MQTIMEDRECEIVE,
     SYSTEMCALL_MQTIMEDSEND,
+    SYSTEMCALL_PAUSE,
     SYSTEMCALL_PREAD,
     SYSTEMCALL_PREADV,
     SYSTEMCALL_PWRITE,
@@ -363,7 +364,7 @@ fcntl_eintr(int aFd, int aCmd, ...)
 
 /* -------------------------------------------------------------------------- */
 static bool
-local_flock_check_(void)
+flock_check_(void)
 {
     return __builtin_types_compatible_p(
         DECLTYPE(flock), DECLTYPE(flock_eintr));
@@ -474,6 +475,34 @@ EINTR_FUNCTION_DEFN_(
     (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority,
      const struct timespec *aTimeout),
     (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout));
+
+/* -------------------------------------------------------------------------- */
+static bool
+pause_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(pause), DECLTYPE(pause_eintr));
+}
+
+int
+pause(void)
+{
+    return pause_eintr();
+}
+
+int
+pause_eintr(void)
+{
+    uintptr_t pause_ = interruptSystemCall(SYSTEMCALL_PAUSE);
+
+    if ( ! pause_)
+    {
+        errno = EINTR;
+        return -1;
+    }
+
+    return ((DECLTYPE(pause) *) pause_)();
+}
 
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
@@ -664,7 +693,7 @@ EINTR_FUNCTION_DEFN_(
 
 /* -------------------------------------------------------------------------- */
 static bool
-local_close_check_(void)
+close_check_(void)
 {
     return __builtin_types_compatible_p(
         DECLTYPE(close), DECLTYPE(close_eintr));
@@ -734,16 +763,17 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
     [SYSTEMCALL_ACCEPT]         = SYSCALL_ENTRY_(, accept),
     [SYSTEMCALL_ACCEPT4]        = SYSCALL_ENTRY_(, accept4),
-    [SYSTEMCALL_CLOSE]          = SYSCALL_ENTRY_(local_, close),
+    [SYSTEMCALL_CLOSE]          = SYSCALL_ENTRY_(, close),
     [SYSTEMCALL_CONNECT]        = SYSCALL_ENTRY_(, connect),
     [SYSTEMCALL_FCNTL]          = SYSCALL_ENTRY_(, fcntl),
-    [SYSTEMCALL_FLOCK]          = SYSCALL_ENTRY_(local_, flock),
+    [SYSTEMCALL_FLOCK]          = SYSCALL_ENTRY_(, flock),
     [SYSTEMCALL_IOCTL]          = SYSCALL_ENTRY_(local_, ioctl),
     [SYSTEMCALL_MQRECEIVE]      = SYSCALL_ENTRY_(, mq_receive),
     [SYSTEMCALL_MQSEND]         = SYSCALL_ENTRY_(, mq_send),
     [SYSTEMCALL_MQTIMEDRECEIVE] = SYSCALL_ENTRY_(, mq_timedreceive),
     [SYSTEMCALL_MQTIMEDSEND]    = SYSCALL_ENTRY_(, mq_timedsend),
     [SYSTEMCALL_OPEN]           = SYSCALL_ENTRY_(local_, open),
+    [SYSTEMCALL_PAUSE]          = SYSCALL_ENTRY_(, pause),
     [SYSTEMCALL_PREAD]          = SYSCALL_ENTRY_(, pread),
     [SYSTEMCALL_PREADV]         = SYSCALL_ENTRY_(, preadv),
     [SYSTEMCALL_PWRITE]         = SYSCALL_ENTRY_(, pwrite),

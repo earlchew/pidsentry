@@ -44,6 +44,7 @@
 #define mq_timedreceive mq_timedreceive_
 #define mq_timedsend    mq_timedsend_
 #define open            open_
+#define pause           pause_
 #define pread           pread_
 #define pwrite          pwrite_
 #define preadv          preadv_
@@ -91,6 +92,7 @@
 #undef mq_timedreceive
 #undef mq_timedsend
 #undef open
+#undef pause
 #undef pread
 #undef preadv
 #undef pwrite
@@ -174,6 +176,9 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, open, (const char *aPath, int aFlags, ...));
+
+EINTR_FUNCTION_DECL_(
+    int, pause, (void));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, recv, (int aFd, void *aBufPtr, size_t aBufLen, int aFlags));
