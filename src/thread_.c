@@ -33,6 +33,7 @@
 #include "macros_.h"
 #include "process_.h"
 #include "pid_.h"
+#include "eintr_.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -639,7 +640,7 @@ waitThreadSigMask(const int *aSigList)
 
     int err = 0;
     ERROR_IF(
-        (err = sigsuspend(&sigSet),
+        (err = sigsuspend_eintr(&sigSet),
          -1 != err || EINTR != errno),
         {
             if (-1 != err)

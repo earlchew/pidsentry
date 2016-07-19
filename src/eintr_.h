@@ -59,6 +59,7 @@
 #define send            send_
 #define sendto          sendto_
 #define sendmsg         sendmsg_
+#define sigsuspend      sigsuspend_
 #define wait            wait_
 #define wait3           wait3_
 #define wait4           wait4_
@@ -71,6 +72,7 @@
 #include <fcntl.h>
 #include <mqueue.h>
 #include <semaphore.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include <sys/ioctl.h>
@@ -107,6 +109,7 @@
 #undef send
 #undef sendto
 #undef sendmsg
+#undef sigsuspend
 #undef wait
 #undef wait3
 #undef wait4
@@ -205,6 +208,9 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     ssize_t, sendmsg, (int aFd, const struct msghdr *aMsg, int aFlags));
+
+EINTR_FUNCTION_DECL_(
+    int, sigsuspend, (const sigset_t *aSet));
 
 EINTR_FUNCTION_DECL_(
     pid_t, wait, (int *aStatus));

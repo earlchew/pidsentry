@@ -114,6 +114,7 @@ enum SystemCallKind
     SYSTEMCALL_SEND,
     SYSTEMCALL_SENDTO,
     SYSTEMCALL_SENDMSG,
+    SYSTEMCALL_SIGSUSPEND,
     SYSTEMCALL_WAIT,
     SYSTEMCALL_WAIT3,
     SYSTEMCALL_WAIT4,
@@ -505,6 +506,34 @@ pause_eintr(void)
 }
 
 /* -------------------------------------------------------------------------- */
+static bool
+sigsuspend_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(sigsuspend), DECLTYPE(sigsuspend_eintr));
+}
+
+int
+sigsuspend(const sigset_t *aSet)
+{
+    return sigsuspend_eintr(aSet);
+}
+
+int
+sigsuspend_eintr(const sigset_t *aSet)
+{
+    uintptr_t sigsuspend_ = interruptSystemCall(SYSTEMCALL_SIGSUSPEND);
+
+    if ( ! sigsuspend_)
+    {
+        errno = EINTR;
+        return -1;
+    }
+
+    return ((DECLTYPE(sigsuspend) *) sigsuspend_)(aSet);
+}
+
+/* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PREAD,
@@ -788,6 +817,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_SEND]           = SYSCALL_ENTRY_(, send),
     [SYSTEMCALL_SENDTO]         = SYSCALL_ENTRY_(, sendto),
     [SYSTEMCALL_SENDMSG]        = SYSCALL_ENTRY_(, sendmsg),
+    [SYSTEMCALL_SIGSUSPEND]     = SYSCALL_ENTRY_(, sigsuspend),
     [SYSTEMCALL_WAIT]           = SYSCALL_ENTRY_(, wait),
     [SYSTEMCALL_WAIT3]          = SYSCALL_ENTRY_(, wait3),
     [SYSTEMCALL_WAIT4]          = SYSCALL_ENTRY_(, wait4),
