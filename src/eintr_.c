@@ -128,6 +128,8 @@ enum SystemCallKind
     SYSTEMCALL_MQSEND,
     SYSTEMCALL_MQTIMEDRECEIVE,
     SYSTEMCALL_MQTIMEDSEND,
+    SYSTEMCALL_MSGRCV,
+    SYSTEMCALL_MSGSND,
     SYSTEMCALL_PAUSE,
     SYSTEMCALL_POLL,
     SYSTEMCALL_PPOLL,
@@ -616,6 +618,26 @@ EINTR_RETRY_FUNCTION_DEFN_(
     (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority,
      const struct timespec *aTimeout),
     (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout),
+    false);
+
+/* -------------------------------------------------------------------------- */
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_MSGRCV,
+    ssize_t,
+    msgrcv,
+    (int aMsgId, void *aMsg, size_t aSize, long aType, int aFlag),
+    (aMsgId, aMsg, aSize, aType, aFlag),
+    false);
+
+/* -------------------------------------------------------------------------- */
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_MSGSND,
+    int,
+    msgsnd,
+    (int aMsgId, const void *aMsg, size_t aSize, int aFlag),
+    (aMsgId, aMsg, aSize, aFlag),
     false);
 
 /* -------------------------------------------------------------------------- */
@@ -1155,6 +1177,8 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_MQSEND]         = SYSCALL_ENTRY_(, mq_send),
     [SYSTEMCALL_MQTIMEDRECEIVE] = SYSCALL_ENTRY_(, mq_timedreceive),
     [SYSTEMCALL_MQTIMEDSEND]    = SYSCALL_ENTRY_(, mq_timedsend),
+    [SYSTEMCALL_MSGRCV]         = SYSCALL_ENTRY_(, msgrcv),
+    [SYSTEMCALL_MSGSND]         = SYSCALL_ENTRY_(, msgsnd),
     [SYSTEMCALL_OPEN]           = SYSCALL_ENTRY_(local_, open),
     [SYSTEMCALL_PAUSE]          = SYSCALL_ENTRY_(, pause),
     [SYSTEMCALL_POLL]           = SYSCALL_ENTRY_(local_, poll),

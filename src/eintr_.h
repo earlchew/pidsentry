@@ -45,6 +45,8 @@
 #define mq_send         mq_send_
 #define mq_timedreceive mq_timedreceive_
 #define mq_timedsend    mq_timedsend_
+#define msgrcv          msgrcv_
+#define msgsnd          msgsnd_
 #define open            open_
 #define pause           pause_
 #define poll            poll_
@@ -87,6 +89,7 @@
 #include <sys/epoll.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/msg.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -107,6 +110,8 @@
 #undef mq_send
 #undef mq_timedreceive
 #undef mq_timedsend
+#undef msgrcv
+#undef msgsnd
 #undef open
 #undef pause
 #undef poll
@@ -221,6 +226,13 @@ EINTR_FUNCTION_DECL_(
     int, mq_timedsend,
     (mqd_t aMq, const char *aMsgPtr, size_t aMsgLen, unsigned aPriority,
      const struct timespec *aTimeout));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, msgrcv, (
+        int aMsgId, void *aMsg, size_t aSize, long aType, int aFlag));
+
+EINTR_FUNCTION_DECL_(
+    int, msgsnd, (int aMsgId, const void *aMsg, size_t aSize, int aFlag));
 
 EINTR_FUNCTION_DECL_(
     int, open, (const char *aPath, int aFlags, ...));
