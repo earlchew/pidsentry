@@ -43,7 +43,7 @@
 static unsigned moduleInit_;
 
 /* -------------------------------------------------------------------------- */
-#define EINTR_FUNCTION_DEFN_(                                           \
+#define EINTR_RETRY_FUNCTION_DEFN_(                                     \
     Eintr_, Enum_, Return_, Name_, Signature_, Args_)                   \
                                                                         \
 Return_                                                                 \
@@ -170,7 +170,7 @@ interruptSystemCall(enum SystemCallKind aKind);
     } while (0)
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_ACCEPT,
     int,
@@ -179,7 +179,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aAddr, aAddrLen));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_ACCEPT4,
     int,
@@ -245,7 +245,7 @@ close_eintr(int aFd)
 }
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_CONNECT,
     int,
@@ -433,7 +433,7 @@ local_ioctl_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg)
     return -1;
 }
 
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_IOCTL,
     static int,
@@ -461,7 +461,7 @@ EINTR_IOCTL_DEFN_(ioctl);
 EINTR_IOCTL_DEFN_(ioctl_eintr);
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQRECEIVE,
     ssize_t,
@@ -470,7 +470,7 @@ EINTR_FUNCTION_DEFN_(
     (aMq, aMsgPtr, aMsgLen, aPriority));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQSEND,
     int,
@@ -479,7 +479,7 @@ EINTR_FUNCTION_DEFN_(
     (aMq, aMsgPtr, aMsgLen, aPriority));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQTIMEDRECEIVE,
     ssize_t,
@@ -489,7 +489,7 @@ EINTR_FUNCTION_DEFN_(
     (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQTIMEDSEND,
     int,
@@ -506,7 +506,7 @@ local_open_(const char *aPath, int aFlags, mode_t aMode)
     return -1;
 }
 
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_OPEN,
     static int,
@@ -565,7 +565,7 @@ pause_eintr(void)
 }
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PREAD,
     ssize_t,
@@ -574,7 +574,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBuf, aCount, aOffset));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PREADV,
     ssize_t,
@@ -583,7 +583,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aVec, aCount, aOffset));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PWRITE,
     ssize_t,
@@ -592,7 +592,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBuf, aCount, aOffset));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PWRITEV,
     ssize_t,
@@ -601,7 +601,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aVec, aCount, aOffset));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_READ,
     ssize_t,
@@ -610,7 +610,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBuf, aCount));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_READV,
     ssize_t,
@@ -619,7 +619,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aVec, aCount));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_RECV,
     ssize_t,
@@ -628,7 +628,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBufPtr, aBufLen, aOptions));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_RECVFROM,
     ssize_t,
@@ -638,7 +638,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBufPtr, aBufLen, aOptions, aAddr, aAddrLen));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_RECVMSG,
     ssize_t,
@@ -647,7 +647,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aMsg, aOptions));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SEMWAIT,
     int,
@@ -656,7 +656,7 @@ EINTR_FUNCTION_DEFN_(
     (aSem));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SEMTIMEDWAIT,
     int,
@@ -665,7 +665,7 @@ EINTR_FUNCTION_DEFN_(
     (aSem, aDeadline));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SEND,
     ssize_t,
@@ -674,7 +674,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBufPtr, aBufLen, aOptions));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SENDTO,
     ssize_t,
@@ -684,7 +684,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBufPtr, aBufLen, aOptions, aAddr, aAddrLen));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SENDMSG,
     ssize_t,
@@ -779,7 +779,7 @@ sigtimedwait_eintr(const sigset_t *aSet, siginfo_t *aInfo,
 }
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT,
     pid_t,
@@ -788,7 +788,7 @@ EINTR_FUNCTION_DEFN_(
     (aStatus));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT3,
     pid_t,
@@ -797,7 +797,7 @@ EINTR_FUNCTION_DEFN_(
     (aStatus, aOptions, aRusage));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT4,
     pid_t,
@@ -806,7 +806,7 @@ EINTR_FUNCTION_DEFN_(
     (aPid, aStatus, aOptions, aRusage));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAITID,
     int,
@@ -815,7 +815,7 @@ EINTR_FUNCTION_DEFN_(
     (aIdType, aId, aInfo, aOptions));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAITPID,
     pid_t,
@@ -824,7 +824,7 @@ EINTR_FUNCTION_DEFN_(
     (aPid, aStatus, aOptions));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WRITE,
     ssize_t,
@@ -833,7 +833,7 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aBuf, aCount));
 
 /* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
+EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WRITEV,
     ssize_t,
