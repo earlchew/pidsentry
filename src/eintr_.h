@@ -140,6 +140,19 @@ struct EintrModule
 #endif
 
 /* -------------------------------------------------------------------------- */
+#ifndef __GLIBC__
+#define EINTR_IOCTL_REQUEST_T_ int
+#else
+/* Unfortunately the header file does not match the documentation:
+ *
+ *     https://sourceware.org/bugzilla/show_bug.cgi?id=14362
+ *
+ * It does not seem that this will be fixed any time soon. */
+
+#define EINTR_IOCTL_REQUEST_T_ unsigned long int
+#endif
+
+/* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DECL_(
     int, accept, (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen));
 
@@ -158,6 +171,10 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, flock, (int aFd, int aOp));
+
+EINTR_FUNCTION_DECL_(
+    int, ioctl,
+    (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, ...));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, mq_receive,
@@ -182,6 +199,30 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, pause, (void));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, pread,
+    (int aFd, void *aBuf, size_t aCount, off_t aOffset));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, preadv,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, pwrite,
+    (int aFd, const void *aBuf, size_t aCount, off_t aOffset));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, pwritev,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, read,
+    (int aFd, void *aBuf, size_t aCount));
+
+EINTR_FUNCTION_DECL_(
+    ssize_t, readv,
+    (int aFd, const struct iovec *aVec, int aCount));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, recv, (int aFd, void *aBufPtr, size_t aBufLen, int aFlags));
@@ -230,56 +271,13 @@ EINTR_FUNCTION_DECL_(
     pid_t, waitpid,
     (pid_t aPid, int *aStatus, int aOptions));
 
-/* -------------------------------------------------------------------------- */
-#ifndef __GLIBC__
-#define EINTR_IOCTL_REQUEST_T_ int
-#else
-/* Unfortunately the header file does not match the documentation:
- *
- *     https://sourceware.org/bugzilla/show_bug.cgi?id=14362
- *
- * It does not seem that this will be fixed any time soon. */
-
-#define EINTR_IOCTL_REQUEST_T_ unsigned long int
-#endif
-
-EINTR_FUNCTION_DECL_(
-    int, ioctl,
-    (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, ...));
-
-/* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DECL_(
-    ssize_t, read,
-    (int aFd, void *aBuf, size_t aCount));
-
 EINTR_FUNCTION_DECL_(
     ssize_t, write,
     (int aFd, const void *aBuf, size_t aCount));
 
 EINTR_FUNCTION_DECL_(
-    ssize_t, pread,
-    (int aFd, void *aBuf, size_t aCount, off_t aOffset));
-
-EINTR_FUNCTION_DECL_(
-    ssize_t, pwrite,
-    (int aFd, const void *aBuf, size_t aCount, off_t aOffset));
-
-/* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DECL_(
-    ssize_t, readv,
-    (int aFd, const struct iovec *aVec, int aCount));
-
-EINTR_FUNCTION_DECL_(
     ssize_t, writev,
     (int aFd, const struct iovec *aVec, int aCount));
-
-EINTR_FUNCTION_DECL_(
-    ssize_t, preadv,
-    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset));
-
-EINTR_FUNCTION_DECL_(
-    ssize_t, pwritev,
-    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset));
 
 /* -------------------------------------------------------------------------- */
 CHECKED int

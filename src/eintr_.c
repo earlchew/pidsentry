@@ -186,6 +186,63 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aAddr, aAddrLen, aOptions));
 
 /* -------------------------------------------------------------------------- */
+static bool
+close_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(close), DECLTYPE(close_eintr));
+}
+
+int
+close(int aFd)
+{
+    int rc;
+
+    do
+        rc = close_eintr(aFd);
+    while (rc && EINTR == errno);
+
+    return rc && EINPROGRESS != errno ? -1 : 0;
+}
+
+int
+close_eintr(int aFd)
+{
+    /* From http://austingroupbugs.net/view.php?id=529
+     *
+     * If close( ) is interrupted by a signal that is to be caught, then it
+     * is unspecified whether it returns -1 with errno set to [EINTR] with
+     * fildes remaining open, or returns -1 with errno set to [EINPROGRESS]
+     * with fildes being closed, or returns 0 to indicate successful
+     * completion; except that if POSIX_CLOSE_RESTART is defined as 0, then
+     * the option of returning -1 with errno set to [EINTR] and fildes
+     * remaining open shall not occur. If close() returns -1 with errno set
+     * to [EINTR], it is unspecified whether fildes can subsequently be
+     * passed to any function except close( ) or posix_close( ) without error.
+     * For all other error situations (except for [EBADF] where fildes was
+     * invalid), fildes shall be closed. If fildes was closed even though
+     * the close operation is incomplete, the close operation shall continue
+     * asynchronously and the process shall have no further ability to track
+     * the completion or final status of the close operation. */
+
+    uintptr_t close_ = interruptSystemCall(SYSTEMCALL_CLOSE);
+
+    if ( ! close_)
+    {
+        errno = EINTR;
+        return -1;
+    }
+
+    return
+        ! ((DECLTYPE(close) *) close_)(aFd)
+        ? 0
+#ifdef __linux__
+        : EINTR == errno ? 0 /* https://lwn.net/Articles/576478/ */
+#endif
+        : EINPROGRESS == errno ? 0 : -1;
+}
+
+/* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_CONNECT,
@@ -193,44 +250,6 @@ EINTR_FUNCTION_DEFN_(
     connect,
     (int aFd, const struct sockaddr *aAddr, socklen_t aAddrLen),
     (aFd, aAddr, aAddrLen));
-
-/* -------------------------------------------------------------------------- */
-static int
-local_open_(const char *aPath, int aFlags, mode_t aMode)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_OPEN,
-    static int,
-    local_open,
-    (const char *aPath, int aFlags, mode_t aMode),
-    (aPath, aFlags, aMode));
-
-#define EINTR_OPEN_DEFN_(Name_)                         \
-int                                                     \
-Name_(const char *aPath, int aFlags, ...)               \
-{                                                       \
-    mode_t mode;                                        \
-                                                        \
-    va_list argp;                                       \
-                                                        \
-    va_start(argp, aFlags);                             \
-    mode = (                                            \
-        sizeof(mode_t) < sizeof(int)                    \
-        ? va_arg(argp, int)                             \
-        : va_arg(argp, mode_t));                        \
-    va_end(argp);                                       \
-                                                        \
-    return local_ ## Name_(aPath, aFlags, mode);        \
-}                                                       \
-struct EintrModule
-
-EINTR_OPEN_DEFN_(open);
-EINTR_OPEN_DEFN_(open_eintr);
 
 /* -------------------------------------------------------------------------- */
 static bool
@@ -478,6 +497,44 @@ EINTR_FUNCTION_DEFN_(
     (aMq, aMsgPtr, aMsgLen, aPriority, aTimeout));
 
 /* -------------------------------------------------------------------------- */
+static int
+local_open_(const char *aPath, int aFlags, mode_t aMode)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_OPEN,
+    static int,
+    local_open,
+    (const char *aPath, int aFlags, mode_t aMode),
+    (aPath, aFlags, aMode));
+
+#define EINTR_OPEN_DEFN_(Name_)                         \
+int                                                     \
+Name_(const char *aPath, int aFlags, ...)               \
+{                                                       \
+    mode_t mode;                                        \
+                                                        \
+    va_list argp;                                       \
+                                                        \
+    va_start(argp, aFlags);                             \
+    mode = (                                            \
+        sizeof(mode_t) < sizeof(int)                    \
+        ? va_arg(argp, int)                             \
+        : va_arg(argp, mode_t));                        \
+    va_end(argp);                                       \
+                                                        \
+    return local_ ## Name_(aPath, aFlags, mode);        \
+}                                                       \
+struct EintrModule
+
+EINTR_OPEN_DEFN_(open);
+EINTR_OPEN_DEFN_(open_eintr);
+
+/* -------------------------------------------------------------------------- */
 static bool
 pause_check_(void)
 {
@@ -506,34 +563,6 @@ pause_eintr(void)
 }
 
 /* -------------------------------------------------------------------------- */
-static bool
-sigsuspend_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(sigsuspend), DECLTYPE(sigsuspend_eintr));
-}
-
-int
-sigsuspend(const sigset_t *aSet)
-{
-    return sigsuspend_eintr(aSet);
-}
-
-int
-sigsuspend_eintr(const sigset_t *aSet)
-{
-    uintptr_t sigsuspend_ = interruptSystemCall(SYSTEMCALL_SIGSUSPEND);
-
-    if ( ! sigsuspend_)
-    {
-        errno = EINTR;
-        return -1;
-    }
-
-    return ((DECLTYPE(sigsuspend) *) sigsuspend_)(aSet);
-}
-
-/* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PREAD,
@@ -542,6 +571,16 @@ EINTR_FUNCTION_DEFN_(
     (int aFd, void *aBuf, size_t aCount, off_t aOffset),
     (aFd, aBuf, aCount, aOffset));
 
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PREADV,
+    ssize_t,
+    preadv,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
+    (aFd, aVec, aCount, aOffset));
+
+/* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PWRITE,
@@ -553,18 +592,19 @@ EINTR_FUNCTION_DEFN_(
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
+    SYSTEMCALL_PWRITEV,
+    ssize_t,
+    pwritev,
+    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
+    (aFd, aVec, aCount, aOffset));
+
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
     SYSTEMCALL_READ,
     ssize_t,
     read,
     (int aFd, void *aBuf, size_t aCount),
-    (aFd, aBuf, aCount));
-
-EINTR_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_WRITE,
-    ssize_t,
-    write,
-    (int aFd, const void *aBuf, size_t aCount),
     (aFd, aBuf, aCount));
 
 /* -------------------------------------------------------------------------- */
@@ -575,31 +615,6 @@ EINTR_FUNCTION_DEFN_(
     readv,
     (int aFd, const struct iovec *aVec, int aCount),
     (aFd, aVec, aCount));
-
-EINTR_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_WRITEV,
-    ssize_t,
-    writev,
-    (int aFd, const struct iovec *aVec, int aCount),
-    (aFd, aVec, aCount));
-
-/* -------------------------------------------------------------------------- */
-EINTR_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_PREADV,
-    ssize_t,
-    preadv,
-    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
-    (aFd, aVec, aCount, aOffset));
-
-EINTR_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_PWRITEV,
-    ssize_t,
-    pwritev,
-    (int aFd, const struct iovec *aVec, int aCount, off_t aOffset),
-    (aFd, aVec, aCount, aOffset));
 
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
@@ -676,6 +691,34 @@ EINTR_FUNCTION_DEFN_(
     (aFd, aMsg, aOptions));
 
 /* -------------------------------------------------------------------------- */
+static bool
+sigsuspend_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(sigsuspend), DECLTYPE(sigsuspend_eintr));
+}
+
+int
+sigsuspend(const sigset_t *aSet)
+{
+    return sigsuspend_eintr(aSet);
+}
+
+int
+sigsuspend_eintr(const sigset_t *aSet)
+{
+    uintptr_t sigsuspend_ = interruptSystemCall(SYSTEMCALL_SIGSUSPEND);
+
+    if ( ! sigsuspend_)
+    {
+        errno = EINTR;
+        return -1;
+    }
+
+    return ((DECLTYPE(sigsuspend) *) sigsuspend_)(aSet);
+}
+
+/* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT,
@@ -721,61 +764,22 @@ EINTR_FUNCTION_DEFN_(
     (aPid, aStatus, aOptions));
 
 /* -------------------------------------------------------------------------- */
-static bool
-close_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(close), DECLTYPE(close_eintr));
-}
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_WRITE,
+    ssize_t,
+    write,
+    (int aFd, const void *aBuf, size_t aCount),
+    (aFd, aBuf, aCount));
 
-int
-close(int aFd)
-{
-    int rc;
-
-    do
-        rc = close_eintr(aFd);
-    while (rc && EINTR == errno);
-
-    return rc && EINPROGRESS != errno ? -1 : 0;
-}
-
-int
-close_eintr(int aFd)
-{
-    /* From http://austingroupbugs.net/view.php?id=529
-     *
-     * If close( ) is interrupted by a signal that is to be caught, then it
-     * is unspecified whether it returns -1 with errno set to [EINTR] with
-     * fildes remaining open, or returns -1 with errno set to [EINPROGRESS]
-     * with fildes being closed, or returns 0 to indicate successful
-     * completion; except that if POSIX_CLOSE_RESTART is defined as 0, then
-     * the option of returning -1 with errno set to [EINTR] and fildes
-     * remaining open shall not occur. If close() returns -1 with errno set
-     * to [EINTR], it is unspecified whether fildes can subsequently be
-     * passed to any function except close( ) or posix_close( ) without error.
-     * For all other error situations (except for [EBADF] where fildes was
-     * invalid), fildes shall be closed. If fildes was closed even though
-     * the close operation is incomplete, the close operation shall continue
-     * asynchronously and the process shall have no further ability to track
-     * the completion or final status of the close operation. */
-
-    uintptr_t close_ = interruptSystemCall(SYSTEMCALL_CLOSE);
-
-    if ( ! close_)
-    {
-        errno = EINTR;
-        return -1;
-    }
-
-    return
-        ! ((DECLTYPE(close) *) close_)(aFd)
-        ? 0
-#ifdef __linux__
-        : EINTR == errno ? 0 /* https://lwn.net/Articles/576478/ */
-#endif
-        : EINPROGRESS == errno ? 0 : -1;
-}
+/* -------------------------------------------------------------------------- */
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_WRITEV,
+    ssize_t,
+    writev,
+    (int aFd, const struct iovec *aVec, int aCount),
+    (aFd, aVec, aCount));
 
 /* -------------------------------------------------------------------------- */
 #define SYSCALL_ENTRY_(Prefix_, Name_)        \
