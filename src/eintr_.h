@@ -52,6 +52,7 @@
 #define pread           pread_
 #define pwrite          pwrite_
 #define preadv          preadv_
+#define pselect         pselect_
 #define pwritev         pwritev_
 #define read            read_
 #define readv           readv_
@@ -60,6 +61,7 @@
 #define recvmsg         recvmsg_
 #define sem_wait        sem_wait_
 #define sem_timedwait   sem_timedwait_
+#define select          select_
 #define send            send_
 #define sendto          sendto_
 #define sendmsg         sendmsg_
@@ -85,6 +87,7 @@
 #include <sys/epoll.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -110,6 +113,7 @@
 #undef ppoll
 #undef pread
 #undef preadv
+#undef pselect
 #undef pwrite
 #undef pwritev
 #undef read
@@ -117,6 +121,7 @@
 #undef recv
 #undef recvfrom
 #undef recvmsg
+#undef select
 #undef sem_wait
 #undef sem_timedwait
 #undef send
@@ -239,6 +244,10 @@ EINTR_FUNCTION_DECL_(
     (int aFd, const struct iovec *aVec, int aCount, off_t aOffset));
 
 EINTR_FUNCTION_DECL_(
+    int, pselect, (int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+                   struct timeval *aTimeout, const sigset_t *aMask));
+
+EINTR_FUNCTION_DECL_(
     ssize_t, pwrite,
     (int aFd, const void *aBuf, size_t aCount, off_t aOffset));
 
@@ -263,6 +272,10 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     ssize_t, recvmsg, (int aFd, struct msghdr *aMsg, int aFlags));
+
+EINTR_FUNCTION_DECL_(
+    int, select, (int aNumFds, fd_set *aRdFds, fd_set *aWrFds,
+                  fd_set *aExFds, struct timeval *aTimeout));
 
 EINTR_FUNCTION_DECL_(
     int, sem_wait, (sem_t *aSem));

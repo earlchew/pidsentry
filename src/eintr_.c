@@ -133,6 +133,7 @@ enum SystemCallKind
     SYSTEMCALL_PPOLL,
     SYSTEMCALL_PREAD,
     SYSTEMCALL_PREADV,
+    SYSTEMCALL_PSELECT,
     SYSTEMCALL_PWRITE,
     SYSTEMCALL_PWRITEV,
     SYSTEMCALL_READ,
@@ -140,6 +141,7 @@ enum SystemCallKind
     SYSTEMCALL_RECV,
     SYSTEMCALL_RECVFROM,
     SYSTEMCALL_RECVMSG,
+    SYSTEMCALL_SELECT,
     SYSTEMCALL_SEMWAIT,
     SYSTEMCALL_SEMTIMEDWAIT,
     SYSTEMCALL_SEND,
@@ -791,6 +793,65 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
+static int
+local_pselect_(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+               struct timeval *aTimeout, const sigset_t *aMask)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PSELECT,
+    static int,
+    local_pselect,
+    (int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+     struct timeval *aTimeout, const sigset_t *aMask),
+    (aNumFds, aRdFds, aWrFds, aExFds, aTimeout, aMask),
+    false);
+
+int
+pselect(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+        struct timeval *aTimeout, const sigset_t *aMask)
+{
+    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_usec))
+        return local_pselect(aNumFds, aRdFds, aWrFds, aExFds, aTimeout, aMask);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   =
+        Duration(timeValToNanoSeconds(aTimeout));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        struct timeval timeout = timeValFromNanoSeconds(remaining.duration);
+
+        rc = local_pselect_eintr(
+            aNumFds, aRdFds, aWrFds, aExFds, &timeout, aMask);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+pselect_eintr(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+              struct timeval *aTimeout, const sigset_t *aMask)
+{
+    return
+        local_pselect_eintr(
+            aNumFds, aRdFds, aWrFds, aExFds, aTimeout, aMask);
+}
+
+/* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PWRITE,
@@ -860,6 +921,62 @@ EINTR_RETRY_FUNCTION_DEFN_(
     (int aFd, struct msghdr *aMsg, int aOptions),
     (aFd, aMsg, aOptions),
     false);
+
+/* -------------------------------------------------------------------------- */
+static int
+local_select_(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+              struct timeval *aTimeout)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SELECT,
+    static int,
+    local_select,
+    (int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+     struct timeval *aTimeout),
+    (aNumFds, aRdFds, aWrFds, aExFds, aTimeout),
+    false);
+
+int
+select(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+       struct timeval *aTimeout)
+{
+    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_usec))
+        return local_select(aNumFds, aRdFds, aWrFds, aExFds, aTimeout);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   =
+        Duration(timeValToNanoSeconds(aTimeout));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        struct timeval timeout = timeValFromNanoSeconds(remaining.duration);
+
+        rc = local_select_eintr(aNumFds, aRdFds, aWrFds, aExFds, &timeout);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+select_eintr(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
+             struct timeval *aTimeout)
+{
+    return local_select_eintr(aNumFds, aRdFds, aWrFds, aExFds, aTimeout);
+}
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
@@ -1044,6 +1161,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_PPOLL]          = SYSCALL_ENTRY_(local_, ppoll),
     [SYSTEMCALL_PREAD]          = SYSCALL_ENTRY_(, pread),
     [SYSTEMCALL_PREADV]         = SYSCALL_ENTRY_(, preadv),
+    [SYSTEMCALL_PSELECT]        = SYSCALL_ENTRY_(local_, pselect),
     [SYSTEMCALL_PWRITE]         = SYSCALL_ENTRY_(, pwrite),
     [SYSTEMCALL_PWRITEV]        = SYSCALL_ENTRY_(, pwritev),
     [SYSTEMCALL_READ]           = SYSCALL_ENTRY_(, read),
@@ -1051,6 +1169,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_RECV]           = SYSCALL_ENTRY_(, recv),
     [SYSTEMCALL_RECVFROM]       = SYSCALL_ENTRY_(, recvfrom),
     [SYSTEMCALL_RECVMSG]        = SYSCALL_ENTRY_(, recvmsg),
+    [SYSTEMCALL_SELECT]         = SYSCALL_ENTRY_(local_, select),
     [SYSTEMCALL_SEMWAIT]        = SYSCALL_ENTRY_(, sem_wait),
     [SYSTEMCALL_SEMTIMEDWAIT]   = SYSCALL_ENTRY_(, sem_timedwait),
     [SYSTEMCALL_SEND]           = SYSCALL_ENTRY_(, send),
