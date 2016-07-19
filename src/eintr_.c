@@ -129,6 +129,8 @@ enum SystemCallKind
     SYSTEMCALL_MQTIMEDRECEIVE,
     SYSTEMCALL_MQTIMEDSEND,
     SYSTEMCALL_PAUSE,
+    SYSTEMCALL_POLL,
+    SYSTEMCALL_PPOLL,
     SYSTEMCALL_PREAD,
     SYSTEMCALL_PREADV,
     SYSTEMCALL_PWRITE,
@@ -664,6 +666,111 @@ EINTR_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
+static int
+local_poll_(struct pollfd *aFds, nfds_t aNumFds, int aTimeout)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_POLL,
+    static int,
+    local_poll,
+    (struct pollfd *aFds, nfds_t aNumFds, int aTimeout),
+    (aFds, aNumFds, aTimeout),
+    false);
+
+int
+poll(struct pollfd *aFds, nfds_t aNumFds, int aTimeout)
+{
+    if (0 >= aTimeout)
+        return local_poll(aFds, aNumFds, aTimeout);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   = Duration(NSECS(MilliSeconds(aTimeout)));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        rc = local_poll_eintr(aFds, aNumFds, MSECS(remaining.duration).ms);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+poll_eintr(struct pollfd *aFds, nfds_t aNumFds, int aTimeout)
+{
+    return local_poll_eintr(aFds, aNumFds, aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
+static int
+local_ppoll_(struct pollfd *aFds, nfds_t aNumFds,
+             const struct timespec *aTimeout, const sigset_t *aMask)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_PPOLL,
+    static int,
+    local_ppoll,
+    (struct pollfd *aFds, nfds_t aNumFds,
+     const struct timespec *aTimeout, const sigset_t *aMask),
+    (aFds, aNumFds, aTimeout, aMask),
+    false);
+
+int
+ppoll(struct pollfd *aFds, nfds_t aNumFds,
+      const struct timespec *aTimeout, const sigset_t *aMask)
+{
+    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_nsec))
+        return local_ppoll(aFds, aNumFds, aTimeout, aMask);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   =
+        Duration(timeSpecToNanoSeconds(aTimeout));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        struct timespec timeout = timeSpecFromNanoSeconds(remaining.duration);
+
+        rc = local_ppoll_eintr(aFds, aNumFds, &timeout, aMask);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+ppoll_eintr(struct pollfd *aFds, nfds_t aNumFds,
+            const struct timespec *aTimeout, const sigset_t *aMask)
+{
+    return local_ppoll_eintr(aFds, aNumFds, aTimeout, aMask);
+}
+
+/* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PREAD,
@@ -933,6 +1040,8 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_MQTIMEDSEND]    = SYSCALL_ENTRY_(, mq_timedsend),
     [SYSTEMCALL_OPEN]           = SYSCALL_ENTRY_(local_, open),
     [SYSTEMCALL_PAUSE]          = SYSCALL_ENTRY_(, pause),
+    [SYSTEMCALL_POLL]           = SYSCALL_ENTRY_(local_, poll),
+    [SYSTEMCALL_PPOLL]          = SYSCALL_ENTRY_(local_, ppoll),
     [SYSTEMCALL_PREAD]          = SYSCALL_ENTRY_(, pread),
     [SYSTEMCALL_PREADV]         = SYSCALL_ENTRY_(, preadv),
     [SYSTEMCALL_PWRITE]         = SYSCALL_ENTRY_(, pwrite),

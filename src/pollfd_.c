@@ -31,6 +31,7 @@
 #include "macros_.h"
 #include "error_.h"
 #include "test_.h"
+#include "eintr_.h"
 
 #include <errno.h>
 #include <string.h>
@@ -190,7 +191,8 @@ runPollFdLoop(struct PollFd *self)
         {
             int events;
             ERROR_IF(
-                (events = poll(self->mPoll, self->mFdActions.mSize, timeout_ms),
+                (events = poll_eintr(
+                     self->mPoll, self->mFdActions.mSize, timeout_ms),
                  -1 == events && EINTR != errno));
         }
 
@@ -206,7 +208,8 @@ runPollFdLoop(struct PollFd *self)
             while (1)
             {
                 ERROR_IF(
-                    (events = poll(self->mPoll, self->mFdActions.mSize, 0),
+                    (events = poll_eintr(
+                        self->mPoll, self->mFdActions.mSize, 0),
                      -1 == events && EINTR != errno));
                 if (-1 != events)
                     break;

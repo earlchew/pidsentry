@@ -458,11 +458,12 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
              * before checking the deadline. */
 
             int events;
-            ERROR_IF(
-                (events = poll(pollfd, NUMBEROF(pollfd), 0),
-                 -1 == events));
 
-            if (events)
+            ERROR_IF(
+                (events = poll_eintr(pollfd, NUMBEROF(pollfd), 0),
+                 -1 == events && EINTR != errno));
+
+            if (0 > events)
                 break;
         });
 
@@ -493,7 +494,7 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
 
         int events;
         ERROR_IF(
-            (events = poll(pollfd, NUMBEROF(pollfd), timeout_ms),
+            (events = poll_eintr(pollfd, NUMBEROF(pollfd), timeout_ms),
              -1 == events && EINTR != errno));
 
         switch (events)

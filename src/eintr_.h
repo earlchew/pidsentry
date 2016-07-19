@@ -47,6 +47,8 @@
 #define mq_timedsend    mq_timedsend_
 #define open            open_
 #define pause           pause_
+#define poll            poll_
+#define ppoll           ppoll_
 #define pread           pread_
 #define pwrite          pwrite_
 #define preadv          preadv_
@@ -75,6 +77,7 @@
 
 #include <fcntl.h>
 #include <mqueue.h>
+#include <poll.h>
 #include <semaphore.h>
 #include <signal.h>
 #include <unistd.h>
@@ -103,6 +106,8 @@
 #undef mq_timedsend
 #undef open
 #undef pause
+#undef poll
+#undef ppoll
 #undef pread
 #undef preadv
 #undef pwrite
@@ -217,6 +222,13 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, pause, (void));
+
+EINTR_FUNCTION_DECL_(
+    int, poll, (struct pollfd *aFds, nfds_t aNumFds, int aTimeout));
+
+EINTR_FUNCTION_DECL_(
+    int, ppoll, (struct pollfd *aFds, nfds_t aNumFds,
+                 const struct timespec *aTimeout, const sigset_t *aMask));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, pread,
