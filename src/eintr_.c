@@ -115,6 +115,8 @@ enum SystemCallKind
     SYSTEMCALL_SENDTO,
     SYSTEMCALL_SENDMSG,
     SYSTEMCALL_SIGSUSPEND,
+    SYSTEMCALL_SIGTIMEDWAIT,
+    SYSTEMCALL_SIGWAITINFO,
     SYSTEMCALL_WAIT,
     SYSTEMCALL_WAIT3,
     SYSTEMCALL_WAIT4,
@@ -719,6 +721,64 @@ sigsuspend_eintr(const sigset_t *aSet)
 }
 
 /* -------------------------------------------------------------------------- */
+static bool
+sigwaitinfo_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(sigwaitinfo), DECLTYPE(sigwaitinfo_eintr));
+}
+
+int
+sigwaitinfo(const sigset_t *aSet, siginfo_t *aInfo)
+{
+    return sigwaitinfo_eintr(aSet, aInfo);
+}
+
+int
+sigwaitinfo_eintr(const sigset_t *aSet, siginfo_t *aInfo)
+{
+    uintptr_t sigwaitinfo_ = interruptSystemCall(SYSTEMCALL_SIGWAITINFO);
+
+    if ( ! sigwaitinfo_)
+    {
+        errno = EINTR;
+        return -1;
+    }
+
+    return ((DECLTYPE(sigwaitinfo) *) sigwaitinfo_)(aSet, aInfo);
+}
+
+/* -------------------------------------------------------------------------- */
+static bool
+sigtimedwait_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(sigtimedwait), DECLTYPE(sigtimedwait_eintr));
+}
+
+int
+sigtimedwait(const sigset_t *aSet, siginfo_t *aInfo,
+             const struct timespec *aTimeout)
+{
+    return sigtimedwait_eintr(aSet, aInfo, aTimeout);
+}
+
+int
+sigtimedwait_eintr(const sigset_t *aSet, siginfo_t *aInfo,
+                   const struct timespec *aTimeout)
+{
+    uintptr_t sigtimedwait_ = interruptSystemCall(SYSTEMCALL_SIGTIMEDWAIT);
+
+    if ( ! sigtimedwait_)
+    {
+        errno = EINTR;
+        return -1;
+    }
+
+    return ((DECLTYPE(sigtimedwait) *) sigtimedwait_)(aSet, aInfo, aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT,
@@ -822,6 +882,8 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_SENDTO]         = SYSCALL_ENTRY_(, sendto),
     [SYSTEMCALL_SENDMSG]        = SYSCALL_ENTRY_(, sendmsg),
     [SYSTEMCALL_SIGSUSPEND]     = SYSCALL_ENTRY_(, sigsuspend),
+    [SYSTEMCALL_SIGTIMEDWAIT]   = SYSCALL_ENTRY_(, sigtimedwait),
+    [SYSTEMCALL_SIGWAITINFO]    = SYSCALL_ENTRY_(, sigwaitinfo),
     [SYSTEMCALL_WAIT]           = SYSCALL_ENTRY_(, wait),
     [SYSTEMCALL_WAIT3]          = SYSCALL_ENTRY_(, wait3),
     [SYSTEMCALL_WAIT4]          = SYSCALL_ENTRY_(, wait4),

@@ -60,6 +60,8 @@
 #define sendto          sendto_
 #define sendmsg         sendmsg_
 #define sigsuspend      sigsuspend_
+#define sigtimedwait    sigtimedwait_
+#define sigwaitinfo     sigwaitinfo_
 #define wait            wait_
 #define wait3           wait3_
 #define wait4           wait4_
@@ -110,6 +112,8 @@
 #undef sendto
 #undef sendmsg
 #undef sigsuspend
+#undef sigtimedwait
+#undef sigwaitinfo
 #undef wait
 #undef wait3
 #undef wait4
@@ -252,6 +256,13 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, sigsuspend, (const sigset_t *aSet));
+
+EINTR_FUNCTION_DECL_(
+    int, sigtimedwait, (const sigset_t *aSet, siginfo_t *aInfo,
+                        const struct timespec *aTimeout));
+
+EINTR_FUNCTION_DECL_(
+    int, sigwaitinfo, (const sigset_t *aSet, siginfo_t *aInfo));
 
 EINTR_FUNCTION_DECL_(
     pid_t, wait, (int *aStatus));
