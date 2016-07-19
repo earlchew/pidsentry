@@ -73,8 +73,17 @@ struct PushedIntervalTimer
     struct itimerval     mTimer;
 };
 
+struct MonotonicDeadline
+{
+    struct MonotonicTime *mSince;
+    struct MonotonicTime  mSince_;
+};
+
 /* -------------------------------------------------------------------------- */
 #define EVENTCLOCKTIME_INIT ((struct EventClockTime) { { { ns : 0 } } })
+
+#define MONOTONICDEADLINE_INIT \
+    ((struct MonotonicDeadline) { mSince : 0, { { { ns : 0 } } } })
 
 /* -------------------------------------------------------------------------- */
 void
@@ -125,6 +134,13 @@ deadlineTimeExpired(
     struct Duration              aPeriod,
     struct Duration             *aRemaining,
     const struct EventClockTime *aTime);
+
+bool
+monotonicDeadlineTimeExpired(
+    struct MonotonicDeadline   *self,
+    struct Duration             aPeriod,
+    struct Duration            *aRemaining,
+    const struct MonotonicTime *aTime);
 
 /* -------------------------------------------------------------------------- */
 CHECKED int

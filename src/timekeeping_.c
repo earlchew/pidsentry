@@ -325,6 +325,60 @@ deadlineTimeExpired(
 }
 
 /* -------------------------------------------------------------------------- */
+bool
+monotonicDeadlineTimeExpired(
+    struct MonotonicDeadline   *self,
+    struct Duration             aPeriod,
+    struct Duration            *aRemaining,
+    const struct MonotonicTime *aTime)
+{
+    bool                 expired;
+    uint64_t             remaining_ns;
+    struct MonotonicTime tm;
+
+    if ( ! aTime)
+    {
+        tm    = monotonicTime();
+        aTime = &tm;
+    }
+
+    if (self->mSince)
+    {
+        uint64_t elapsed_ns = aTime->monotonic.ns - self->mSince->monotonic.ns;
+
+        if (elapsed_ns >= aPeriod.duration.ns)
+        {
+            remaining_ns = 0;
+            expired      = true;
+        }
+        else
+        {
+            remaining_ns = aPeriod.duration.ns - elapsed_ns;
+            expired      = false;
+        }
+    }
+    else
+    {
+        /* Initialise the mark time from which the duration will be
+         * measured until the deadline, and then ensure that the
+         * caller gets to execute at least once before the deadline
+         * expires. */
+
+        self->mSince = &self->mSince_;
+
+        *self->mSince = *aTime;
+
+        remaining_ns = aPeriod.duration.ns;
+        expired      = false;
+    }
+
+    if (aRemaining)
+        aRemaining->duration.ns = remaining_ns;
+
+    return expired;
+}
+
+/* -------------------------------------------------------------------------- */
 void
 lapTimeTrigger(struct EventClockTime       *self,
                struct Duration              aPeriod,

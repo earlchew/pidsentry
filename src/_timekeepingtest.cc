@@ -162,6 +162,49 @@ TEST(TimeKeepingTest, DeadlineExpires)
     EXPECT_GE(elapsedOuter, interval);
 }
 
+TEST(TimeKeepingTest, MonotonicDeadlineRunsOnce)
+{
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+
+    EXPECT_FALSE(monotonicDeadlineTimeExpired(&deadline, ZeroDuration, 0, 0));
+}
+
+TEST(TimeKeepingTest, MonotonicDeadlineExpires)
+{
+    auto period = Duration(NSECS(MilliSeconds(1000)));
+
+    struct MonotonicDeadline deadline  = MONOTONICDEADLINE_INIT;
+    struct Duration          remaining = ZeroDuration;
+
+    auto startTimeOuter = monotonicTime();
+    EXPECT_FALSE(
+        monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0));
+    EXPECT_EQ(period.duration.ns, remaining.duration.ns);
+    auto startTimeInner = monotonicTime();
+
+    bool firstiteration = true;
+    while ( ! monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+    {
+        EXPECT_TRUE(firstiteration || remaining.duration.ns);
+        firstiteration = false;
+    }
+    EXPECT_TRUE( ! remaining.duration.ns);
+
+    auto stopTime = monotonicTime();
+
+    auto elapsedInner = MSECS(
+        NanoSeconds(stopTime.monotonic.ns -
+                    startTimeInner.monotonic.ns)).ms / 100;
+    auto elapsedOuter = MSECS(
+        NanoSeconds(stopTime.monotonic.ns -
+                    startTimeOuter.monotonic.ns)).ms / 100;
+
+    auto interval = MSECS(period.duration).ms / 100;
+
+    EXPECT_LE(elapsedInner, interval);
+    EXPECT_GE(elapsedOuter, interval);
+}
+
 TEST(TimeKeepingTest, MonotonicSleep)
 {
     auto period = Duration(NSECS(MilliSeconds(1000)));
