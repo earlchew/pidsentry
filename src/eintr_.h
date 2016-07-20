@@ -61,9 +61,11 @@
 #define recv            recv_
 #define recvfrom        recvfrom_
 #define recvmsg         recvmsg_
+#define select          select_
 #define sem_wait        sem_wait_
 #define sem_timedwait   sem_timedwait_
-#define select          select_
+#define semop           semop_
+#define semtimedop      semtimedop_
 #define send            send_
 #define sendto          sendto_
 #define sendmsg         sendmsg_
@@ -91,6 +93,7 @@
 #include <sys/ioctl.h>
 #include <sys/msg.h>
 #include <sys/select.h>
+#include <sys/sem.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -129,6 +132,8 @@
 #undef select
 #undef sem_wait
 #undef sem_timedwait
+#undef semop
+#undef semtimedop
 #undef send
 #undef sendto
 #undef sendmsg
@@ -294,6 +299,13 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, sem_timedwait, (sem_t *aSem, const struct timespec *aDeadline));
+
+EINTR_FUNCTION_DECL_(
+    int, semop, (int aSemId, struct sembuf *aOps, unsigned aNumOps));
+
+EINTR_FUNCTION_DECL_(
+    int, semtimedop, (int aSemId, struct sembuf *aOps, unsigned aNumOps,
+                      struct timespec *aTimeout));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, send, (int aFd, const void *aBufPtr, size_t aBufLen, int aFlags));

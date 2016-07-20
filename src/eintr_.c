@@ -146,6 +146,8 @@ enum SystemCallKind
     SYSTEMCALL_SELECT,
     SYSTEMCALL_SEMWAIT,
     SYSTEMCALL_SEMTIMEDWAIT,
+    SYSTEMCALL_SEMOP,
+    SYSTEMCALL_SEMTIMEDOP,
     SYSTEMCALL_SEND,
     SYSTEMCALL_SENDTO,
     SYSTEMCALL_SENDMSG,
@@ -1023,6 +1025,72 @@ EINTR_RETRY_FUNCTION_DEFN_(
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
+    SYSTEMCALL_SEMOP,
+    int,
+    semop,
+    (int aSemId, struct sembuf *aOps, unsigned aNumOps),
+    (aSemId, aOps, aNumOps),
+    false);
+
+/* -------------------------------------------------------------------------- */
+static int
+local_semtimedop_(int aSemId, struct sembuf *aOps, unsigned aNumOps,
+                  struct timespec *aTimeout)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SELECT,
+    static int,
+    local_semtimedop,
+    (int aSemId, struct sembuf *aOps, unsigned aNumOps,
+     struct timespec *aTimeout),
+    (aSemId, aOps, aNumOps, aTimeout),
+    false);
+
+int
+semtimedop(int aSemId, struct sembuf *aOps, unsigned aNumOps,
+           struct timespec *aTimeout)
+{
+    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_nsec))
+        return local_semtimedop(aSemId, aOps, aNumOps, aTimeout);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   =
+        Duration(timeSpecToNanoSeconds(aTimeout));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        struct timespec timeout = timeSpecFromNanoSeconds(remaining.duration);
+
+        rc = local_semtimedop_eintr(aSemId, aOps, aNumOps, &timeout);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+semtimedop_eintr(int aSemId, struct sembuf *aOps, unsigned aNumOps,
+                 struct timespec *aTimeout)
+{
+    return local_semtimedop_eintr(aSemId, aOps, aNumOps, aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
     SYSTEMCALL_SEND,
     ssize_t,
     send,
@@ -1196,6 +1264,8 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_SELECT]         = SYSCALL_ENTRY_(local_, select),
     [SYSTEMCALL_SEMWAIT]        = SYSCALL_ENTRY_(, sem_wait),
     [SYSTEMCALL_SEMTIMEDWAIT]   = SYSCALL_ENTRY_(, sem_timedwait),
+    [SYSTEMCALL_SEMOP]          = SYSCALL_ENTRY_(, semop),
+    [SYSTEMCALL_SEMTIMEDOP]     = SYSCALL_ENTRY_(local_, semtimedop),
     [SYSTEMCALL_SEND]           = SYSCALL_ENTRY_(, send),
     [SYSTEMCALL_SENDTO]         = SYSCALL_ENTRY_(, sendto),
     [SYSTEMCALL_SENDMSG]        = SYSCALL_ENTRY_(, sendmsg),
