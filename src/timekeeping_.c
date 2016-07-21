@@ -450,23 +450,18 @@ lapTimeSince(struct EventClockTime       *self,
 void
 monotonicSleep(struct Duration aPeriod)
 {
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          remaining;
+    int rc;
 
-    while ( ! monotonicDeadlineTimeExpired(&deadline, aPeriod, &remaining, 0))
-    {
-        /* This approach avoids the problem of drifting sleep duration
-         * caused by repeated signal delivery by fixing the wake time
-         * then re-calibrating the sleep time on each iteration. */
+    struct timespec sleepTime =
+        timeSpecFromNanoSeconds(
+            NanoSeconds(monotonicTime().monotonic.ns + aPeriod.duration.ns));
 
-        if (remaining.duration.ns)
-        {
-            struct timespec sleepTime =
-                timeSpecFromNanoSeconds(remaining.duration);
+    do
+        rc = clock_nanosleep_eintr(
+            CLOCK_MONOTONIC, TIMER_ABSTIME, &sleepTime, 0);
+    while (EINTR == rc);
 
-            nanosleep_eintr(&sleepTime, 0);
-        }
-    }
+    ensure( ! rc);
 }
 
 /* -------------------------------------------------------------------------- */
