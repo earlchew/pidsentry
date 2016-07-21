@@ -161,6 +161,7 @@ enum SystemCallKind
     SYSTEMCALL_WAITPID,
     SYSTEMCALL_WRITE,
     SYSTEMCALL_WRITEV,
+    SYSTEMCALL_USLEEP,
     SYSTEMCALL_KINDS
 };
 
@@ -1220,6 +1221,55 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
+static int
+local_usleep_(useconds_t aTimeout)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SELECT,
+    static int,
+    local_usleep,
+    (useconds_t aTimeout),
+    (aTimeout),
+    false);
+
+int
+usleep(useconds_t aTimeout)
+{
+    if ( ! aTimeout)
+        return local_usleep(aTimeout);
+
+    int rc;
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   = Duration(NSECS(MicroSeconds(aTimeout)));
+    struct Duration          remaining;
+
+    do
+    {
+        rc = 0;
+
+        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+            break;
+
+        rc = local_usleep_eintr(USECS(remaining.duration).us);
+
+    } while (-1 == rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+usleep_eintr(useconds_t aTimeout)
+{
+    return local_usleep_eintr(aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
 #define SYSCALL_ENTRY_(Prefix_, Name_)        \
     { Prefix_ ## Name_ ## _check_, STRINGIFY(Name_), }
 
@@ -1279,6 +1329,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_WAITPID]        = SYSCALL_ENTRY_(, waitpid),
     [SYSTEMCALL_WRITE]          = SYSCALL_ENTRY_(, write),
     [SYSTEMCALL_WRITEV]         = SYSCALL_ENTRY_(, writev),
+    [SYSTEMCALL_USLEEP]         = SYSCALL_ENTRY_(local_, usleep),
 };
 
 /* -------------------------------------------------------------------------- */

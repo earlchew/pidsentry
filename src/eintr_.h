@@ -79,6 +79,7 @@
 #define waitpid         waitpid_
 #define write           write_
 #define writev          writev_
+#define usleep          usleep_
 #endif
 
 #include <fcntl.h>
@@ -147,6 +148,7 @@
 #undef waitpid
 #undef write
 #undef writev
+#undef usleep
 #endif
 
 #include <stdbool.h>
@@ -352,6 +354,10 @@ EINTR_FUNCTION_DECL_(
 EINTR_FUNCTION_DECL_(
     ssize_t, writev,
     (int aFd, const struct iovec *aVec, int aCount));
+
+EINTR_FUNCTION_DECL_(
+    int, usleep,
+    (useconds_t aTimeout));
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
