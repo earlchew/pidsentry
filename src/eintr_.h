@@ -34,6 +34,7 @@
 #ifdef EINTR_MODULE_DEFN_
 #define accept          accept_
 #define accept4         accept4_
+#define clock_nanosleep clock_nanosleep_
 #define close           close_
 #define connect         connect_
 #define epoll_pwait     epoll_pwait_
@@ -105,6 +106,7 @@
 #ifdef EINTR_MODULE_DEFN_
 #undef accept
 #undef accept4
+#undef clock_nanosleep
 #undef close
 #undef connect
 #undef epoll_pwait
@@ -194,6 +196,11 @@ EINTR_FUNCTION_DECL_(
 EINTR_FUNCTION_DECL_(
     int, accept4,
     (int aFd, struct sockaddr *aAddr, socklen_t *aAddLen, int aOptions));
+
+EINTR_FUNCTION_DECL_(
+    int, clock_nanosleep, (clockid_t aClockId, int aFlags,
+                           const struct timespec *aReq,
+                           struct timespec *aRem));
 
 EINTR_FUNCTION_DECL_(
     int, close, (int aFd));

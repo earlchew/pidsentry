@@ -116,6 +116,7 @@ enum SystemCallKind
 {
     SYSTEMCALL_ACCEPT,
     SYSTEMCALL_ACCEPT4,
+    SYSTEMCALL_CLOCKNANOSLEEP,
     SYSTEMCALL_CLOSE,
     SYSTEMCALL_CONNECT,
     SYSTEMCALL_EPOLLWAIT,
@@ -227,6 +228,48 @@ EINTR_RETRY_FUNCTION_DEFN_(
     (int aFd, struct sockaddr *aAddr, socklen_t *aAddrLen, int aOptions),
     (aFd, aAddr, aAddrLen, aOptions),
     false);
+
+/* -------------------------------------------------------------------------- */
+static bool
+clock_nanosleep_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(clock_nanosleep), DECLTYPE(clock_nanosleep_));
+}
+
+int
+clock_nanosleep(clockid_t aClockId, int aFlags,
+                const struct timespec *aReq, struct timespec *aRem)
+{
+    int rc;
+
+    struct timespec rem = *aReq;
+
+    do
+        rc = clock_nanosleep_eintr(aClockId, aFlags, &rem, &rem);
+    while (EINTR == rc);
+
+    return rc;
+}
+
+int
+clock_nanosleep_eintr(clockid_t aClockId, int aFlags,
+                      const struct timespec *aReq, struct timespec *aRem)
+{
+    uintptr_t clock_nanosleep_ = interruptSystemCall(SYSTEMCALL_CLOCKNANOSLEEP);
+
+    if ( ! clock_nanosleep_)
+    {
+        if (TIMER_ABSTIME == aFlags && aRem)
+            *aRem = *aReq;
+
+        return EINTR;
+    }
+
+    return
+        ((DECLTYPE(clock_nanosleep) *) clock_nanosleep_)(
+            aClockId, aFlags, aReq, aRem);
+}
 
 /* -------------------------------------------------------------------------- */
 static bool
@@ -1324,6 +1367,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
     [SYSTEMCALL_ACCEPT]         = SYSCALL_ENTRY_(, accept),
     [SYSTEMCALL_ACCEPT4]        = SYSCALL_ENTRY_(, accept4),
+    [SYSTEMCALL_CLOCKNANOSLEEP] = SYSCALL_ENTRY_(, clock_nanosleep),
     [SYSTEMCALL_CLOSE]          = SYSCALL_ENTRY_(, close),
     [SYSTEMCALL_CONNECT]        = SYSCALL_ENTRY_(, connect),
     [SYSTEMCALL_EPOLLWAIT]      = SYSCALL_ENTRY_(local_, epoll_wait),
