@@ -1980,16 +1980,8 @@ killProcess_(int aSigNum, unsigned *aSigTrigger)
                 break;
 
             if (pendingSignal)
-            {
-                struct timespec sleepTime =
-                {
-                    .tv_sec  = 0,
-                    .tv_nsec = 100 * 1000 * 1000,
-                };
-
-                if (-1 == nanosleep(&sleepTime, 0) && EINTR != errno)
-                    break;
-            }
+                monotonicSleep(
+                    Duration(NSECS(MilliSeconds(100))));
         }
     }
     while (0);
@@ -2002,9 +1994,8 @@ killProcess_(int aSigNum, unsigned *aSigTrigger)
 
     while (1)
     {
-        struct timespec sleepTime = { .tv_sec = 1 };
-
-        nanosleep(&sleepTime, 0);
+        monotonicSleep(
+            Duration(NSECS(Seconds(1))));
 
         if ( ! testAction(TestLevelRace))
             raise(SIGKILL);
