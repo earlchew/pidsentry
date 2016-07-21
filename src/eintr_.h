@@ -74,6 +74,7 @@
 #define sigsuspend      sigsuspend_
 #define sigtimedwait    sigtimedwait_
 #define sigwaitinfo     sigwaitinfo_
+#define sleep           sleep_
 #define wait            wait_
 #define wait3           wait3_
 #define wait4           wait4_
@@ -146,6 +147,7 @@
 #undef sigsuspend
 #undef sigtimedwait
 #undef sigwaitinfo
+#undef sleep
 #undef wait
 #undef wait3
 #undef wait4
@@ -278,6 +280,9 @@ EINTR_FUNCTION_DECL_(
 EINTR_FUNCTION_DECL_(
     int, pselect, (int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
                    struct timeval *aTimeout, const sigset_t *aMask));
+
+EINTR_FUNCTION_DECL_(
+    unsigned, sleep, (unsigned aTimeout));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, pwrite,

@@ -145,6 +145,7 @@ enum SystemCallKind
     SYSTEMCALL_RECV,
     SYSTEMCALL_RECVFROM,
     SYSTEMCALL_RECVMSG,
+    SYSTEMCALL_SLEEP,
     SYSTEMCALL_SELECT,
     SYSTEMCALL_SEMWAIT,
     SYSTEMCALL_SEMTIMEDWAIT,
@@ -1234,6 +1235,49 @@ EINTR_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
+static unsigned
+local_sleep_(unsigned aTimeout)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+EINTR_RETRY_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_SLEEP,
+    static unsigned,
+    local_sleep,
+    (unsigned aTimeout),
+    (aTimeout),
+    false);
+
+unsigned
+sleep(unsigned aTimeout)
+{
+    if ( ! aTimeout)
+        return local_sleep(aTimeout);
+
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          period   = Duration(NSECS(Seconds(aTimeout)));
+    struct Duration          remaining;
+
+    while ( ! monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+    {
+        unsigned sleepTime = SECS(remaining.duration).s;
+
+        local_sleep_eintr(sleepTime ? sleepTime : 1);
+    }
+
+    return 0;
+}
+
+unsigned
+sleep_eintr(unsigned aTimeout)
+{
+    return local_sleep_eintr(aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT,
@@ -1407,6 +1451,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_SIGSUSPEND]     = SYSCALL_ENTRY_(, sigsuspend),
     [SYSTEMCALL_SIGTIMEDWAIT]   = SYSCALL_ENTRY_(, sigtimedwait),
     [SYSTEMCALL_SIGWAITINFO]    = SYSCALL_ENTRY_(, sigwaitinfo),
+    [SYSTEMCALL_SLEEP]          = SYSCALL_ENTRY_(local_, sleep),
     [SYSTEMCALL_WAIT]           = SYSCALL_ENTRY_(, wait),
     [SYSTEMCALL_WAIT3]          = SYSCALL_ENTRY_(, wait3),
     [SYSTEMCALL_WAIT4]          = SYSCALL_ENTRY_(, wait4),
