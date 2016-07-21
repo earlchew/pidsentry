@@ -31,6 +31,7 @@
 #include "fd_.h"
 #include "error_.h"
 #include "macros_.h"
+#include "eintr_.h"
 
 #include <time.h>
 #include <errno.h>
@@ -449,10 +450,10 @@ lapTimeSince(struct EventClockTime       *self,
 void
 monotonicSleep(struct Duration aPeriod)
 {
-    struct EventClockTime since = EVENTCLOCKTIME_INIT;
-    struct Duration       remaining;
+    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
+    struct Duration          remaining;
 
-    while ( ! deadlineTimeExpired(&since, aPeriod, &remaining, 0))
+    while ( ! monotonicDeadlineTimeExpired(&deadline, aPeriod, &remaining, 0))
     {
         /* This approach avoids the problem of drifting sleep duration
          * caused by repeated signal delivery by fixing the wake time
@@ -461,12 +462,9 @@ monotonicSleep(struct Duration aPeriod)
         if (remaining.duration.ns)
         {
             struct timespec sleepTime =
-            {
-                .tv_sec  = remaining.duration.ns / (1000 * 1000 * 1000),
-                .tv_nsec = remaining.duration.ns % (1000 * 1000 * 1000),
-            };
+                timeSpecFromNanoSeconds(remaining.duration);
 
-            nanosleep(&sleepTime, 0);
+            nanosleep_eintr(&sleepTime, 0);
         }
     }
 }

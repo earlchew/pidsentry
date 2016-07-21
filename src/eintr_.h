@@ -47,6 +47,7 @@
 #define mq_timedsend    mq_timedsend_
 #define msgrcv          msgrcv_
 #define msgsnd          msgsnd_
+#define nanosleep       nanosleep_
 #define open            open_
 #define pause           pause_
 #define poll            poll_
@@ -87,6 +88,7 @@
 #include <poll.h>
 #include <semaphore.h>
 #include <signal.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <sys/epoll.h>
@@ -116,6 +118,7 @@
 #undef mq_timedsend
 #undef msgrcv
 #undef msgsnd
+#undef nanosleep
 #undef open
 #undef pause
 #undef poll
@@ -240,6 +243,9 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, msgsnd, (int aMsgId, const void *aMsg, size_t aSize, int aFlag));
+
+EINTR_FUNCTION_DECL_(
+    int, nanosleep, (const struct timespec *aReq, struct timespec *aRem));
 
 EINTR_FUNCTION_DECL_(
     int, open, (const char *aPath, int aFlags, ...));

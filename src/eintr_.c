@@ -123,13 +123,14 @@ enum SystemCallKind
     SYSTEMCALL_FCNTL,
     SYSTEMCALL_FLOCK,
     SYSTEMCALL_IOCTL,
-    SYSTEMCALL_OPEN,
     SYSTEMCALL_MQRECEIVE,
     SYSTEMCALL_MQSEND,
     SYSTEMCALL_MQTIMEDRECEIVE,
     SYSTEMCALL_MQTIMEDSEND,
     SYSTEMCALL_MSGRCV,
     SYSTEMCALL_MSGSND,
+    SYSTEMCALL_NANOSLEEP,
+    SYSTEMCALL_OPEN,
     SYSTEMCALL_PAUSE,
     SYSTEMCALL_POLL,
     SYSTEMCALL_PPOLL,
@@ -642,6 +643,45 @@ EINTR_RETRY_FUNCTION_DEFN_(
     (int aMsgId, const void *aMsg, size_t aSize, int aFlag),
     (aMsgId, aMsg, aSize, aFlag),
     false);
+
+/* -------------------------------------------------------------------------- */
+static bool
+nanosleep_check_(void)
+{
+    return __builtin_types_compatible_p(
+        DECLTYPE(nanosleep), DECLTYPE(nanosleep_));
+}
+
+int
+nanosleep(const struct timespec *aReq, struct timespec *aRem)
+{
+    int rc;
+
+    struct timespec rem = *aReq;
+
+    do
+        rc = nanosleep_eintr(&rem, &rem);
+    while (rc && EINTR == errno);
+
+    return rc;
+}
+
+int
+nanosleep_eintr(const struct timespec *aReq, struct timespec *aRem)
+{
+    uintptr_t nanosleep_ = interruptSystemCall(SYSTEMCALL_NANOSLEEP);
+
+    if ( ! nanosleep_)
+    {
+        if (aRem)
+            *aRem = *aReq;
+
+        errno = EINTR;
+        return -1;
+    }
+
+    return ((DECLTYPE(nanosleep) *) nanosleep_)(aReq, aRem);
+}
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -1297,6 +1337,7 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
     [SYSTEMCALL_MQTIMEDSEND]    = SYSCALL_ENTRY_(, mq_timedsend),
     [SYSTEMCALL_MSGRCV]         = SYSCALL_ENTRY_(, msgrcv),
     [SYSTEMCALL_MSGSND]         = SYSCALL_ENTRY_(, msgsnd),
+    [SYSTEMCALL_NANOSLEEP]      = SYSCALL_ENTRY_(, nanosleep),
     [SYSTEMCALL_OPEN]           = SYSCALL_ENTRY_(local_, open),
     [SYSTEMCALL_PAUSE]          = SYSCALL_ENTRY_(, pause),
     [SYSTEMCALL_POLL]           = SYSCALL_ENTRY_(local_, poll),
