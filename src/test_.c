@@ -31,6 +31,7 @@
 #include "options_.h"
 #include "error_.h"
 #include "macros_.h"
+#include "timekeeping_.h"
 #include "env_.h"
 
 #include <stdlib.h>
@@ -83,7 +84,9 @@ testSleep(enum TestLevel aLevel)
         if (testAction(aLevel))
         {
             slept = true;
-            usleep(random() % (500 * 1000));
+            monotonicSleep(
+                Duration(
+                    NSECS(MicroSeconds(random() % (500 * 1000)))));
         }
     }
 
