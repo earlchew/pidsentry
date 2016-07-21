@@ -84,6 +84,25 @@ TEST(TimeKeepingTest, NanoSecondConversion)
     }
 }
 
+TEST(TimeKeepingTest, MicroSecondConversion)
+{
+    {
+        struct MicroSeconds tm = MicroSeconds(1);
+
+        EXPECT_EQ(tm.us, USECS(NSECS(tm)).us);
+
+        EXPECT_FALSE(SECS(tm).s - 1);
+    }
+
+    {
+        struct MicroSeconds tm = MicroSeconds(999999);
+
+        EXPECT_EQ(tm.us, USECS(NSECS(tm)).us);
+
+        EXPECT_FALSE(SECS(tm).s - 1);
+    }
+}
+
 TEST(TimeKeepingTest, MilliSecondConversion)
 {
     {

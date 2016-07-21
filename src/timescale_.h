@@ -81,6 +81,27 @@ struct NanoSeconds
 };
 
 /* -------------------------------------------------------------------------- */
+#define PRIu_MicroSeconds PRIu64
+#define PRIs_MicroSeconds PRIu64 ".%06" PRIu64 "s"
+#define FMTs_MicroSeconds(MicroSeconds) \
+    ((MicroSeconds).us / 1000000), ((MicroSeconds).us % 1000000)
+
+struct MicroSeconds
+MicroSeconds_(uint64_t us);
+
+struct MicroSeconds
+{
+    TIMESCALE_CTOR_(MicroSeconds, uint64_t, us)
+
+    union
+    {
+        uint64_t us;
+        uint64_t Value_;
+        char   (*Scale_)[TimeScale_us];
+    };
+};
+
+/* -------------------------------------------------------------------------- */
 #define PRIu_MilliSeconds PRIu64
 #define PRIs_MilliSeconds PRIu64 ".%03" PRIu64 "s"
 #define FMTs_MilliSeconds(MilliSeconds) \
@@ -153,6 +174,12 @@ NanoSeconds(uint64_t ns)
     return NanoSeconds_(ns);
 }
 
+static inline struct MicroSeconds
+MicroSeconds(uint64_t ns)
+{
+    return MicroSeconds_(ns);
+}
+
 static inline struct MilliSeconds
 MilliSeconds(uint64_t ms)
 {
@@ -179,6 +206,14 @@ Duration(struct NanoSeconds aDuration)
           Value_ : changeTimeScale_((Time).Value_,              \
                                     sizeof(*(Time).Scale_),     \
                                     TimeScale_ns)               \
+      } } )
+
+#define USECS(Time)                                             \
+    ( (struct MicroSeconds)                                     \
+      { {                                                       \
+          Value_ : changeTimeScale_((Time).Value_,              \
+                                    sizeof(*(Time).Scale_),     \
+                                    TimeScale_us)               \
       } } )
 
 #define MSECS(Time)                                             \

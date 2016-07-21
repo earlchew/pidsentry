@@ -43,6 +43,12 @@ NanoSeconds_(uint64_t ns)
     return (struct NanoSeconds) { { .ns = ns } };
 }
 
+struct MicroSeconds
+MicroSeconds_(uint64_t us)
+{
+    return (struct MicroSeconds) { { .us = us } };
+}
+
 struct MilliSeconds
 MilliSeconds_(uint64_t ms)
 {
