@@ -257,9 +257,10 @@ int
 clock_nanosleep_eintr(clockid_t aClockId, int aFlags,
                       const struct timespec *aReq, struct timespec *aRem)
 {
-    uintptr_t clock_nanosleep_ = interruptSystemCall(SYSTEMCALL_CLOCKNANOSLEEP);
+    uintptr_t clock_nanosleepAddr =
+        interruptSystemCall(SYSTEMCALL_CLOCKNANOSLEEP);
 
-    if ( ! clock_nanosleep_)
+    if ( ! clock_nanosleepAddr)
     {
         if (TIMER_ABSTIME == aFlags && aRem)
             *aRem = *aReq;
@@ -268,7 +269,7 @@ clock_nanosleep_eintr(clockid_t aClockId, int aFlags,
     }
 
     return
-        ((DECLTYPE(clock_nanosleep) *) clock_nanosleep_)(
+        ((DECLTYPE(clock_nanosleep) *) clock_nanosleepAddr)(
             aClockId, aFlags, aReq, aRem);
 }
 
@@ -312,16 +313,16 @@ close_eintr(int aFd)
      * asynchronously and the process shall have no further ability to track
      * the completion or final status of the close operation. */
 
-    uintptr_t close_ = interruptSystemCall(SYSTEMCALL_CLOSE);
+    uintptr_t closeFunc = interruptSystemCall(SYSTEMCALL_CLOSE);
 
-    if ( ! close_)
+    if ( ! closeFunc)
     {
         errno = EINTR;
         return -1;
     }
 
     return
-        ! ((DECLTYPE(close) *) close_)(aFd)
+        ! ((DECLTYPE(close) *) closeFunc)(aFd)
         ? 0
 #ifdef __linux__
         : EINTR == errno ? 0 /* https://lwn.net/Articles/576478/ */
@@ -538,12 +539,12 @@ fcntl(int aFd, int aCmd, ...)
 
     va_list args;
 
-    uintptr_t fcntl_ = invokeSystemCall(SYSTEMCALL_FCNTL);
+    uintptr_t fcntlAddr = invokeSystemCall(SYSTEMCALL_FCNTL);
 
     do
     {
         va_start(args, aCmd);
-        rc = fcntl_call_(fcntl_, aFd, aCmd, args);
+        rc = fcntl_call_(fcntlAddr, aFd, aCmd, args);
         va_end(args);
     }
     while (-1 == rc && EINTR == errno);
@@ -556,15 +557,15 @@ fcntl_eintr(int aFd, int aCmd, ...)
 {
     int rc;
 
-    uintptr_t fcntl_;
+    uintptr_t fcntlAddr;
 
     if (F_SETLKW != aCmd)
-        fcntl_ = invokeSystemCall(SYSTEMCALL_FCNTL);
+        fcntlAddr = invokeSystemCall(SYSTEMCALL_FCNTL);
     else
     {
-        fcntl_ = interruptSystemCall(SYSTEMCALL_FCNTL);
+        fcntlAddr = interruptSystemCall(SYSTEMCALL_FCNTL);
 
-        if ( ! fcntl_)
+        if ( ! fcntlAddr)
         {
             errno = EINTR;
             return -1;
@@ -574,7 +575,7 @@ fcntl_eintr(int aFd, int aCmd, ...)
     va_list args;
 
     va_start(args, aCmd);
-    rc = fcntl_call_(fcntl_, aFd, aCmd, args);
+    rc = fcntl_call_(fcntlAddr, aFd, aCmd, args);
     va_end(args);
 
     return rc;
@@ -713,9 +714,9 @@ nanosleep(const struct timespec *aReq, struct timespec *aRem)
 int
 nanosleep_eintr(const struct timespec *aReq, struct timespec *aRem)
 {
-    uintptr_t nanosleep_ = interruptSystemCall(SYSTEMCALL_NANOSLEEP);
+    uintptr_t nanosleepAddr = interruptSystemCall(SYSTEMCALL_NANOSLEEP);
 
-    if ( ! nanosleep_)
+    if ( ! nanosleepAddr)
     {
         if (aRem)
             *aRem = *aReq;
@@ -724,7 +725,7 @@ nanosleep_eintr(const struct timespec *aReq, struct timespec *aRem)
         return -1;
     }
 
-    return ((DECLTYPE(nanosleep) *) nanosleep_)(aReq, aRem);
+    return ((DECLTYPE(nanosleep) *) nanosleepAddr)(aReq, aRem);
 }
 
 /* -------------------------------------------------------------------------- */
