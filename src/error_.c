@@ -540,22 +540,16 @@ print_(
                 fprintf(printBuf_.mFile, " - errno %d\n", aErrCode);
             fflush(printBuf_.mFile);
 
-            /* If EINTR injection is active, writeFd() will retry but
-             * debug messages might cause this error messages to be
-             * triggered in a recursive way. */
+            /* Use writeFdRaw() rather than writeFd() to avoid having
+             * EINTR error injection cause diagnostic messages to
+             * be issued recursively. This avoids the message log being
+             * unsightly with EINTR messages grafted into the middle of
+             * message lines, and also EINTR messages with later timestamps
+             * printed before messages with earlier timestamps. */
 
-            size_t      bufLen = printBuf_.mSize;
-            const char *bufPtr = printBuf_.mBuf;
-
-            char buf[bufLen ? bufLen : 1];
-
-            if (Eintr_active())
-            {
-                memcpy(buf, bufPtr, bufLen);
-                bufPtr = buf;
-            }
-
-            if (printBuf_.mSize != writeFd(STDERR_FILENO, bufPtr, bufLen, 0))
+            if (printBuf_.mSize != writeFdRaw(STDERR_FILENO,
+                                              printBuf_.mBuf,
+                                              printBuf_.mSize, 0))
                 abortProcess();
         }
 
