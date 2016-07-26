@@ -1133,7 +1133,7 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
 
     ssize_t wrlen;
     ERROR_IF(
-        (wrlen = write_eintr(
+        (wrlen = write(
             self->mUmbilical.mFile->mFd, buf, sizeof(buf)),
          -1 == wrlen || (errno = EIO, sizeof(buf) != wrlen)));
 
