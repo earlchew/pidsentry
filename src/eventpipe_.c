@@ -104,7 +104,7 @@ setEventPipe(struct EventPipe *self)
 
         ssize_t rv = 0;
         ERROR_IF(
-            (rv = write_eintr(self->mPipe->mWrFile->mFd, buf, sizeof(buf)),
+            (rv = write(self->mPipe->mWrFile->mFd, buf, sizeof(buf)),
              1 != rv),
             {
                 errno = -1 == rv ? errno : EIO;
