@@ -409,7 +409,7 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
 
                 do
                     ERROR_IF(
-                        (wrote = write_eintr(aDstFd, bufptr, bufend - bufptr),
+                        (wrote = write(aDstFd, bufptr, bufend - bufptr),
                          -1 == wrote && EINTR != errno));
                 while (-1 == wrote);
 
@@ -605,9 +605,10 @@ waitFdReadReadyDeadline(int aFd, struct Deadline *aDeadline)
 }
 
 /* -------------------------------------------------------------------------- */
-ssize_t
-readFdDeadline(int aFd,
-               char *aBuf, size_t aLen, struct Deadline *aDeadline)
+static ssize_t
+readFdDeadline_(int aFd,
+                char *aBuf, size_t aLen, struct Deadline *aDeadline,
+                ssize_t aReader(int, void *, size_t))
 {
     ssize_t rc = -1;
 
@@ -689,10 +690,18 @@ Finally:
     return rc;
 }
 
-/* -------------------------------------------------------------------------- */
 ssize_t
-writeFdDeadline(int aFd,
-                const char *aBuf, size_t aLen, struct Deadline *aDeadline)
+readFdDeadline(int aFd,
+               char *aBuf, size_t aLen, struct Deadline *aDeadline)
+{
+    return readFdDeadline_(aFd, aBuf, aLen, aDeadline, read);
+}
+
+/* -------------------------------------------------------------------------- */
+static ssize_t
+writeFdDeadline_(int aFd,
+                 const char *aBuf, size_t aLen, struct Deadline *aDeadline,
+                 ssize_t aWriter(int, const void *, size_t))
 {
     ssize_t rc = -1;
 
@@ -735,7 +744,7 @@ writeFdDeadline(int aFd,
         ssize_t len;
 
         ERROR_IF(
-            (len = write_eintr(aFd, bufPtr, bufEnd - bufPtr),
+            (len = aWriter(aFd, bufPtr, bufEnd - bufPtr),
              -1 == len && (EINTR       != errno &&
                            EWOULDBLOCK != errno &&
                            EAGAIN      != errno) && bufPtr == aBuf));
@@ -774,10 +783,18 @@ Finally:
     return rc;
 }
 
-/* -------------------------------------------------------------------------- */
 ssize_t
-readFd(int aFd,
-       char *aBuf, size_t aLen, const struct Duration *aTimeout)
+writeFdDeadline(int aFd,
+                const char *aBuf, size_t aLen, struct Deadline *aDeadline)
+{
+    return writeFdDeadline_(aFd, aBuf, aLen, aDeadline, &write);
+}
+
+/* -------------------------------------------------------------------------- */
+static ssize_t
+readFd_(int aFd,
+        char *aBuf, size_t aLen, const struct Duration *aTimeout,
+        ssize_t aReader(int, void *, size_t))
 {
     ssize_t rc = -1;
 
@@ -791,7 +808,7 @@ readFd(int aFd,
         deadline = &deadline_;
     }
 
-    rc = readFdDeadline(aFd, aBuf, aLen, deadline);
+    rc = readFdDeadline_(aFd, aBuf, aLen, deadline, aReader);
 
 Finally:
 
@@ -803,10 +820,25 @@ Finally:
     return rc;
 }
 
-/* -------------------------------------------------------------------------- */
 ssize_t
-writeFd(int aFd,
-        const char *aBuf, size_t aLen, const struct Duration *aTimeout)
+readFd(int aFd,
+       char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    return readFd_(aFd, aBuf, aLen, aTimeout, read);
+}
+
+ssize_t
+readFdRaw(int aFd,
+          char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    return readFd_(aFd, aBuf, aLen, aTimeout, read_raw);
+}
+
+/* -------------------------------------------------------------------------- */
+static ssize_t
+writeFd_(int aFd,
+         const char *aBuf, size_t aLen, const struct Duration *aTimeout,
+         ssize_t aWriter(int, const void *, size_t))
 {
     ssize_t rc = -1;
 
@@ -820,7 +852,7 @@ writeFd(int aFd,
         deadline = &deadline_;
     }
 
-    rc = writeFdDeadline(aFd, aBuf, aLen, deadline);
+    rc = writeFdDeadline_(aFd, aBuf, aLen, deadline, aWriter);
 
 Finally:
 
@@ -830,6 +862,20 @@ Finally:
     });
 
     return rc;
+}
+
+ssize_t
+writeFd(int aFd,
+        const char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    return writeFd_(aFd, aBuf, aLen, aTimeout, write);
+}
+
+ssize_t
+writeFdRaw(int aFd,
+           const char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    return writeFd_(aFd, aBuf, aLen, aTimeout, write_raw);
 }
 
 /* -------------------------------------------------------------------------- */

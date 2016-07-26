@@ -131,8 +131,16 @@ writeFd(int aFd,
         const char *aBuf, size_t aLen, const struct Duration *aTimeout);
 
 CHECKED ssize_t
+writeFdRaw(int aFd,
+           const char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
+CHECKED ssize_t
 readFd(int aFd,
        char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
+CHECKED ssize_t
+readFdRaw(int aFd,
+          char *aBuf, size_t aLen, const struct Duration *aTimeout);
 
 /* -------------------------------------------------------------------------- */
 CHECKED ssize_t
