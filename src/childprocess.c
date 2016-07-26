@@ -1059,7 +1059,7 @@ pollFdUmbilical_(struct ChildMonitor         *self,
 
     ssize_t rdlen;
     ERROR_IF(
-        (rdlen = read_eintr(
+        (rdlen = read(
             self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno

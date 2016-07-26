@@ -147,7 +147,7 @@ pollFdUmbilical_(struct UmbilicalMonitor     *self,
 
     ssize_t rdlen;
     ERROR_IF(
-        (rdlen = read_eintr(
+        (rdlen = read(
             self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
          ? EINTR != errno && ECONNRESET != errno

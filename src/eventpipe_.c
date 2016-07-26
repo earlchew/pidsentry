@@ -143,7 +143,7 @@ resetEventPipe_(struct EventPipe *self)
 
         ssize_t rv = 0;
         ERROR_IF(
-            (rv = read_eintr(self->mPipe->mRdFile->mFd, buf, sizeof(buf)),
+            (rv = read(self->mPipe->mRdFile->mFd, buf, sizeof(buf)),
              1 != rv),
             {
                 errno = -1 == rv ? errno : EIO;

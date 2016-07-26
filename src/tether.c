@@ -153,7 +153,7 @@ pollFdDrainCopy_(struct TetherPoll           *self,
             ssize_t rdSize = -1;
 
             ERROR_IF(
-                (rdSize = read_eintr(self->mSrcFd, self->mBuf, self->mBufLen),
+                (rdSize = read(self->mSrcFd, self->mBuf, self->mBufLen),
                  -1 == rdSize && EINTR != errno && EWOULDBLOCK != errno));
 
             /* This is unlikely to happen since the ioctl() reported

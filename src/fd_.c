@@ -394,7 +394,7 @@ spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags)
 
         do
             ERROR_IF(
-                (bytes = read_eintr(aSrcFd, buffer, len),
+                (bytes = read(aSrcFd, buffer, len),
                  -1 == bytes && EINTR != errno));
         while (-1 == bytes);
 
@@ -651,7 +651,7 @@ readFdDeadline_(int aFd,
         ssize_t len;
 
         ERROR_IF(
-            (len = read_eintr(aFd, bufPtr, bufEnd - bufPtr),
+            (len = read(aFd, bufPtr, bufEnd - bufPtr),
              -1 == len && (EINTR       != errno &&
                            EWOULDBLOCK != errno &&
                            EAGAIN      != errno) && bufPtr == aBuf));
