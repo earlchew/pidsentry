@@ -169,11 +169,13 @@ struct EintrModule
 /* -------------------------------------------------------------------------- */
 #ifndef EINTR_MODULE_DEFN_
 #define EINTR_FUNCTION_DECL_(Return_, Name_, Signature_) \
+    Return_ Name_ ## _raw Signature_;                    \
     Return_ Name_ ## _eintr Signature_;                  \
     struct EintrModule
 #else
 #define EINTR_FUNCTION_DECL_(Return_, Name_, Signature_) \
     Return_ Name_           Signature_;                  \
+    Return_ Name_ ## _raw   Signature_;                  \
     Return_ Name_ ## _eintr Signature_;                  \
     struct EintrModule
 #endif

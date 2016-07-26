@@ -70,6 +70,32 @@ Name_ ## _check_(void)                                                  \
 struct EintrModule
 
 /* -------------------------------------------------------------------------- */
+#define EINTR_RAW_FUNCTION_DEFN_(                                       \
+    Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_)       \
+                                                                        \
+Return_                                                                 \
+Name_ ## _raw Signature_                                                \
+{                                                                       \
+    SYSCALL_RAW_(Enum_, Name_, Args_);                                  \
+}                                                                       \
+                                                                        \
+Return_                                                                 \
+Name_ Signature_                                                        \
+{                                                                       \
+    return                                                              \
+        SYSCALL_EINTR_(Eintr_, Enum_, Name_, Predicate_) Args_;         \
+}                                                                       \
+                                                                        \
+static bool                                                             \
+Name_ ## _check_(void)                                                  \
+{                                                                       \
+    return __builtin_types_compatible_p(                                \
+        DECLTYPE(Name_), DECLTYPE(Name_ ## _));                         \
+}                                                                       \
+                                                                        \
+struct EintrModule
+
+/* -------------------------------------------------------------------------- */
 #define EINTR_RETRY_FUNCTION_DEFN_(                                     \
     Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_)       \
                                                                         \
@@ -208,6 +234,18 @@ interruptSystemCall(enum SystemCallKind aKind);
             if (-1 != rc || EINTR != errno)                     \
                 return rc;                                      \
         }                                                       \
+    } while (0)
+
+/* -------------------------------------------------------------------------- */
+#define SYSCALL_RAW_(Kind_, Function_, Args_)                   \
+    do                                                          \
+    {                                                           \
+        uintptr_t syscall_ = invokeSystemCall((Kind_));         \
+                                                                \
+        AUTO(rc, ((DECLTYPE(Function_) *) syscall_) Args_);     \
+                                                                \
+        return rc;                                              \
+                                                                \
     } while (0)
 
 /* -------------------------------------------------------------------------- */
@@ -991,6 +1029,13 @@ EINTR_RETRY_FUNCTION_DEFN_(
     (aFd, aBuf, aCount),
     false);
 
+ssize_t
+read_raw(int aFd, void *aBuf, size_t aCount)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
     EINTR,
@@ -1329,7 +1374,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_RAW_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WRITE,
     ssize_t,
