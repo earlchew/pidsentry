@@ -190,9 +190,9 @@ pollFdDrainCopy_(struct TetherPoll           *self,
             ssize_t wrSize = -1;
 
             ERROR_IF(
-                (wrSize = write_eintr(self->mDstFd,
-                                      self->mBufPtr,
-                                      self->mBufEnd - self->mBufPtr),
+                (wrSize = write(self->mDstFd,
+                                self->mBufPtr,
+                                self->mBufEnd - self->mBufPtr),
                  -1 == wrSize && (EPIPE       != errno &&
                                   EWOULDBLOCK != errno &&
                                   EINTR       != errno)));
