@@ -1020,7 +1020,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_RAW_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_READ,
     ssize_t,
@@ -1028,13 +1028,6 @@ EINTR_RETRY_FUNCTION_DEFN_(
     (int aFd, void *aBuf, size_t aCount),
     (aFd, aBuf, aCount),
     false);
-
-ssize_t
-read_raw(int aFd, void *aBuf, size_t aCount)
-{
-    errno = ENOSYS;
-    return -1;
-}
 
 /* -------------------------------------------------------------------------- */
 EINTR_RETRY_FUNCTION_DEFN_(
