@@ -54,6 +54,14 @@
 #define CHECKED __attribute__((__warn_unused_result__))
 
 /* -------------------------------------------------------------------------- */
+/* Unused Object
+ *
+ * This decorator is used to mark variables and functions that are defined
+ * but not used. */
+
+#define UNUSED __attribute__((__unused__))
+
+/* -------------------------------------------------------------------------- */
 /* Abort
  *
  * Prefer to have the application call abortProcess() directly rather than
