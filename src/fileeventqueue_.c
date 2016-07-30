@@ -247,7 +247,7 @@ pollFileEventQueueActivity(struct FileEventQueue *self,
 
         int polledEvents;
         ERROR_IF(
-            (polledEvents = epoll_wait_eintr(
+            (polledEvents = epoll_wait(
                self->mFile->mFd, self->mQueue, self->mQueueSize, timeout_ms),
              -1 == polledEvents && EINTR != errno));
 

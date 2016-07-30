@@ -640,7 +640,7 @@ waitThreadSigMask(const int *aSigList)
 
     int err = 0;
     ERROR_IF(
-        (err = sigsuspend_eintr(&sigSet),
+        (err = sigsuspend(&sigSet),
          -1 != err || EINTR != errno),
         {
             if (-1 != err)

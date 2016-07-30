@@ -70,7 +70,7 @@ createPathName(struct PathName *self, const char *aFileName)
     {
         if (createFile(
                 &self->mDirFile_,
-                open(self->mDirName, O_RDONLY | O_CLOEXEC)))
+                openFd(self->mDirName, O_RDONLY | O_CLOEXEC, 0)))
         {
             status = PathNameStatusInaccessible;
             break;

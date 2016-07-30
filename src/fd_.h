@@ -87,6 +87,9 @@ struct WhenceType
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
+openFd(const char *aPathName, int aFlags, mode_t aMode);
+
+CHECKED int
 closeFd(int aFd);
 
 CHECKED int
@@ -115,6 +118,9 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec);
 
 CHECKED int
 ownFdCloseOnExec(int aFd);
+
+CHECKED int
+ioctlFd(int aFd, int aReq, void *aArg);
 
 CHECKED ssize_t
 spliceFd(int aSrcFd, int aDstFd, size_t aLen, unsigned aFlags);

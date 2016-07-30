@@ -191,7 +191,7 @@ runPollFdLoop(struct PollFd *self)
         {
             int events;
             ERROR_IF(
-                (events = poll_eintr(
+                (events = poll(
                      self->mPoll, self->mFdActions.mSize, timeout_ms),
                  -1 == events && EINTR != errno));
         }
@@ -208,7 +208,7 @@ runPollFdLoop(struct PollFd *self)
             while (1)
             {
                 ERROR_IF(
-                    (events = poll_eintr(
+                    (events = poll(
                         self->mPoll, self->mFdActions.mSize, 0),
                      -1 == events && EINTR != errno));
                 if (-1 != events)

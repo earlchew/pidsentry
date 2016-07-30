@@ -157,7 +157,7 @@ temporaryFileCreate_(const char *aDirName)
 
     int dirFd;
     ERROR_IF(
-        (dirFd = open(aDirName, O_RDONLY | O_CLOEXEC),
+        (dirFd = openFd(aDirName, O_RDONLY | O_CLOEXEC, 0),
          -1 == dirFd));
 
     uint32_t rnd =
@@ -387,9 +387,9 @@ temporaryFile(struct File *self)
          * The above is only of passing interest for this use case. */
 
         ERROR_IF(
-            (fd = open(tmpDir,
-                       O_TMPFILE | O_RDWR | O_DIRECTORY | O_CLOEXEC,
-                       S_IWUSR | S_IRUSR),
+            (fd = openFd(tmpDir,
+                         O_TMPFILE | O_RDWR | O_DIRECTORY | O_CLOEXEC,
+                         S_IWUSR | S_IRUSR),
              -1 == fd && EISDIR != errno && EOPNOTSUPP != errno));
 
         if (-1 != fd)
@@ -617,7 +617,7 @@ fstatFile(struct File *self, struct stat *aStat)
 int
 fcntlFileGetFlags(struct File *self)
 {
-    return fcntl_eintr(self->mFd, F_GETFL);
+    return fcntl(self->mFd, F_GETFL);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -641,7 +641,7 @@ connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen)
     int rc;
 
     do
-        rc = connect_eintr(self->mFd, aAddr, aAddrLen);
+        rc = connect(self->mFd, aAddr, aAddrLen);
     while (rc && EINTR == errno);
 
     return rc;
@@ -677,7 +677,7 @@ acceptFileSocket(struct File *self, unsigned aFlags)
         while (1)
         {
             ERROR_IF(
-                (fd = accept4_eintr(self->mFd, 0, 0, flags),
+                (fd = accept4(self->mFd, 0, 0, flags),
                  -1 == fd && EINTR != errno));
             if (-1 != fd)
                 break;
@@ -690,7 +690,7 @@ acceptFileSocket(struct File *self, unsigned aFlags)
         while (1)
         {
             ERROR_IF(
-                (fd = accept_eintr(self->mFd, 0, 0),
+                (fd = accept(self->mFd, 0, 0),
                  -1 == fd && EINTR != errno));
             if (-1 != fd)
                 break;
@@ -817,7 +817,7 @@ sendFileSocket(struct File *self, const char *aBuf, size_t aLen)
     ssize_t rc;
 
     do
-        rc = send_eintr(self->mFd, aBuf, aLen, 0);
+        rc = send(self->mFd, aBuf, aLen, 0);
     while (-1 == rc && EINTR == errno);
 
     return rc;
@@ -830,7 +830,7 @@ recvFileSocket(struct File *self, char *aBuf, size_t aLen)
     ssize_t rc;
 
     do
-        rc = recv_eintr(self->mFd, aBuf, aLen, 0);
+        rc = recv(self->mFd, aBuf, aLen, 0);
     while (-1 == rc && EINTR == errno);
 
     return rc;
@@ -843,7 +843,7 @@ sendFileSocketMsg(struct File *self, const struct msghdr *aMsg, int aFlags)
     ssize_t rc;
 
     do
-        rc = sendmsg_eintr(self->mFd, aMsg, aFlags);
+        rc = sendmsg(self->mFd, aMsg, aFlags);
     while (-1 == rc && EINTR == errno);
 
     return rc;
@@ -856,7 +856,7 @@ recvFileSocketMsg(struct File *self, struct msghdr *aMsg, int aFlags)
     ssize_t rc;
 
     do
-        rc = recvmsg_eintr(self->mFd, aMsg, aFlags);
+        rc = recvmsg(self->mFd, aMsg, aFlags);
     while (-1 == rc && EINTR == errno);
 
     return rc;

@@ -32,6 +32,12 @@
 #include "compiler_.h"
 
 #ifdef EINTR_MODULE_DEFN_
+
+/* If the interceptors are being defined, capture the signature of each
+ * intercepted function. For example, use read_ to capture the signature
+ * of the read function. This will be used in the implementation to compare
+ * with the signature of the interceptor. */
+
 #define accept          accept_
 #define accept4         accept4_
 #define clock_nanosleep clock_nanosleep_
@@ -281,7 +287,7 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, pselect, (int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-                   struct timeval *aTimeout, const sigset_t *aMask));
+                   const struct timespec *aTimeout, const sigset_t *aMask));
 
 EINTR_FUNCTION_DECL_(
     unsigned, sleep, (unsigned aTimeout));
@@ -327,7 +333,7 @@ EINTR_FUNCTION_DECL_(
 
 EINTR_FUNCTION_DECL_(
     int, semtimedop, (int aSemId, struct sembuf *aOps, unsigned aNumOps,
-                      struct timespec *aTimeout));
+                      const struct timespec *aTimeout));
 
 EINTR_FUNCTION_DECL_(
     ssize_t, send, (int aFd, const void *aBufPtr, size_t aBufLen, int aFlags));

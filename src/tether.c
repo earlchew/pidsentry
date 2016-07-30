@@ -138,7 +138,7 @@ pollFdDrainCopy_(struct TetherPoll           *self,
             int available;
 
             ERROR_IF(
-                ioctl(self->mSrcFd, FIONREAD, &available));
+                ioctlFd(self->mSrcFd, FIONREAD, &available));
 
             if ( ! available)
             {
@@ -274,7 +274,7 @@ pollFdDrainSplice_(struct TetherPoll           *self,
         int available;
 
         ERROR_IF(
-            ioctl(self->mSrcFd, FIONREAD, &available));
+            ioctlFd(self->mSrcFd, FIONREAD, &available));
 
         if ( ! available)
         {

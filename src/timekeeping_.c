@@ -76,7 +76,7 @@ procUptime(struct Duration *aUptime, const char *aFileName)
     int   fd  = -1;
 
     ERROR_IF(
-        (fd = open(aFileName, O_RDONLY),
+        (fd = openFd(aFileName, O_RDONLY, 0),
          -1 == fd));
 
     ssize_t buflen;
@@ -457,7 +457,7 @@ monotonicSleep(struct Duration aPeriod)
             NanoSeconds(monotonicTime().monotonic.ns + aPeriod.duration.ns));
 
     do
-        rc = clock_nanosleep_eintr(
+        rc = clock_nanosleep(
             CLOCK_MONOTONIC, TIMER_ABSTIME, &sleepTime, 0);
     while (EINTR == rc);
 

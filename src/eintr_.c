@@ -45,78 +45,25 @@ static unsigned moduleInit_;
 
 /* -------------------------------------------------------------------------- */
 #define EINTR_FUNCTION_DEFN_(                                           \
-    Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_)       \
+    Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_, ...)  \
+                                                                        \
+/* Verify that the function signature of the interceptor matches the    \
+ * declared function signature. */                                      \
+                                                                        \
+static DECLTYPE(Name_ ## _) *Name_ ## _check_ UNUSED = Name_;           \
                                                                         \
 Return_                                                                 \
 Name_ Signature_                                                        \
 {                                                                       \
-    return Name_ ## _eintr Args_;                                       \
-}                                                                       \
-                                                                        \
-Return_                                                                 \
-Name_ ## _eintr Signature_                                              \
-{                                                                       \
     return                                                              \
-        SYSCALL_EINTR_(Eintr_, Enum_, Name_, Predicate_) Args_;         \
+        SYSCALL_EINTR_(                                                 \
+            Eintr_, Enum_, Name_, Predicate_, ## __VA_ARGS__) Args_;    \
 }                                                                       \
-                                                                        \
-static bool                                                             \
-Name_ ## _check_(void)                                                  \
-{                                                                       \
-    return __builtin_types_compatible_p(                                \
-        DECLTYPE(Name_), DECLTYPE(Name_ ## _));                         \
-}                                                                       \
-                                                                        \
-struct EintrModule
-
-/* -------------------------------------------------------------------------- */
-#define EINTR_RAW_FUNCTION_DEFN_(                                       \
-    Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_)       \
                                                                         \
 Return_                                                                 \
 Name_ ## _raw Signature_                                                \
 {                                                                       \
     SYSCALL_RAW_(Enum_, Name_, Args_);                                  \
-}                                                                       \
-                                                                        \
-Return_                                                                 \
-Name_ Signature_                                                        \
-{                                                                       \
-    return                                                              \
-        SYSCALL_EINTR_(Eintr_, Enum_, Name_, Predicate_) Args_;         \
-}                                                                       \
-                                                                        \
-static bool                                                             \
-Name_ ## _check_(void)                                                  \
-{                                                                       \
-    return __builtin_types_compatible_p(                                \
-        DECLTYPE(Name_), DECLTYPE(Name_ ## _));                         \
-}                                                                       \
-                                                                        \
-struct EintrModule
-
-/* -------------------------------------------------------------------------- */
-#define EINTR_RETRY_FUNCTION_DEFN_(                                     \
-    Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_)       \
-                                                                        \
-Return_                                                                 \
-Name_ Signature_                                                        \
-{                                                                       \
-    SYSCALL_RESTART_(Enum_, Name_, Args_);                              \
-}                                                                       \
-                                                                        \
-Return_                                                                 \
-Name_ ## _eintr Signature_                                              \
-{                                                                       \
-    return                                                              \
-        SYSCALL_EINTR_(Eintr_, Enum_, Name_, Predicate_) Args_;         \
-}                                                                       \
-                                                                        \
-static bool                                                             \
-Name_ ## _check_(void)                                                  \
-{                                                                       \
-    return __builtin_types_compatible_p(                                \
-        DECLTYPE(Name_), DECLTYPE(Name_ ## _));                         \
 }                                                                       \
                                                                         \
 struct EintrModule
@@ -201,40 +148,27 @@ static uintptr_t
 interruptSystemCall(enum SystemCallKind aKind);
 
 /* -------------------------------------------------------------------------- */
-#define SYSCALL_EINTR_(Eintr_, Kind_, Function_, Predicate_) \
-    ({                                                       \
-        uintptr_t syscall_;                                  \
-                                                             \
-        if ( ! (Eintr_) || (Predicate_))                     \
-            syscall_ = invokeSystemCall((Kind_));            \
-        else                                                 \
-        {                                                    \
-            syscall_ = interruptSystemCall((Kind_));         \
-                                                             \
-            if ( ! syscall_)                                 \
-            {                                                \
-                errno = (Eintr_);                            \
-                return -1;                                   \
-            }                                                \
-        }                                                    \
-                                                             \
-        (DECLTYPE(Function_) *) syscall_;                    \
+#define SYSCALL_EINTR_(Eintr_, Kind_, Function_, Predicate_, ...)   \
+    ({                                                              \
+        uintptr_t syscall_;                                         \
+                                                                    \
+        if ( ! (Eintr_) || (Predicate_))                            \
+            syscall_ = invokeSystemCall((Kind_));                   \
+        else                                                        \
+        {                                                           \
+            syscall_ = interruptSystemCall((Kind_));                \
+                                                                    \
+            if ( ! syscall_)                                        \
+            {                                                       \
+                do { __VA_ARGS__ } while (0);                       \
+                                                                    \
+                errno = (Eintr_);                                   \
+                return -1;                                          \
+            }                                                       \
+        }                                                           \
+                                                                    \
+        (DECLTYPE(Function_) *) syscall_;                           \
     })
-
-/* -------------------------------------------------------------------------- */
-#define SYSCALL_RESTART_(Kind_, Function_, Args_)               \
-    do                                                          \
-    {                                                           \
-        while (1)                                               \
-        {                                                       \
-            uintptr_t syscall_ = invokeSystemCall((Kind_));     \
-                                                                \
-            AUTO(rc, ((DECLTYPE(Function_) *) syscall_) Args_); \
-                                                                \
-            if (-1 != rc || EINTR != errno)                     \
-                return rc;                                      \
-        }                                                       \
-    } while (0)
 
 /* -------------------------------------------------------------------------- */
 #define SYSCALL_RAW_(Kind_, Function_, Args_)                   \
@@ -249,7 +183,7 @@ interruptSystemCall(enum SystemCallKind aKind);
     } while (0)
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_ACCEPT,
     int,
@@ -259,7 +193,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_ACCEPT4,
     int,
@@ -269,70 +203,25 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static bool
-clock_nanosleep_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(clock_nanosleep), DECLTYPE(clock_nanosleep_));
-}
-
-int
-clock_nanosleep(clockid_t aClockId, int aFlags,
-                const struct timespec *aReq, struct timespec *aRem)
-{
-    int rc;
-
-    struct timespec rem = *aReq;
-
-    do
-        rc = clock_nanosleep_eintr(aClockId, aFlags, &rem, &rem);
-    while (EINTR == rc);
-
-    return rc;
-}
-
-int
-clock_nanosleep_eintr(clockid_t aClockId, int aFlags,
-                      const struct timespec *aReq, struct timespec *aRem)
-{
-    uintptr_t clock_nanosleepAddr =
-        interruptSystemCall(SYSTEMCALL_CLOCKNANOSLEEP);
-
-    if ( ! clock_nanosleepAddr)
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_CLOCKNANOSLEEP,
+    int,
+    clock_nanosleep,
+    (clockid_t aClockId, int aFlags,
+     const struct timespec *aReq, struct timespec *aRem),
+    (aClockId, aFlags, aReq, aRem),
+    false,
     {
         if (TIMER_ABSTIME == aFlags && aRem)
             *aRem = *aReq;
 
         return EINTR;
-    }
-
-    return
-        ((DECLTYPE(clock_nanosleep) *) clock_nanosleepAddr)(
-            aClockId, aFlags, aReq, aRem);
-}
+    });
 
 /* -------------------------------------------------------------------------- */
-static bool
-close_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(close), DECLTYPE(close_));
-}
-
-int
-close(int aFd)
-{
-    int rc;
-
-    do
-        rc = close_eintr(aFd);
-    while (rc && EINTR == errno);
-
-    return rc && EINPROGRESS != errno ? -1 : 0;
-}
-
-int
-close_eintr(int aFd)
+static int
+close_raw_(int aFd, uintptr_t aCloseAddr)
 {
     /* From http://austingroupbugs.net/view.php?id=529
      *
@@ -351,25 +240,47 @@ close_eintr(int aFd)
      * asynchronously and the process shall have no further ability to track
      * the completion or final status of the close operation. */
 
-    uintptr_t closeFunc = interruptSystemCall(SYSTEMCALL_CLOSE);
+    int rc = ((DECLTYPE(close) *) aCloseAddr)(aFd);
 
-    if ( ! closeFunc)
-    {
-        errno = EINTR;
-        return -1;
-    }
-
-    return
-        ! ((DECLTYPE(close) *) closeFunc)(aFd)
+    rc = ! rc
         ? 0
+#ifndef POSIX_CLOSE_RESTART
 #ifdef __linux__
         : EINTR == errno ? 0 /* https://lwn.net/Articles/576478/ */
 #endif
-        : EINPROGRESS == errno ? 0 : -1;
+#endif
+        : rc;
+
+    return rc;
+}
+
+int
+close_raw(int aFd)
+{
+    return close_raw_(aFd, invokeSystemCall(SYSTEMCALL_CLOSE));
+}
+
+int
+close(int aFd)
+{
+    uintptr_t closeAddr = interruptSystemCall(SYSTEMCALL_CLOSE);
+
+    int rc =
+        close_raw_(
+            aFd,
+            closeAddr ? closeAddr : invokeSystemCall(SYSTEMCALL_CLOSE));
+
+    if ( ! rc && ! closeAddr)
+    {
+        errno = EINPROGRESS;
+        rc = -1;
+    }
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_CONNECT,
     int,
@@ -379,129 +290,33 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static int
-local_epoll_wait_(
-    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_EPOLLWAIT,
-    static int,
-    local_epoll_wait,
+    int,
+    epoll_wait,
     (int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout),
     (aFd, aEvents, aMaxEvents, aTimeout),
     false);
 
-int
-epoll_wait(
-    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout)
-{
-    if (0 ==aTimeout || -1 == aTimeout)
-        return local_epoll_wait(aFd, aEvents, aMaxEvents, aTimeout);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   = Duration(NSECS(MilliSeconds(aTimeout)));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        rc = local_epoll_wait_eintr(
-            aFd, aEvents, aMaxEvents, MSECS(remaining.duration).ms);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-epoll_wait_eintr(
-    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout)
-{
-    return local_epoll_wait_eintr(aFd, aEvents, aMaxEvents, aTimeout);
-}
-
 /* -------------------------------------------------------------------------- */
-static int
-local_epoll_pwait_(
-    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
-    const sigset_t *aMask)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_EPOLLPWAIT,
-    static int,
-    local_epoll_pwait,
+    int,
+    epoll_pwait,
     (int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
      const sigset_t *aMask),
     (aFd, aEvents, aMaxEvents, aTimeout, aMask),
     false);
 
-int
-epoll_pwait(
-    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
-    const sigset_t *aMask)
-{
-    if (0 ==aTimeout || -1 == aTimeout)
-        return local_epoll_pwait(aFd, aEvents, aMaxEvents, aTimeout, aMask);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   = Duration(NSECS(MilliSeconds(aTimeout)));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        rc = local_epoll_pwait_eintr(
-            aFd, aEvents, aMaxEvents, MSECS(remaining.duration).ms, aMask);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-epoll_pwait_eintr(
-    int aFd, struct epoll_event *aEvents, int aMaxEvents, int aTimeout,
-    const sigset_t *aMask)
-{
-    return local_epoll_pwait_eintr(aFd, aEvents, aMaxEvents, aTimeout, aMask);
-}
-
 /* -------------------------------------------------------------------------- */
-static bool
-fcntl_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(fcntl), DECLTYPE(fcntl_));
-}
-
 static int
-fcntl_call_(uintptr_t aFcntl, int aFd, int aCmd, va_list aArgs)
+fcntl_raw_(uintptr_t aFcntlAddr, int aFd, int aCmd, va_list aArgs)
 {
     int rc = -1;
 
-    AUTO(fcntlp, (DECLTYPE(fcntl) *) aFcntl);
+    AUTO(fcntlp, (DECLTYPE(fcntl) *) aFcntlAddr);
 
     switch (aCmd)
     {
@@ -571,27 +386,21 @@ fcntl_call_(uintptr_t aFcntl, int aFd, int aCmd, va_list aArgs)
 }
 
 int
-fcntl(int aFd, int aCmd, ...)
+fcntl_raw(int aFd, int aCmd, ...)
 {
     int rc;
 
     va_list args;
 
-    uintptr_t fcntlAddr = invokeSystemCall(SYSTEMCALL_FCNTL);
-
-    do
-    {
-        va_start(args, aCmd);
-        rc = fcntl_call_(fcntlAddr, aFd, aCmd, args);
-        va_end(args);
-    }
-    while (-1 == rc && EINTR == errno);
+    va_start(args, aCmd);
+    rc = fcntl_raw_(invokeSystemCall(SYSTEMCALL_FCNTL), aFd, aCmd, args);
+    va_end(args);
 
     return rc;
 }
 
 int
-fcntl_eintr(int aFd, int aCmd, ...)
+fcntl(int aFd, int aCmd, ...)
 {
     int rc;
 
@@ -613,14 +422,14 @@ fcntl_eintr(int aFd, int aCmd, ...)
     va_list args;
 
     va_start(args, aCmd);
-    rc = fcntl_call_(fcntlAddr, aFd, aCmd, args);
+    rc = fcntl_raw_(fcntlAddr, aFd, aCmd, args);
     va_end(args);
 
     return rc;
 }
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_FLOCK,
     int,
@@ -631,20 +440,18 @@ EINTR_RETRY_FUNCTION_DEFN_(
 
 /* -------------------------------------------------------------------------- */
 static int
-local_ioctl_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg)
+local_ioctl_raw_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg)
 {
-    errno = ENOSYS;
-    return -1;
+    SYSCALL_RAW_(SYSTEMCALL_IOCTL, ioctl, (aFd, aRequest, aArg));
 }
 
-EINTR_RETRY_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_IOCTL,
-    static int,
-    local_ioctl,
-    (int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg),
-    (aFd, aRequest, aArg),
-    false);
+static int
+local_ioctl_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, void *aArg)
+{
+    return
+        SYSCALL_EINTR_(
+            EINTR, SYSTEMCALL_IOCTL, ioctl, false)(aFd, aRequest, aArg);
+}
 
 #define EINTR_IOCTL_DEFN_(Name_)                                \
 int                                                             \
@@ -658,15 +465,15 @@ Name_(int aFd, EINTR_IOCTL_REQUEST_T_ aRequest, ...)            \
     arg = va_arg(argp, void *);                                 \
     va_end(argp);                                               \
                                                                 \
-    return local_ ## Name_(aFd, aRequest, arg);                 \
+    return local_ ## Name_ ## _(aFd, aRequest, arg);            \
 }                                                               \
 struct EintrModule
 
 EINTR_IOCTL_DEFN_(ioctl);
-EINTR_IOCTL_DEFN_(ioctl_eintr);
+EINTR_IOCTL_DEFN_(ioctl_raw);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQRECEIVE,
     ssize_t,
@@ -676,7 +483,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQSEND,
     int,
@@ -686,7 +493,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQTIMEDRECEIVE,
     ssize_t,
@@ -697,7 +504,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MQTIMEDSEND,
     int,
@@ -708,7 +515,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MSGRCV,
     ssize_t,
@@ -718,7 +525,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_MSGSND,
     int,
@@ -728,60 +535,33 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static bool
-nanosleep_check_(void)
-{
-    return __builtin_types_compatible_p(
-        DECLTYPE(nanosleep), DECLTYPE(nanosleep_));
-}
-
-int
-nanosleep(const struct timespec *aReq, struct timespec *aRem)
-{
-    int rc;
-
-    struct timespec rem = *aReq;
-
-    do
-        rc = nanosleep_eintr(&rem, &rem);
-    while (rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-nanosleep_eintr(const struct timespec *aReq, struct timespec *aRem)
-{
-    uintptr_t nanosleepAddr = interruptSystemCall(SYSTEMCALL_NANOSLEEP);
-
-    if ( ! nanosleepAddr)
+EINTR_FUNCTION_DEFN_(
+    EINTR,
+    SYSTEMCALL_NANOSLEEP,
+    int,
+    nanosleep,
+    (const struct timespec *aReq, struct timespec *aRem),
+    (aReq, aRem),
+    false,
     {
         if (aRem)
             *aRem = *aReq;
-
-        errno = EINTR;
-        return -1;
-    }
-
-    return ((DECLTYPE(nanosleep) *) nanosleepAddr)(aReq, aRem);
-}
+    });
 
 /* -------------------------------------------------------------------------- */
 static int
-local_open_(const char *aPath, int aFlags, mode_t aMode)
+local_open_raw_(const char *aPath, int aFlags, mode_t aMode)
 {
-    errno = ENOSYS;
-    return -1;
+    SYSCALL_RAW_(SYSTEMCALL_OPEN, open, (aPath, aFlags, aMode));
 }
 
-EINTR_RETRY_FUNCTION_DEFN_(
-    EINTR,
-    SYSTEMCALL_OPEN,
-    static int,
-    local_open,
-    (const char *aPath, int aFlags, mode_t aMode),
-    (aPath, aFlags, aMode),
-    false);
+static int
+local_open_(const char *aPath, int aFlags, mode_t aMode)
+{
+    return
+        SYSCALL_EINTR_(
+            EINTR, SYSTEMCALL_OPEN, open, false)(aPath, aFlags, aMode);
+}
 
 #define EINTR_OPEN_DEFN_(Name_)                         \
 int                                                     \
@@ -798,12 +578,12 @@ Name_(const char *aPath, int aFlags, ...)               \
         : va_arg(argp, mode_t));                        \
     va_end(argp);                                       \
                                                         \
-    return local_ ## Name_(aPath, aFlags, mode);        \
+    return local_ ## Name_ ## _(aPath, aFlags, mode);   \
 }                                                       \
 struct EintrModule
 
 EINTR_OPEN_DEFN_(open);
-EINTR_OPEN_DEFN_(open_eintr);
+EINTR_OPEN_DEFN_(open_raw);
 
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
@@ -816,112 +596,28 @@ EINTR_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static int
-local_poll_(struct pollfd *aFds, nfds_t aNumFds, int aTimeout)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_POLL,
-    static int,
-    local_poll,
+    int,
+    poll,
     (struct pollfd *aFds, nfds_t aNumFds, int aTimeout),
     (aFds, aNumFds, aTimeout),
     false);
 
-int
-poll(struct pollfd *aFds, nfds_t aNumFds, int aTimeout)
-{
-    if (0 >= aTimeout)
-        return local_poll(aFds, aNumFds, aTimeout);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   = Duration(NSECS(MilliSeconds(aTimeout)));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        rc = local_poll_eintr(aFds, aNumFds, MSECS(remaining.duration).ms);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-poll_eintr(struct pollfd *aFds, nfds_t aNumFds, int aTimeout)
-{
-    return local_poll_eintr(aFds, aNumFds, aTimeout);
-}
-
 /* -------------------------------------------------------------------------- */
-static int
-local_ppoll_(struct pollfd *aFds, nfds_t aNumFds,
-             const struct timespec *aTimeout, const sigset_t *aMask)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PPOLL,
-    static int,
-    local_ppoll,
+    int,
+    ppoll,
     (struct pollfd *aFds, nfds_t aNumFds,
      const struct timespec *aTimeout, const sigset_t *aMask),
     (aFds, aNumFds, aTimeout, aMask),
     false);
 
-int
-ppoll(struct pollfd *aFds, nfds_t aNumFds,
-      const struct timespec *aTimeout, const sigset_t *aMask)
-{
-    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_nsec))
-        return local_ppoll(aFds, aNumFds, aTimeout, aMask);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   =
-        Duration(timeSpecToNanoSeconds(aTimeout));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        struct timespec timeout = timeSpecFromNanoSeconds(remaining.duration);
-
-        rc = local_ppoll_eintr(aFds, aNumFds, &timeout, aMask);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-ppoll_eintr(struct pollfd *aFds, nfds_t aNumFds,
-            const struct timespec *aTimeout, const sigset_t *aMask)
-{
-    return local_ppoll_eintr(aFds, aNumFds, aTimeout, aMask);
-}
-
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PREAD,
     ssize_t,
@@ -931,7 +627,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PREADV,
     ssize_t,
@@ -941,66 +637,18 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static int
-local_pselect_(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-               struct timeval *aTimeout, const sigset_t *aMask)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PSELECT,
-    static int,
-    local_pselect,
+    int,
+    pselect,
     (int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-     struct timeval *aTimeout, const sigset_t *aMask),
+     const struct timespec *aTimeout, const sigset_t *aMask),
     (aNumFds, aRdFds, aWrFds, aExFds, aTimeout, aMask),
     false);
 
-int
-pselect(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-        struct timeval *aTimeout, const sigset_t *aMask)
-{
-    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_usec))
-        return local_pselect(aNumFds, aRdFds, aWrFds, aExFds, aTimeout, aMask);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   =
-        Duration(timeValToNanoSeconds(aTimeout));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        struct timeval timeout = timeValFromNanoSeconds(remaining.duration);
-
-        rc = local_pselect_eintr(
-            aNumFds, aRdFds, aWrFds, aExFds, &timeout, aMask);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-pselect_eintr(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-              struct timeval *aTimeout, const sigset_t *aMask)
-{
-    return
-        local_pselect_eintr(
-            aNumFds, aRdFds, aWrFds, aExFds, aTimeout, aMask);
-}
-
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PWRITE,
     ssize_t,
@@ -1010,7 +658,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_PWRITEV,
     ssize_t,
@@ -1020,7 +668,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RAW_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_READ,
     ssize_t,
@@ -1030,7 +678,7 @@ EINTR_RAW_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_READV,
     ssize_t,
@@ -1040,7 +688,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_RECV,
     ssize_t,
@@ -1050,7 +698,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_RECVFROM,
     ssize_t,
@@ -1061,7 +709,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_RECVMSG,
     ssize_t,
@@ -1071,63 +719,18 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static int
-local_select_(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-              struct timeval *aTimeout)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SELECT,
-    static int,
-    local_select,
+    int,
+    select,
     (int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
      struct timeval *aTimeout),
     (aNumFds, aRdFds, aWrFds, aExFds, aTimeout),
     false);
 
-int
-select(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-       struct timeval *aTimeout)
-{
-    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_usec))
-        return local_select(aNumFds, aRdFds, aWrFds, aExFds, aTimeout);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   =
-        Duration(timeValToNanoSeconds(aTimeout));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        struct timeval timeout = timeValFromNanoSeconds(remaining.duration);
-
-        rc = local_select_eintr(aNumFds, aRdFds, aWrFds, aExFds, &timeout);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-select_eintr(int aNumFds, fd_set *aRdFds, fd_set *aWrFds, fd_set *aExFds,
-             struct timeval *aTimeout)
-{
-    return local_select_eintr(aNumFds, aRdFds, aWrFds, aExFds, aTimeout);
-}
-
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SEMWAIT,
     int,
@@ -1137,7 +740,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SEMTIMEDWAIT,
     int,
@@ -1147,7 +750,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SEMOP,
     int,
@@ -1157,63 +760,18 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static int
-local_semtimedop_(int aSemId, struct sembuf *aOps, unsigned aNumOps,
-                  struct timespec *aTimeout)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
-    SYSTEMCALL_SELECT,
-    static int,
-    local_semtimedop,
+    SYSTEMCALL_SEMTIMEDOP,
+    int,
+    semtimedop,
     (int aSemId, struct sembuf *aOps, unsigned aNumOps,
-     struct timespec *aTimeout),
+     const struct timespec *aTimeout),
     (aSemId, aOps, aNumOps, aTimeout),
     false);
 
-int
-semtimedop(int aSemId, struct sembuf *aOps, unsigned aNumOps,
-           struct timespec *aTimeout)
-{
-    if ( ! aTimeout || ( ! aTimeout->tv_sec && ! aTimeout->tv_nsec))
-        return local_semtimedop(aSemId, aOps, aNumOps, aTimeout);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   =
-        Duration(timeSpecToNanoSeconds(aTimeout));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        struct timespec timeout = timeSpecFromNanoSeconds(remaining.duration);
-
-        rc = local_semtimedop_eintr(aSemId, aOps, aNumOps, &timeout);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-semtimedop_eintr(int aSemId, struct sembuf *aOps, unsigned aNumOps,
-                 struct timespec *aTimeout)
-{
-    return local_semtimedop_eintr(aSemId, aOps, aNumOps, aTimeout);
-}
-
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SEND,
     ssize_t,
@@ -1223,7 +781,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SENDTO,
     ssize_t,
@@ -1234,7 +792,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SENDMSG,
     ssize_t,
@@ -1256,7 +814,7 @@ EINTR_FUNCTION_DEFN_(
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
     EINTR,
-    SYSTEMCALL_SIGSUSPEND,
+    SYSTEMCALL_SIGWAITINFO,
     int,
     sigwaitinfo,
     (const sigset_t *aSet, siginfo_t *aInfo),
@@ -1274,50 +832,20 @@ EINTR_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static unsigned
-local_sleep_(unsigned aTimeout)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_SLEEP,
-    static unsigned,
-    local_sleep,
+    unsigned,
+    sleep,
     (unsigned aTimeout),
     (aTimeout),
-    false);
-
-unsigned
-sleep(unsigned aTimeout)
-{
-    if ( ! aTimeout)
-        return local_sleep(aTimeout);
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   = Duration(NSECS(Seconds(aTimeout)));
-    struct Duration          remaining;
-
-    while ( ! monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
+    false,
     {
-        unsigned sleepTime = SECS(remaining.duration).s;
-
-        local_sleep_eintr(sleepTime ? sleepTime : 1);
-    }
-
-    return 0;
-}
-
-unsigned
-sleep_eintr(unsigned aTimeout)
-{
-    return local_sleep_eintr(aTimeout);
-}
+        return aTimeout;
+    });
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT,
     pid_t,
@@ -1327,7 +855,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT3,
     pid_t,
@@ -1337,7 +865,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAIT4,
     pid_t,
@@ -1347,7 +875,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAITID,
     int,
@@ -1357,7 +885,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WAITPID,
     pid_t,
@@ -1367,7 +895,7 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RAW_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WRITE,
     ssize_t,
@@ -1377,7 +905,7 @@ EINTR_RAW_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
     SYSTEMCALL_WRITEV,
     ssize_t,
@@ -1387,118 +915,77 @@ EINTR_RETRY_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-static int
-local_usleep_(useconds_t aTimeout)
-{
-    errno = ENOSYS;
-    return -1;
-}
-
-EINTR_RETRY_FUNCTION_DEFN_(
+EINTR_FUNCTION_DEFN_(
     EINTR,
-    SYSTEMCALL_SELECT,
-    static int,
-    local_usleep,
+    SYSTEMCALL_USLEEP,
+    int,
+    usleep,
     (useconds_t aTimeout),
     (aTimeout),
     false);
 
-int
-usleep(useconds_t aTimeout)
-{
-    if ( ! aTimeout)
-        return local_usleep(aTimeout);
-
-    int rc;
-
-    struct MonotonicDeadline deadline = MONOTONICDEADLINE_INIT;
-    struct Duration          period   = Duration(NSECS(MicroSeconds(aTimeout)));
-    struct Duration          remaining;
-
-    do
-    {
-        rc = 0;
-
-        if (monotonicDeadlineTimeExpired(&deadline, period, &remaining, 0))
-            break;
-
-        rc = local_usleep_eintr(USECS(remaining.duration).us);
-
-    } while (-1 == rc && EINTR == errno);
-
-    return rc;
-}
-
-int
-usleep_eintr(useconds_t aTimeout)
-{
-    return local_usleep_eintr(aTimeout);
-}
-
 /* -------------------------------------------------------------------------- */
-#define SYSCALL_ENTRY_(Prefix_, Name_)        \
-    { Prefix_ ## Name_ ## _check_, STRINGIFY(Name_), }
+#define SYSCALL_ENTRY_(Name_) { STRINGIFY(Name_), }
 
 struct SystemCall
 {
-    bool      (*mCheck)(void);
     const char *mName;
     uintptr_t   mAddr;
 };
 
 static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
-    [SYSTEMCALL_ACCEPT]         = SYSCALL_ENTRY_(, accept),
-    [SYSTEMCALL_ACCEPT4]        = SYSCALL_ENTRY_(, accept4),
-    [SYSTEMCALL_CLOCKNANOSLEEP] = SYSCALL_ENTRY_(, clock_nanosleep),
-    [SYSTEMCALL_CLOSE]          = SYSCALL_ENTRY_(, close),
-    [SYSTEMCALL_CONNECT]        = SYSCALL_ENTRY_(, connect),
-    [SYSTEMCALL_EPOLLWAIT]      = SYSCALL_ENTRY_(local_, epoll_wait),
-    [SYSTEMCALL_EPOLLPWAIT]     = SYSCALL_ENTRY_(local_, epoll_pwait),
-    [SYSTEMCALL_FCNTL]          = SYSCALL_ENTRY_(, fcntl),
-    [SYSTEMCALL_FLOCK]          = SYSCALL_ENTRY_(, flock),
-    [SYSTEMCALL_IOCTL]          = SYSCALL_ENTRY_(local_, ioctl),
-    [SYSTEMCALL_MQRECEIVE]      = SYSCALL_ENTRY_(, mq_receive),
-    [SYSTEMCALL_MQSEND]         = SYSCALL_ENTRY_(, mq_send),
-    [SYSTEMCALL_MQTIMEDRECEIVE] = SYSCALL_ENTRY_(, mq_timedreceive),
-    [SYSTEMCALL_MQTIMEDSEND]    = SYSCALL_ENTRY_(, mq_timedsend),
-    [SYSTEMCALL_MSGRCV]         = SYSCALL_ENTRY_(, msgrcv),
-    [SYSTEMCALL_MSGSND]         = SYSCALL_ENTRY_(, msgsnd),
-    [SYSTEMCALL_NANOSLEEP]      = SYSCALL_ENTRY_(, nanosleep),
-    [SYSTEMCALL_OPEN]           = SYSCALL_ENTRY_(local_, open),
-    [SYSTEMCALL_PAUSE]          = SYSCALL_ENTRY_(, pause),
-    [SYSTEMCALL_POLL]           = SYSCALL_ENTRY_(local_, poll),
-    [SYSTEMCALL_PPOLL]          = SYSCALL_ENTRY_(local_, ppoll),
-    [SYSTEMCALL_PREAD]          = SYSCALL_ENTRY_(, pread),
-    [SYSTEMCALL_PREADV]         = SYSCALL_ENTRY_(, preadv),
-    [SYSTEMCALL_PSELECT]        = SYSCALL_ENTRY_(local_, pselect),
-    [SYSTEMCALL_PWRITE]         = SYSCALL_ENTRY_(, pwrite),
-    [SYSTEMCALL_PWRITEV]        = SYSCALL_ENTRY_(, pwritev),
-    [SYSTEMCALL_READ]           = SYSCALL_ENTRY_(, read),
-    [SYSTEMCALL_READV]          = SYSCALL_ENTRY_(, readv),
-    [SYSTEMCALL_RECV]           = SYSCALL_ENTRY_(, recv),
-    [SYSTEMCALL_RECVFROM]       = SYSCALL_ENTRY_(, recvfrom),
-    [SYSTEMCALL_RECVMSG]        = SYSCALL_ENTRY_(, recvmsg),
-    [SYSTEMCALL_SELECT]         = SYSCALL_ENTRY_(local_, select),
-    [SYSTEMCALL_SEMWAIT]        = SYSCALL_ENTRY_(, sem_wait),
-    [SYSTEMCALL_SEMTIMEDWAIT]   = SYSCALL_ENTRY_(, sem_timedwait),
-    [SYSTEMCALL_SEMOP]          = SYSCALL_ENTRY_(, semop),
-    [SYSTEMCALL_SEMTIMEDOP]     = SYSCALL_ENTRY_(local_, semtimedop),
-    [SYSTEMCALL_SEND]           = SYSCALL_ENTRY_(, send),
-    [SYSTEMCALL_SENDTO]         = SYSCALL_ENTRY_(, sendto),
-    [SYSTEMCALL_SENDMSG]        = SYSCALL_ENTRY_(, sendmsg),
-    [SYSTEMCALL_SIGSUSPEND]     = SYSCALL_ENTRY_(, sigsuspend),
-    [SYSTEMCALL_SIGTIMEDWAIT]   = SYSCALL_ENTRY_(, sigtimedwait),
-    [SYSTEMCALL_SIGWAITINFO]    = SYSCALL_ENTRY_(, sigwaitinfo),
-    [SYSTEMCALL_SLEEP]          = SYSCALL_ENTRY_(local_, sleep),
-    [SYSTEMCALL_WAIT]           = SYSCALL_ENTRY_(, wait),
-    [SYSTEMCALL_WAIT3]          = SYSCALL_ENTRY_(, wait3),
-    [SYSTEMCALL_WAIT4]          = SYSCALL_ENTRY_(, wait4),
-    [SYSTEMCALL_WAITID]         = SYSCALL_ENTRY_(, waitid),
-    [SYSTEMCALL_WAITPID]        = SYSCALL_ENTRY_(, waitpid),
-    [SYSTEMCALL_WRITE]          = SYSCALL_ENTRY_(, write),
-    [SYSTEMCALL_WRITEV]         = SYSCALL_ENTRY_(, writev),
-    [SYSTEMCALL_USLEEP]         = SYSCALL_ENTRY_(local_, usleep),
+    [SYSTEMCALL_ACCEPT]         = SYSCALL_ENTRY_(accept),
+    [SYSTEMCALL_ACCEPT4]        = SYSCALL_ENTRY_(accept4),
+    [SYSTEMCALL_CLOCKNANOSLEEP] = SYSCALL_ENTRY_(clock_nanosleep),
+    [SYSTEMCALL_CLOSE]          = SYSCALL_ENTRY_(close),
+    [SYSTEMCALL_CONNECT]        = SYSCALL_ENTRY_(connect),
+    [SYSTEMCALL_EPOLLWAIT]      = SYSCALL_ENTRY_(epoll_wait),
+    [SYSTEMCALL_EPOLLPWAIT]     = SYSCALL_ENTRY_(epoll_pwait),
+    [SYSTEMCALL_FCNTL]          = SYSCALL_ENTRY_(fcntl),
+    [SYSTEMCALL_FLOCK]          = SYSCALL_ENTRY_(flock),
+    [SYSTEMCALL_IOCTL]          = SYSCALL_ENTRY_(ioctl),
+    [SYSTEMCALL_MQRECEIVE]      = SYSCALL_ENTRY_(mq_receive),
+    [SYSTEMCALL_MQSEND]         = SYSCALL_ENTRY_(mq_send),
+    [SYSTEMCALL_MQTIMEDRECEIVE] = SYSCALL_ENTRY_(mq_timedreceive),
+    [SYSTEMCALL_MQTIMEDSEND]    = SYSCALL_ENTRY_(mq_timedsend),
+    [SYSTEMCALL_MSGRCV]         = SYSCALL_ENTRY_(msgrcv),
+    [SYSTEMCALL_MSGSND]         = SYSCALL_ENTRY_(msgsnd),
+    [SYSTEMCALL_NANOSLEEP]      = SYSCALL_ENTRY_(nanosleep),
+    [SYSTEMCALL_OPEN]           = SYSCALL_ENTRY_(open),
+    [SYSTEMCALL_PAUSE]          = SYSCALL_ENTRY_(pause),
+    [SYSTEMCALL_POLL]           = SYSCALL_ENTRY_(poll),
+    [SYSTEMCALL_PPOLL]          = SYSCALL_ENTRY_(ppoll),
+    [SYSTEMCALL_PREAD]          = SYSCALL_ENTRY_(pread),
+    [SYSTEMCALL_PREADV]         = SYSCALL_ENTRY_(preadv),
+    [SYSTEMCALL_PSELECT]        = SYSCALL_ENTRY_(pselect),
+    [SYSTEMCALL_PWRITE]         = SYSCALL_ENTRY_(pwrite),
+    [SYSTEMCALL_PWRITEV]        = SYSCALL_ENTRY_(pwritev),
+    [SYSTEMCALL_READ]           = SYSCALL_ENTRY_(read),
+    [SYSTEMCALL_READV]          = SYSCALL_ENTRY_(readv),
+    [SYSTEMCALL_RECV]           = SYSCALL_ENTRY_(recv),
+    [SYSTEMCALL_RECVFROM]       = SYSCALL_ENTRY_(recvfrom),
+    [SYSTEMCALL_RECVMSG]        = SYSCALL_ENTRY_(recvmsg),
+    [SYSTEMCALL_SELECT]         = SYSCALL_ENTRY_(select),
+    [SYSTEMCALL_SEMWAIT]        = SYSCALL_ENTRY_(sem_wait),
+    [SYSTEMCALL_SEMTIMEDWAIT]   = SYSCALL_ENTRY_(sem_timedwait),
+    [SYSTEMCALL_SEMOP]          = SYSCALL_ENTRY_(semop),
+    [SYSTEMCALL_SEMTIMEDOP]     = SYSCALL_ENTRY_(semtimedop),
+    [SYSTEMCALL_SEND]           = SYSCALL_ENTRY_(send),
+    [SYSTEMCALL_SENDTO]         = SYSCALL_ENTRY_(sendto),
+    [SYSTEMCALL_SENDMSG]        = SYSCALL_ENTRY_(sendmsg),
+    [SYSTEMCALL_SIGSUSPEND]     = SYSCALL_ENTRY_(sigsuspend),
+    [SYSTEMCALL_SIGTIMEDWAIT]   = SYSCALL_ENTRY_(sigtimedwait),
+    [SYSTEMCALL_SIGWAITINFO]    = SYSCALL_ENTRY_(sigwaitinfo),
+    [SYSTEMCALL_SLEEP]          = SYSCALL_ENTRY_(sleep),
+    [SYSTEMCALL_WAIT]           = SYSCALL_ENTRY_(wait),
+    [SYSTEMCALL_WAIT3]          = SYSCALL_ENTRY_(wait3),
+    [SYSTEMCALL_WAIT4]          = SYSCALL_ENTRY_(wait4),
+    [SYSTEMCALL_WAITID]         = SYSCALL_ENTRY_(waitid),
+    [SYSTEMCALL_WAITPID]        = SYSCALL_ENTRY_(waitpid),
+    [SYSTEMCALL_WRITE]          = SYSCALL_ENTRY_(write),
+    [SYSTEMCALL_WRITEV]         = SYSCALL_ENTRY_(writev),
+    [SYSTEMCALL_USLEEP]         = SYSCALL_ENTRY_(usleep),
 };
 
 /* -------------------------------------------------------------------------- */
@@ -1509,8 +996,6 @@ initSystemCall(struct SystemCall *self)
 
     if ( ! addr)
     {
-        ensure(self->mCheck());
-
         const char *err;
 
         char *libName = findDlSymbol(self->mName, &addr, &err);
@@ -1596,82 +1081,3 @@ Eintr_exit(struct EintrModule *self)
 }
 
 /* -------------------------------------------------------------------------- */
-#if 0
-           * read(2), readv(2), write(2), writev(2),  and  ioctl(2)  calls  on
-             "slow"  devices.   A  "slow" device is one where the I/O call may
-             block for an indefinite time, for example, a terminal,  pipe,  or
-             socket.   (A  disk is not a slow device according to this defini-
-             tion.)  If an I/O call on a slow device has  already  transferred
-             some data by the time it is interrupted by a signal handler, then
-             the call will return a success status (normally,  the  number  of
-             bytes transferred).
-
-           * open(2),  if  it  can  block  (e.g.,  when  opening  a  FIFO; see
-             fifo(7)).
-
-           * wait(2), wait3(2), wait4(2), waitid(2), and waitpid(2).
-
-           * Socket interfaces: accept(2), connect(2),  recv(2),  recvfrom(2),
-             recvmsg(2),  send(2), sendto(2), and sendmsg(2), unless a timeout
-             has been set on the socket (see below).
-
-           * File locking interfaces: flock(2) and fcntl(2) F_SETLKW.
-
-           * POSIX   message   queue   interfaces:   mq_receive(3),   mq_time-
-             dreceive(3), mq_send(3), and mq_timedsend(3).
-
-           * futex(2)  FUTEX_WAIT  (since  Linux  2.6.22;  beforehand,  always
-             failed with EINTR).
-
-           * POSIX  semaphore  interfaces:  sem_wait(3)  and  sem_timedwait(3)
-             (since Linux 2.6.22; beforehand, always failed with EINTR).
-       The following interfaces are never restarted after being interrupted by
-       a signal handler, regardless of the use of SA_RESTART; they always fail
-       with the error EINTR when interrupted by a signal handler:
-
-           * Socket  interfaces,  when  a  timeout  has been set on the socket
-             using  setsockopt(2):  accept(2),   recv(2),   recvfrom(2),   and
-             recvmsg(2), if a receive timeout (SO_RCVTIMEO) has been set; con-
-             nect(2), send(2), sendto(2), and sendmsg(2), if  a  send  timeout
-             (SO_SNDTIMEO) has been set.
-
-           * Interfaces  used  to  wait  for signals: pause(2), sigsuspend(2),
-             sigtimedwait(2), and sigwaitinfo(2).
-
-           * File   descriptor   multiplexing    interfaces:    epoll_wait(2),
-             epoll_pwait(2), poll(2), ppoll(2), select(2), and pselect(2).
-
-           * System V IPC interfaces: msgrcv(2), msgsnd(2), semop(2), and sem-
-             timedop(2).
-
-           * Sleep   interfaces:   clock_nanosleep(2),    nanosleep(2),    and
-             usleep(3).
-
-           * read(2) from an inotify(7) file descriptor.
-
-           * io_getevents(2).
-
-       The  sleep(3) function is also never restarted if interrupted by a han-
-       dler, but gives a success return: the number of  seconds  remaining  to
-       sleep.
-           * Socket interfaces, when a timeout has  been  set  on  the  socket
-             using   setsockopt(2):   accept(2),   recv(2),  recvfrom(2),  and
-             recvmsg(2), if a receive timeout (SO_RCVTIMEO) has been set; con-
-             nect(2),  send(2),  sendto(2),  and sendmsg(2), if a send timeout
-             (SO_SNDTIMEO) has been set.
-
-           * epoll_wait(2), epoll_pwait(2).
-
-           * semop(2), semtimedop(2).
-
-           * sigtimedwait(2), sigwaitinfo(2).
-
-           * read(2) from an inotify(7) file descriptor.
-
-           * Linux 2.6.21 and earlier: futex(2) FUTEX_WAIT,  sem_timedwait(3),
-             sem_wait(3).
-
-           * Linux 2.6.8 and earlier: msgrcv(2), msgsnd(2).
-
-           * Linux 2.4 and earlier: nanosleep(2).
-#endif

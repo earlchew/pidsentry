@@ -53,12 +53,37 @@ static const char devNullPath_[] = DEVNULLPATH;
 
 /* -------------------------------------------------------------------------- */
 int
+openFd(const char *aPath, int aFlags, mode_t aMode)
+{
+    int rc = -1;
+
+    int fd;
+
+    do
+    {
+        ERROR_IF(
+            (fd = open(aPath, aFlags, aMode),
+             -1 == fd && EINTR != errno));
+    }
+    while (-1 == fd);
+
+    rc = fd;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
 closeFd(int aFd)
 {
     if (-1 != aFd)
     {
         ABORT_IF(
-            close(aFd));
+            close(aFd) && EINPROGRESS != errno);
     }
 
     return -1;
@@ -185,11 +210,11 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
 
     int flags;
     ERROR_IF(
-        (flags = fcntl_eintr(aFd, F_GETFD),
+        (flags = fcntl(aFd, F_GETFD),
          -1 == flags));
 
     ERROR_IF(
-        fcntl_eintr(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec));
+        fcntl(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec));
 
     rc = 0;
 
@@ -224,7 +249,7 @@ nullifyFd(int aFd)
         closeExec = O_CLOEXEC;
 
     ERROR_IF(
-        (fd = open(devNullPath_, O_WRONLY | closeExec),
+        (fd = openFd(devNullPath_, O_WRONLY | closeExec, 0),
          -1 == fd));
 
     if (fd == aFd)
@@ -255,12 +280,12 @@ nonBlockingFd(int aFd)
 
     int statusFlags;
     ERROR_IF(
-        (statusFlags = fcntl_eintr(aFd, F_GETFL),
+        (statusFlags = fcntl(aFd, F_GETFL),
          -1 == statusFlags));
 
     int descriptorFlags;
     ERROR_IF(
-        (descriptorFlags = fcntl_eintr(aFd, F_GETFD),
+        (descriptorFlags = fcntl(aFd, F_GETFD),
          -1 == descriptorFlags));
 
     /* Because O_NONBLOCK affects the underlying open file, to get some
@@ -276,7 +301,7 @@ nonBlockingFd(int aFd)
 
     if ( ! (statusFlags & O_NONBLOCK))
         ERROR_IF(
-            fcntl_eintr(aFd, F_SETFL, statusFlags | O_NONBLOCK));
+            fcntl(aFd, F_SETFL, statusFlags | O_NONBLOCK));
 
     rc = 0;
 
@@ -295,7 +320,7 @@ ownFdNonBlocking(int aFd)
 
     int flags;
     ERROR_IF(
-        (flags = fcntl_eintr(aFd, F_GETFL),
+        (flags = fcntl(aFd, F_GETFL),
          -1 == flags));
 
     rc = flags & O_NONBLOCK ? 1 : 0;
@@ -315,7 +340,7 @@ ownFdCloseOnExec(int aFd)
 
     int flags;
     ERROR_IF(
-        (flags = fcntl_eintr(aFd, F_GETFD),
+        (flags = fcntl(aFd, F_GETFD),
          -1 == flags));
 
     rc = flags & FD_CLOEXEC ? 1 : 0;
@@ -336,7 +361,7 @@ ownFdFlags(int aFd)
     int flags = -1;
 
     ERROR_IF(
-        (flags = fcntl_eintr(aFd, F_GETFL),
+        (flags = fcntl(aFd, F_GETFL),
          -1 == flags));
 
     rc = flags;
@@ -364,6 +389,20 @@ ownFdValid(int aFd)
 Finally:
 
     FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+ioctlFd(int aFd, int aReq, void *aArg)
+{
+    int rc;
+
+    do
+    {
+        rc = ioctl(aFd, aReq, aArg);
+    } while (-1 == rc && EINTR == errno);
 
     return rc;
 }
@@ -460,7 +499,7 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
             int events;
 
             ERROR_IF(
-                (events = poll_eintr(pollfd, NUMBEROF(pollfd), 0),
+                (events = poll(pollfd, NUMBEROF(pollfd), 0),
                  -1 == events && EINTR != errno));
 
             if (0 > events)
@@ -494,7 +533,7 @@ waitFdReady_(int aFd, unsigned aPollMask, const struct Duration *aTimeout)
 
         int events;
         ERROR_IF(
-            (events = poll_eintr(pollfd, NUMBEROF(pollfd), timeout_ms),
+            (events = poll(pollfd, NUMBEROF(pollfd), timeout_ms),
              -1 == events && EINTR != errno));
 
         switch (events)
@@ -995,7 +1034,7 @@ lockFd(int aFd, struct LockType aLockType)
     int err;
     do
         ERROR_IF(
-            (err = flock_eintr(aFd, lockType),
+            (err = flock(aFd, lockType),
              err && EINTR != errno));
     while (err);
 
@@ -1015,7 +1054,7 @@ unlockFd(int aFd)
     int rc = -1;
 
     ERROR_IF(
-        flock_eintr(aFd, LOCK_UN));
+        flock(aFd, LOCK_UN));
 
     rc = 0;
 
@@ -1059,7 +1098,7 @@ lockFdRegion(int aFd, struct LockType aLockType, off_t aPos, off_t aLen)
     int err;
     do
         ERROR_IF(
-            (err = fcntl_eintr(aFd, F_SETLKW, &lockRegion),
+            (err = fcntl(aFd, F_SETLKW, &lockRegion),
              -1 == err && EINTR != errno));
     while (err);
 
@@ -1087,7 +1126,7 @@ unlockFdRegion(int aFd, off_t aPos, off_t aLen)
     };
 
     ERROR_IF(
-        fcntl_eintr(aFd, F_SETLK, &lockRegion));
+        fcntl(aFd, F_SETLK, &lockRegion));
 
     rc = 0;
 
@@ -1115,7 +1154,7 @@ ownFdRegionLocked(int aFd, off_t aPos, off_t aLen)
     };
 
     ERROR_IF(
-        fcntl_eintr(aFd, F_GETLK, &lockRegion));
+        fcntl(aFd, F_GETLK, &lockRegion));
 
     switch (lockRegion.l_type)
     {

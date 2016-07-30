@@ -53,7 +53,7 @@ fetchSystemIncarnation_(void)
     static const char procBootId[] = "/proc/sys/kernel/random/boot_id";
 
     ERROR_IF(
-        (fd = open(procBootId, O_RDONLY),
+        (fd = openFd(procBootId, O_RDONLY, 0),
          -1 == fd));
 
     ssize_t buflen;

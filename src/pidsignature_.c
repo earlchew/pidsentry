@@ -84,7 +84,7 @@ fetchProcessSignature_(struct Pid aPid, char **aSignature)
                 processStatFileNameFmt_, processDirName.mDirName);
 
         ERROR_IF(
-            (fd = open(processStatFileName, O_RDONLY),
+            (fd = openFd(processStatFileName, O_RDONLY, 0),
              -1 == fd));
 
     } while (0);

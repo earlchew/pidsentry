@@ -1118,7 +1118,7 @@ fetchProcessState(struct Pid aPid)
             processStatFileNameFmt_, processDirName.mDirName);
 
     ERROR_IF(
-        (statFd = open(processStatFileName, O_RDONLY),
+        (statFd = openFd(processStatFileName, O_RDONLY, 0),
          -1 == statFd));
 
     ssize_t statlen;
@@ -1366,7 +1366,7 @@ reapProcessChild(struct Pid aPid, int *aStatus)
     do
     {
         ERROR_IF(
-            (pid = waitpid_eintr(aPid.mPid, aStatus, __WALL),
+            (pid = waitpid(aPid.mPid, aStatus, __WALL),
              -1 == pid && EINTR != errno));
     } while (pid != aPid.mPid);
 
@@ -1419,7 +1419,7 @@ waitProcessChild(struct Pid aPid)
     {
         siginfo.si_pid = 0;
         ERROR_IF(
-            waitid_eintr(P_PID, aPid.mPid, &siginfo, WEXITED | WNOWAIT) &&
+            waitid(P_PID, aPid.mPid, &siginfo, WEXITED | WNOWAIT) &&
             EINTR != errno);
 
     } while (siginfo.si_pid != aPid.mPid);
@@ -1454,7 +1454,7 @@ monitorProcessChild(struct Pid aPid)
 
         int waitErr;
         ERROR_IF(
-            (waitErr = waitid_eintr(P_PID, aPid.mPid, &siginfo,
+            (waitErr = waitid(P_PID, aPid.mPid, &siginfo,
                    WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT),
             waitErr && EINTR != errno));
         if (waitErr)
