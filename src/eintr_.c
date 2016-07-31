@@ -145,7 +145,7 @@ static uintptr_t
 invokeSystemCall(enum SystemCallKind aKind);
 
 static uintptr_t
-interruptSystemCall(enum SystemCallKind aKind);
+interruptSystemCall(enum SystemCallKind aKind, const char *aErrName);
 
 /* -------------------------------------------------------------------------- */
 #define SYSCALL_EINTR_(Eintr_, Kind_, Function_, Predicate_, ...)   \
@@ -156,7 +156,7 @@ interruptSystemCall(enum SystemCallKind aKind);
             syscall_ = invokeSystemCall((Kind_));                   \
         else                                                        \
         {                                                           \
-            syscall_ = interruptSystemCall((Kind_));                \
+            syscall_ = interruptSystemCall((Kind_), 0);             \
                                                                     \
             if ( ! syscall_)                                        \
             {                                                       \
@@ -263,7 +263,7 @@ close_raw(int aFd)
 int
 close(int aFd)
 {
-    uintptr_t closeAddr = interruptSystemCall(SYSTEMCALL_CLOSE);
+    uintptr_t closeAddr = interruptSystemCall(SYSTEMCALL_CLOSE, "EINPROGRESS");
 
     int rc =
         close_raw_(
@@ -410,7 +410,7 @@ fcntl(int aFd, int aCmd, ...)
         fcntlAddr = invokeSystemCall(SYSTEMCALL_FCNTL);
     else
     {
-        fcntlAddr = interruptSystemCall(SYSTEMCALL_FCNTL);
+        fcntlAddr = interruptSystemCall(SYSTEMCALL_FCNTL, 0);
 
         if ( ! fcntlAddr)
         {
@@ -1012,14 +1012,17 @@ initSystemCall(struct SystemCall *self)
 
 /* -------------------------------------------------------------------------- */
 static uintptr_t
-interruptSystemCall(enum SystemCallKind aKind)
+interruptSystemCall(enum SystemCallKind aKind, const char *aErrName)
 {
     struct SystemCall *sysCall = &systemCall_[aKind];
 
     uintptr_t addr = 0;
 
     if (testAction(TestLevelRace) && 1 > random() % 10)
-        debug(0, "inject EINTR into %s", sysCall->mName);
+        debug(0,
+              "inject %s into %s",
+              (aErrName ? aErrName : "EINTR"),
+              sysCall->mName);
     else
         addr = initSystemCall(sysCall);
 
