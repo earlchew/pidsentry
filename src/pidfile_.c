@@ -106,7 +106,8 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
     struct PidSignature *signature = 0;
 
     char *endPtr  = strchr(aBuf, 0);
-    char *sigPtr  = strchr(aBuf, '\n');
+    char *sepPtr  = strchr(aBuf, '\n');
+    char *sigPtr  = sepPtr ? strchr(sepPtr+1, '\n') : 0;
     char *addrPtr = sigPtr ? strchr(sigPtr+1, '\n') : 0;
 
     do
@@ -114,21 +115,19 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
         if (endPtr == aBuf)
             break;
 
-        if ( ! sigPtr)
+        if ( ! sepPtr || sepPtr + 1 == endPtr)
             break;
 
-        if (sigPtr + 1 == endPtr)
+        if ( ! sigPtr || sigPtr + 1 == endPtr)
             break;
 
-        if ( ! addrPtr)
-            break;
-
-        if (addrPtr + 1 == endPtr)
+        if ( ! addrPtr || addrPtr + 1 == endPtr)
             break;
 
         if ('\n' != endPtr[-1])
             break;
 
+        *sepPtr   = 0;
         *sigPtr   = 0;
         *addrPtr  = 0;
         *--endPtr = 0;
@@ -662,10 +661,22 @@ writePidFile_(struct PidFile           *self,
 
     char buf[PIDFILE_SIZE_+1];
 
+    /* The Linux Standard Base Core says:
+     *
+     *   If the -p pidfile option is specified, and the named pidfile exists,
+     *   a single line at the start of the pidfile shall be read. If this line
+     *   contains one or more numeric values, separated by spaces, these values
+     *   shall be used. If the -p pidfile option is specified and the named
+     *   pidfile does not exist, the functions shall assume that the daemon is
+     *   not running.
+     *
+     * The Fedora implementation (FC12) reads all lines in the specified
+     * pidfile, stopping on the first blank line. */
+
     int buflen =
         snprintf(
             buf, sizeof(buf),
-            "%" PRId_Pid "\n%s\n%s\n",
+            "%" PRId_Pid "\n\n%s\n%s\n",
             FMTd_Pid(aPid),
             signature->mSignature,
             &aPidServerAddr->sun_path[1]);
