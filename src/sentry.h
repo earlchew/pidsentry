@@ -81,7 +81,7 @@ createSentry(struct Sentry      *self,
 struct Sentry *
 closeSentry(struct Sentry *self);
 
-enum PidFileStatus
+struct Pid
 announceSentryPidFile(struct Sentry *self);
 
 CHECKED int

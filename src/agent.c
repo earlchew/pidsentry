@@ -124,24 +124,17 @@ runAgentSentry_(struct Agent    *self,
             createSentry(&sentry_, self->mCmd));
         sentry = &sentry_;
 
-        enum PidFileStatus status;
+        struct Pid announcePid;
         ERROR_IF(
-            (status = announceSentryPidFile(sentry),
-             PidFileStatusError == status));
+            (announcePid = announceSentryPidFile(sentry),
+             -1 == announcePid.mPid));
 
-        if (PidFileStatusOk != status)
+        if (announcePid.mPid)
         {
-            switch (status)
-            {
-            default:
-                ensure(0);
+            warn(0,
+                 "Pidfile '%s' names active pid %" PRId_Pid,
+                 ownSentryPidFileName(sentry), FMTd_Pid(announcePid));
 
-            case PidFileStatusCollision:
-                warn(0,
-                     "Unable to write pidfile '%s'",
-                     ownSentryPidFileName(sentry));
-                break;
-            }
             break;
         }
 

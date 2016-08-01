@@ -417,10 +417,12 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-int
+struct Pid
 openPidFile(struct PidFile *self, unsigned aFlags)
 {
     int rc = -1;
+
+    struct Pid pid = Pid(-1);
 
     struct PidSignature *pidSignature = 0;
 
@@ -488,6 +490,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
                 pidSignature->mPid.mPid,
                 {
                     errno = EEXIST;
+                    pid   = pidSignature->mPid;
                 });
 
             int unlinked;
@@ -549,7 +552,7 @@ Finally:
         pidSignature = destroyPidSignature(pidSignature);
     });
 
-    return rc;
+    return rc ? pid : Pid(0);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -716,14 +719,14 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-enum PidFileStatus
+struct Pid
 writePidFile(struct PidFile           *self,
              struct Pid                aPid,
              const struct sockaddr_un *aPidServerAddr)
 {
     int rc = -1;
 
-    enum PidFileStatus status = PidFileStatusOk;
+    struct Pid pid = Pid(-1);
 
     ERROR_IF(
         self->mFile || self->mLock,
@@ -751,16 +754,14 @@ writePidFile(struct PidFile           *self,
                 closePidFile(self));
         }
 
-        int err;
+        struct Pid openedPid = Pid(-1);
         ERROR_IF(
-            (err = openPidFile(self, O_CLOEXEC | O_CREAT),
-             err && EEXIST != errno));
-
-        if (err)
-        {
-            status = PidFileStatusCollision;
-            break;
-        }
+            (openedPid = openPidFile(self, O_CLOEXEC | O_CREAT),
+             openedPid.mPid),
+            {
+                if (EEXIST == errno)
+                    pid = openedPid;
+            });
 
         /* It is not possible to create the pidfile and acquire a flock
          * as an atomic operation. The flock can only be acquired after
@@ -777,27 +778,24 @@ writePidFile(struct PidFile           *self,
              0 > zombie));
     }
 
-    if (PidFileStatusOk == status)
-    {
-        /* At this point, this process has a newly created, empty and locked
-         * pidfile. The pidfile cannot be deleted because a write lock must
-         * be held for deletion to occur. */
+    /* At this point, this process has a newly created, empty and locked
+     * pidfile. The pidfile cannot be deleted because a write lock must
+     * be held for deletion to occur. */
 
-        debug(0,
-              "initialised %" PRIs_Method,
-              FMTs_Method(printPidFile, self));
+    debug(0,
+          "initialised %" PRIs_Method,
+          FMTs_Method(printPidFile, self));
 
-        ERROR_IF(
-            writePidFile_(self, aPid, aPidServerAddr));
+    ERROR_IF(
+        writePidFile_(self, aPid, aPidServerAddr));
 
-        /* The pidfile was locked on creation, and now that it is completely
-         * initialised, it is ok to release the flock. Any other process will
-         * check and see that the pidfile refers to a live process, and refrain
-         * from deleting it. */
+    /* The pidfile was locked on creation, and now that it is completely
+     * initialised, it is ok to release the flock. Any other process will
+     * check and see that the pidfile refers to a live process, and refrain
+     * from deleting it. */
 
-        ERROR_IF(
-            releasePidFileLock_(self));
-    }
+    ERROR_IF(
+        releasePidFileLock_(self));
 
     rc = 0;
 
@@ -806,12 +804,9 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc, printPidFile, self);
-
-        if (rc)
-            status = PidFileStatusError;
     });
 
-    return status;
+    return rc ? pid : Pid(0);;
 }
 
 /* -------------------------------------------------------------------------- */

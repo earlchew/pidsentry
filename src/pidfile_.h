@@ -50,13 +50,6 @@ struct PidFile
     const struct LockType *mLock;
 };
 
-enum PidFileStatus
-{
-    PidFileStatusError     = -1,
-    PidFileStatusOk        = 0,
-    PidFileStatusCollision = 1,
-};
-
 /* -------------------------------------------------------------------------- */
 CHECKED int
 initPidFile(struct PidFile *self, const char *aFileName);
@@ -68,7 +61,7 @@ CHECKED struct PidFile *
 destroyPidFile(struct PidFile *self);
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+CHECKED struct Pid
 openPidFile(struct PidFile *self, unsigned aFlags);
 
 CHECKED int
@@ -83,7 +76,7 @@ acquirePidFileWriteLock(struct PidFile *self);
 CHECKED int
 acquirePidFileReadLock(struct PidFile *self);
 
-CHECKED enum PidFileStatus
+CHECKED struct Pid
 writePidFile(struct PidFile           *self,
              struct Pid                aPid,
              const struct sockaddr_un *aPidServerAddr);

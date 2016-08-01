@@ -251,7 +251,7 @@ closeSentry(struct Sentry *self)
 }
 
 /* -------------------------------------------------------------------------- */
-enum PidFileStatus
+struct Pid
 announceSentryPidFile(struct Sentry *self)
 {
     /* Attempt to create the pidfile, if required, before creating the
@@ -260,7 +260,7 @@ announceSentryPidFile(struct Sentry *self)
      * clean up the umbilical process. */
 
     return ! self->mPidFile
-        ? PidFileStatusOk
+        ? Pid(0)
         : writePidFile(
             self->mPidFile,
             self->mChildProcess->mPid,

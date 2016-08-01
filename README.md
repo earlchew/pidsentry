@@ -75,6 +75,7 @@ pid, even if the host reboots.
 * If the pidsentry receives SIGCONT, the pidsentry shall continue the child process.
 * If the child process terminates due to SIGQUIT, and if the child process dumped core, the pidsentry shall terminate with SIGQUIT.
 * If the pid file identifies a child process that is currently running, the pidsentry shall allow a command to run and provide the environment variable PIDSENTRY_PID to identify child process.
+* If the pid file identifies a child process that is currently running, the pidsentry shall not run another child process that uses the same pid file.
 
 #### Implementation
 

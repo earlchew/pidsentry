@@ -76,12 +76,12 @@ createCommand(struct Command *self,
         }
         pidFile = &pidFile_;
 
-        int err;
+        struct Pid pid;
         ERROR_IF(
-            (err = openPidFile(&pidFile_, O_CLOEXEC),
-             err && ENOENT != errno && EACCES != errno));
+            (pid = openPidFile(&pidFile_, O_CLOEXEC),
+             pid.mPid && ENOENT != errno && EACCES != errno));
 
-        if (err)
+        if (pid.mPid)
         {
             status = CommandStatusInaccessiblePidFile;
             break;
@@ -114,6 +114,7 @@ createCommand(struct Command *self,
          * allows for a race where the pid server is replaced by another
          * program servicing the same connection address. */
 
+        int err;
         ERROR_IF(
             (err = connectUnixSocket(&self->mKeeperTether_,
                                      pidKeeperAddr.sun_path,
