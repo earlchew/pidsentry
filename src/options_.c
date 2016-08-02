@@ -72,7 +72,13 @@ static const char programUsage_[] =
 "  --test N\n"
 "      Run in test mode using a non-zero test level. [Default: No test]\n"
 "\n"
-"monitoring options:\n"
+"client options:\n"
+"  --force | -F\n"
+"      Always run the client command, even if there is no child process\n"
+"      running. The environment variable PIDSENTRY_PID will only be set\n"
+"      if there is a child process running.\n"
+"\n"
+"server options:\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
@@ -116,7 +122,7 @@ static const char programUsage_[] =
 "";
 
 static const char shortOptions_[] =
-    "+cD:df:iL::n:op:qsTt:u";
+    "+cD:dFf:iL::n:op:qsTt:u";
 
 enum OptionKind
 {
@@ -128,6 +134,7 @@ static struct option longOptions_[] =
     { "client",     no_argument,       0, 'c' },
     { "debug",      no_argument,       0, 'd' },
     { "fd",         required_argument, 0, 'f' },
+    { "force",      no_argument,       0, 'F' },
     { "identify",   no_argument,       0, 'i' },
     { "name",       required_argument, 0, 'n' },
     { "orphaned",   no_argument,       0, 'o' },
@@ -327,6 +334,12 @@ processOptions(int argc, char **argv, const char * const **args)
                         message(0, "Badly formed fd - '%s'", optarg);
                     });
             }
+            break;
+
+        case 'F':
+            mode = setOptionMode(
+                mode, OptionModeRunCommand, longOptName, opt);
+            gOptions.mForce = true;
             break;
 
         case 'i':
