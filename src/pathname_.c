@@ -89,8 +89,8 @@ Finally:
         if (rc)
             status = PathNameStatusError;
 
-        while (PathNameStatusOk != status && closePathName(self))
-            break;
+        if (PathNameStatusOk != status)
+            self = closePathName(self);
     });
 
     return status;
