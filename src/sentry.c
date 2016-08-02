@@ -161,7 +161,8 @@ createSentry(struct Sentry      *self,
     if (gOptions.mPidFile)
     {
         ERROR_IF(
-            initPidFile(&self->mPidFile_, gOptions.mPidFile),
+            PathNameStatusOk != initPidFile(
+                &self->mPidFile_, gOptions.mPidFile),
             {
                 warn(
                     errno,

@@ -51,7 +51,7 @@ struct PidFile
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+CHECKED enum PathNameStatus
 initPidFile(struct PidFile *self, const char *aFileName);
 
 int

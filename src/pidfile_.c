@@ -605,12 +605,15 @@ initPidFile(struct PidFile *self, const char *aFileName)
 {
     int rc = -1;
 
+    enum PathNameStatus status = PathNameStatusError;
+
     self->mFile     = 0;
     self->mLock     = 0;
     self->mPathName = 0;
 
     ERROR_IF(
-        PathNameStatusOk != createPathName(&self->mPathName_, aFileName));
+        (status = createPathName(&self->mPathName_, aFileName),
+         PathNameStatusOk != status));
     self->mPathName = &self->mPathName_;
 
     rc = 0;
@@ -620,11 +623,10 @@ Finally:
     FINALLY
     ({
         if (rc)
-            while (destroyPidFile(self))
-                break;
+            self = destroyPidFile(self);
     });
 
-    return rc;
+    return status;
 }
 
 /* -------------------------------------------------------------------------- */
