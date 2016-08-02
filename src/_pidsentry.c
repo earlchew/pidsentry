@@ -103,8 +103,12 @@ cmdRunCommand(const char         *aPidFileName,
         message(0, "Unable to reach pidfile '%s'", aPidFileName);
         break;
 
+    case CommandStatusNonexistentPidFile:
+        message(0, "Unable to find pidfile '%s'", aPidFileName);
+        break;
+
     case CommandStatusInaccessiblePidFile:
-        message(0, "Unable to open pidfile '%s'", aPidFileName);
+        message(0, "Unable to access pidfile '%s'", aPidFileName);
         break;
 
     case CommandStatusZombiePidFile:
