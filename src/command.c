@@ -55,6 +55,7 @@ createCommand(struct Command *self,
     enum CommandStatus status = CommandStatusOk;
 
     self->mPid          = Pid(0);
+    self->mChildPid     = Pid(0);
     self->mKeeperTether = 0;
 
     struct PidSignature *pidSignature = 0;
@@ -78,8 +79,12 @@ createCommand(struct Command *self,
 
         struct Pid pid;
         ERROR_IF(
-            (pid = openPidFile(&pidFile_, O_CLOEXEC),
+            (pid = openPidFile(pidFile, O_CLOEXEC),
              pid.mPid && ENOENT != errno && EACCES != errno));
+
+        /* Run the command if the child process is running, or if
+         * the force to run the command regardless of the state of the
+         * child process. */
 
         if (pid.mPid)
         {
@@ -146,6 +151,12 @@ createCommand(struct Command *self,
 
     } while (0);
 
+    if (CommandStatusOk != status && gOptions.mForce)
+    {
+        self->mChildPid = Pid(0);
+        status          = CommandStatusOk;
+    }
+
     rc = 0;
 
 Finally:
@@ -155,7 +166,7 @@ Finally:
         if (rc)
             status = CommandStatusError;
 
-        if (CommandStatusOk != status)
+        if (CommandStatusOk != status || ! self->mChildPid.mPid)
             self->mKeeperTether = closeUnixSocket(self->mKeeperTether);
 
         /* There is no further need to hold a lock on the pidfile because
@@ -195,12 +206,20 @@ runCommandChildProcess_(struct RunCommandProcess_ *self)
     /* Populate the environment of the command process to
      * provide the attributes of the monitored process. */
 
-    const char *watchdogChildPid;
-    ERROR_UNLESS(
-        (watchdogChildPid = setEnvPid(
-            "PIDSENTRY_PID", self->mCommand->mChildPid)));
+    const char *pidSentryPidEnv = "PIDSENTRY_PID";
 
-    debug(0, "PIDSENTRY_PID=%s", watchdogChildPid);
+    if ( ! self->mCommand->mChildPid.mPid)
+        ERROR_IF(
+            deleteEnv(pidSentryPidEnv) && ENOENT != errno);
+    else
+    {
+        const char *watchdogChildPid;
+        ERROR_UNLESS(
+            (watchdogChildPid = setEnvPid(
+                pidSentryPidEnv, self->mCommand->mChildPid)));
+
+        debug(0, "%s=%s", pidSentryPidEnv, watchdogChildPid);
+    }
 
     /* Wait here until the parent process has completed its
      * initialisation, and sends a positive acknowledgement. */
@@ -331,14 +350,17 @@ reapCommand(struct Command  *self,
         /* Do not allow a positive result to mask the loss of the
          * reference to the child process group. */
 
-        int rdReady;
-        ERROR_IF(
-            (rdReady = waitFileReadReady(
-                self->mKeeperTether->mFile, &ZeroDuration),
-             -1 == rdReady));
+        if (self->mKeeperTether)
+        {
+            int rdReady;
+            ERROR_IF(
+                (rdReady = waitFileReadReady(
+                    self->mKeeperTether->mFile, &ZeroDuration),
+                 -1 == rdReady));
 
-        if (rdReady)
-            exitCode.mStatus = 255;
+            if (rdReady)
+                exitCode.mStatus = 255;
+        }
     }
 
     *aExitCode = exitCode;
