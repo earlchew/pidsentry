@@ -49,7 +49,11 @@ deleteEnv(const char *aName)
         });
 
     ERROR_IF(
-        unsetenv(aName));
+        unsetenv(aName),
+        {
+            if (ENOENT == errno)
+                errno = EINVAL;
+        });
 
     rc = 0;
 
