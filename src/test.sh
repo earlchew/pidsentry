@@ -231,6 +231,9 @@ runTests()
         # Ensure that it is not possible to run a command against the child
         ! pidsentry -c -- $PIDFILE true
         ! [ -s $PIDFILE ] || [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
+        # Ensure that it is possible to force a command against the child
+        pidsentry -c -F -- $PIDFILE '[ -z "${PIDSENTRY_PID++}" ]'
+        ! [ -s $PIDFILE ] || [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
         # Ensure that it is possible to create a new child
         testExit 0 pidsentry -s --test=1 -d -p $PIDFILE -- true
         [ ! -f $PIDFILE ]
@@ -784,6 +787,21 @@ runTests()
                     randomsleep 1
 
                     pidsentry -c -- $PIDFILE 'echo $PIDSENTRY_PID' | {
+
+                        read CHILD_PID || {
+                            /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
+                            exit 1
+                        }
+                        [ x"$CHILD" = x"$CHILD_PID" ] || {
+                            /bin/echo "Mismatched pidfile from $TASK_PID" >&2
+                            exit 1
+                        }
+                    }
+
+                    # Verify the same is true even if a -F option is used
+                    # to force the command.
+
+                    pidsentry -c -F -- $PIDFILE 'echo $PIDSENTRY_PID' | {
 
                         read CHILD_PID || {
                             /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
