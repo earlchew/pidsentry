@@ -232,7 +232,7 @@ runTests()
         ! pidsentry -c -- $PIDFILE true
         ! [ -s $PIDFILE ] || [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
         # Ensure that it is possible to force a command against the child
-        pidsentry -c -F -- $PIDFILE '[ -z "${PIDSENTRY_PID++}" ]'
+        pidsentry -c -R -- $PIDFILE '[ -z "${PIDSENTRY_PID++}" ]'
         ! [ -s $PIDFILE ] || [ x"$REPLY" = x"$(cksum $PIDFILE)" ]
         # Ensure that it is possible to create a new child
         testExit 0 pidsentry -s --test=1 -d -p $PIDFILE -- true
@@ -278,7 +278,9 @@ runTests()
 
     testCaseBegin 'Read non-existent pid file'
     rm -f $PIDFILE
-    testExit 1 pidsentry -c --test=1 -- $PIDFILE true
+    testExit 1 pidsentry -c    --test=1 -- $PIDFILE true
+    testExit 0 pidsentry -c -R --test=1 -- $PIDFILE '[ -z ${PIDSENTRY_PID++} ]'
+    testExit 1 pidsentry -c -R --test=1 -- .../$PIDFILE true
     [ ! -f $PIDFILE ]
     testCaseEnd
 
@@ -286,6 +288,16 @@ runTests()
     rm -f $PIDFILE
     date > $PIDFILE
     testExit 1 pidsentry -c --test=1 -- $PIDFILE true
+    [ -f $PIDFILE ]
+    testCaseEnd
+
+    testCaseBegin 'Inaccessible pid file'
+    rm -f $PIDFILE
+    date > $PIDFILE
+    set -- '[ -z "${PIDSENTRY_PID++}" ]'
+    testExit 0 pidsentry -c -R --test=1 -- $PIDFILE "$@"
+    chmod 000 $PIDFILE
+    testExit 1 pidsentry -c -R --test=1 -- $PIDFILE "$@"
     [ -f $PIDFILE ]
     testCaseEnd
 
@@ -798,10 +810,10 @@ runTests()
                         }
                     }
 
-                    # Verify the same is true even if a -F option is used
+                    # Verify the same is true even if a -R option is used
                     # to force the command.
 
-                    pidsentry -c -F -- $PIDFILE 'echo $PIDSENTRY_PID' | {
+                    pidsentry -c -R -- $PIDFILE 'echo $PIDSENTRY_PID' | {
 
                         read CHILD_PID || {
                             /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
