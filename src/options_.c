@@ -73,9 +73,9 @@ static const char programUsage_[] =
 "      Run in test mode using a non-zero test level. [Default: No test]\n"
 "\n"
 "client options:\n"
-"  --force | -F\n"
+"  --relaxed | -R\n"
 "      Always run the client command, even if there is no child process\n"
-"      running. The environment variable PIDSENTRY_PID will only be set\n"
+"      running. The environment variable PIDSENTRY_PID to will only be set\n"
 "      if there is a child process running.\n"
 "\n"
 "server options:\n"
@@ -122,7 +122,7 @@ static const char programUsage_[] =
 "";
 
 static const char shortOptions_[] =
-    "+cD:dFf:iL::n:op:qsTt:u";
+    "+cD:df:iL::n:op:qRsTt:u";
 
 enum OptionKind
 {
@@ -134,7 +134,7 @@ static struct option longOptions_[] =
     { "client",     no_argument,       0, 'c' },
     { "debug",      no_argument,       0, 'd' },
     { "fd",         required_argument, 0, 'f' },
-    { "force",      no_argument,       0, 'F' },
+    { "relaxed",    no_argument,       0, 'R' },
     { "identify",   no_argument,       0, 'i' },
     { "name",       required_argument, 0, 'n' },
     { "orphaned",   no_argument,       0, 'o' },
@@ -336,12 +336,6 @@ processOptions(int argc, char **argv, const char * const **args)
             }
             break;
 
-        case 'F':
-            mode = setOptionMode(
-                mode, OptionModeRunCommand, longOptName, opt);
-            gOptions.mForce = true;
-            break;
-
         case 'i':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
@@ -382,6 +376,12 @@ processOptions(int argc, char **argv, const char * const **args)
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mQuiet = true;
+            break;
+
+        case 'R':
+            mode = setOptionMode(
+                mode, OptionModeRunCommand, longOptName, opt);
+            gOptions.mRelaxed = true;
             break;
 
         case 's':

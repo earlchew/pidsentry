@@ -48,7 +48,7 @@ struct Options
     unsigned    mTest;
     bool        mServer;
     bool        mClient;
-    bool        mForce;
+    bool        mRelaxed;
     bool        mIdentify;
     bool        mQuiet;
     bool        mOrphaned;
