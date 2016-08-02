@@ -82,13 +82,21 @@ createCommand(struct Command *self,
             (pid = openPidFile(pidFile, O_CLOEXEC),
              pid.mPid && ENOENT != errno && EACCES != errno));
 
-        /* Run the command if the child process is running, or if
-         * the force to run the command regardless of the state of the
-         * child process. */
-
         if (pid.mPid)
         {
-            status = CommandStatusInaccessiblePidFile;
+            switch (errno)
+            {
+            default:
+                ensure(false);
+
+            case ENOENT:
+                status = CommandStatusNonexistentPidFile;
+                break;
+
+            case EACCES:
+                status = CommandStatusInaccessiblePidFile;
+                break;
+            }
             break;
         }
 
@@ -151,10 +159,18 @@ createCommand(struct Command *self,
 
     } while (0);
 
-    if (CommandStatusOk != status && gOptions.mForce)
+    /* Run the command if the child process is running, or if
+     * the force to run the command regardless of the state of the
+     * child process. */
+
+    if (CommandStatusNonexistentPidFile == status ||
+        CommandStatusZombiePidFile      == status)
     {
-        self->mChildPid = Pid(0);
-        status          = CommandStatusOk;
+        if (gOptions.mRelaxed)
+        {
+            self->mChildPid = Pid(0);
+            status          = CommandStatusOk;
+        }
     }
 
     rc = 0;

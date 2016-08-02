@@ -42,8 +42,9 @@ enum CommandStatus
     CommandStatusError = -1,
     CommandStatusOk    = 0,
     CommandStatusUnreachablePidFile  = 1,
-    CommandStatusInaccessiblePidFile = 2,
-    CommandStatusZombiePidFile       = 3,
+    CommandStatusNonexistentPidFile  = 2,
+    CommandStatusInaccessiblePidFile = 3,
+    CommandStatusZombiePidFile       = 4,
 };
 
 /* -------------------------------------------------------------------------- */
