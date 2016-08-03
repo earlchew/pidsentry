@@ -292,13 +292,14 @@ runTests()
     testCaseEnd
 
     testCaseBegin 'Inaccessible pid file'
-    rm -f $PIDFILE
-    date > $PIDFILE
+    rm -f $PIDFILE.tmp
+    pidsentry -s -p $PIDFILE -- cp $PIDFILE $PIDFILE.tmp
     set -- '[ -z "${PIDSENTRY_PID++}" ]'
-    testExit 0 pidsentry -c -R --test=1 -- $PIDFILE "$@"
-    chmod 000 $PIDFILE
-    testExit 1 pidsentry -c -R --test=1 -- $PIDFILE "$@"
-    [ -f $PIDFILE ]
+    testExit 0 pidsentry -c -R --test=1 -- $PIDFILE.tmp "$@"
+    chmod 000 $PIDFILE.tmp
+    testExit 1 pidsentry -c -R --test=1 -- $PIDFILE.tmp "$@"
+    [ -f $PIDFILE.tmp ]
+    rm -f $PIDFILE.tmp
     testCaseEnd
 
     testCaseBegin 'Identify processes'
