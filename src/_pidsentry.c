@@ -219,6 +219,10 @@ main(int argc, char **argv)
                         "Unable to parse command line");
         });
 
+    ensure(
+        ( ! gOptions.mClient.mActive &&   gOptions.mServer.mActive ) ||
+        (   gOptions.mClient.mActive && ! gOptions.mServer.mActive ) );
+
     if (gOptions.mClient.mActive)
         ABORT_IF(
             cmdRunCommand(gOptions.mClient.mPidFile, args, &exitCode),
