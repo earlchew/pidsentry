@@ -45,6 +45,7 @@ enum CommandStatus
     CommandStatusNonexistentPidFile  = 2,
     CommandStatusInaccessiblePidFile = 3,
     CommandStatusZombiePidFile       = 4,
+    CommandStatusMalformedPidFile    = 5,
 };
 
 /* -------------------------------------------------------------------------- */

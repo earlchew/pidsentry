@@ -113,6 +113,12 @@ createCommand(struct Command *self,
             break;
         }
 
+        if (-1 == pidSignature->mPid.mPid)
+        {
+            status = CommandStatusMalformedPidFile;
+            break;
+        }
+
         /* If the pid file can be read and an authentic pid extracted,
          * that pid will remain viable because the sentry will not
          * reap the child process unless it can acquire a lock on
