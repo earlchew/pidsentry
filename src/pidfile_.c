@@ -176,15 +176,22 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
         }
 
         /* The process either does not exist, or if it does exist the two
-         * process signatures do not match. */
+         * process signatures do not match. Use Pid.mPid == 0 to
+         * distinguish this case. */
 
         signature = destroyPidSignature(signature);
 
+        ERROR_UNLESS(
+            signature = createPidSignature(Pid(0), 0));
+
     } while (0);
+
+     /* Use Pid.mPid == -1 to indicate that there was a problem parsing or
+     * otherwise interpreting the pid. */
 
     if ( ! signature)
         ERROR_UNLESS(
-            signature = createPidSignature(Pid(0), 0));
+            signature = createPidSignature(Pid(-1), 0));
 
     rc = 0;
 
@@ -239,8 +246,15 @@ readPidFile(const struct PidFile *self,
             }
         }
 
+        /* Since the size of the pidfile seems to be larger than expected
+         * treat it as a problem parsing the pid. */
+
         ensure( ! signature);
-        signature = createPidSignature(Pid(0), 0);
+
+        char emptyPid[] = "";
+
+        ERROR_UNLESS(
+            signature = readPidFile_(emptyPid, 0));
 
     } while (0);
 
@@ -487,7 +501,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
                 pidSignature = readPidFile(self, &pidKeeperAddr));
 
             ERROR_IF(
-                pidSignature->mPid.mPid,
+                pidSignature->mPid.mPid && -1 != pidSignature->mPid.mPid,
                 {
                     errno = EEXIST;
                     pid   = pidSignature->mPid;
