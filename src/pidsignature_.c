@@ -181,7 +181,7 @@ createPidSignature(struct Pid aPid, const char *aSignature)
     if (aSignature)
         ERROR_UNLESS(
             signature = strdup(aSignature));
-    else if (self->mPid.mPid)
+    else if (self->mPid.mPid && -1 != self->mPid.mPid)
         ERROR_IF(
             fetchProcessSignature_(aPid, &signature));
 
