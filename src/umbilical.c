@@ -438,8 +438,8 @@ createUmbilicalMonitor(
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(
                     NanoSeconds(
-                        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns
-                        / cycleLimit)),
+                      NSECS(Seconds(gOptions.mServer.mTimeout.mUmbilical_s)).ns
+                      / cycleLimit)),
             },
         },
     };
@@ -804,7 +804,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
             shutdownUnixSocketWriter(self->mSocket->mParentSocket));
 
         struct Duration umbilicalTimeout =
-            Duration(NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)));
+            Duration(NSECS(Seconds(gOptions.mServer.mTimeout.mUmbilical_s)));
 
         struct ProcessSigContTracker sigContTracker = ProcessSigContTracker();
 

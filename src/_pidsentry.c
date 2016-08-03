@@ -219,9 +219,9 @@ main(int argc, char **argv)
                         "Unable to parse command line");
         });
 
-    if (gOptions.mClient)
+    if (gOptions.mClient.mActive)
         ABORT_IF(
-            cmdRunCommand(gOptions.mPidFile, args, &exitCode),
+            cmdRunCommand(gOptions.mClient.mPidFile, args, &exitCode),
             {
                 terminate(errno,
                           "Failed to run command: %s", args[0]);

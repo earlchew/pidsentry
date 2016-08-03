@@ -194,13 +194,13 @@ showUsage_(void)
 void
 initOptions()
 {
-    gOptions.mTimeout.mTether_s    = DEFAULT_TETHER_TIMEOUT_S;
-    gOptions.mTimeout.mSignal_s    = DEFAULT_SIGNAL_PERIOD_S;
-    gOptions.mTimeout.mUmbilical_s = DEFAULT_UMBILICAL_TIMEOUT_S;
-    gOptions.mTimeout.mDrain_s     = DEFAULT_DRAIN_TIMEOUT_S;
+    gOptions.mServer.mTimeout.mTether_s    = DEFAULT_TETHER_TIMEOUT_S;
+    gOptions.mServer.mTimeout.mSignal_s    = DEFAULT_SIGNAL_PERIOD_S;
+    gOptions.mServer.mTimeout.mUmbilical_s = DEFAULT_UMBILICAL_TIMEOUT_S;
+    gOptions.mServer.mTimeout.mDrain_s     = DEFAULT_DRAIN_TIMEOUT_S;
 
-    gOptions.mTetherFd = STDOUT_FILENO;
-    gOptions.mTether   = &gOptions.mTetherFd;
+    gOptions.mServer.mTetherFd = STDOUT_FILENO;
+    gOptions.mServer.mTether   = &gOptions.mServer.mTetherFd;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -223,20 +223,21 @@ processTimeoutOption(const char *aArg)
         });
 
     ERROR_IF(
-        parseUInt(argList->mArgv[0], &gOptions.mTimeout.mTether_s));
+        parseUInt(argList->mArgv[0], &gOptions.mServer.mTimeout.mTether_s));
 
     if (1 < argList->mArgc && *argList->mArgv[1])
     {
         ERROR_IF(
-            parseUInt(argList->mArgv[1], &gOptions.mTimeout.mUmbilical_s));
+            parseUInt(
+                argList->mArgv[1], &gOptions.mServer.mTimeout.mUmbilical_s));
     }
 
     if (2 < argList->mArgc && *argList->mArgv[2])
     {
         ERROR_IF(
-            parseUInt(argList->mArgv[2], &gOptions.mTimeout.mSignal_s));
+            parseUInt(argList->mArgv[2], &gOptions.mServer.mTimeout.mSignal_s));
         ERROR_IF(
-            0 >= gOptions.mTimeout.mSignal_s,
+            0 >= gOptions.mServer.mTimeout.mSignal_s,
             {
                 errno = EINVAL;
             });
@@ -244,7 +245,7 @@ processTimeoutOption(const char *aArg)
 
     if (3 < argList->mArgc && *argList->mArgv[3])
         ERROR_IF(
-            parseUInt(argList->mArgv[3], &gOptions.mTimeout.mDrain_s));
+            parseUInt(argList->mArgv[3], &gOptions.mServer.mTimeout.mDrain_s));
 
     rc = 0;
 
@@ -308,7 +309,7 @@ processOptions(int argc, char **argv, const char * const **args)
         case 'c':
             mode = setOptionMode(
                 mode, OptionModeRunCommand, longOptName, opt);
-            gOptions.mClient = true;
+            gOptions.mClient.mActive = true;
             break;
 
         case 'd':
@@ -318,17 +319,18 @@ processOptions(int argc, char **argv, const char * const **args)
         case 'f':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            gOptions.mTether = &gOptions.mTetherFd;
+            gOptions.mServer.mTether = &gOptions.mServer.mTetherFd;
             if ( ! strcmp(optarg, "-"))
             {
-                gOptions.mTetherFd = -1;
+                gOptions.mServer.mTetherFd = -1;
             }
             else
             {
                 ERROR_IF(
                     parseInt(
                         optarg,
-                        &gOptions.mTetherFd) || 0 > gOptions.mTetherFd,
+                        &gOptions.mServer.mTetherFd) ||
+                    0 > gOptions.mServer.mTetherFd,
                     {
                         errno = EINVAL;
                         message(0, "Badly formed fd - '%s'", optarg);
@@ -339,13 +341,13 @@ processOptions(int argc, char **argv, const char * const **args)
         case 'i':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            gOptions.mIdentify = true;
+            gOptions.mServer.mIdentify = true;
             break;
 
         case 'o':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            gOptions.mOrphaned = true;
+            gOptions.mServer.mOrphaned = true;
             break;
 
         case 'n':
@@ -357,7 +359,7 @@ processOptions(int argc, char **argv, const char * const **args)
                     errno = EINVAL;
                     message(0, "Empty environment or argument name");
                 });
-            gOptions.mName = optarg;
+            gOptions.mServer.mName = optarg;
             break;
 
         case 'p':
@@ -369,25 +371,25 @@ processOptions(int argc, char **argv, const char * const **args)
                     errno = EINVAL;
                     message(0, "Empty pid file name");
                 });
-            gOptions.mPidFile = optarg;
+            gOptions.mServer.mPidFile = optarg;
             break;
 
         case 'q':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            gOptions.mQuiet = true;
+            gOptions.mServer.mQuiet = true;
             break;
 
         case 'R':
             mode = setOptionMode(
                 mode, OptionModeRunCommand, longOptName, opt);
-            gOptions.mRelaxed = true;
+            gOptions.mClient.mRelaxed = true;
             break;
 
         case 's':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            gOptions.mServer = true;
+            gOptions.mServer.mActive = true;
             break;
 
         case OptionTest:
@@ -419,7 +421,7 @@ processOptions(int argc, char **argv, const char * const **args)
         case 'u':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            gOptions.mTether = 0;
+            gOptions.mServer.mTether = 0;
             break;
         }
     }
@@ -438,6 +440,8 @@ processOptions(int argc, char **argv, const char * const **args)
         break;
 
     case OptionModeRunCommand:
+        ensure(   gOptions.mClient.mActive);
+        ensure( ! gOptions.mServer.mActive);
         ERROR_IF(
             optind >= argc,
             {
@@ -445,16 +449,12 @@ processOptions(int argc, char **argv, const char * const **args)
                 message(0, "Missing pid file for command");
             });
 
-        gOptions.mPidFile = argv[optind++];
+        gOptions.mClient.mPidFile = argv[optind++];
         break;
 
     case OptionModeMonitorChild:
-        ERROR_UNLESS(
-            gOptions.mServer,
-            {
-                errno = EINVAL;
-                message(0, "Server mode not specified");
-            });
+        ensure(   gOptions.mServer.mActive);
+        ensure( ! gOptions.mClient.mActive);
         break;
     }
 

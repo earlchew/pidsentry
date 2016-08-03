@@ -108,11 +108,11 @@ pollFdControl_(struct TetherPoll           *self,
 
     debug(0, "tether disconnection request received");
 
-    /* Note that gOptions.mTimeout.mDrain_s might be zero to indicate
+    /* Note that gOptions.mServer.mTimeout.mDrain_s might be zero to indicate
      * that the no drain timeout is to be enforced. */
 
     self->mPollFdTimerActions[POLL_FD_TETHER_TIMER_DISCONNECT].mPeriod =
-        Duration(NSECS(Seconds(gOptions.mTimeout.mDrain_s)));
+        Duration(NSECS(Seconds(gOptions.mServer.mTimeout.mDrain_s)));
 
     rc = 0;
 

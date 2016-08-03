@@ -40,25 +40,38 @@ BEGIN_C_SCOPE;
 /* -------------------------------------------------------------------------- */
 struct Options
 {
-    const char *mName;
-    const char *mPidFile;
-    int         mTetherFd;
-    const int  *mTether;
-    unsigned    mDebug;
-    unsigned    mTest;
-    bool        mServer;
-    bool        mClient;
-    bool        mRelaxed;
-    bool        mIdentify;
-    bool        mQuiet;
-    bool        mOrphaned;
+    unsigned mDebug;
+    unsigned mTest;
+
     struct
     {
-        unsigned mTether_s;
-        unsigned mUmbilical_s;
-        unsigned mSignal_s;
-        unsigned mDrain_s;
-    } mTimeout;
+        bool        mActive;
+        bool        mRelaxed;
+        const char *mPidFile;
+
+    } mClient;
+
+    struct
+    {
+        bool        mActive;
+        const char *mName;
+        const char *mPidFile;
+        int         mTetherFd;
+        const int  *mTether;
+        bool        mIdentify;
+        bool        mQuiet;
+        bool        mOrphaned;
+
+        struct
+        {
+            unsigned mTether_s;
+            unsigned mUmbilical_s;
+            unsigned mSignal_s;
+            unsigned mDrain_s;
+        } mTimeout;
+
+    } mServer;
+
 };
 
 extern struct Options gOptions;

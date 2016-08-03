@@ -172,7 +172,7 @@ createCommand(struct Command *self,
     if (CommandStatusNonexistentPidFile == status ||
         CommandStatusZombiePidFile      == status)
     {
-        if (gOptions.mRelaxed)
+        if (gOptions.mClient.mRelaxed)
         {
             self->mChildPid = Pid(0);
             status          = CommandStatusOk;

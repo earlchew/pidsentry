@@ -158,15 +158,16 @@ createSentry(struct Sentry      *self,
      * working directory. Note that the pidfile might reside in
      * the current directory. */
 
-    if (gOptions.mPidFile)
+    if (gOptions.mServer.mPidFile)
     {
         ERROR_IF(
             PathNameStatusOk != initPidFile(
-                &self->mPidFile_, gOptions.mPidFile),
+                &self->mPidFile_, gOptions.mServer.mPidFile),
             {
                 warn(
                     errno,
-                    "Cannot initialise pid file '%s'", gOptions.mPidFile);
+                    "Cannot initialise pid file '%s'",
+                    gOptions.mServer.mPidFile);
             });
         self->mPidFile = &self->mPidFile_;
 
@@ -318,7 +319,7 @@ runSentry(struct Sentry   *self,
 
     self->mPidServer = closePidServer(self->mPidServer);
 
-    if (gOptions.mIdentify)
+    if (gOptions.mServer.mIdentify)
     {
         /* Ensure that the pidfile, if requested, is created before the
          * process pids are identified. The unit test assumes that this
@@ -381,7 +382,7 @@ runSentry(struct Sentry   *self,
      * so that this content does not become co-mingled with other
      * data on stdout when the child is running untethered. */
 
-    if (gOptions.mIdentify)
+    if (gOptions.mServer.mIdentify)
     {
         TEST_RACE
         ({
@@ -408,9 +409,9 @@ runSentry(struct Sentry   *self,
      * that the watchdog does not contribute any more references to the
      * original stdout file table entry. */
 
-    bool discardStdout = gOptions.mQuiet;
+    bool discardStdout = gOptions.mServer.mQuiet;
 
-    if ( ! gOptions.mTether)
+    if ( ! gOptions.mServer.mTether)
         discardStdout = true;
     else
     {

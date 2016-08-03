@@ -492,9 +492,9 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
             closePipeReader(self->mChildProcess->mTetherPipe);
 
-            if (gOptions.mTether)
+            if (gOptions.mServer.mTether)
             {
-                int tetherFd = *gOptions.mTether;
+                int tetherFd = *gOptions.mServer.mTether;
 
                 if (0 > tetherFd)
                     tetherFd = self->mChildProcess->mTetherPipe->mWrFile->mFd;
@@ -503,13 +503,15 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
                 sprintf(tetherArg, "%d", tetherFd);
 
-                if (gOptions.mName)
+                if (gOptions.mServer.mName)
                 {
-                    bool useEnv = isupper(gOptions.mName[0]);
+                    bool useEnv = isupper(gOptions.mServer.mName[0]);
 
-                    for (unsigned ix = 1; useEnv && gOptions.mName[ix]; ++ix)
+                    for (unsigned ix = 1;
+                         useEnv && gOptions.mServer.mName[ix];
+                         ++ix)
                     {
-                        unsigned char ch = gOptions.mName[ix];
+                        unsigned char ch = gOptions.mServer.mName[ix];
 
                         if ( ! isupper(ch) && ! isdigit(ch) && ch != '_')
                             useEnv = false;
@@ -518,7 +520,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
                     if (useEnv)
                     {
                         ERROR_IF(
-                            setenv(gOptions.mName, tetherArg, 1));
+                            setenv(gOptions.mServer.mName, tetherArg, 1));
                     }
                     else
                     {
@@ -529,14 +531,14 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
                         for (unsigned ix = 1; cmd[ix]; ++ix)
                         {
-                            matchArg = strstr(cmd[ix], gOptions.mName);
+                            matchArg = strstr(cmd[ix], gOptions.mServer.mName);
 
                             if (matchArg)
                             {
                                 char replacedArg[
-                                    strlen(cmd[ix])        -
-                                    strlen(gOptions.mName) +
-                                    strlen(tetherArg)      + 1];
+                                    strlen(cmd[ix])                -
+                                    strlen(gOptions.mServer.mName) +
+                                    strlen(tetherArg)              + 1];
 
                                 int matchLen = matchArg - cmd[ix];
 
@@ -546,12 +548,13 @@ runChildProcess_(struct ForkChildProcess_ *self)
                                         errno = ERANGE;
                                     });
 
-                                sprintf(replacedArg,
-                                        "%.*s%s%s",
-                                        matchLen,
-                                        cmd[ix],
-                                        tetherArg,
-                                        matchArg + strlen(gOptions.mName));
+                                sprintf(
+                                    replacedArg,
+                                    "%.*s%s%s",
+                                    matchLen,
+                                    cmd[ix],
+                                    tetherArg,
+                                    matchArg + strlen(gOptions.mServer.mName));
 
                                 cmd[ix] = strdup(replacedArg);
 
@@ -573,7 +576,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
                                 terminate(
                                     0,
                                     "Unable to find matching argument '%s'",
-                                    gOptions.mName);
+                                    gOptions.mServer.mName);
                             });
                     }
                 }
@@ -1528,7 +1531,7 @@ pollFdTimerTether_(struct ChildMonitor         *self,
         /* Once the timeout has expired, the timer can be cancelled because
          * there is no further need to run this state machine. */
 
-        debug(0, "timeout after %ds", gOptions.mTimeout.mTether_s);
+        debug(0, "timeout after %ds", gOptions.mServer.mTimeout.mTether_s);
 
         activateFdTimerTermination_(
             self, ChildTermination_Abort, aPollTime);
@@ -1815,7 +1818,7 @@ monitorChildProcess(struct ChildProcess     *self,
         {
             .mSignalPlan   = 0,
             .mSignalPeriod = Duration(
-                NSECS(Seconds(gOptions.mTimeout.mSignal_s))),
+                NSECS(Seconds(gOptions.mServer.mTimeout.mSignal_s))),
             .mSignalPlans  =
             {
                 /* When terminating the child process, first request that
@@ -1916,7 +1919,7 @@ monitorChildProcess(struct ChildProcess     *self,
         {
             [POLL_FD_CHILD_TIMER_TETHER] =
             {
-                /* Note that a zero value for gOptions.mTimeout.mTether_s will
+                /* Note that a zero for gOptions.mServer.mTimeout.mTether_s will
                  * disable the tether timeout in which case the watchdog will
                  * supervise the child, but not impose any timing requirements
                  * on activity on the tether. */
@@ -1925,8 +1928,8 @@ monitorChildProcess(struct ChildProcess     *self,
                     pollFdTimerTether_, &childMonitor_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(
-                    NSECS(Seconds(gOptions.mTether
-                                  ? gOptions.mTimeout.mTether_s
+                    NSECS(Seconds(gOptions.mServer.mTether
+                                  ? gOptions.mServer.mTimeout.mTether_s
                                   : 0)).ns / timeoutCycles)),
             },
 
@@ -1937,7 +1940,9 @@ monitorChildProcess(struct ChildProcess     *self,
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(
                     NanoSeconds(
-                        NSECS(Seconds(gOptions.mTimeout.mUmbilical_s)).ns / 2)),
+                      NSECS(
+                        Seconds(
+                          gOptions.mServer.mTimeout.mUmbilical_s)).ns / 2)),
             },
 
             [POLL_FD_CHILD_TIMER_TERMINATION] =
@@ -1980,7 +1985,7 @@ monitorChildProcess(struct ChildProcess     *self,
                 pollFdContEvent_,
                 childMonitor)));
 
-    if ( ! gOptions.mTether)
+    if ( ! gOptions.mServer.mTether)
         disconnectPollFdTether_(childMonitor);
 
     /* Make the umbilical timer expire immediately so that the umbilical

@@ -220,7 +220,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
         createJobControl(&jobControl_));
     jobControl = &jobControl_;
 
-    if (gOptions.mOrphaned)
+    if (gOptions.mServer.mOrphaned)
     {
         ERROR_IF(
             createParentProcess(&parentProcess_));
