@@ -99,6 +99,7 @@ createChildProcess(struct ChildProcess *self)
     self->mPid  = Pid(0);
     self->mPgid = Pgid(0);
 
+    self->mShellCommand     = 0;
     self->mTetherPipe       = 0;
     self->mLatch.mChild     = 0;
     self->mLatch.mUmbilical = 0;
@@ -431,14 +432,12 @@ runChildProcess_(struct ForkChildProcess_ *self)
         0,
         "starting child process pid %" PRId_Pid, FMTd_Pid(ownProcessId()));
 
-    size_t cmdLen = 0;
-    while (self->mCmd[cmdLen])
-        ++cmdLen;
+    unsigned cmdLen = self->mChildProcess->mShellCommand->mArgList->mArgc;
 
     const char *cmd[cmdLen+1];
 
     for (size_t ix = 0; ix <= cmdLen; ++ix)
-        cmd[ix] = self->mCmd[ix];
+        cmd[ix] = self->mChildProcess->mShellCommand->mArgList->mArgv[ix];
 
     int err;
 
@@ -556,16 +555,19 @@ runChildProcess_(struct ForkChildProcess_ *self)
                                     tetherArg,
                                     matchArg + strlen(gOptions.mServer.mName));
 
-                                cmd[ix] = strdup(replacedArg);
 
+                                char *dupArg = 0;
                                 ERROR_UNLESS(
-                                    cmd[ix],
+                                    dupArg = strdup(replacedArg),
                                     {
                                         terminate(
                                             errno,
                                             "Unable to duplicate '%s'",
                                             replacedArg);
                                     });
+
+                                cmd[ix] = dupArg;
+
                                 break;
                             }
                         }
@@ -656,6 +658,14 @@ forkChildProcess(
 {
     int rc = -1;
 
+    ensure( ! self->mPid.mPid);
+    ensure( ! self->mPgid.mPgid);
+    ensure( ! self->mShellCommand);
+
+    ERROR_IF(
+        createShellCommand(&self->mShellCommand_, aCmd));
+    self->mShellCommand = &self->mShellCommand_;
+
     /* Both the parent and child share the same signal handler configuration.
      * In particular, no custom signal handlers are configured, so
      * signals delivered to either will likely caused them to terminate.
@@ -691,7 +701,6 @@ forkChildProcess(
      *    pgid = getpgid(pid);
      *    kill(pgid > 0 ? -pgid : pid, signal);
      */
-
 
     /* Even if the child has terminated, it remains a zombie until reaped,
      * so it is safe to query it to determine its process group. */
@@ -805,6 +814,8 @@ closeChildProcess(struct ChildProcess *self)
 
         self->mLatch.mUmbilical = closeEventLatch(self->mLatch.mUmbilical);
         self->mLatch.mChild     = closeEventLatch(self->mLatch.mChild);
+
+        self->mShellCommand = closeShellCommand(self->mShellCommand);
     }
 
     return 0;

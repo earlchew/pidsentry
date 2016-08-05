@@ -29,6 +29,8 @@
 #ifndef CHILD_H
 #define CHILD_H
 
+#include "shellcommand.h"
+
 #include "compiler_.h"
 #include "pid_.h"
 #include "pipe_.h"
@@ -51,6 +53,9 @@ struct ChildProcess
 {
     struct Pid  mPid;
     struct Pgid mPgid;
+
+    struct ShellCommand  mShellCommand_;
+    struct ShellCommand *mShellCommand;
 
     struct
     {
