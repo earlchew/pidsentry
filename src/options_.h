@@ -61,6 +61,7 @@ struct Options
         bool        mIdentify;
         bool        mQuiet;
         bool        mOrphaned;
+        bool        mAnnounce;
 
         struct
         {

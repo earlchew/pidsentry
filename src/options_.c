@@ -79,6 +79,9 @@ static const char programUsage_[] =
 "      if there is a child process running.\n"
 "\n"
 "server options:\n"
+"  --announce | -a\n"
+"      Announce the name of program or the shell command running in the"
+"      child process as it is started and when it has stopped.\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
 "      copy received data to stdout of the watchdog. Specify N as - to\n"
@@ -122,7 +125,7 @@ static const char programUsage_[] =
 "";
 
 static const char shortOptions_[] =
-    "+cD:df:iL::n:op:qRsTt:u";
+    "+acD:df:iL::n:op:qRsTt:u";
 
 enum OptionKind
 {
@@ -131,6 +134,7 @@ enum OptionKind
 
 static struct option longOptions_[] =
 {
+    { "announce",   no_argument,       0, 'a' },
     { "client",     no_argument,       0, 'c' },
     { "debug",      no_argument,       0, 'd' },
     { "fd",         required_argument, 0, 'f' },
@@ -304,6 +308,12 @@ processOptions(int argc, char **argv, const char * const **args)
                     errno = EINVAL;
                     message(0, "Unrecognised option %d ('%c')", opt, opt);
                 });
+            break;
+
+        case 'a':
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
+            gOptions.mServer.mAnnounce = true;
             break;
 
         case 'c':
