@@ -285,6 +285,8 @@ runSentry(struct Sentry   *self,
 {
     int rc = -1;
 
+    struct Pid childPid = self->mChildProcess->mPid;
+
     /* Monitor the watchdog using another process so that a failure
      * of the watchdog can be detected independently. Only create the
      * umbilical process after all the file descriptors have been
@@ -389,9 +391,15 @@ runSentry(struct Sentry   *self,
             ERROR_IF(
                 -1 == dprintf(STDOUT_FILENO,
                               "%" PRId_Pid "\n",
-                              FMTd_Pid(self->mChildProcess->mPid)));
+                              FMTd_Pid(childPid)));
         });
     }
+
+    if (gOptions.mServer.mAnnounce)
+        message(0,
+                "started pid %" PRId_Pid " %s",
+                FMTd_Pid(childPid),
+                ownShellCommandName(self->mChildProcess->mShellCommand));
 
     TEST_RACE
     ({
@@ -527,11 +535,15 @@ runSentry(struct Sentry   *self,
     ERROR_IF(
         killChildProcessGroup(self->mChildProcess));
 
+    if (gOptions.mServer.mAnnounce)
+        message(0,
+                "stopped pid %" PRId_Pid " %s",
+                FMTd_Pid(childPid),
+                ownShellCommandName(self->mChildProcess->mShellCommand));
+
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and
      * read the pid file will see the terminated process. */
-
-    struct Pid childPid = self->mChildProcess->mPid;
 
     debug(0, "reaping child pid %" PRId_Pid, FMTd_Pid(childPid));
 
