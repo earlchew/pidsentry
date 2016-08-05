@@ -38,6 +38,19 @@
 #include <ctype.h>
 
 /* -------------------------------------------------------------------------- */
+struct ShellCommand *
+closeShellCommand(struct ShellCommand *self)
+{
+    if (self) {
+        self->mArgList = closeParseArgList(self->mArgList);
+
+        free(self->mCmd);
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 createShellCommand(struct ShellCommand *self,
                    const char * const  *aCmd)
@@ -45,6 +58,8 @@ createShellCommand(struct ShellCommand *self,
     int rc = -1;
 
     self->mArgList = 0;
+    self->mShell   = false;
+    self->mCmd     = 0;
 
     ERROR_UNLESS(
         aCmd && aCmd[0] && aCmd[0][0],
@@ -57,6 +72,55 @@ createShellCommand(struct ShellCommand *self,
     self->mArgList = &self->mArgList_;
 
     ensure(self->mArgList->mArgv && self->mArgList->mArgv[0]);
+
+    if ( ! self->mArgList->mArgv[1])
+    {
+        for (const char *chPtr = self->mArgList->mArgv[0]; *chPtr; ++chPtr)
+        {
+            if (isspace((unsigned char) *chPtr))
+            {
+                self->mShell = true;
+                break;
+            }
+        }
+    }
+
+    if (self->mShell)
+        ERROR_UNLESS(
+            self->mCmd = strdup(self->mArgList->mArgv[0]));
+    else
+    {
+        const char *lastWord  = self->mArgList->mArgv[0];
+        const char *nextWord  = lastWord;
+        const char *lastSlash = strchr(nextWord, 0);
+
+        while (*nextWord)
+        {
+            while (*nextWord && '/' == *nextWord)
+                ++nextWord;
+
+            if ( ! *nextWord)
+                break;
+
+            lastWord = nextWord;
+
+            const char *nextSlash = lastWord;
+
+            while (*nextSlash && '/' != *nextSlash)
+                ++nextSlash;
+
+            lastSlash = nextSlash;
+            nextWord  = nextSlash;
+        }
+
+        size_t cmdLen = lastSlash - lastWord;
+
+        ERROR_UNLESS(
+            self->mCmd = malloc(cmdLen + 1));
+
+        memcpy(self->mCmd, lastWord, cmdLen);
+        self->mCmd[cmdLen] = 0;
+    }
 
     rc = 0;
 
@@ -73,6 +137,13 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 const char *
+ownShellCommandName(const struct ShellCommand *self)
+{
+    return self->mCmd;
+}
+
+/* -------------------------------------------------------------------------- */
+const char *
 ownShellCommandText(const struct ShellCommand *self)
 {
     return self->mArgList->mArgv[0];
@@ -82,17 +153,9 @@ ownShellCommandText(const struct ShellCommand *self)
 void
 execShellCommand(struct ShellCommand *self)
 {
-    if ( ! self->mArgList->mArgv[1])
-    {
-        for (const char *chPtr = self->mArgList->mArgv[0]; *chPtr; ++chPtr)
-        {
-            if (isspace((unsigned char) *chPtr))
-            {
-                ERROR_IF(
-                    (execShell(self->mArgList->mArgv[0]), true));
-            }
-        }
-    }
+    if (self->mShell)
+        ERROR_IF(
+            (execShell(self->mArgList->mArgv[0]), true));
 
     const char * const *argv = ownParseArgListArgv(self->mArgList);
 
@@ -102,16 +165,6 @@ execShellCommand(struct ShellCommand *self)
 Finally:
 
     FINALLY({});
-}
-
-/* -------------------------------------------------------------------------- */
-struct ShellCommand *
-closeShellCommand(struct ShellCommand *self)
-{
-    if (self)
-        self->mArgList = closeParseArgList(self->mArgList);
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

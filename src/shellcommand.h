@@ -41,6 +41,9 @@ struct ShellCommand
 {
     struct ParseArgList  mArgList_;
     struct ParseArgList *mArgList;
+
+    bool  mShell;
+    char *mCmd;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -53,6 +56,9 @@ execShellCommand(struct ShellCommand *self);
 
 const char *
 ownShellCommandText(const struct ShellCommand *self);
+
+const char *
+ownShellCommandName(const struct ShellCommand *self);
 
 CHECKED struct ShellCommand *
 closeShellCommand(struct ShellCommand *self);
