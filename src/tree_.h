@@ -27,10 +27,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef	_SYS_TREE_H_
-#define	_SYS_TREE_H_
+#ifndef	TREE_H
+#define	TREE_H
 
-#include <sys/cdefs.h>
+#include "compiler_.h"
 
 /*
  * This file defines data structures for different types of trees:
@@ -88,7 +88,7 @@ struct {								\
 	SPLAY_RIGHT(tmp, field) = (head)->sph_root;			\
 	(head)->sph_root = tmp;						\
 } while (/*CONSTCOND*/ 0)
-	
+
 #define SPLAY_ROTATE_LEFT(head, tmp, field) do {			\
 	SPLAY_RIGHT((head)->sph_root, field) = SPLAY_LEFT(tmp, field);	\
 	SPLAY_LEFT(tmp, field) = (head)->sph_root;			\
@@ -381,7 +381,7 @@ struct {								\
 #define	RB_PROTOTYPE(name, type, field, cmp)				\
 	RB_PROTOTYPE_INTERNAL(name, type, field, cmp,)
 #define	RB_PROTOTYPE_STATIC(name, type, field, cmp)			\
-	RB_PROTOTYPE_INTERNAL(name, type, field, cmp, __unused static)
+	RB_PROTOTYPE_INTERNAL(name, type, field, cmp, UNUSED static)
 #define RB_PROTOTYPE_INTERNAL(name, type, field, cmp, attr)		\
 	RB_PROTOTYPE_INSERT_COLOR(name, type, attr);			\
 	RB_PROTOTYPE_REMOVE_COLOR(name, type, attr);			\
@@ -417,7 +417,7 @@ struct {								\
 #define	RB_GENERATE(name, type, field, cmp)				\
 	RB_GENERATE_INTERNAL(name, type, field, cmp,)
 #define	RB_GENERATE_STATIC(name, type, field, cmp)			\
-	RB_GENERATE_INTERNAL(name, type, field, cmp, __unused static)
+	RB_GENERATE_INTERNAL(name, type, field, cmp, UNUSED static)
 #define RB_GENERATE_INTERNAL(name, type, field, cmp, attr)		\
 	RB_GENERATE_INSERT_COLOR(name, type, field, attr)		\
 	RB_GENERATE_REMOVE_COLOR(name, type, field, attr)		\
@@ -798,4 +798,4 @@ name##_RB_MINMAX(struct name *head, int val)				\
 	    ((x) != NULL) && ((y) = name##_RB_PREV(x), (x) != NULL);	\
 	     (x) = (y))
 
-#endif	/* _SYS_TREE_H_ */
+#endif	/* TREE_H_ */
