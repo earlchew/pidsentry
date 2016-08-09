@@ -59,6 +59,7 @@ check_PROGRAMS      = _splicetest
 check_PROGRAMS     += _isblockingtest
 check_PROGRAMS     += _deadlinetest
 check_PROGRAMS     += _ensuretest
+check_PROGRAMS     += _fdsettest
 check_PROGRAMS     += _systemtest
 check_PROGRAMS     += _timekeepingtest
 check_PROGRAMS     += _envtest
@@ -117,6 +118,9 @@ _eventlatchtest_LDADD   = $(TEST_LIBS)
 
 _eventpipetest_SOURCES = _eventpipetest.cc
 _eventpipetest_LDADD   = $(TEST_LIBS)
+
+_fdsettest_SOURCES = _fdsettest.cc
+_fdsettest_LDADD   = $(TEST_LIBS)
 
 _fdtest_SOURCES = _fdtest.cc
 _fdtest_LDADD   = $(TEST_LIBS)

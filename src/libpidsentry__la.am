@@ -1,4 +1,4 @@
-libpidsentry__la_SOURCES_CKSUM_1_ = 2476981837 779
+libpidsentry__la_SOURCES_CKSUM_1_ = 1878837180 805
 libpidsentry__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
 libpidsentry__la_SOURCES = \
   abort_.c \
@@ -21,6 +21,8 @@ libpidsentry__la_SOURCES = \
   eventpipe_.h \
   fd_.c \
   fd_.h \
+  fdset_.c \
+  fdset_.h \
   file_.c \
   fileeventqueue_.c \
   fileeventqueue_.h \
@@ -67,6 +69,7 @@ libpidsentry__la_SOURCES = \
   timekeeping_.h \
   timescale_.c \
   timescale_.h \
+  tree_.h \
   type_.h \
   uid_.c \
   uid_.h \
