@@ -112,6 +112,14 @@ sendUnixSocket(struct UnixSocket *self, const char *aBuf, size_t aLen);
 CHECKED ssize_t
 recvUnixSocket(struct UnixSocket *self, char *aBuf, size_t aLen);
 
+CHECKED ssize_t
+writeUnixSocket(struct UnixSocket *self,
+                const char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
+CHECKED ssize_t
+readUnixSocket(struct UnixSocket *self,
+               char *aBuf, size_t aLen, const struct Duration *aTimeout);
+
 /* -------------------------------------------------------------------------- */
 
 END_C_SCOPE;

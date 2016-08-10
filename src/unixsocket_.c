@@ -596,6 +596,22 @@ recvUnixSocket(struct UnixSocket *self, char *aBuf, size_t aLen)
 }
 
 /* -------------------------------------------------------------------------- */
+ssize_t
+writeUnixSocket(struct UnixSocket *self,
+                const char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    return writeFile(self->mFile, aBuf, aLen, aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
+ssize_t
+readUnixSocket(struct UnixSocket *self,
+               char *aBuf, size_t aLen, const struct Duration *aTimeout)
+{
+    return readFile(self->mFile, aBuf, aLen, aTimeout);
+}
+
+/* -------------------------------------------------------------------------- */
 int
 ownUnixSocketName(const struct UnixSocket *self,
                   struct sockaddr_un *aAddr)
