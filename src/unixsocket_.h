@@ -106,10 +106,10 @@ ownUnixSocketError(const struct UnixSocket *self, int *aError);
 CHECKED int
 ownUnixSocketPeerCred(const struct UnixSocket *self, struct ucred *aCred);
 
-ssize_t
+CHECKED ssize_t
 sendUnixSocket(struct UnixSocket *self, const char *aBuf, size_t aLen);
 
-ssize_t
+CHECKED ssize_t
 recvUnixSocket(struct UnixSocket *self, char *aBuf, size_t aLen);
 
 /* -------------------------------------------------------------------------- */
