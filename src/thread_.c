@@ -479,12 +479,40 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 pthread_cond_t *
 createCond(pthread_cond_t *self)
 {
+    pthread_condattr_t  condattr_;
+    pthread_condattr_t *condattr = 0;
+
     ABORT_IF(
-        (errno = pthread_cond_init(self, 0)),
+        (errno = pthread_condattr_init(&condattr_)),
+        {
+            terminate(
+                errno,
+                "Unable to allocate condition variable attribute");
+        });
+    condattr = &condattr_;
+
+    ABORT_IF(
+        (errno = pthread_condattr_setclock(condattr, CLOCK_MONOTONIC)),
+        {
+            terminate(
+                errno,
+                "Unable to set condition attribute CLOCK_MONOTONIC");
+        });
+
+    ABORT_IF(
+        (errno = pthread_cond_init(self, condattr)),
         {
             terminate(
                 errno,
                 "Unable to create condition variable");
+        });
+
+    ABORT_IF(
+        (errno = pthread_condattr_destroy(condattr)),
+        {
+            terminate(
+                errno,
+                "Unable to destroy condition attribute");
         });
 
     return self;
@@ -494,27 +522,37 @@ createCond(pthread_cond_t *self)
 pthread_cond_t *
 createSharedCond(pthread_cond_t *self)
 {
-    pthread_condattr_t condattr;
+    pthread_condattr_t  condattr_;
+    pthread_condattr_t *condattr = 0;
 
     ABORT_IF(
-        (errno = pthread_condattr_init(&condattr)),
+        (errno = pthread_condattr_init(&condattr_)),
         {
             terminate(
                 errno,
                 "Unable to allocate condition variable attribute");
         });
+    condattr = &condattr_;
 
     ABORT_IF(
-        (errno = pthread_condattr_setpshared(&condattr,
+        (errno = pthread_condattr_setclock(condattr, CLOCK_MONOTONIC)),
+        {
+            terminate(
+                errno,
+                "Unable to set condition attribute CLOCK_MONOTONIC");
+        });
+
+    ABORT_IF(
+        (errno = pthread_condattr_setpshared(condattr,
                                              PTHREAD_PROCESS_SHARED)),
         {
             terminate(
                 errno,
-                "Unable to set cond attribute PTHREAD_PROCESS_SHARED");
+                "Unable to set condition attribute PTHREAD_PROCESS_SHARED");
         });
 
     ABORT_IF(
-        (errno = pthread_cond_init(self, &condattr)),
+        (errno = pthread_cond_init(self, condattr)),
         {
             terminate(
                 errno,
@@ -522,11 +560,11 @@ createSharedCond(pthread_cond_t *self)
         });
 
     ABORT_IF(
-        (errno = pthread_condattr_destroy(&condattr)),
+        (errno = pthread_condattr_destroy(condattr)),
         {
             terminate(
                 errno,
-                "Unable to destroy condition variable attribute");
+                "Unable to destroy condition attribute");
         });
 
     return self;
