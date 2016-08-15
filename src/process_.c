@@ -2278,6 +2278,30 @@ postForkParent_(void)
 static void
 postForkChild_(void)
 {
+#ifdef __GLIBC__
+    if (processLibcVersion_.mMajor <  2 ||
+        processLibcVersion_.mMajor == 2 && processLibcVersion_.mMinor < 15)
+    {
+        /* https://sourceware.org/bugzilla/show_bug.cgi?id=13002
+         *
+         * This was not fixed until 2.15, so work around the defect
+         * using the robust mutex list initialisation that is a side-effect
+         * of thread creation. */
+
+        pthread_t thread;
+
+        createThread(&thread, 0,
+                     ThreadMethod(
+                         LAMBDA(
+                             int, (pthread_t *self_),
+                             {
+                                 return 0;
+                             }),
+                         &thread));
+        ensure( ! joinThread(&thread));
+    }
+#endif
+
     /* This function is called in the context of the child process
      * immediately after the fork completes, at which time it will
      * be the only thread running in the new process. The application
