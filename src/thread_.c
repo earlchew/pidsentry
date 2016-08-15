@@ -41,6 +41,14 @@
 
 #include <sys/syscall.h>
 
+#ifdef __GLIBC__
+#if __GLIBC__ < 2 || __GLIBC__ == 2 && __GLIBC_MINOR < 12
+#define PTHREAD_MUTEX_ROBUST        PTHREAD_MUTEX_ROBUST_NP
+#define pthread_mutexattr_setrobust pthread_mutexattr_setrobust_np
+#define pthread_mutex_consistent    pthread_mutex_consistent_np
+#endif
+#endif
+
 /* -------------------------------------------------------------------------- */
 static void *
 timedLock_(void *aLock,
@@ -298,48 +306,6 @@ createMutex(pthread_mutex_t *self)
 
 /* -------------------------------------------------------------------------- */
 pthread_mutex_t *
-createSharedMutex(pthread_mutex_t *self)
-{
-    pthread_mutexattr_t mutexattr;
-
-    ABORT_IF(
-        (errno = pthread_mutexattr_init(&mutexattr)),
-        {
-            terminate(
-                errno,
-                "Unable to allocate mutex attribute");
-        });
-
-    ABORT_IF(
-        (errno = pthread_mutexattr_setpshared(&mutexattr,
-                                              PTHREAD_PROCESS_SHARED)),
-        {
-            terminate(
-                errno,
-                "Unable to set mutex attribute PTHREAD_PROCESS_SHARED");
-        });
-
-    ABORT_IF(
-        (errno = pthread_mutex_init(self, &mutexattr)),
-        {
-            terminate(
-                errno,
-                "Unable to create shared mutex");
-        });
-
-    ABORT_IF(
-        (errno = pthread_mutexattr_destroy(&mutexattr)),
-        {
-            terminate(
-                errno,
-                "Unable to destroy mutex attribute");
-        });
-
-    return self;
-}
-
-/* -------------------------------------------------------------------------- */
-pthread_mutex_t *
 destroyMutex(pthread_mutex_t *self)
 {
     if (self)
@@ -476,6 +442,139 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 }
 
 /* -------------------------------------------------------------------------- */
+struct SharedMutex *
+createSharedMutex(struct SharedMutex *self)
+{
+    pthread_mutexattr_t mutexattr;
+
+    ABORT_IF(
+        (errno = pthread_mutexattr_init(&mutexattr)),
+        {
+            terminate(
+                errno,
+                "Unable to allocate mutex attribute");
+        });
+
+    ABORT_IF(
+        (errno = pthread_mutexattr_setpshared(&mutexattr,
+                                              PTHREAD_PROCESS_SHARED)),
+        {
+            terminate(
+                errno,
+                "Unable to set mutex attribute PTHREAD_PROCESS_SHARED");
+        });
+
+    ABORT_IF(
+        (errno = pthread_mutexattr_setrobust(&mutexattr,
+                                             PTHREAD_MUTEX_ROBUST)),
+        {
+            terminate(
+                errno,
+                "Unable to set mutex attribute PTHREAD_MUTEX_ROBUST");
+        });
+
+    ABORT_IF(
+        (errno = pthread_mutex_init(&self->mMutex, &mutexattr)),
+        {
+            terminate(
+                errno,
+                "Unable to create shared mutex");
+        });
+
+    ABORT_IF(
+        (errno = pthread_mutexattr_destroy(&mutexattr)),
+        {
+            terminate(
+                errno,
+                "Unable to destroy mutex attribute");
+        });
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+destroySharedMutex(struct SharedMutex *self)
+{
+    if (self)
+        ABORT_IF(
+            destroyMutex(&self->mMutex));
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+lockSharedMutex(struct SharedMutex *self)
+{
+    ensure( ! ownProcessSignalContext());
+
+    ABORT_IF(
+        lockMutex_(&self->mMutex));
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+markSharedMutexConsistent(struct SharedMutex *self)
+{
+    ensure( ! ownProcessSignalContext());
+
+    if (self)
+    {
+        ABORT_IF(
+            (errno = pthread_mutex_consistent(&self->mMutex)),
+            {
+                terminate(
+                    errno,
+                    "Unable to restore mutex consistency");
+            });
+    }
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+unlockSharedMutex(struct SharedMutex *self)
+{
+    ensure( ! ownProcessSignalContext());
+
+    if (self)
+        ABORT_IF(
+            unlockMutex_(&self->mMutex));
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+unlockSharedMutexSignal(struct SharedMutex *self, struct SharedCond *aCond)
+{
+    ensure( ! ownProcessSignalContext());
+
+    if (self)
+        ABORT_IF(
+            unlockMutexSignal_(&self->mMutex, &aCond->mCond));
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+unlockSharedMutexBroadcast(struct SharedMutex *self, struct SharedCond *aCond)
+{
+    ensure( ! ownProcessSignalContext());
+
+    if (self)
+        ABORT_IF(
+            unlockMutexBroadcast_(&self->mMutex, &aCond->mCond));
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
 pthread_cond_t *
 createCond(pthread_cond_t *self)
 {
@@ -520,58 +619,6 @@ createCond(pthread_cond_t *self)
 
 /* -------------------------------------------------------------------------- */
 pthread_cond_t *
-createSharedCond(pthread_cond_t *self)
-{
-    pthread_condattr_t  condattr_;
-    pthread_condattr_t *condattr = 0;
-
-    ABORT_IF(
-        (errno = pthread_condattr_init(&condattr_)),
-        {
-            terminate(
-                errno,
-                "Unable to allocate condition variable attribute");
-        });
-    condattr = &condattr_;
-
-    ABORT_IF(
-        (errno = pthread_condattr_setclock(condattr, CLOCK_MONOTONIC)),
-        {
-            terminate(
-                errno,
-                "Unable to set condition attribute CLOCK_MONOTONIC");
-        });
-
-    ABORT_IF(
-        (errno = pthread_condattr_setpshared(condattr,
-                                             PTHREAD_PROCESS_SHARED)),
-        {
-            terminate(
-                errno,
-                "Unable to set condition attribute PTHREAD_PROCESS_SHARED");
-        });
-
-    ABORT_IF(
-        (errno = pthread_cond_init(self, condattr)),
-        {
-            terminate(
-                errno,
-                "Unable to create shared condition variable");
-        });
-
-    ABORT_IF(
-        (errno = pthread_condattr_destroy(condattr)),
-        {
-            terminate(
-                errno,
-                "Unable to destroy condition attribute");
-        });
-
-    return self;
-}
-
-/* -------------------------------------------------------------------------- */
-pthread_cond_t *
 destroyCond(pthread_cond_t *self)
 {
     if (self)
@@ -589,16 +636,19 @@ destroyCond(pthread_cond_t *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static void
+static int
 waitCond_(pthread_cond_t *self, pthread_mutex_t *aMutex)
 {
     ABORT_IF(
-        (errno = pthread_cond_wait(self, aMutex)),
+        (errno = pthread_cond_wait(self, aMutex),
+         errno && EOWNERDEAD != errno),
         {
             terminate(
                 errno,
                 "Unable to wait for condition variable");
         });
+
+    return errno;
 }
 
 void
@@ -606,7 +656,13 @@ waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex)
 {
     ensure( ! ownProcessSignalContext());
 
-    waitCond_(self, aMutex);
+    ABORT_IF(
+        waitCond_(self, aMutex),
+        {
+            terminate(
+                errno,
+                "Condition variable mutex owner has terminated");
+        });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -644,6 +700,78 @@ pushThreadSigMask(
     ABORT_IF(pthread_sigmask(maskAction, &sigSet, &self->mSigSet));
 
     return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedCond *
+createSharedCond(struct SharedCond *self)
+{
+    pthread_condattr_t  condattr_;
+    pthread_condattr_t *condattr = 0;
+
+    ABORT_IF(
+        (errno = pthread_condattr_init(&condattr_)),
+        {
+            terminate(
+                errno,
+                "Unable to allocate condition variable attribute");
+        });
+    condattr = &condattr_;
+
+    ABORT_IF(
+        (errno = pthread_condattr_setclock(condattr, CLOCK_MONOTONIC)),
+        {
+            terminate(
+                errno,
+                "Unable to set condition attribute CLOCK_MONOTONIC");
+        });
+
+    ABORT_IF(
+        (errno = pthread_condattr_setpshared(condattr,
+                                             PTHREAD_PROCESS_SHARED)),
+        {
+            terminate(
+                errno,
+                "Unable to set condition attribute PTHREAD_PROCESS_SHARED");
+        });
+
+    ABORT_IF(
+        (errno = pthread_cond_init(&self->mCond, condattr)),
+        {
+            terminate(
+                errno,
+                "Unable to create shared condition variable");
+        });
+
+    ABORT_IF(
+        (errno = pthread_condattr_destroy(condattr)),
+        {
+            terminate(
+                errno,
+                "Unable to destroy condition attribute");
+        });
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedCond *
+destroySharedCond(struct SharedCond *self)
+{
+    if (self)
+        ABORT_IF(
+            destroyCond(&self->mCond));
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+waitSharedCond(struct SharedCond *self, struct SharedMutex *aMutex)
+{
+    ensure( ! ownProcessSignalContext());
+
+    return waitCond_(&self->mCond, &aMutex->mMutex) ? -1 : 0;
 }
 
 /* -------------------------------------------------------------------------- */

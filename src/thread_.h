@@ -105,6 +105,16 @@ struct RWMutexWriter
     pthread_rwlock_t *mMutex;
 };
 
+struct SharedMutex
+{
+    pthread_mutex_t mMutex;
+};
+
+struct SharedCond
+{
+    pthread_cond_t mCond;
+};
+
 /* -------------------------------------------------------------------------- */
 struct Tid
 ownThreadId(void);
@@ -151,9 +161,6 @@ CHECKED pthread_mutex_t *
 createMutex(pthread_mutex_t *self);
 
 CHECKED pthread_mutex_t *
-createSharedMutex(pthread_mutex_t *self);
-
-CHECKED pthread_mutex_t *
 destroyMutex(pthread_mutex_t *self);
 
 CHECKED pthread_mutex_t *
@@ -167,6 +174,28 @@ unlockMutexSignal(pthread_mutex_t *self, pthread_cond_t *aCond);
 
 CHECKED pthread_mutex_t *
 unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond);
+
+/* -------------------------------------------------------------------------- */
+CHECKED struct SharedMutex *
+createSharedMutex(struct SharedMutex *self);
+
+CHECKED struct SharedMutex *
+destroySharedMutex(struct SharedMutex *self);
+
+CHECKED struct SharedMutex *
+lockSharedMutex(struct SharedMutex *self);
+
+CHECKED struct SharedMutex *
+unlockSharedMutex(struct SharedMutex *self);
+
+CHECKED struct SharedMutex *
+markSharedMutexConsistent(struct SharedMutex *self);
+
+CHECKED struct SharedMutex *
+unlockSharedMutexSignal(struct SharedMutex *self, struct SharedCond *aCond);
+
+CHECKED struct SharedMutex *
+unlockSharedMutexBroadcast(struct SharedMutex *self, struct SharedCond *aCond);
 
 /* -------------------------------------------------------------------------- */
 CHECKED pthread_rwlock_t *
@@ -196,13 +225,20 @@ CHECKED pthread_cond_t *
 createCond(pthread_cond_t *self);
 
 CHECKED pthread_cond_t *
-createSharedCond(pthread_cond_t *self);
-
-CHECKED pthread_cond_t *
 destroyCond(pthread_cond_t *self);
 
 void
 waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);
+
+/* -------------------------------------------------------------------------- */
+CHECKED struct SharedCond *
+createSharedCond(struct SharedCond *self);
+
+CHECKED struct SharedCond *
+destroySharedCond(struct SharedCond *self);
+
+CHECKED int
+waitSharedCond(struct SharedCond *self, struct SharedMutex *aMutex);
 
 /* -------------------------------------------------------------------------- */
 CHECKED struct ThreadSigMask *
