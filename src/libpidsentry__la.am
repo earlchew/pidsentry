@@ -1,4 +1,4 @@
-libpidsentry__la_SOURCES_CKSUM_1_ = 1878837180 805
+libpidsentry__la_SOURCES_CKSUM_1_ = 64470037 825
 libpidsentry__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
 libpidsentry__la_SOURCES = \
   abort_.c \
@@ -55,6 +55,8 @@ libpidsentry__la_SOURCES = \
   printf_.h \
   process_.c \
   process_.h \
+  socket_.c \
+  socket_.h \
   socketpair_.c \
   socketpair_.h \
   stdfdfiller_.c \
