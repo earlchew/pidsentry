@@ -85,13 +85,13 @@ timedLock_(void *aLock,
 
         ABORT_IF(
             (errno = aTimedLock(aLock, &deadline),
-             errno && ETIMEDOUT != errno),
+             errno && ETIMEDOUT != errno && EOWNERDEAD != errno),
             {
                 terminate(errno,
                           "Unable to acquire rwlock after %us", timeout_s);
             });
 
-        if (errno)
+        if (ETIMEDOUT == errno)
         {
             /* Try again if the attempt to lock the mutex timed out
              * but the process was stopped for some part of that time. */
@@ -103,7 +103,7 @@ timedLock_(void *aLock,
         break;
     }
 
-    return aLock;
+    return errno ? 0 : aLock;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -346,7 +346,10 @@ lockMutex(pthread_mutex_t *self)
 {
     ensure( ! ownProcessSignalContext());
 
-    return lockMutex_(self);
+    ABORT_UNLESS(
+        lockMutex_(self));
+
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -507,24 +510,21 @@ destroySharedMutex(struct SharedMutex *self)
 
 /* -------------------------------------------------------------------------- */
 struct SharedMutex *
-lockSharedMutex(struct SharedMutex *self)
+lockSharedMutex(struct SharedMutex      *self,
+                struct MutexRepairMethod aRepair)
 {
     ensure( ! ownProcessSignalContext());
 
-    ABORT_IF(
-        lockMutex_(&self->mMutex));
-
-    return self;
-}
-
-/* -------------------------------------------------------------------------- */
-struct SharedMutex *
-markSharedMutexConsistent(struct SharedMutex *self)
-{
-    ensure( ! ownProcessSignalContext());
-
-    if (self)
+    if ( ! lockMutex_(&self->mMutex))
     {
+        ABORT_IF(
+            callMutexRepairMethod(aRepair),
+            {
+                terminate(
+                    errno,
+                    "Unable to repair mutex consistency");
+            });
+
         ABORT_IF(
             (errno = pthread_mutex_consistent(&self->mMutex)),
             {
@@ -863,7 +863,9 @@ lockThreadSigMutex(struct ThreadSigMutex *self)
     struct ThreadSigMask *threadSigMask =
         pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
 
-    pthread_mutex_t *lock = lockMutex_(self->mMutex);
+    pthread_mutex_t *lock;
+    ABORT_UNLESS(
+        lock = lockMutex_(self->mMutex));
 
     if (self->mLocked && ! pthread_equal(self->mOwner, pthread_self()))
     {
@@ -907,7 +909,9 @@ unlockThreadSigMutex(struct ThreadSigMutex *self)
             struct ThreadSigMask  threadSigMask_ = self->mMask;
             struct ThreadSigMask *threadSigMask  = &threadSigMask_;
 
-            pthread_mutex_t *lock = lockMutex_(self->mMutex);
+            pthread_mutex_t *lock;
+            ABORT_UNLESS(
+                lock = lockMutex_(self->mMutex));
 
             self->mLocked = 0;
 
@@ -930,7 +934,9 @@ ownThreadSigMutexLocked(struct ThreadSigMutex *self)
 {
     unsigned locked;
 
-    pthread_mutex_t *lock = lockMutex_(self->mMutex);
+    pthread_mutex_t *lock;
+    ABORT_UNLESS(
+        lock = lockMutex_(self->mMutex));
 
     locked = self->mLocked;
 
@@ -992,8 +998,9 @@ struct RWMutexReader *
 createRWMutexReader(struct RWMutexReader *self,
                     pthread_rwlock_t     *aMutex)
 {
-    self->mMutex = timedLock_(
-        aMutex, tryRWMutexRdLock_, tryRWMutexTimedRdLock_);
+    ABORT_UNLESS(
+        self->mMutex = timedLock_(
+            aMutex, tryRWMutexRdLock_, tryRWMutexTimedRdLock_));
 
     return self;
 }
@@ -1033,8 +1040,9 @@ struct RWMutexWriter *
 createRWMutexWriter(struct RWMutexWriter *self,
                     pthread_rwlock_t     *aMutex)
 {
-    self->mMutex = timedLock_(
-        aMutex, tryRWMutexWrLock_, tryRWMutexTimedWrLock_);
+    ABORT_UNLESS(
+        self->mMutex = timedLock_(
+            aMutex, tryRWMutexWrLock_, tryRWMutexTimedWrLock_));
 
     return self;
 }

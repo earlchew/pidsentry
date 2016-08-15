@@ -60,6 +60,29 @@
         METHOD_CALL_LIST_ThreadMethod)
 
 /* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_MutexRepairMethod    int
+#define METHOD_CONST_MutexRepairMethod
+#define METHOD_ARG_LIST_MutexRepairMethod  ()
+#define METHOD_CALL_LIST_MutexRepairMethod ()
+
+#define METHOD_NAME      MutexRepairMethod
+#define METHOD_RETURN    METHOD_RETURN_MutexRepairMethod
+#define METHOD_CONST     METHOD_CONST_MutexRepairMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_MutexRepairMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_MutexRepairMethod
+#include "method_.h"
+
+#define MutexRepairMethod(Method_, Object_)          \
+    METHOD_TRAMPOLINE(                               \
+        Method_, Object_,                            \
+        MutexRepairMethod_,                          \
+        METHOD_RETURN_MutexRepairMethod,             \
+        METHOD_CONST_MutexRepairMethod,              \
+        METHOD_ARG_LIST_MutexRepairMethod,           \
+        METHOD_CALL_LIST_MutexRepairMethod)
+
+/* -------------------------------------------------------------------------- */
 /* Reference Counting Shared Objects
  *
  * It is unsafe to rely on reference counting for objects that reside in
@@ -199,13 +222,10 @@ CHECKED struct SharedMutex *
 unrefSharedMutex(struct SharedMutex *self) THREAD_NOT_IMPLEMENTED;
 
 CHECKED struct SharedMutex *
-lockSharedMutex(struct SharedMutex *self);
+lockSharedMutex(struct SharedMutex *self, struct MutexRepairMethod aRepair);
 
 CHECKED struct SharedMutex *
 unlockSharedMutex(struct SharedMutex *self);
-
-CHECKED struct SharedMutex *
-markSharedMutexConsistent(struct SharedMutex *self);
 
 CHECKED struct SharedMutex *
 unlockSharedMutexSignal(struct SharedMutex *self, struct SharedCond *aCond);
