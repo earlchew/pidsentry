@@ -60,6 +60,16 @@
         METHOD_CALL_LIST_ThreadMethod)
 
 /* -------------------------------------------------------------------------- */
+/* Reference Counting Shared Objects
+ *
+ * It is unsafe to rely on reference counting for objects that reside in
+ * memory that is shared across processes because there is no way to
+ * guarantee that a user space reference count will be decremented when
+ * a process is killed. */
+
+#define THREAD_NOT_IMPLEMENTED NOTIMPLEMENTED
+
+/* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
 
 struct Tid;
@@ -107,13 +117,11 @@ struct RWMutexWriter
 
 struct SharedMutex
 {
-    unsigned        mRefs;
     pthread_mutex_t mMutex;
 };
 
 struct SharedCond
 {
-    unsigned       mRefs;
     pthread_cond_t mCond;
 };
 
@@ -185,10 +193,10 @@ CHECKED struct SharedMutex *
 destroySharedMutex(struct SharedMutex *self);
 
 CHECKED struct SharedMutex *
-refSharedMutex(struct SharedMutex *self);
+refSharedMutex(struct SharedMutex *self) THREAD_NOT_IMPLEMENTED;
 
 CHECKED struct SharedMutex *
-unrefSharedMutex(struct SharedMutex *self);
+unrefSharedMutex(struct SharedMutex *self) THREAD_NOT_IMPLEMENTED;
 
 CHECKED struct SharedMutex *
 lockSharedMutex(struct SharedMutex *self);
@@ -236,10 +244,10 @@ CHECKED pthread_cond_t *
 destroyCond(pthread_cond_t *self);
 
 CHECKED struct SharedCond *
-refSharedCond(struct SharedCond *self);
+refSharedCond(struct SharedCond *self) THREAD_NOT_IMPLEMENTED;
 
 CHECKED struct SharedCond *
-unrefSharedCond(struct SharedCond *self);
+unrefSharedCond(struct SharedCond *self) THREAD_NOT_IMPLEMENTED;
 
 void
 waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);

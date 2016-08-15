@@ -445,8 +445,6 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 struct SharedMutex *
 createSharedMutex(struct SharedMutex *self)
 {
-    self->mRefs = 0;
-
     pthread_mutexattr_t  mutexattr_;
     pthread_mutexattr_t *mutexattr = 0;
 
@@ -501,35 +499,10 @@ struct SharedMutex *
 destroySharedMutex(struct SharedMutex *self)
 {
     if (self)
-    {
-        ensure( ! self->mRefs);
-
         ABORT_IF(
             destroyMutex(&self->mMutex));
-    }
 
     return 0;
-}
-
-/* -------------------------------------------------------------------------- */
-struct SharedMutex *
-refSharedMutex(struct SharedMutex *self)
-{
-    ensure(__sync_add_and_fetch(&self->mRefs, 1));
-
-    return self;
-}
-
-/* -------------------------------------------------------------------------- */
-struct SharedMutex *
-unrefSharedMutex(struct SharedMutex *self)
-{
-    ensure(self->mRefs);
-
-    return
-        ! __sync_sub_and_fetch(&self->mRefs, 1)
-        ? destroySharedMutex(self)
-        : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -738,8 +711,6 @@ createSharedCond(struct SharedCond *self)
     pthread_condattr_t  condattr_;
     pthread_condattr_t *condattr = 0;
 
-    self->mRefs = 0;
-
     ABORT_IF(
         (errno = pthread_condattr_init(&condattr_)),
         {
@@ -790,35 +761,10 @@ struct SharedCond *
 destroySharedCond(struct SharedCond *self)
 {
     if (self)
-    {
-        ensure( ! self->mRefs);
-
         ABORT_IF(
             destroyCond(&self->mCond));
-    }
 
     return 0;
-}
-
-/* -------------------------------------------------------------------------- */
-struct SharedCond *
-refSharedCond(struct SharedCond *self)
-{
-    ensure(__sync_add_and_fetch(&self->mRefs, 1));
-
-    return self;
-}
-
-/* -------------------------------------------------------------------------- */
-struct SharedCond *
-unrefSharedCond(struct SharedCond *self)
-{
-    ensure(self->mRefs);
-
-    return
-        ! __sync_sub_and_fetch(&self->mRefs, 1)
-        ? destroySharedCond(self)
-        : 0;
 }
 
 /* -------------------------------------------------------------------------- */
