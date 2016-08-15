@@ -445,18 +445,22 @@ unlockMutexBroadcast(pthread_mutex_t *self, pthread_cond_t *aCond)
 struct SharedMutex *
 createSharedMutex(struct SharedMutex *self)
 {
-    pthread_mutexattr_t mutexattr;
+    self->mRefs = 0;
+
+    pthread_mutexattr_t  mutexattr_;
+    pthread_mutexattr_t *mutexattr = 0;
 
     ABORT_IF(
-        (errno = pthread_mutexattr_init(&mutexattr)),
+        (errno = pthread_mutexattr_init(&mutexattr_)),
         {
             terminate(
                 errno,
                 "Unable to allocate mutex attribute");
         });
+    mutexattr = &mutexattr_;
 
     ABORT_IF(
-        (errno = pthread_mutexattr_setpshared(&mutexattr,
+        (errno = pthread_mutexattr_setpshared(mutexattr,
                                               PTHREAD_PROCESS_SHARED)),
         {
             terminate(
@@ -465,7 +469,7 @@ createSharedMutex(struct SharedMutex *self)
         });
 
     ABORT_IF(
-        (errno = pthread_mutexattr_setrobust(&mutexattr,
+        (errno = pthread_mutexattr_setrobust(mutexattr,
                                              PTHREAD_MUTEX_ROBUST)),
         {
             terminate(
@@ -474,7 +478,7 @@ createSharedMutex(struct SharedMutex *self)
         });
 
     ABORT_IF(
-        (errno = pthread_mutex_init(&self->mMutex, &mutexattr)),
+        (errno = pthread_mutex_init(&self->mMutex, mutexattr)),
         {
             terminate(
                 errno,
@@ -482,7 +486,7 @@ createSharedMutex(struct SharedMutex *self)
         });
 
     ABORT_IF(
-        (errno = pthread_mutexattr_destroy(&mutexattr)),
+        (errno = pthread_mutexattr_destroy(mutexattr)),
         {
             terminate(
                 errno,
@@ -497,10 +501,35 @@ struct SharedMutex *
 destroySharedMutex(struct SharedMutex *self)
 {
     if (self)
+    {
+        ensure( ! self->mRefs);
+
         ABORT_IF(
             destroyMutex(&self->mMutex));
+    }
 
     return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+refSharedMutex(struct SharedMutex *self)
+{
+    ensure(__sync_add_and_fetch(&self->mRefs, 1));
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedMutex *
+unrefSharedMutex(struct SharedMutex *self)
+{
+    ensure(self->mRefs);
+
+    return
+        ! __sync_sub_and_fetch(&self->mRefs, 1)
+        ? destroySharedMutex(self)
+        : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -709,6 +738,8 @@ createSharedCond(struct SharedCond *self)
     pthread_condattr_t  condattr_;
     pthread_condattr_t *condattr = 0;
 
+    self->mRefs = 0;
+
     ABORT_IF(
         (errno = pthread_condattr_init(&condattr_)),
         {
@@ -759,10 +790,35 @@ struct SharedCond *
 destroySharedCond(struct SharedCond *self)
 {
     if (self)
+    {
+        ensure( ! self->mRefs);
+
         ABORT_IF(
             destroyCond(&self->mCond));
+    }
 
     return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedCond *
+refSharedCond(struct SharedCond *self)
+{
+    ensure(__sync_add_and_fetch(&self->mRefs, 1));
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+struct SharedCond *
+unrefSharedCond(struct SharedCond *self)
+{
+    ensure(self->mRefs);
+
+    return
+        ! __sync_sub_and_fetch(&self->mRefs, 1)
+        ? destroySharedCond(self)
+        : 0;
 }
 
 /* -------------------------------------------------------------------------- */

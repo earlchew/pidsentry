@@ -107,11 +107,13 @@ struct RWMutexWriter
 
 struct SharedMutex
 {
+    unsigned        mRefs;
     pthread_mutex_t mMutex;
 };
 
 struct SharedCond
 {
+    unsigned       mRefs;
     pthread_cond_t mCond;
 };
 
@@ -183,6 +185,12 @@ CHECKED struct SharedMutex *
 destroySharedMutex(struct SharedMutex *self);
 
 CHECKED struct SharedMutex *
+refSharedMutex(struct SharedMutex *self);
+
+CHECKED struct SharedMutex *
+unrefSharedMutex(struct SharedMutex *self);
+
+CHECKED struct SharedMutex *
 lockSharedMutex(struct SharedMutex *self);
 
 CHECKED struct SharedMutex *
@@ -226,6 +234,12 @@ createCond(pthread_cond_t *self);
 
 CHECKED pthread_cond_t *
 destroyCond(pthread_cond_t *self);
+
+CHECKED struct SharedCond *
+refSharedCond(struct SharedCond *self);
+
+CHECKED struct SharedCond *
+unrefSharedCond(struct SharedCond *self);
 
 void
 waitCond(pthread_cond_t *self, pthread_mutex_t *aMutex);
