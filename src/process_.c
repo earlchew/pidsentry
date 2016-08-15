@@ -55,6 +55,16 @@
 #include <sys/file.h>
 #include <sys/wait.h>
 
+#ifdef __GLIBC__
+#include <gnu/libc-version.h>
+
+static struct
+{
+    unsigned mMajor;
+    unsigned mMinor;
+} processLibcVersion_;
+#endif
+
 #include <valgrind/valgrind.h>
 
 struct ProcessLock
@@ -2326,6 +2336,21 @@ Process_init(struct ProcessModule *self, const char *aArg0)
 
     programName_ = strrchr(processArg0_, '/');
     programName_ = programName_ ? programName_ + 1 : processArg0_;
+
+#ifdef __GLIBC__
+    {
+        const char *version = gnu_get_libc_version();
+
+        unsigned major;
+        unsigned minor;
+
+        ensure(
+            (2 == sscanf(version, "%u.%u", &major, &minor)));
+
+        processLibcVersion_.mMajor = major;
+        processLibcVersion_.mMinor = minor;
+    }
+#endif
 
     /* Ensure that the recorded time base is non-zero to allow it
      * to be distinguished from the case that it was not recorded
