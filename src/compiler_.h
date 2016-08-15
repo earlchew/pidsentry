@@ -62,6 +62,15 @@
 #define UNUSED __attribute__((__unused__))
 
 /* -------------------------------------------------------------------------- */
+/* Deprecated Object
+ *
+ * This decorator is used to mark variables and functions whose use is not
+ * longer advised. */
+
+#define DEPRECATED     __attribute__((__deprecated__))
+#define NOTIMPLEMENTED __attribute__((__deprecated__))
+
+/* -------------------------------------------------------------------------- */
 /* Abort
  *
  * Prefer to have the application call abortProcess() directly rather than
