@@ -28,14 +28,36 @@
 */
 
 #include "thread_.h"
+#include "process_.h"
 
 #include <unistd.h>
+
+#include <sys/mman.h>
 
 #include <valgrind/valgrind.h>
 
 #include "gtest/gtest.h"
 
-TEST(ThreadTest, MutexDestroy)
+class ThreadTest : public ::testing::Test
+{
+    void SetUp()
+    {
+        ASSERT_EQ(0, Process_init(&mModule_, __FILE__));
+        mModule= &mModule_;
+    }
+
+    void TearDown()
+    {
+        mModule = Process_exit(mModule);
+    }
+
+private:
+
+    struct ProcessModule  mModule_;
+    struct ProcessModule *mModule;
+};
+
+TEST_F(ThreadTest, MutexDestroy)
 {
     pthread_mutex_t  mutex_ = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_t *mutex  = &mutex_;
@@ -43,7 +65,7 @@ TEST(ThreadTest, MutexDestroy)
     mutex = destroyMutex(mutex);
 }
 
-TEST(ThreadTest, CondDestroy)
+TEST_F(ThreadTest, CondDestroy)
 {
     pthread_cond_t  cond_ = PTHREAD_COND_INITIALIZER;
     pthread_cond_t *cond  = &cond_;
@@ -51,7 +73,7 @@ TEST(ThreadTest, CondDestroy)
     cond = destroyCond(cond);
 }
 
-TEST(ThreadTest, RWMutexDestroy)
+TEST_F(ThreadTest, RWMutexDestroy)
 {
     pthread_rwlock_t  rwlock_ = PTHREAD_RWLOCK_INITIALIZER;
     pthread_rwlock_t *rwlock  = &rwlock_;
@@ -67,7 +89,7 @@ sigTermAction_(int)
     ++sigTermCount_;
 }
 
-TEST(ThreadTest, ThreadSigMutex)
+TEST_F(ThreadTest, ThreadSigMutex)
 {
     struct ThreadSigMutex  sigMutex_;
     struct ThreadSigMutex *sigMutex = 0;
@@ -113,6 +135,92 @@ TEST(ThreadTest, ThreadSigMutex)
     EXPECT_FALSE(sigaction(SIGTERM, &prevAction, 0));
 
     sigMutex = destroyThreadSigMutex(sigMutex);
+}
+
+struct SharedMutexTestState
+{
+    struct SharedMutex  mMutex_;
+    struct SharedMutex *mMutex;
+    bool                mRepaired;
+};
+
+TEST_F(ThreadTest, ThreadSharedMutex)
+{
+    void *state_ = mmap(0,
+                        sizeof(struct SharedMutexTestState),
+                        PROT_READ | PROT_WRITE,
+                        MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+    EXPECT_FALSE(MAP_FAILED == state_);
+
+    auto *state = reinterpret_cast<struct SharedMutexTestState *>(state_);
+
+    {
+        state->mMutex = createSharedMutex(&state->mMutex_);
+        EXPECT_TRUE(state->mMutex);
+
+        state->mMutex = destroySharedMutex(state->mMutex);
+        EXPECT_FALSE(state->mMutex);
+    }
+
+    {
+        state->mMutex = createSharedMutex(&state->mMutex_);
+        EXPECT_TRUE(state->mMutex);
+        EXPECT_EQ(&state->mMutex_, state->mMutex);
+
+        pid_t childpid = fork();
+
+        EXPECT_NE(-1, childpid);
+
+        if ( ! childpid)
+        {
+            auto mutex =
+                lockSharedMutex(
+                    state->mMutex,
+                    MutexRepairMethod(
+                        LAMBDA(
+                            int, (struct SharedMutexTestState *),
+                            {
+                                return -1;
+                            }),
+                        state));
+
+            if (mutex != state->mMutex)
+            {
+                fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
+                execl("/bin/false", "false", (char *) 0);
+                _exit(EXIT_FAILURE);
+            }
+
+            execl("/bin/true", "true", (char *) 0);
+            _exit(EXIT_FAILURE);
+        }
+
+        int status;
+        EXPECT_EQ(childpid, waitpid(childpid, &status, 0));
+        EXPECT_TRUE(WIFEXITED(status));
+        EXPECT_EQ(EXIT_SUCCESS, WEXITSTATUS(status));
+
+        {
+            state->mRepaired = false;
+
+            auto mutex =
+                lockSharedMutex(
+                    state->mMutex,
+                    MutexRepairMethod(
+                        LAMBDA(
+                            int, (struct SharedMutexTestState *self),
+                            {
+                                self->mRepaired = true;
+                                return 0;
+                            }),
+                        state));
+
+            EXPECT_EQ(mutex, state->mMutex);
+            EXPECT_TRUE(state->mRepaired);
+        }
+    }
+
+    EXPECT_EQ(0, munmap(state, sizeof(*state)));
 }
 
 #include "../googletest/src/gtest_main.cc"
