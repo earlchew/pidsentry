@@ -150,7 +150,8 @@ createCommand(struct Command *self,
          * client. */
 
         ERROR_IF(
-            sendPidSignature(self->mKeeperTether->mFile, pidSignature, 0));
+            sendPidSignature(
+                self->mKeeperTether->mSocket->mFile, pidSignature, 0));
 
         ERROR_IF(
             (err = waitUnixSocketReadReady(self->mKeeperTether, 0),
@@ -158,7 +159,8 @@ createCommand(struct Command *self,
 
         char buf[1];
         ERROR_IF(
-            (err = readFile(self->mKeeperTether->mFile, buf, sizeof(buf), 0),
+            (err = readSocket(
+                self->mKeeperTether->mSocket, buf, sizeof(buf), 0),
              -1 == err || (errno = 0, 1 != err)));
 
         self->mChildPid = pidSignature->mPid;
@@ -376,8 +378,8 @@ reapCommand(struct Command  *self,
         {
             int rdReady;
             ERROR_IF(
-                (rdReady = waitFileReadReady(
-                    self->mKeeperTether->mFile, &ZeroDuration),
+                (rdReady = waitSocketReadReady(
+                    self->mKeeperTether->mSocket, &ZeroDuration),
                  -1 == rdReady));
 
             if (rdReady)

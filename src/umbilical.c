@@ -401,8 +401,10 @@ createUmbilicalMonitor(
 
             [POLL_FD_MONITOR_PIDSERVER] =
             {
-                .fd     = aPidServer ? aPidServer->mSocket->mFile->mFd : -1,
-                .events = aPidServer ? POLL_INPUTEVENTS : 0,
+                .fd     = aPidServer
+                          ? aPidServer->mUnixSocket->mSocket->mFile->mFd : -1,
+                .events = aPidServer
+                          ? POLL_INPUTEVENTS : 0,
             },
 
             [POLL_FD_MONITOR_PIDCLIENT] =
@@ -605,11 +607,11 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
 
     ERROR_IF(
         STDIN_FILENO !=
-        dup2(self->mSocket->mChildSocket->mFile->mFd, STDIN_FILENO));
+        dup2(self->mSocket->mChildSocket->mSocket->mFile->mFd, STDIN_FILENO));
 
     ERROR_IF(
         STDOUT_FILENO != dup2(
-            self->mSocket->mChildSocket->mFile->mFd, STDOUT_FILENO));
+            self->mSocket->mChildSocket->mSocket->mFile->mFd, STDOUT_FILENO));
 
     self->mSocket = closeSocketPair(self->mSocket);
 
@@ -622,8 +624,10 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
             STDOUT_FILENO,
             STDERR_FILENO,
             ownProcessAppLockFile(appLock)->mFd,
-            self->mPidServer ? self->mPidServer->mSocket->mFile->mFd : -1,
-            self->mPidServer ? self->mPidServer->mEventQueue->mFile->mFd : -1,
+            self->mPidServer
+            ? self->mPidServer->mUnixSocket->mSocket->mFile->mFd : -1,
+            self->mPidServer
+            ? self->mPidServer->mEventQueue->mFile->mFd : -1,
         };
 
         ERROR_IF(

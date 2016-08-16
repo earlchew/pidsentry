@@ -36,7 +36,6 @@
 #include <stdbool.h>
 
 #include <sys/queue.h>
-#include <sys/socket.h>
 
 /* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
@@ -152,51 +151,6 @@ waitFileWriteReady(const struct File     *self,
 CHECKED int
 waitFileReadReady(const struct File     *self,
                   const struct Duration *aTimeout);
-
-/* -------------------------------------------------------------------------- */
-CHECKED int
-bindFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
-
-CHECKED int
-connectFileSocket(struct File *self, struct sockaddr *aAddr, size_t aAddrLen);
-
-CHECKED int
-acceptFileSocket(struct File *self, unsigned aFlags);
-
-CHECKED int
-listenFileSocket(struct File *self, unsigned aQueueLen);
-
-CHECKED ssize_t
-sendFileSocket(struct File *self, const char *aBuf, size_t aLen);
-
-CHECKED ssize_t
-recvFileSocket(struct File *self, char *aBuf, size_t aLen);
-
-CHECKED ssize_t
-sendFileSocketMsg(struct File *self, const struct msghdr *aMsg, int aFlags);
-
-CHECKED ssize_t
-recvFileSocketMsg(struct File *self, struct msghdr *aMsg, int aFlags);
-
-CHECKED int
-shutdownFileSocketReader(struct File *self);
-
-CHECKED int
-shutdownFileSocketWriter(struct File *self);
-
-CHECKED int
-ownFileSocketName(const struct File *self,
-                  struct sockaddr *aAddr, socklen_t *aAddrLen);
-
-CHECKED int
-ownFileSocketPeerName(const struct File *self,
-                      struct sockaddr *aAddr, socklen_t *aAddrLen);
-
-CHECKED int
-ownFileSocketError(const struct File *self, int *aError);
-
-CHECKED int
-ownFileSocketPeerCred(const struct File *self, struct ucred *aCred);
 
 /* -------------------------------------------------------------------------- */
 CHECKED int

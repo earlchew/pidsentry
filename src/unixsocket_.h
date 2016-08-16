@@ -30,7 +30,7 @@
 #define UNIXSOCKET_H
 
 #include "compiler_.h"
-#include "file_.h"
+#include "socket_.h"
 
 BEGIN_C_SCOPE;
 
@@ -41,8 +41,8 @@ struct ucred;
 
 struct UnixSocket
 {
-    struct File  mFile_;
-    struct File *mFile;
+    struct Socket  mSocket_;
+    struct Socket *mSocket;
 };
 
 /* -------------------------------------------------------------------------- */

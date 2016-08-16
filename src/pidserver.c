@@ -75,7 +75,7 @@ createPidServerClientActivity_(
         createFileEventQueueActivity(
             &self->mEvent_,
             aQueue,
-            aClient->mSocket->mFile));
+            aClient->mUnixSocket->mSocket->mFile));
     self->mEvent = &self->mEvent_;
 
     ERROR_IF(
@@ -123,7 +123,7 @@ closePidServerClient_(struct PidServerClient_ *self)
 {
     if (self)
     {
-        self->mSocket = closeUnixSocket(self->mSocket);
+        self->mUnixSocket = closeUnixSocket(self->mUnixSocket);
 
         free(self);
     }
@@ -143,14 +143,14 @@ createPidServerClient_(struct UnixSocket *aSocket)
         (self = malloc(sizeof(*self))));
 
     ERROR_IF(
-        acceptUnixSocket(&self->mSocket_, aSocket),
+        acceptUnixSocket(&self->mUnixSocket_, aSocket),
         {
             warn(errno, "Unable to accept connection");
         });
-    self->mSocket = &self->mSocket_;
+    self->mUnixSocket = &self->mUnixSocket_;
 
     ERROR_IF(
-        ownUnixSocketPeerCred(self->mSocket, &self->mCred));
+        ownUnixSocketPeerCred(self->mUnixSocket, &self->mCred));
 
     rc = 0;
 
@@ -171,7 +171,7 @@ createPidServer(struct PidServer *self, struct Pid aPid)
 {
     int rc = -1;
 
-    self->mSocket       = 0;
+    self->mUnixSocket   = 0;
     self->mEventQueue   = 0;
     self->mPidSignature = 0;
 
@@ -185,11 +185,11 @@ createPidServer(struct PidServer *self, struct Pid aPid)
           FMTs_Method(printPidSignature, self->mPidSignature));
 
     ERROR_IF(
-        createUnixSocket(&self->mSocket_, 0, 0, 0));
-    self->mSocket = &self->mSocket_;
+        createUnixSocket(&self->mUnixSocket_, 0, 0, 0));
+    self->mUnixSocket = &self->mUnixSocket_;
 
     ERROR_IF(
-        ownUnixSocketName(self->mSocket, &self->mSocketAddr));
+        ownUnixSocketName(self->mUnixSocket, &self->mSocketAddr));
 
     ERROR_IF(
         self->mSocketAddr.sun_path[0]);
@@ -283,7 +283,7 @@ closePidServer(struct PidServer *self)
         }
 
         self->mEventQueue   = closeFileEventQueue(self->mEventQueue);
-        self->mSocket       = closeUnixSocket(self->mSocket);
+        self->mUnixSocket   = closeUnixSocket(self->mUnixSocket);
         self->mPidSignature = destroyPidSignature(self->mPidSignature);
    }
 
@@ -313,7 +313,7 @@ acceptPidServerConnection(struct PidServer *self)
     struct Deadline *deadline = 0;
 
     ERROR_UNLESS(
-        (client = createPidServerClient_(self->mSocket)));
+        (client = createPidServerClient_(self->mUnixSocket)));
 
     ERROR_UNLESS(
         geteuid() == client->mCred.uid || ! client->mCred.uid,
@@ -330,7 +330,8 @@ acceptPidServerConnection(struct PidServer *self)
     deadline = &deadline_;
 
     ERROR_UNLESS(
-        signature = recvPidSignature(client->mSocket->mFile, deadline));
+        signature = recvPidSignature(
+            client->mUnixSocket->mSocket->mFile, deadline));
 
     ERROR_IF(
         rankPidSignature(self->mPidSignature, signature),
@@ -363,8 +364,8 @@ acceptPidServerConnection(struct PidServer *self)
 
     int wrBytes;
     ERROR_IF(
-        (wrBytes = writeFile(
-            activity->mClient->mSocket->mFile, buf, sizeof(buf), 0),
+        (wrBytes = writeSocket(
+            activity->mClient->mUnixSocket->mSocket, buf, sizeof(buf), 0),
          -1 == wrBytes || (errno = EIO, sizeof(buf) != wrBytes)));
 
     ERROR_IF(

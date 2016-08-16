@@ -49,6 +49,9 @@ createSocket(struct Socket *self, int aFd);
 CHECKED struct Socket *
 closeSocket(struct Socket *self);
 
+bool
+ownSocketValid(const struct Socket *self);
+
 /* -------------------------------------------------------------------------- */
 CHECKED ssize_t
 writeSocket(struct Socket *self,

@@ -86,13 +86,13 @@ createUnixSocket(
 {
     int rc = -1;
 
-    self->mFile = 0;
+    self->mSocket = 0;
 
     ERROR_IF(
-        createFile(&self->mFile_,
-                   socket(AF_UNIX,
-                          SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)));
-    self->mFile = &self->mFile_;
+        createSocket(&self->mSocket_,
+                     socket(AF_UNIX,
+                            SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)));
+    self->mSocket = &self->mSocket_;
 
     /* Do not use random() from stdlib to avoid perturbing the behaviour of
      * programs that themselves use the PRNG from the library. */
@@ -136,8 +136,8 @@ createUnixSocket(
 
         int err;
         ERROR_IF(
-            (err = bindFileSocket(
-                self->mFile,
+            (err = bindSocket(
+                self->mSocket,
                 (struct sockaddr *) &sockAddr, sizeof(sockAddr)),
              err && (EADDRINUSE != errno || aName || aNameLen)));
 
@@ -145,7 +145,7 @@ createUnixSocket(
             continue;
 
         ERROR_IF(
-            listenFileSocket(self->mFile, aQueueLen));
+            listenSocket(self->mSocket, aQueueLen));
 
         break;
     }
@@ -157,7 +157,7 @@ Finally:
     FINALLY(
     {
         if (rc)
-            self->mFile = closeFile(self->mFile);
+            self->mSocket = closeSocket(self->mSocket);
     });
 
     return rc;
@@ -170,21 +170,21 @@ acceptUnixSocket(
 {
     int rc = -1;
 
-    self->mFile = 0;
+    self->mSocket = 0;
 
     while (1)
     {
         int err;
         ERROR_IF(
-            (err = createFile(
-                &self->mFile_,
-                acceptFileSocket(aServer->mFile, O_NONBLOCK | O_CLOEXEC)),
+            (err = createSocket(
+                &self->mSocket_,
+                acceptSocket(aServer->mSocket, O_NONBLOCK | O_CLOEXEC)),
              err && EINTR != errno));
 
         if ( ! err)
             break;
     }
-    self->mFile = &self->mFile_;
+    self->mSocket = &self->mSocket_;
 
     rc = 0;
 
@@ -193,7 +193,7 @@ Finally:
     FINALLY(
     {
         if (rc)
-            self->mFile = closeFile(self->mFile);
+            self->mSocket = closeSocket(self->mSocket);
     });
 
     return rc;
@@ -206,7 +206,7 @@ connectUnixSocket(struct UnixSocket *self, const char *aName, size_t aNameLen)
     int rc = -1;
     int err = 0;
 
-    self->mFile = 0;
+    self->mSocket = 0;
 
     struct sockaddr_un sockAddr;
 
@@ -226,16 +226,16 @@ connectUnixSocket(struct UnixSocket *self, const char *aName, size_t aNameLen)
         sockAddr.sun_path + aNameLen, 0, sizeof(sockAddr.sun_path) - aNameLen);
 
     ERROR_IF(
-        createFile(
-            &self->mFile_,
+        createSocket(
+            &self->mSocket_,
             socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)));
-    self->mFile = &self->mFile_;
+    self->mSocket = &self->mSocket_;
 
     while (1)
     {
         ERROR_IF(
-            (err = connectFileSocket(
-                self->mFile,
+            (err = connectSocket(
+                self->mSocket,
                 (struct sockaddr *) &sockAddr, sizeof(sockAddr)),
              err && EINTR != errno && EINPROGRESS != errno));
 
@@ -257,7 +257,7 @@ Finally:
     FINALLY(
     {
         if (rc)
-            self->mFile = closeFile(self->mFile);
+            self->mSocket = closeSocket(self->mSocket);
     });
 
     return rc ? rc : err ? err : 0;
@@ -269,7 +269,7 @@ closeUnixSocket(struct UnixSocket *self)
 {
     if (self)
     {
-        self->mFile = closeFile(self->mFile);
+        self->mSocket = closeSocket(self->mSocket);
     }
 
     return 0;
@@ -285,8 +285,8 @@ createUnixSocketPair(struct UnixSocket *aParent,
 
     int fd[2] = { -1, -1 };
 
-    aParent->mFile = 0;
-    aChild->mFile  = 0;
+    aParent->mSocket = 0;
+    aChild->mSocket  = 0;
 
     ERROR_IF(
         aFlags & ~ (O_CLOEXEC | O_NONBLOCK),
@@ -313,14 +313,14 @@ createUnixSocketPair(struct UnixSocket *aParent,
         -1 == fd[0] || -1 == fd[1]);
 
     ERROR_IF(
-        createFile(&aParent->mFile_, fd[0]));
-    aParent->mFile = &aParent->mFile_;
+        createSocket(&aParent->mSocket_, fd[0]));
+    aParent->mSocket = &aParent->mSocket_;
 
     fd[0] = -1;
 
     ERROR_IF(
-        createFile(&aChild->mFile_, fd[1]));
-    aChild->mFile = &aChild->mFile_;
+        createSocket(&aChild->mSocket_, fd[1]));
+    aChild->mSocket = &aChild->mSocket_;
 
     fd[1] = -1;
 
@@ -335,8 +335,8 @@ Finally:
 
         if (rc)
         {
-            aParent->mFile = closeFile(aParent->mFile);
-            aChild->mFile  = closeFile(aChild->mFile);
+            aParent->mSocket = closeSocket(aParent->mSocket);
+            aChild->mSocket  = closeSocket(aChild->mSocket);
         }
     });
 
@@ -382,7 +382,7 @@ sendUnixSocketFd(struct UnixSocket *self, int aFd)
     bufPtr[0] = aFd;
 
     ERROR_IF(
-        sizeof(buf) != sendFileSocketMsg(self->mFile, &msg, 0));
+        sizeof(buf) != sendSocketMsg(self->mSocket, &msg, 0));
 
     rc = 0;
 
@@ -515,7 +515,7 @@ recvUnixSocketFd(struct UnixSocket *self, unsigned aFlags)
 
     ssize_t rdlen;
     ERROR_IF(
-        (rdlen = recvFileSocketMsg(self->mFile, &msg, flags),
+        (rdlen = recvSocketMsg(self->mSocket, &msg, flags),
          -1 == rdlen || (errno = EIO, sizeof(buf) != rdlen) || buf[0]));
 
     ERROR_UNLESS(
@@ -548,21 +548,21 @@ Finally:
 bool
 ownUnixSocketValid(const struct UnixSocket *self)
 {
-    return ownFileValid(self->mFile);
+    return ownSocketValid(self->mSocket);
 }
 
 /* -------------------------------------------------------------------------- */
 int
 shutdownUnixSocketReader(struct UnixSocket *self)
 {
-    return shutdownFileSocketReader(self->mFile);
+    return shutdownSocketReader(self->mSocket);
 }
 
 /* -------------------------------------------------------------------------- */
 int
 shutdownUnixSocketWriter(struct UnixSocket *self)
 {
-    return shutdownFileSocketWriter(self->mFile);
+    return shutdownSocketWriter(self->mSocket);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -570,7 +570,7 @@ int
 waitUnixSocketWriteReady(const struct UnixSocket *self,
                          const struct Duration   *aTimeout)
 {
-    return waitFileWriteReady(self->mFile, aTimeout);
+    return waitSocketWriteReady(self->mSocket, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -578,21 +578,21 @@ int
 waitUnixSocketReadReady(const struct UnixSocket *self,
                         const struct Duration   *aTimeout)
 {
-    return waitFileReadReady(self->mFile, aTimeout);
+    return waitSocketReadReady(self->mSocket, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
 ssize_t
 sendUnixSocket(struct UnixSocket *self, const char *aBuf, size_t aLen)
 {
-    return sendFileSocket(self->mFile, aBuf, aLen);
+    return sendSocket(self->mSocket, aBuf, aLen);
 }
 
 /* -------------------------------------------------------------------------- */
 ssize_t
 recvUnixSocket(struct UnixSocket *self, char *aBuf, size_t aLen)
 {
-    return recvFileSocket(self->mFile, aBuf, aLen);
+    return recvSocket(self->mSocket, aBuf, aLen);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -600,7 +600,7 @@ ssize_t
 writeUnixSocket(struct UnixSocket *self,
                 const char *aBuf, size_t aLen, const struct Duration *aTimeout)
 {
-    return writeFile(self->mFile, aBuf, aLen, aTimeout);
+    return writeSocket(self->mSocket, aBuf, aLen, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -608,7 +608,7 @@ ssize_t
 readUnixSocket(struct UnixSocket *self,
                char *aBuf, size_t aLen, const struct Duration *aTimeout)
 {
-    return readFile(self->mFile, aBuf, aLen, aTimeout);
+    return readSocket(self->mSocket, aBuf, aLen, aTimeout);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -618,7 +618,7 @@ ownUnixSocketName(const struct UnixSocket *self,
 {
     socklen_t addrLen = sizeof(*aAddr);
 
-    return ownFileSocketName(self->mFile, (struct sockaddr *) aAddr, &addrLen);
+    return ownSocketName(self->mSocket, (struct sockaddr *) aAddr, &addrLen);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -628,22 +628,22 @@ ownUnixSocketPeerName(const struct UnixSocket *self,
 {
     socklen_t addrLen = sizeof(*aAddr);
 
-    return ownFileSocketPeerName(
-        self->mFile, (struct sockaddr *) aAddr, &addrLen);
+    return ownSocketPeerName(
+        self->mSocket, (struct sockaddr *) aAddr, &addrLen);
 }
 
 /* -------------------------------------------------------------------------- */
 int
 ownUnixSocketError(const struct UnixSocket *self, int *aError)
 {
-    return ownFileSocketError(self->mFile, aError);
+    return ownSocketError(self->mSocket, aError);
 }
 
 /* -------------------------------------------------------------------------- */
 int
 ownUnixSocketPeerCred(const struct UnixSocket *self, struct ucred *aCred)
 {
-    return ownFileSocketPeerCred(self->mFile, aCred);
+    return ownSocketPeerCred(self->mSocket, aCred);
 }
 
 /* -------------------------------------------------------------------------- */

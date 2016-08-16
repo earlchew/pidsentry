@@ -93,7 +93,7 @@ TEST_F(FileEventQueueTest, ArmReadyPollClose)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     eventCount_ = 0;
@@ -149,7 +149,7 @@ TEST_F(FileEventQueueTest, ReadyArmPollClose)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     eventCount_ = 0;
@@ -182,7 +182,7 @@ TEST_F(FileEventQueueTest, ArmPollReadyClose)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     eventCount_ = 0;
@@ -215,7 +215,7 @@ TEST_F(FileEventQueueTest, ArmClose)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     EXPECT_EQ(0, armTestFileQueueActivity(mEventActivity));
@@ -236,7 +236,7 @@ TEST_F(FileEventQueueTest, ArmReadyClose)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     EXPECT_EQ(0, armTestFileQueueActivity(mEventActivity));
@@ -261,7 +261,7 @@ TEST_F(FileEventQueueTest, ReadyArmClose)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     EXPECT_EQ(0, ringBellSocketPairChild(mTestSocket));
@@ -290,7 +290,7 @@ TEST_F(FileEventQueueTest, Close)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     mEventActivity = closeFileEventQueueActivity(mEventActivity);
@@ -308,7 +308,7 @@ TEST_F(FileEventQueueTest, ReadyClose)
     EXPECT_EQ(0, createFileEventQueueActivity(
                   &mEventActivity_,
                   mEventQueue,
-                  mTestSocket->mSocketPair->mParentSocket->mFile));
+                  mTestSocket->mSocketPair->mParentSocket->mSocket->mFile));
     mEventActivity = &mEventActivity_;
 
     EXPECT_EQ(0, ringBellSocketPairChild(mTestSocket));

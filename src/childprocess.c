@@ -621,7 +621,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
         ensure(
             ownFileCloseOnExec(
-                self->mSyncSocket->mSocketPair->mChildSocket->mFile));
+                self->mSyncSocket->mSocketPair->mChildSocket->mSocket->mFile));
 
         debug(0, "child process synchronised");
 

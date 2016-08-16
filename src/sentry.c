@@ -472,11 +472,12 @@ runSentry(struct Sentry   *self,
      * running, release the pid file if one was allocated. */
 
     ERROR_IF(
-        monitorChildProcess(self->mChildProcess,
-                            self->mUmbilicalProcess,
-                            self->mUmbilicalSocket->mParentSocket->mFile,
-                            aParentPid,
-                            aParentPipe));
+        monitorChildProcess(
+            self->mChildProcess,
+            self->mUmbilicalProcess,
+            self->mUmbilicalSocket->mParentSocket->mSocket->mFile,
+            aParentPid,
+            aParentPipe));
 
     ERROR_IF(
         unwatchJobControlContinue(self->mJobControl));

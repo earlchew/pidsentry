@@ -68,6 +68,13 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+bool
+ownSocketValid(const struct Socket *self)
+{
+    return ownFileValid(self->mFile);
+}
+
+/* -------------------------------------------------------------------------- */
 ssize_t
 writeSocket(struct Socket *self,
             const char *aBuf, size_t aLen, const struct Duration *aTimeout)

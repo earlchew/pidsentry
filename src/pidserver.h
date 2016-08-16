@@ -36,6 +36,7 @@
 
 #include <sys/un.h>
 #include <sys/queue.h>
+#include <sys/socket.h>
 
 /* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
@@ -76,8 +77,8 @@ struct PidServerClient_
 {
     struct ucred mCred;
 
-    struct UnixSocket  mSocket_;
-    struct UnixSocket *mSocket;
+    struct UnixSocket  mUnixSocket_;
+    struct UnixSocket *mUnixSocket;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -102,8 +103,8 @@ typedef TAILQ_HEAD(PidServerClientActivityList_,
 /* -------------------------------------------------------------------------- */
 struct PidServer
 {
-    struct UnixSocket  mSocket_;
-    struct UnixSocket *mSocket;
+    struct UnixSocket  mUnixSocket_;
+    struct UnixSocket *mUnixSocket;
     struct sockaddr_un mSocketAddr;
 
     struct FileEventQueue  mEventQueue_;
