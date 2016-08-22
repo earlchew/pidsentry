@@ -169,6 +169,8 @@ removeFdSetRange(struct FdSet *self, int aFirstFd, int aLastFd)
 
     RB_REMOVE(FdSetTree_, &self->mRoot, elem);
 
+    free(elem);
+
     rc = 0;
 
 Finally:
