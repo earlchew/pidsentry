@@ -16,7 +16,33 @@ trap 'PIDSENTRY_TEST_FAILED= ; trap - 15' 15
 pidsentryexec()
 {
     unset PIDSENTRY_TEST_ERROR
-    set -- libtool --mode=execute $VALGRIND ./pidsentry "$@"
+    set -- ./pidsentry "$@"
+
+    # If RPATH is configured, and the program interpreter is specified
+    # using a relative path, use it to find the appropriate program
+    # interpreter.
+
+    if [ -n "${RPATH++}" ] ; then
+        set -- "$(
+            readelf -l ./pidsentry |
+            grep -F 'Requesting program interpreter')" "$@"
+        set -- "${1%]*}"  "${@:2}"
+        set -- "${1#*: }" "${@:2}"
+        if [ -z "${1##/*}" ] ; then
+            shift
+        else
+            set -- "$(
+                IFS=:
+                for LDSO in $RPATH ; do
+                    LDSO="$LDSO/$1"
+                    ! [ -x "$LDSO" ] || { echo "$LDSO" ; exit 0 ; }
+                done
+            )" "${@:2}"
+            [ -n "$1" ] || exit 1
+            set -- "$1" --library-path "$RPATH" --inhibit-rpath "$2" "${@:2}"
+        fi
+    fi
+    set -- libtool --mode=execute $VALGRIND "$@"
     set -- PATH="$PATH" "$@"
     set -- ${USER+      USER="$USER"}    "$@"
     set -- ${LOGNAME+LOGNAME="$LOGNAME"} "$@"
