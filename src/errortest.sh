@@ -2,6 +2,10 @@
 
 set -eu
 
+[ -z "${0##*/*}" ] || exec "$PWD/$0" "$@"
+
+. "${0%/*}/test_.sh"
+
 TIMEOUT=5
 
 random()
@@ -11,7 +15,7 @@ random()
 
 pidsentry()
 {
-    libtool --mode=execute $VALGRIND $VALGRINDOPT ./pidsentry "$@"
+    ( pidsentryexec "$@" )
 }
 
 pidsentrytest()
