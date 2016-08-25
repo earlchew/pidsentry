@@ -178,7 +178,8 @@ testLostWatchdogs()
     ps -awwo user=,ppid=,pid=,pgid=,command= |
     {
         while read REPLY ; do
-            [ -n "${REPLY##*pidsentry*}" ] || {
+            [ -n "$REPLY" ] || continue
+            [ -n "${REPLY##*pidsentry}" -a -n "${REPLY##*pidsentry *}" ] || {
                 /bin/echo "$REPLY" >&2
                 exit 1
             }
