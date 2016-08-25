@@ -61,12 +61,12 @@ timedLock_(void *aLock,
     {
         ABORT_IF(
             (errno = aTryLock(aLock),
-             errno && EBUSY != errno),
+             errno && EBUSY != errno && EOWNERDEAD != errno),
             {
-                terminate(errno, "Unable to acquire rwlock");
+                terminate(errno, "Unable to acquire lock");
             });
 
-        if ( ! errno)
+        if (EBUSY != errno)
             break;
 
         /* There is no way to configure the mutex to use a monotonic
@@ -88,7 +88,7 @@ timedLock_(void *aLock,
              errno && ETIMEDOUT != errno && EOWNERDEAD != errno),
             {
                 terminate(errno,
-                          "Unable to acquire rwlock after %us", timeout_s);
+                          "Unable to acquire lock after %us", timeout_s);
             });
 
         if (ETIMEDOUT == errno)
