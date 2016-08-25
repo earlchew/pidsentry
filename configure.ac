@@ -53,6 +53,16 @@ AC_TYPE_UINT16_T
 AC_TYPE_UINT32_T
 AC_TYPE_UINT8_T
 
+# Check for custom test environment
+AC_ARG_WITH([test-environment],
+    AS_HELP_STRING([--with-test-environment],
+    [Provide custom test environment]),
+    [],
+    [with_test_environment=])
+AS_IF(
+    [test x"$with_test_environment" != x],
+    [AC_SUBST([TESTS_ENVIRONMENT], ["$with_test_environment"])])
+
 # Checks for library functions.
 
 AC_OUTPUT(Makefile src/Makefile)
