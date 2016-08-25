@@ -91,16 +91,7 @@ ringBellSocketPair_(struct UnixSocket *aSocket)
 
     err = -1;
     ERROR_IF(
-        (err = waitUnixSocketWriteReady(aSocket, 0),
-         -1 == err || ! err),
-        {
-            if ( ! err)
-                errno = EWOULDBLOCK;
-        });
-
-    err = -1;
-    ERROR_IF(
-        (err = sendUnixSocket(aSocket, buf, 1),
+        (err = writeUnixSocket(aSocket, buf, 1, 0),
          1 != err),
         {
             if ( ! err)
@@ -139,20 +130,11 @@ waitBellSocketPair_(struct UnixSocket     *aSocket,
 
     int err;
 
-    err = -1;
-    ERROR_IF(
-        (err = waitUnixSocketReadReady(aSocket, aTimeout),
-         -1 == err || ! err),
-        {
-            if ( ! err)
-                errno = EWOULDBLOCK;
-        });
-
     char buf[1];
 
     err = -1;
     ERROR_IF(
-        (err = recvUnixSocket(aSocket, buf, 1),
+        (err = readUnixSocket(aSocket, buf, 1, aTimeout),
          1 != err),
         {
             if ( ! err)
