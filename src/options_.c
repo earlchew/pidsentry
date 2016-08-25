@@ -80,7 +80,7 @@ static const char programUsage_[] =
 "\n"
 "server options:\n"
 "  --announce | -a\n"
-"      Announce the name of program or the shell command running in the"
+"      Announce the name of program or the shell command running in the\n"
 "      child process as it is started and when it has stopped.\n"
 "  --fd N | -f N\n"
 "      Tether child using file descriptor N in the child process, and\n"
