@@ -41,6 +41,7 @@
 #include "thread_.h"
 #include "system_.h"
 #include "lambda_.h"
+#include "fdset_.h"
 #include "eintr_.h"
 
 #include <stdio.h>
@@ -1505,6 +1506,143 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+struct ForkProcessChildResult_
+{
+    struct
+    {
+        int mReturnCode;
+        int mErrCode;
+
+    } mResult;
+
+    struct Pipe  mResultPipe_;
+    struct Pipe *mResultPipe;
+
+    struct BellSocketPair  mResultSocket_;
+    struct BellSocketPair *mResultSocket;
+};
+
+static CHECKED struct ForkProcessChildResult_ *
+closeForkProcessChildResult_(
+    struct ForkProcessChildResult_ *self)
+{
+    if (self)
+    {
+        self->mResultSocket = closeBellSocketPair(self->mResultSocket);
+        self->mResultPipe   = closePipe(self->mResultPipe);
+    }
+
+    return 0;
+}
+
+static void
+closeForkProcessChildResultChild_(
+    struct ForkProcessChildResult_ *self)
+{
+    closePipeWriter(self->mResultPipe);
+    closeBellSocketPairChild(self->mResultSocket);
+}
+
+static void
+closeForkProcessChildResultParent_(
+    struct ForkProcessChildResult_ *self)
+{
+    closePipeReader(self->mResultPipe);
+    closeBellSocketPairParent(self->mResultSocket);
+}
+
+static CHECKED int
+createForkProcessChildResult_(
+    struct ForkProcessChildResult_ *self)
+{
+    int rc = -1;
+
+    self->mResult.mReturnCode = -1;
+    self->mResult.mErrCode    = ENOSYS;
+
+    self->mResultPipe   = 0;
+    self->mResultSocket = 0;
+
+    ERROR_IF(
+        createPipe(&self->mResultPipe_, O_CLOEXEC));
+    self->mResultPipe = &self->mResultPipe_;
+
+    ERROR_IF(
+        createBellSocketPair(&self->mResultSocket_, O_CLOEXEC));
+    self->mResultSocket = &self->mResultSocket_;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            self = closeForkProcessChildResult_(self);
+    });
+
+    return rc;
+}
+
+static void
+sendForkProcessChildResult_(
+    struct ForkProcessChildResult_ *self)
+{
+    int rc = -1;
+
+    ERROR_IF(
+        sizeof(self->mResult) != writeFile(
+            self->mResultPipe->mWrFile,
+            (char *) &self->mResult, sizeof(self->mResult), 0));
+
+    ERROR_IF(
+        ringBellSocketPairChild(self->mResultSocket));
+
+    ERROR_IF(
+        waitBellSocketPairChild(self->mResultSocket, 0));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc || self->mResult.mReturnCode)
+            exitProcess(EXIT_FAILURE);
+    });
+}
+
+static CHECKED int
+recvForkProcessChildResult_(
+    struct ForkProcessChildResult_ *self)
+{
+    int rc = -1;
+
+    ERROR_IF(
+        waitBellSocketPairParent(self->mResultSocket, 0));
+
+    ERROR_IF(
+        sizeof(self->mResult) != readFile(
+            self->mResultPipe->mRdFile,
+            (char *) &self->mResult, sizeof(self->mResult), 0));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
+sendForkProcessChildResultAcknowledgement_(
+    struct ForkProcessChildResult_ *self)
+{
+    return ringBellSocketPairParent(self->mResultSocket);
+}
+
+/* -------------------------------------------------------------------------- */
 static void
 callForkMethod_(struct ForkProcessMethod aMethod)
 {
@@ -1523,6 +1661,203 @@ callForkMethod_(struct ForkProcessMethod aMethod)
 
         exitProcess(status);
     }
+}
+
+struct Pid
+forkProcessChildX(enum ForkProcessOption   aOption,
+                  struct Pgid              aPgid,
+                  struct ForkProcessMethod aMethod,
+                  struct PreForkProcessMethod        aPreForkMethod,
+                  struct PostForkChildProcessMethod  aPostForkChildMethod,
+                  struct PostForkParentProcessMethod aPostForkParentMethod)
+{
+    pid_t rc = -1;
+
+    int childrc = 0;
+
+    pid_t pgid = aPgid.mPgid;
+
+    struct FdSet  blacklistFds_;
+    struct FdSet *blacklistFds = 0;
+
+    struct FdSet  whitelistFds_;
+    struct FdSet *whitelistFds = 0;
+
+    struct ForkProcessChildResult_  forkResult_;
+    struct ForkProcessChildResult_ *forkResult = 0;
+
+    ensure(ForkProcessSetProcessGroup == aOption || ! pgid);
+
+#ifdef __linux__
+    long clocktick;
+    ERROR_IF(
+        (clocktick = sysconf(_SC_CLK_TCK),
+         -1 == clocktick));
+#endif
+
+    ERROR_IF(
+        createFdSet(&blacklistFds_));
+    blacklistFds = &blacklistFds_;
+
+    ERROR_IF(
+        createFdSet(&whitelistFds_));
+    whitelistFds = &whitelistFds_;
+
+    ERROR_IF(
+        callPreForkProcessMethod(
+            aPreForkMethod,
+            & (struct PreForkProcess)
+            {
+                .mBlacklistFds = blacklistFds,
+                .mWhitelistFds = whitelistFds,
+            }));
+
+    ERROR_IF(
+        createForkProcessChildResult_(&forkResult_));
+    forkResult = &forkResult_;
+
+    /* Note that the fork() will complete and launch the child process
+     * before the child pid is recorded in the local variable. This
+     * is an important consideration for propagating signals to
+     * the child process. */
+
+    pid_t childPid;
+
+    TEST_RACE
+    ({
+        childPid = fork();
+    });
+
+    switch (childPid)
+    {
+    default:
+
+        /* Forcibly set the process group of the child to avoid
+         * the race that would occur if only the child attempts
+         * to set its own process group */
+
+        if (ForkProcessSetProcessGroup == aOption)
+            ERROR_IF(
+                setpgid(childPid, pgid ? pgid : childPid));
+
+        /* On Linux, struct PidSignature uses the process start
+         * time from /proc/pid/stat, but that start time is measured
+         * in _SC_CLK_TCK periods which limits the rate at which
+         * processes can be forked without causing ambiguity. Although
+         * this ambiguity is largely theoretical, it is a simple matter
+         * to overcome by constraining the rate at which processes can
+         * fork. */
+
+#ifdef __linux__
+        monotonicSleep(
+            Duration(NanoSeconds(TimeScale_ns / clocktick * 5 / 4)));
+#endif
+
+        /* Wait for child to call post method by reading result
+              Result might be incomplete, or indicate an error
+
+           If child successful
+              Call postfork method
+              If successful
+                  close blacklisted fds
+                  release child
+              Kill child
+        */
+
+        closeForkProcessChildResultChild_(forkResult);
+
+        ERROR_IF(
+            recvForkProcessChildResult_(forkResult));
+
+        ERROR_IF(
+            forkResult->mResult.mReturnCode,
+            {
+                errno = forkResult->mResult.mErrCode;
+            });
+
+        ERROR_IF(
+            callPostForkParentProcessMethod(
+                aPostForkParentMethod, Pid(childPid)));
+
+        /* Close blacklisted */
+
+        ERROR_IF(
+            sendForkProcessChildResultAcknowledgement_(forkResult));
+
+        break;
+
+    case -1:
+        break;
+
+    case 0:
+
+        childrc = -1;
+
+        /* Ensure that the behaviour of each child diverges from the
+         * behaviour of the parent. This is primarily useful for
+         * testing. */
+
+        srandom(ownProcessId().mPid);
+
+        if (ForkProcessSetSessionLeader == aOption)
+        {
+            ERROR_IF(
+                -1 == setsid());
+        }
+        else if (ForkProcessSetProcessGroup == aOption)
+        {
+            ERROR_IF(
+                setpgid(0, pgid));
+        }
+
+        /* Reset all the signals so that the child will not attempt
+         * to catch signals. The parent should have set the signal
+         * mask appropriately. */
+
+        ERROR_IF(
+            resetSignals_());
+
+        closeForkProcessChildResultParent_(forkResult);
+
+        /* .. Close all but whitelisted fds .. */
+
+        ERROR_IF(
+            callPostForkChildProcessMethod(aPostForkChildMethod));
+
+        forkResult->mResult.mReturnCode = 0;
+        forkResult->mResult.mErrCode    = 0;
+
+        sendForkProcessChildResult_(forkResult);
+
+        forkResult = closeForkProcessChildResult_(forkResult);
+
+        childrc = 0;
+
+        callForkMethod_(aMethod);
+
+        break;
+    }
+
+    rc = childPid;
+
+Finally:
+
+    FINALLY
+    ({
+        if (childrc)
+        {
+            forkResult->mResult.mReturnCode = childrc;
+            forkResult->mResult.mErrCode    = errno;
+
+            sendForkProcessChildResult_(forkResult);
+        }
+
+        forkResult   = closeForkProcessChildResult_(forkResult);
+        blacklistFds = closeFdSet(blacklistFds);
+        whitelistFds = closeFdSet(whitelistFds);
+    });
+
+    return Pid(rc);
 }
 
 /* -------------------------------------------------------------------------- */

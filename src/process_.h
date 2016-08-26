@@ -42,6 +42,89 @@
 #include <sys/types.h>
 
 /* -------------------------------------------------------------------------- */
+BEGIN_C_SCOPE;
+
+struct FdSet;
+
+struct PreForkProcess
+{
+    struct FdSet *mBlacklistFds;
+    struct FdSet *mWhitelistFds;
+};
+
+END_C_SCOPE;
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_PreForkProcessMethod    int
+#define METHOD_CONST_PreForkProcessMethod
+#define METHOD_ARG_LIST_PreForkProcessMethod  (const \
+                                               struct PreForkProcess *aPreFork_)
+#define METHOD_CALL_LIST_PreForkProcessMethod (aPreFork_)
+
+#define METHOD_NAME      PreForkProcessMethod
+#define METHOD_RETURN    METHOD_RETURN_PreForkProcessMethod
+#define METHOD_CONST     METHOD_CONST_PreForkProcessMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_PreForkProcessMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_PreForkProcessMethod
+#include "method_.h"
+
+#define PreForkProcessMethod(Method_, Object_)     \
+    METHOD_TRAMPOLINE(                             \
+        Method_, Object_,                          \
+        PreForkProcessMethod_,                     \
+        METHOD_RETURN_PreForkProcessMethod,        \
+        METHOD_CONST_PreForkProcessMethod,         \
+        METHOD_ARG_LIST_PreForkProcessMethod,      \
+        METHOD_CALL_LIST_PreForkProcessMethod)
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_PostForkParentProcessMethod    int
+#define METHOD_CONST_PostForkParentProcessMethod
+#define METHOD_ARG_LIST_PostForkParentProcessMethod  (struct Pid aChildPid_)
+#define METHOD_CALL_LIST_PostForkParentProcessMethod (aChildPid_)
+
+#define METHOD_NAME      PostForkParentProcessMethod
+#define METHOD_RETURN    METHOD_RETURN_PostForkParentProcessMethod
+#define METHOD_CONST     METHOD_CONST_PostForkParentProcessMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_PostForkParentProcessMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_PostForkParentProcessMethod
+#include "method_.h"
+
+#define PostForkParentProcessMethod(Method_, Object_)     \
+    METHOD_TRAMPOLINE(                                    \
+        Method_, Object_,                                 \
+        PostForkParentProcessMethod_,                     \
+        METHOD_RETURN_PostForkParentProcessMethod,        \
+        METHOD_CONST_PostForkParentProcessMethod,         \
+        METHOD_ARG_LIST_PostForkParentProcessMethod,      \
+        METHOD_CALL_LIST_PostForkParentProcessMethod)
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_PostForkChildProcessMethod    int
+#define METHOD_CONST_PostForkChildProcessMethod
+#define METHOD_ARG_LIST_PostForkChildProcessMethod  ()
+#define METHOD_CALL_LIST_PostForkChildProcessMethod ()
+
+#define METHOD_NAME      PostForkChildProcessMethod
+#define METHOD_RETURN    METHOD_RETURN_PostForkChildProcessMethod
+#define METHOD_CONST     METHOD_CONST_PostForkChildProcessMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_PostForkChildProcessMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_PostForkChildProcessMethod
+#include "method_.h"
+
+#define PostForkChildProcessMethod(Method_, Object_)     \
+    METHOD_TRAMPOLINE(                                   \
+        Method_, Object_,                                \
+        PostForkChildProcessMethod_,                     \
+        METHOD_RETURN_PostForkChildProcessMethod,        \
+        METHOD_CONST_PostForkChildProcessMethod,         \
+        METHOD_ARG_LIST_PostForkChildProcessMethod,      \
+        METHOD_CALL_LIST_PostForkChildProcessMethod)
+
+/* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
 #define METHOD_RETURN_ForkProcessMethod    int
 #define METHOD_CONST_ForkProcessMethod
@@ -282,6 +365,14 @@ bool
 checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
+CHECKED struct Pid
+forkProcessChildX(enum ForkProcessOption   aOption,
+                  struct Pgid              aPgid,
+                  struct ForkProcessMethod aMethod,
+                  struct PreForkProcessMethod        aPreForkMethod,
+                  struct PostForkChildProcessMethod  aPostForkChildMethod,
+                  struct PostForkParentProcessMethod aPostForkParentMethod);
+
 CHECKED struct Pid
 forkProcessChild(enum ForkProcessOption   aOption,
                  struct Pgid              aPgid,
