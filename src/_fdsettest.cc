@@ -137,10 +137,7 @@ struct TestVisitor
         EXPECT_EQ(self->mNext, aFirstFd);
 
         if (aFirstFd == self->mStop)
-        {
-            errno = EINTR;
-            return -1;
-        }
+            return 1;
 
         ++self->mNext;
 

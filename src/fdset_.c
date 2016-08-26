@@ -194,7 +194,7 @@ visitFdSet(const struct FdSet *self, struct FdSetVisitor aVisitor)
         int err;
         ERROR_IF(
             (err = callFdSetVisitor(aVisitor, elem->mFirstFd, elem->mLastFd),
-             err && EINTR != errno));
+             -1 == err));
 
         ++visited;
 
