@@ -32,8 +32,12 @@ pidsentryexec()
             set -- "$1" --library-path "$RPATH" --inhibit-rpath "$2" "${@:2}"
         fi
     fi
-    set -- ${VALGRINDOPT+$VALGRINDOPT} "$@"
-    set -- ${VALGRIND+   $VALGRIND}    "$@"
+    if [ -n "${VALGRIND++}" ] ; then
+        set -- setarch "$(uname -m)" -R "$@" # Avoid mmap() collisions with vdso
+        set -- ${VALGRINDOPT+$VALGRINDOPT} "$@"
+        set -- ${VALGRIND+   $VALGRIND}    "$@"
+    fi
+    #set -- strace -o /tmp/valgrind.log "$@"
     set -- libtool --mode=execute      "$@"
 
     set -- PATH="$PATH"                  "$@"
@@ -44,6 +48,27 @@ pidsentryexec()
     set -- ${SHELL+    SHELL="$SHELL"}   "$@"
     set -- ${TERM+      TERM="$TERM"}    "$@"
     exec env - "$@"
+}
+
+################################################################################
+# Find lost pidsentry processes
+#
+# Scan the list of processes, and assuming that there should not be any
+# more pidsentry processes running, any currently running will be orphans.
+
+pidsentryorphans()
+{
+    ps -awwo user=,ppid=,pid=,pgid=,command= |
+    {
+        while read REPLY ; do
+            [ -n "$REPLY" ] || continue
+            [ -n "${REPLY##*pidsentry}" -a -n "${REPLY##*pidsentry *}" ] || {
+                /bin/echo "$REPLY" >&2
+                exit 1
+            }
+        done
+        exit 0
+    }
 }
 
 ################################################################################
