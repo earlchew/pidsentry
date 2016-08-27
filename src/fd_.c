@@ -82,8 +82,27 @@ closeFd(int aFd)
 {
     if (-1 != aFd)
     {
-        ABORT_IF(
-            close(aFd) && EINPROGRESS != errno);
+        /* Assume Posix semantics as described in:
+         *    http://austingroupbugs.net/view.php?id=529
+         *
+         * Posix semantics are normally available if POSIX_CLOSE_RESTART
+         * is defined, but this code will simply assume that these semantics are
+         * available.
+         *
+         * For Posix, if POSIX_CLOSE_RESTART is zero, close() will never return
+         * EINTR. Otherwise, close() can return EINTR but it is unspecified
+         * if any function other than close() can be used on the file
+         * descriptor. Fundamentally this means that if EINTR is returned,
+         * the only useful thing that can be done is to close the file
+         * descriptor. */
+
+        int err;
+        do
+        {
+            ABORT_IF(
+                (err = close(aFd),
+                 err && EINTR != errno && EINPROGRESS != errno));
+        } while (err && EINTR == errno);
     }
 
     return -1;
