@@ -29,8 +29,13 @@
 
 #include "fd_.h"
 #include "pipe_.h"
+#include "fdset_.h"
 
 #include "gtest/gtest.h"
+
+#include <limits.h>
+
+#include <sys/resource.h>
 
 TEST(FdTest, ReadFully)
 {
@@ -121,6 +126,194 @@ TEST(FdTest, ReadFully)
 
         pipe = closePipe(pipe);
     }
+}
+
+TEST(FdTest, CloseExceptWhiteList)
+{
+    int pipefd[2];
+
+    EXPECT_EQ(0, pipe(pipefd));
+
+    struct FdSet  fdset_;
+    struct FdSet *fdset = 0;
+
+    struct rlimit fdLimit;
+    EXPECT_EQ(0, getrlimit(RLIMIT_NOFILE, &fdLimit));
+
+    EXPECT_EQ(0, createFdSet(&fdset_));
+    fdset = &fdset_;
+
+    EXPECT_EQ(0, insertFdSetRange(fdset, STDERR_FILENO, STDERR_FILENO));
+    EXPECT_EQ(0, insertFdSetRange(fdset, pipefd[1], pipefd[1]));
+
+    /* Half the time, include a range that exceeds the number of
+     * available file descriptors. */
+
+    if ((getpid() / 2) & 1)
+        EXPECT_EQ(0, insertFdSetRange(fdset, fdLimit.rlim_cur, INT_MAX));
+
+    pid_t childpid = fork();
+
+    EXPECT_NE(-1, childpid);
+
+    if ( ! childpid)
+    {
+        int rc = -1;
+
+        do
+        {
+            if (closeFdExceptWhiteList(fdset))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(pipefd[1]))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if (ownFdValid(pipefd[0]))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            unsigned numFds = 0;
+            for (unsigned fd = 0; fd < fdLimit.rlim_cur; ++fd)
+            {
+                if (ownFdValid(fd))
+                    ++numFds;
+            }
+
+            if (2 != numFds)
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            rc = 0;
+
+        } while (0);
+
+        if (rc)
+        {
+            execl("/bin/false", "false", (char *) 0);
+            _exit(EXIT_FAILURE);
+        }
+
+        execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
+    }
+
+    int status;
+    EXPECT_EQ(childpid, waitpid(childpid, &status, 0));
+    EXPECT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(EXIT_SUCCESS, WEXITSTATUS(status));
+
+    fdset = closeFdSet(fdset);
+
+    close(pipefd[0]);
+    close(pipefd[1]);
+}
+
+TEST(FdTest, CloseOnlyBlackList)
+{
+    int pipefd[2];
+
+    EXPECT_EQ(0, pipe(pipefd));
+
+    struct FdSet  fdset_;
+    struct FdSet *fdset = 0;
+
+    struct rlimit fdLimit;
+    EXPECT_EQ(0, getrlimit(RLIMIT_NOFILE, &fdLimit));
+
+    EXPECT_EQ(0, createFdSet(&fdset_));
+    fdset = &fdset_;
+
+    EXPECT_EQ(0, insertFdSetRange(fdset, STDIN_FILENO, STDIN_FILENO));
+    EXPECT_EQ(0, insertFdSetRange(fdset, STDOUT_FILENO, STDOUT_FILENO));
+    EXPECT_EQ(0, insertFdSetRange(fdset, pipefd[0], pipefd[0]));
+
+    /* Half the time, include a range that exceeds the number of
+     * available file descriptors. */
+
+    if ((getpid() / 2) & 1)
+        EXPECT_EQ(0, insertFdSetRange(fdset, fdLimit.rlim_cur, INT_MAX));
+
+    pid_t childpid = fork();
+
+    EXPECT_NE(-1, childpid);
+
+    if ( ! childpid)
+    {
+        int rc = -1;
+
+        do
+        {
+            unsigned openFds = 0;
+            for (unsigned fd = 0; fd < fdLimit.rlim_cur; ++fd)
+            {
+                if (ownFdValid(fd))
+                    ++openFds;
+            }
+
+            if (closeFdOnlyBlackList(fdset))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(pipefd[1]))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if (ownFdValid(pipefd[0]))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            unsigned numFds = 0;
+            for (unsigned fd = 0; fd < fdLimit.rlim_cur; ++fd)
+            {
+                if (ownFdValid(fd))
+                    ++numFds;
+            }
+
+            if (numFds + 3 != openFds)
+            {
+                fprintf(stderr, "%u %u %u\n", __LINE__, numFds, openFds);
+                break;
+            }
+
+            rc = 0;
+
+        } while (0);
+
+        if (rc)
+        {
+            execl("/bin/false", "false", (char *) 0);
+            _exit(EXIT_FAILURE);
+        }
+
+        execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
+    }
+
+    int status;
+    EXPECT_EQ(childpid, waitpid(childpid, &status, 0));
+    EXPECT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(EXIT_SUCCESS, WEXITSTATUS(status));
+
+    fdset = closeFdSet(fdset);
+
+    close(pipefd[0]);
+    close(pipefd[1]);
 }
 
 #include "../googletest/src/gtest_main.cc"

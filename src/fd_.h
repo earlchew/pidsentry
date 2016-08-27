@@ -39,6 +39,7 @@ BEGIN_C_SCOPE;
 
 struct Deadline;
 struct Duration;
+struct FdSet;
 
 /* -------------------------------------------------------------------------- */
 struct LockType
@@ -94,6 +95,12 @@ closeFd(int aFd);
 
 CHECKED int
 closeFdDescriptors(const int *aWhiteList, size_t aWhiteListLen);
+
+CHECKED int
+closeFdExceptWhiteList(const struct FdSet *aFdSet);
+
+CHECKED int
+closeFdOnlyBlackList(const struct FdSet *aFdSet);
 
 bool
 stdFd(int aFd);

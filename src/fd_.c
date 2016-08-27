@@ -34,6 +34,7 @@
 #include "test_.h"
 #include "process_.h"
 #include "deadline_.h"
+#include "fdset_.h"
 #include "eintr_.h"
 
 #include <errno.h>
@@ -106,6 +107,153 @@ closeFd(int aFd)
     }
 
     return -1;
+}
+
+/* -------------------------------------------------------------------------- */
+struct FdWhiteListVisitor_
+{
+    int mFd;
+
+    struct rlimit mFdLimit;
+};
+
+static int
+closeFdWhiteListVisitor_(
+    struct FdWhiteListVisitor_ *self, int aFdFirst, int aFdLast)
+{
+    int rc = -1;
+
+    /* Be careful not to underflow or overflow the arithmetic representation
+     * if rlim_cur happens to be zero, or much wider than aFdLast. */
+
+    int fdEnd = 0;
+
+    if (self->mFdLimit.rlim_cur)
+    {
+        fdEnd =
+            aFdLast < self->mFdLimit.rlim_cur
+            ? aFdLast + 1
+            : self->mFdLimit.rlim_cur;
+    }
+
+    int fdBegin = aFdFirst;
+
+    if (fdBegin > fdEnd)
+        fdBegin = fdEnd;
+
+    for (int fd = self->mFd; fd < fdBegin; ++fd)
+    {
+        int valid;
+
+        ERROR_IF(
+            (valid = ownFdValid(self->mFd),
+             -1 == valid));
+
+        close(fd);
+    }
+
+    self->mFd = fdEnd;
+
+    rc = (self->mFdLimit.rlim_cur <= fdEnd);
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+closeFdExceptWhiteList(const struct FdSet *aFdSet)
+{
+    int rc = -1;
+
+    struct FdWhiteListVisitor_ whiteListVisitor;
+
+    whiteListVisitor.mFd = 0;
+
+    ERROR_IF(
+        getrlimit(RLIMIT_NOFILE, &whiteListVisitor.mFdLimit));
+
+    ERROR_IF(
+        -1 == visitFdSet(
+            aFdSet,
+            FdSetVisitor(closeFdWhiteListVisitor_, &whiteListVisitor)));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+struct FdBlackListVisitor_
+{
+    struct rlimit mFdLimit;
+};
+
+static int
+closeFdBlackListVisitor_(
+    struct FdBlackListVisitor_ *self, int aFdFirst, int aFdLast)
+{
+    int rc = -1;
+
+    int done = 1;
+
+    int fd = aFdFirst;
+
+    while (fd != self->mFdLimit.rlim_cur)
+    {
+        int valid;
+
+        ERROR_IF(
+            (valid = ownFdValid(fd),
+             -1 == valid));
+
+        close(fd);
+
+        if (fd == aFdLast)
+        {
+            done = 0;
+            break;
+        }
+
+        ++fd;
+    }
+
+    rc = done;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+int
+closeFdOnlyBlackList(const struct FdSet *aFdSet)
+{
+    int rc = -1;
+
+    struct FdBlackListVisitor_ blackListVisitor;
+
+    ERROR_IF(
+        getrlimit(RLIMIT_NOFILE, &blackListVisitor.mFdLimit));
+
+    ERROR_IF(
+        -1 == visitFdSet(
+            aFdSet,
+            FdSetVisitor(closeFdBlackListVisitor_, &blackListVisitor)));
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
