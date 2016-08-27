@@ -30,13 +30,7 @@ pidsentrytest()
 
 testLostWatchdogs()
 {
-    ps -awwo user=,ppid=,pid=,pgid=,command= |
-    {
-        while read REPLY ; do
-            [ -n "${REPLY##*pidsentry*}" ] || exit 1
-        done
-        exit 0
-    }
+    pidsentryorphans
 }
 
 TRIGGER=1
