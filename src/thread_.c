@@ -42,14 +42,6 @@
 
 #include <sys/syscall.h>
 
-#ifdef __GLIBC__
-#if __GLIBC__ < 2 || __GLIBC__ == 2 && __GLIBC_MINOR < 12
-#define PTHREAD_MUTEX_ROBUST        PTHREAD_MUTEX_ROBUST_NP
-#define pthread_mutexattr_setrobust pthread_mutexattr_setrobust_np
-#define pthread_mutex_consistent    pthread_mutex_consistent_np
-#endif
-#endif
-
 /* -------------------------------------------------------------------------- */
 static void *
 timedLock_(void *aLock,
