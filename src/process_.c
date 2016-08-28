@@ -56,16 +56,6 @@
 #include <sys/file.h>
 #include <sys/wait.h>
 
-#ifdef __GLIBC__
-#include <gnu/libc-version.h>
-
-static struct
-{
-    unsigned mMajor;
-    unsigned mMinor;
-} processLibcVersion_;
-#endif
-
 #include <valgrind/valgrind.h>
 
 struct ProcessLock
@@ -2674,30 +2664,6 @@ postForkParent_(void)
 static void
 postForkChild_(void)
 {
-#ifdef __GLIBC__
-    if (processLibcVersion_.mMajor <  2 ||
-        processLibcVersion_.mMajor == 2 && processLibcVersion_.mMinor < 15)
-    {
-        /* https://sourceware.org/bugzilla/show_bug.cgi?id=13002
-         *
-         * This was not fixed until 2.15, so work around the defect
-         * using the robust mutex list initialisation that is a side-effect
-         * of thread creation. */
-
-        pthread_t thread;
-
-        createThread(&thread, 0,
-                     ThreadMethod(
-                         LAMBDA(
-                             int, (pthread_t *self_),
-                             {
-                                 return 0;
-                             }),
-                         &thread));
-        ensure( ! joinThread(&thread));
-    }
-#endif
-
     /* This function is called in the context of the child process
      * immediately after the fork completes, at which time it will
      * be the only thread running in the new process. The application
@@ -2756,21 +2722,6 @@ Process_init(struct ProcessModule *self, const char *aArg0)
 
     programName_ = strrchr(processArg0_, '/');
     programName_ = programName_ ? programName_ + 1 : processArg0_;
-
-#ifdef __GLIBC__
-    {
-        const char *version = gnu_get_libc_version();
-
-        unsigned major;
-        unsigned minor;
-
-        ensure(
-            (2 == sscanf(version, "%u.%u", &major, &minor)));
-
-        processLibcVersion_.mMajor = major;
-        processLibcVersion_.mMinor = minor;
-    }
-#endif
 
     /* Ensure that the recorded time base is non-zero to allow it
      * to be distinguished from the case that it was not recorded
