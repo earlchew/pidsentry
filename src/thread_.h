@@ -151,6 +151,7 @@ struct SharedCond
 struct Thread
 {
     pthread_t mThread;
+    char     *mName;
     bool      mJoined;
 };
 
@@ -167,6 +168,7 @@ ownThreadId(void);
 CHECKED struct Thread *
 createThread(
     struct Thread           *self,
+    const char              *aName,
     const struct ThreadAttr *aAttr,
     struct ThreadMethod      aMethod);
 

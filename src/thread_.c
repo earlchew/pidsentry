@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <sys/syscall.h>
 
@@ -128,9 +129,11 @@ closeThread(struct Thread *self)
             ABORT_IF(
                 joinThread(self),
                 {
-                    terminate(errno, "Unable to join thread");
+                    terminate(errno, "Unable to join thread %s", self->mName);
                 });
         }
+
+        free(self->mName);
     }
 
     return 0;
@@ -169,6 +172,7 @@ createThread_(void *self_)
 struct Thread *
 createThread(
     struct Thread           *self,
+    const char              *aName,
     const struct ThreadAttr *aAttr,
     struct ThreadMethod      aMethod)
 {
@@ -189,6 +193,12 @@ createThread(
         self = &self_;
     else if (aAttr)
     {
+        ABORT_UNLESS(
+            self->mName = strdup(aName),
+            {
+                terminate(errno, "Unable to copy thread name %s", aName);
+            });
+
         /* If the caller has specified a non-null self, ensure that there
          * the thread is detached, since the parent is expected to join
          * and close the thread. */
@@ -199,7 +209,8 @@ createThread(
             {
                 terminate(
                     errno,
-                    "Unable to query thread detached state attribute");
+                    "Unable to query detached state attribute for thread %s",
+                    aName);
             });
 
         ABORT_IF(
@@ -219,7 +230,7 @@ createThread(
         {
             terminate(
                 errno,
-                "Unable to create thread");
+                "Unable to create thread %s", aName);
         });
 
     waitCond(&thread.mCond, lock);
@@ -270,7 +281,7 @@ cancelThread(struct Thread *self)
     ABORT_IF(
         errno = pthread_cancel(self->mThread),
         {
-            terminate(errno, "Unable to cancel thread");
+            terminate(errno, "Unable to cancel thread %s", self->mName);
         });
 }
 

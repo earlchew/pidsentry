@@ -629,7 +629,7 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
         struct ThreadSigMask *threadSigMask =
             pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
 
-        self->mThread = createThread(&self->mThread_, 0,
+        self->mThread = createThread(&self->mThread_, "childtether", 0,
                                      ThreadMethod(tetherThreadMain_, self));
 
         threadSigMask = popThreadSigMask(threadSigMask);

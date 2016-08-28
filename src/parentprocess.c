@@ -93,7 +93,7 @@ createParentProcess(struct ParentProcess *self)
     if (1 == self->mParentPid.mPid)
         self->mParentPid = Pid(0);
 
-    self->mThread = createThread(&self->mThread_, 0,
+    self->mThread = createThread(&self->mThread_, "parentmonitor", 0,
                                  ThreadMethod(monitorParent_, self));
 
     rc = 0;
