@@ -134,6 +134,8 @@ closeThread(struct Thread *self)
 /* -------------------------------------------------------------------------- */
 struct Thread_
 {
+    const char *mName;
+
     pthread_mutex_t mMutex;
     pthread_cond_t  mCond;
 
@@ -148,6 +150,14 @@ createThread_(void *self_)
     struct ThreadMethod method = self->mMethod;
 
     pthread_mutex_t *lock = lockMutex(&self->mMutex);
+
+    ABORT_IF(
+        errno = pthread_setname_np(pthread_self(), self->mName),
+        {
+            terminate(errno,
+                      "Unable to set thread name %s", self->mName);
+        });
+
     lock = unlockMutexSignal(lock, &self->mCond);
 
     /* Do not reference self beyond this point because the parent
@@ -174,6 +184,8 @@ createThread(
 
     struct Thread_ thread =
     {
+        .mName = aName,
+
         .mMutex = PTHREAD_MUTEX_INITIALIZER,
         .mCond  = PTHREAD_COND_INITIALIZER,
 
