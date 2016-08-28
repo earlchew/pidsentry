@@ -130,9 +130,10 @@ TEST(FdTest, ReadFully)
 
 TEST(FdTest, CloseExceptWhiteList)
 {
-    int pipefd[2];
+    int pipefd[4];
 
-    EXPECT_EQ(0, pipe(pipefd));
+    EXPECT_EQ(0, pipe(pipefd + 0));
+    EXPECT_EQ(0, pipe(pipefd + 2));
 
     struct FdSet  fdset_;
     struct FdSet *fdset = 0;
@@ -145,6 +146,7 @@ TEST(FdTest, CloseExceptWhiteList)
 
     EXPECT_EQ(0, insertFdSetRange(fdset, STDERR_FILENO, STDERR_FILENO));
     EXPECT_EQ(0, insertFdSetRange(fdset, pipefd[1], pipefd[1]));
+    EXPECT_EQ(0, insertFdSetRange(fdset, pipefd[2], pipefd[2]));
 
     /* Half the time, include a range that exceeds the number of
      * available file descriptors. */
@@ -168,13 +170,25 @@ TEST(FdTest, CloseExceptWhiteList)
                 break;
             }
 
+            if (ownFdValid(pipefd[0]))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
             if ( ! ownFdValid(pipefd[1]))
             {
                 fprintf(stderr, "%u\n", __LINE__);
                 break;
             }
 
-            if (ownFdValid(pipefd[0]))
+            if ( ! ownFdValid(pipefd[2]))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if (ownFdValid(pipefd[3]))
             {
                 fprintf(stderr, "%u\n", __LINE__);
                 break;
@@ -187,7 +201,7 @@ TEST(FdTest, CloseExceptWhiteList)
                     ++numFds;
             }
 
-            if (2 != numFds)
+            if (3 != numFds)
             {
                 fprintf(stderr, "%u\n", __LINE__);
                 break;

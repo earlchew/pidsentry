@@ -146,10 +146,11 @@ closeFdWhiteListVisitor_(
         int valid;
 
         ERROR_IF(
-            (valid = ownFdValid(self->mFd),
+            (valid = ownFdValid(fd),
              -1 == valid));
 
-        close(fd);
+        while (valid && closeFd(fd))
+            break;
     }
 
     self->mFd = fdEnd;
@@ -170,6 +171,8 @@ closeFdExceptWhiteList(const struct FdSet *aFdSet)
 
     struct FdWhiteListVisitor_ whiteListVisitor;
 
+    fprintf(stderr, "@@closeFdExceptWhiteList\n");
+
     whiteListVisitor.mFd = 0;
 
     ERROR_IF(
@@ -180,11 +183,23 @@ closeFdExceptWhiteList(const struct FdSet *aFdSet)
             aFdSet,
             FdSetVisitor(closeFdWhiteListVisitor_, &whiteListVisitor)));
 
+    /* Cover off all the file descriptors from the end of the last
+     * whitelisted range, to the end of the process file descriptor
+     * range. */
+
+    ERROR_UNLESS(
+        1 == closeFdWhiteListVisitor_(
+            &whiteListVisitor,
+            whiteListVisitor.mFdLimit.rlim_cur,
+            whiteListVisitor.mFdLimit.rlim_cur));
+
     rc = 0;
 
 Finally:
 
     FINALLY({});
+
+    fprintf(stderr, "##closeFdExceptWhiteList\n");
 
     return rc;
 }
@@ -213,7 +228,8 @@ closeFdBlackListVisitor_(
             (valid = ownFdValid(fd),
              -1 == valid));
 
-        close(fd);
+        while (valid && closeFd(fd))
+            break;
 
         if (fd == aFdLast)
         {
@@ -240,6 +256,8 @@ closeFdOnlyBlackList(const struct FdSet *aFdSet)
 
     struct FdBlackListVisitor_ blackListVisitor;
 
+    fprintf(stderr, "@@closeFdOnlyBlackList\n");
+
     ERROR_IF(
         getrlimit(RLIMIT_NOFILE, &blackListVisitor.mFdLimit));
 
@@ -247,11 +265,14 @@ closeFdOnlyBlackList(const struct FdSet *aFdSet)
         -1 == visitFdSet(
             aFdSet,
             FdSetVisitor(closeFdBlackListVisitor_, &blackListVisitor)));
+
     rc = 0;
 
 Finally:
 
     FINALLY({});
+
+    fprintf(stderr, "##closeFdOnlyBlackList\n");
 
     return rc;
 }
