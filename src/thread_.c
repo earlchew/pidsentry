@@ -139,6 +139,8 @@ destroyThreadFuture_(void *self_)
 /* -------------------------------------------------------------------------- */
 struct Thread_
 {
+    int mDetached;
+
     pthread_mutex_t mMutex;
     pthread_cond_t  mCond;
 
@@ -156,20 +158,44 @@ createThread_(void *self_)
 
     struct ThreadFuture_ *future = self->mFuture;
 
+    int detached = self->mDetached;
+
     pthread_mutex_t *lock = lockMutex(&self->mMutex);
     lock = unlockMutexSignal(lock, &self->mCond);
 
+    /* Do not reference self beyond this point because the parent
+     * will have deallocated the struct Thread_ instance. */
+
     pthread_cleanup_push(destroyThreadFuture_, future);
     {
-        int rc;
+        int rc = -1;
 
-        ABORT_IF(
-            (rc = callThreadMethod(method),
-             -1 == rc));
+        if ( ! detached)
+        {
+            CATCH_IF(
+                (rc = callThreadMethod(method),
+                 -1 == rc));
 
-        future->mStatus = rc;
+            future->mStatus = rc;
+        }
+        else
+        {
+            ABORT_IF(
+                (rc = callThreadMethod(method),
+                 -1 == rc));
+
+            /* If a thread is detached, its parent will not join to recover
+             * the thread future, so deallocate the thread future here. */
+
+            destroyThreadFuture_(future);
+            future = 0;
+        }
     }
     pthread_cleanup_pop(0);
+
+    /* The registered cleanup handler is popped without being executed.
+     * If cancelled, the cleanup handler will be called, and the caller
+     * will receive PTHREAD_CANCELED. */
 
     return future;
 }
@@ -180,6 +206,8 @@ createThread(
 {
     struct Thread_ thread =
     {
+        .mDetached = 0,
+
         .mMutex = PTHREAD_MUTEX_INITIALIZER,
         .mCond  = PTHREAD_COND_INITIALIZER,
 
@@ -194,6 +222,16 @@ createThread(
                 "Unable to create thread future");
         });
 
+    if (aAttr)
+    {
+        ABORT_IF(
+            (errno = pthread_attr_getdetachstate(aAttr, &thread.mDetached)),
+            {
+                terminate(
+                    errno,
+                    "Unable to query thread detached state attribute");
+            });
+    }
 
     pthread_mutex_t *lock = lockMutex(&thread.mMutex);
 
@@ -271,7 +309,7 @@ setThreadAttrDetachState(pthread_attr_t *self, int aState)
         {
             terminate(
                 errno,
-                "Unable to configure thread attribute detached state %d",
+                "Unable to configure thread detached state attribute %d",
                 aState);
         });
 }
