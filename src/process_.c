@@ -1508,13 +1508,12 @@ Finally:
 /* -------------------------------------------------------------------------- */
 struct ForkProcessChildResult_
 {
-    struct
-    {
-        int mReturnCode;
-        int mErrCode;
+    int mReturnCode;
+    int mErrCode;
+};
 
-    } mResult;
-
+struct ForkProcessChildChannel_
+{
     struct Pipe  mResultPipe_;
     struct Pipe *mResultPipe;
 
@@ -1522,9 +1521,9 @@ struct ForkProcessChildResult_
     struct BellSocketPair *mResultSocket;
 };
 
-static CHECKED struct ForkProcessChildResult_ *
-closeForkProcessChildResult_(
-    struct ForkProcessChildResult_ *self)
+static CHECKED struct ForkProcessChildChannel_ *
+closeForkProcessChildChannel_(
+    struct ForkProcessChildChannel_ *self)
 {
     if (self)
     {
@@ -1537,7 +1536,7 @@ closeForkProcessChildResult_(
 
 static void
 closeForkProcessChildResultChild_(
-    struct ForkProcessChildResult_ *self)
+    struct ForkProcessChildChannel_ *self)
 {
     closePipeWriter(self->mResultPipe);
     closeBellSocketPairChild(self->mResultSocket);
@@ -1545,20 +1544,17 @@ closeForkProcessChildResultChild_(
 
 static void
 closeForkProcessChildResultParent_(
-    struct ForkProcessChildResult_ *self)
+    struct ForkProcessChildChannel_ *self)
 {
     closePipeReader(self->mResultPipe);
     closeBellSocketPairParent(self->mResultSocket);
 }
 
 static CHECKED int
-createForkProcessChildResult_(
-    struct ForkProcessChildResult_ *self)
+createForkProcessChildChannel_(
+    struct ForkProcessChildChannel_ *self)
 {
     int rc = -1;
-
-    self->mResult.mReturnCode = -1;
-    self->mResult.mErrCode    = ENOSYS;
 
     self->mResultPipe   = 0;
     self->mResultSocket = 0;
@@ -1578,53 +1574,25 @@ Finally:
     FINALLY
     ({
         if (rc)
-            self = closeForkProcessChildResult_(self);
+            self = closeForkProcessChildChannel_(self);
     });
 
     return rc;
 }
 
-static void
-sendForkProcessChildResult_(
-    struct ForkProcessChildResult_ *self)
+static CHECKED int
+sendForkProcessChildChannelResult_(
+    struct ForkProcessChildChannel_      *self,
+    const struct ForkProcessChildResult_ *aResult)
 {
     int rc = -1;
 
     ERROR_IF(
-        sizeof(self->mResult) != writeFile(
-            self->mResultPipe->mWrFile,
-            (char *) &self->mResult, sizeof(self->mResult), 0));
+        sizeof(*aResult) != writeFile(
+            self->mResultPipe->mWrFile, (char *) aResult, sizeof(*aResult), 0));
 
     ERROR_IF(
         ringBellSocketPairChild(self->mResultSocket));
-
-    ERROR_IF(
-        waitBellSocketPairChild(self->mResultSocket, 0));
-
-    rc = 0;
-
-Finally:
-
-    FINALLY
-    ({
-        if (rc || self->mResult.mReturnCode)
-            exitProcess(EXIT_FAILURE);
-    });
-}
-
-static CHECKED int
-recvForkProcessChildResult_(
-    struct ForkProcessChildResult_ *self)
-{
-    int rc = -1;
-
-    ERROR_IF(
-        waitBellSocketPairParent(self->mResultSocket, 0));
-
-    ERROR_IF(
-        sizeof(self->mResult) != readFile(
-            self->mResultPipe->mRdFile,
-            (char *) &self->mResult, sizeof(self->mResult), 0));
 
     rc = 0;
 
@@ -1636,8 +1604,38 @@ Finally:
 }
 
 static CHECKED int
-sendForkProcessChildResultAcknowledgement_(
-    struct ForkProcessChildResult_ *self)
+recvForkProcessChildChannelResult_(
+    struct ForkProcessChildChannel_ *self,
+    struct ForkProcessChildResult_  *aResult)
+{
+    int rc = -1;
+
+    ERROR_IF(
+        waitBellSocketPairParent(self->mResultSocket, 0));
+
+    ERROR_IF(
+        sizeof(*aResult) != readFile(
+            self->mResultPipe->mRdFile, (char *) aResult, sizeof(*aResult), 0));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
+recvForkProcessChildChannelAcknowledgement_(
+    struct ForkProcessChildChannel_ *self)
+{
+    return waitBellSocketPairChild(self->mResultSocket, 0);
+}
+
+static CHECKED int
+sendForkProcessChildChannelAcknowledgement_(
+    struct ForkProcessChildChannel_ *self)
 {
     return ringBellSocketPairParent(self->mResultSocket);
 }
@@ -1673,6 +1671,8 @@ forkProcessChildX(enum ForkProcessOption   aOption,
 {
     pid_t rc = -1;
 
+    pid_t childPid = -1;
+
     int childrc = 0;
 
     pid_t pgid = aPgid.mPgid;
@@ -1683,8 +1683,8 @@ forkProcessChildX(enum ForkProcessOption   aOption,
     struct FdSet  whitelistFds_;
     struct FdSet *whitelistFds = 0;
 
-    struct ForkProcessChildResult_  forkResult_;
-    struct ForkProcessChildResult_ *forkResult = 0;
+    struct ForkProcessChildChannel_  forkChannel_;
+    struct ForkProcessChildChannel_ *forkChannel = 0;
 
     ensure(ForkProcessSetProcessGroup == aOption || ! pgid);
 
@@ -1713,15 +1713,13 @@ forkProcessChildX(enum ForkProcessOption   aOption,
             }));
 
     ERROR_IF(
-        createForkProcessChildResult_(&forkResult_));
-    forkResult = &forkResult_;
+        createForkProcessChildChannel_(&forkChannel_));
+    forkChannel = &forkChannel_;
 
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
      * is an important consideration for propagating signals to
      * the child process. */
-
-    pid_t childPid;
 
     TEST_RACE
     ({
@@ -1753,36 +1751,45 @@ forkProcessChildX(enum ForkProcessOption   aOption,
             Duration(NanoSeconds(TimeScale_ns / clocktick * 5 / 4)));
 #endif
 
-        /* Wait for child to call post method by reading result
-              Result might be incomplete, or indicate an error
+        /* Sequence fork operations with the child so that the actions
+         * are completely synchronised. The actions are performed in
+         * the following order:
+         *
+         *      o Close all but whitelisted fds in child
+         *      o Run child post fork method
+         *      o Run parent post fork method
+         *      o Close only blacklisted fds in parent
+         *      o Continue both parent and child process
+         *
+         * The blacklisted fds in the parent will only be closed if there
+         * are no errors detected in either the child or the parent
+         * post fork method. This provides the parent with the potential
+         * to retry the operation. */
 
-           If child successful
-              Call postfork method
-              If successful
-                  close blacklisted fds
-                  release child
-              Kill child
-        */
+        closeForkProcessChildResultChild_(forkChannel);
 
-        closeForkProcessChildResultChild_(forkResult);
+        {
+            struct ForkProcessChildResult_ forkResult;
 
-        ERROR_IF(
-            recvForkProcessChildResult_(forkResult));
+            ERROR_IF(
+                recvForkProcessChildChannelResult_(forkChannel, &forkResult));
 
-        ERROR_IF(
-            forkResult->mResult.mReturnCode,
-            {
-                errno = forkResult->mResult.mErrCode;
-            });
+            ERROR_IF(
+                forkResult.mReturnCode,
+                {
+                    errno = forkResult.mErrCode;
+                });
 
-        ERROR_IF(
-            callPostForkParentProcessMethod(
-                aPostForkParentMethod, Pid(childPid)));
+            ERROR_IF(
+                callPostForkParentProcessMethod(
+                    aPostForkParentMethod, Pid(childPid)));
 
-        /* Close blacklisted */
+            ERROR_IF(
+                closeFdOnlyBlackList(blacklistFds));
 
-        ERROR_IF(
-            sendForkProcessChildResultAcknowledgement_(forkResult));
+            ERROR_IF(
+                sendForkProcessChildChannelAcknowledgement_(forkChannel));
+        }
 
         break;
 
@@ -1817,23 +1824,49 @@ forkProcessChildX(enum ForkProcessOption   aOption,
         ERROR_IF(
             resetSignals_());
 
-        closeForkProcessChildResultParent_(forkResult);
+        closeForkProcessChildResultParent_(forkChannel);
 
-        /* .. Close all but whitelisted fds .. */
+        {
+            ERROR_IF(
+                closeFdExceptWhiteList(whitelistFds));
 
-        ERROR_IF(
-            callPostForkChildProcessMethod(aPostForkChildMethod));
+            ERROR_IF(
+                callPostForkChildProcessMethod(aPostForkChildMethod));
 
-        forkResult->mResult.mReturnCode = 0;
-        forkResult->mResult.mErrCode    = 0;
+            /* Send the child fork process method result to the parent so
+             * that it can return an error code to the caller, then wait
+             * for the parent to acknowledge. */
 
-        sendForkProcessChildResult_(forkResult);
+            struct ForkProcessChildResult_ forkResult =
+                {
+                    .mReturnCode = 0,
+                    .mErrCode    = 0,
+                };
 
-        forkResult = closeForkProcessChildResult_(forkResult);
+            if (sendForkProcessChildChannelResult_(forkChannel, &forkResult) ||
+                recvForkProcessChildChannelAcknowledgement_(forkChannel))
+            {
+                /* Terminate the child if the result could not be sent. The
+                 * parent will detect the child has terminated because the
+                 * result socket will close.
+                 *
+                 * Also terminate the child if the acknowledgement could not
+                 * be received from the parent. This will typically be because
+                 * the parent has terminated without sending the
+                 * acknowledgement, so it is reasonable to simply terminate
+                 * the child. */
+
+                exitProcess(EXIT_FAILURE);
+            }
+        }
 
         childrc = 0;
 
+        forkChannel = closeForkProcessChildChannel_(forkChannel);
+
         callForkMethod_(aMethod);
+
+        ensure( ! childrc && ! childPid);
 
         break;
     }
@@ -1846,13 +1879,41 @@ Finally:
     ({
         if (childrc)
         {
-            forkResult->mResult.mReturnCode = childrc;
-            forkResult->mResult.mErrCode    = errno;
+            /* This is the error path running in the child. After attempting
+             * to send the error indication, simply terminate the child.
+             * The parent should either receive the failure indication, or
+             * detect that the child has terminated before sending the
+             * error indication. */
 
-            sendForkProcessChildResult_(forkResult);
+            struct ForkProcessChildResult_ forkResult =
+            {
+                .mReturnCode = childrc,
+                .mErrCode    = errno,
+            };
+
+            while (
+                sendForkProcessChildChannelResult_(forkChannel, &forkResult) ||
+                recvForkProcessChildChannelAcknowledgement_(forkChannel))
+            {
+                break;
+            }
+
+            exitProcess(EXIT_FAILURE);
+        }
+        else if (-1 == rc)
+        {
+            /* If the parent has successfully created a child process, but
+             * there is a problem, then the child needs to be reaped. */
+
+            if (-1 != childPid)
+            {
+                int status;
+                ABORT_IF(
+                    reapProcessChild(Pid(childPid), &status));
+            }
         }
 
-        forkResult   = closeForkProcessChildResult_(forkResult);
+        forkChannel  = closeForkProcessChildChannel_(forkChannel);
         blacklistFds = closeFdSet(blacklistFds);
         whitelistFds = closeFdSet(whitelistFds);
     });
