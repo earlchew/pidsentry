@@ -96,12 +96,12 @@ struct ErrorModule
     ERROR_IF_(!, Predicate_, # Predicate_, ##  __VA_ARGS__)
 
 /* -------------------------------------------------------------------------- */
-#define ALERT_IF(Predicate_, ...)                       \
+#define CATCH_IF(Predicate_, ...)                       \
     UNWIND_IF_(                                         \
         warn, errorWarn, /*!!*/,                        \
         Predicate_, # Predicate_, ## __VA_ARGS__)
 
-#define ALERT_UNLESS(Predicate_, ...)                   \
+#define CATCH_UNLESS(Predicate_, ...)                   \
     UNWIND_IF_(                                         \
         warn, errorWarn, !,                             \
         Predicate_, # Predicate_, ## __VA_ARGS__)
