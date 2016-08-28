@@ -31,8 +31,7 @@
 
 #include "compiler_.h"
 #include "process_.h"
-
-#include <pthread.h>
+#include "thread_.h"
 
 BEGIN_C_SCOPE;
 
@@ -41,8 +40,8 @@ struct ParentProcess
 {
     struct Pid mParentPid;
 
-    pthread_t  mThread_;
-    pthread_t *mThread;
+    struct Thread  mThread_;
+    struct Thread *mThread;
 };
 
 /* -------------------------------------------------------------------------- */

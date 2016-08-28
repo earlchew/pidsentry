@@ -137,8 +137,8 @@ destroyThreadFuture_(void *self_)
 }
 
 /* -------------------------------------------------------------------------- */
-pthread_t *
-closeThread(pthread_t *self)
+struct Thread *
+closeThread(struct Thread *self)
 {
     if (self)
     {
@@ -203,9 +203,11 @@ createThread_(void *self_)
     return future;
 }
 
-pthread_t *
+struct Thread *
 createThread(
-    pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod)
+    struct Thread           *self,
+    const struct ThreadAttr *aAttr,
+    struct ThreadMethod      aMethod)
 {
     /* The caller can specify a null self to create a detached thread.
      * Detached threads are not owned by the parent, and the parent will
@@ -221,7 +223,7 @@ createThread(
         .mMethod = aMethod,
     };
 
-    pthread_t self_;
+    struct Thread self_;
     if ( ! self)
         self = &self_;
     else if (aAttr)
@@ -232,7 +234,7 @@ createThread(
 
         int detached;
         ABORT_IF(
-            (errno = pthread_attr_getdetachstate(aAttr, &detached)),
+            (errno = pthread_attr_getdetachstate(&aAttr->mAttr, &detached)),
             {
                 terminate(
                     errno,
@@ -257,7 +259,8 @@ createThread(
     pthread_mutex_t *lock = lockMutex(&thread.mMutex);
 
     ABORT_IF(
-        (errno = pthread_create(self, aAttr, createThread_, &thread)),
+        (errno = pthread_create(
+            &self->mThread, aAttr ? &aAttr->mAttr : 0, createThread_, &thread)),
         {
             terminate(
                 errno,
@@ -272,7 +275,7 @@ createThread(
 
 /* -------------------------------------------------------------------------- */
 int
-joinThread(pthread_t *self)
+joinThread(struct Thread *self)
 {
     int rc = -1;
 
@@ -280,7 +283,7 @@ joinThread(pthread_t *self)
 
     void *future_;
     ERROR_IF(
-        (errno = pthread_join(*self, &future_)));
+        (errno = pthread_join(self->mThread, &future_)));
 
     ERROR_IF(
         PTHREAD_CANCELED == future_,
@@ -304,20 +307,20 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 void
-cancelThread(pthread_t *self)
+cancelThread(struct Thread *self)
 {
     ABORT_IF(
-        (errno = pthread_cancel(*self)));
+        (errno = pthread_cancel(self->mThread)));
 }
 
 /* -------------------------------------------------------------------------- */
 int
-killThread(pthread_t *self, int aSignal)
+killThread(struct Thread *self, int aSignal)
 {
     int rc = -1;
 
     ERROR_IF(
-        errno = pthread_kill(*self, aSignal));
+        errno = pthread_kill(self->mThread, aSignal));
 
     rc = 0;
 
@@ -328,43 +331,33 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
-createThreadAttr(pthread_attr_t *self)
+struct ThreadAttr *
+createThreadAttr(struct ThreadAttr *self)
 {
     ABORT_IF(
-        (errno = pthread_attr_init(self)),
+        (errno = pthread_attr_init(&self->mAttr)),
         {
             terminate(
                 errno,
                 "Unable to create thread attribute");
         });
+
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
-void
-setThreadAttrDetachState(pthread_attr_t *self, int aState)
+struct ThreadAttr *
+destroyThreadAttr(struct ThreadAttr *self)
 {
     ABORT_IF(
-        (errno = pthread_attr_setdetachstate(self, aState)),
-        {
-            terminate(
-                errno,
-                "Unable to configure thread detached state attribute %d",
-                aState);
-        });
-}
-
-/* -------------------------------------------------------------------------- */
-void
-destroyThreadAttr(pthread_attr_t *self)
-{
-    ABORT_IF(
-        (errno = pthread_attr_destroy(self)),
+        (errno = pthread_attr_destroy(&self->mAttr)),
         {
             terminate(
                 errno,
                 "Unable to destroy thread attribute");
         });
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

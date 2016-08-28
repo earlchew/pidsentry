@@ -148,33 +148,45 @@ struct SharedCond
     pthread_cond_t mCond;
 };
 
+struct Thread
+{
+    pthread_t mThread;
+};
+
+struct ThreadAttr
+{
+    pthread_attr_t mAttr;
+};
+
 /* -------------------------------------------------------------------------- */
 struct Tid
 ownThreadId(void);
 
 /* -------------------------------------------------------------------------- */
-CHECKED pthread_t *
+CHECKED struct Thread *
 createThread(
-    pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod);
+    struct Thread           *self,
+    const struct ThreadAttr *aAttr,
+    struct ThreadMethod      aMethod);
 
 CHECKED int
-joinThread(pthread_t *self);
+joinThread(struct Thread *self);
 
 void
-cancelThread(pthread_t *self);
+cancelThread(struct Thread *self);
 
-CHECKED pthread_t *
-closeThread(pthread_t *self);
+CHECKED struct Thread *
+closeThread(struct Thread *self);
 
 CHECKED int
-killThread(pthread_t *self, int aSignal);
+killThread(struct Thread *self, int aSignal);
 
 /* -------------------------------------------------------------------------- */
-void
-createThreadAttr(pthread_attr_t *self);
+CHECKED struct ThreadAttr *
+createThreadAttr(struct ThreadAttr *self);
 
-void
-destroyThreadAttr(pthread_attr_t *self);
+CHECKED struct ThreadAttr *
+destroyThreadAttr(struct ThreadAttr *self);
 
 /* -------------------------------------------------------------------------- */
 CHECKED struct ThreadSigMutex *

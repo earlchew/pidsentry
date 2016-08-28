@@ -32,6 +32,7 @@
 #include "compiler_.h"
 #include "pipe_.h"
 #include "timekeeping_.h"
+#include "thread_.h"
 
 BEGIN_C_SCOPE;
 
@@ -47,8 +48,9 @@ struct TetherThread
 {
     struct Pipe  mControlPipe_;
     struct Pipe *mControlPipe;
-    pthread_t    mThread_;
-    pthread_t   *mThread;
+
+    struct Thread  mThread_;
+    struct Thread *mThread;
 
     struct Pipe *mNullPipe;
     bool         mFlushed;
