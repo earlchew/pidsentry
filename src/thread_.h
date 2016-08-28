@@ -151,6 +151,7 @@ struct SharedCond
 struct Thread
 {
     pthread_t mThread;
+    bool      mJoined;
 };
 
 struct ThreadAttr

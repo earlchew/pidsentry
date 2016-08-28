@@ -142,6 +142,18 @@ closeThread(struct Thread *self)
 {
     if (self)
     {
+        /* If the thread has not yet been joined, join it now and include
+         * cancellation as a failure condition. The caller will join
+         * explicitly if cancellation is to be benign. */
+
+        if ( ! self->mJoined)
+        {
+            ABORT_IF(
+                joinThread(self),
+                {
+                    terminate("Unable to join thread");
+                });
+        }
     }
 
     return 0;
@@ -175,7 +187,9 @@ createThread_(void *self_)
     lock = unlockMutexSignal(lock, &self->mCond);
 
     /* Do not reference self beyond this point because the parent
-     * will have deallocated the struct Thread_ instance. */
+     * will have deallocated the struct Thread_ instance. Also do
+     * not rely on a struct Thread instance because a detached thread
+     * will not have one. */
 
     pthread_cleanup_push(destroyThreadFuture_, future);
     {
@@ -185,7 +199,9 @@ createThread_(void *self_)
             (rc = callThreadMethod(method),
              -1 == rc));
 
-        if (detached)
+        if ( ! detached)
+            future->mStatus = rc;
+        else
         {
             /* If a thread is detached, its parent will not join to recover
              * the thread future, so deallocate the thread future here. */
@@ -258,6 +274,8 @@ createThread(
 
     pthread_mutex_t *lock = lockMutex(&thread.mMutex);
 
+    self->mJoined = false;
+
     ABORT_IF(
         (errno = pthread_create(
             &self->mThread, aAttr ? &aAttr->mAttr : 0, createThread_, &thread)),
@@ -281,9 +299,17 @@ joinThread(struct Thread *self)
 
     struct ThreadFuture_ *future = 0;
 
+    ERROR_IF(
+        self->mJoined,
+        {
+            errno = EINVAL;
+        });
+
     void *future_;
     ERROR_IF(
         (errno = pthread_join(self->mThread, &future_)));
+
+    self->mJoined = true;
 
     ERROR_IF(
         PTHREAD_CANCELED == future_,
@@ -310,7 +336,10 @@ void
 cancelThread(struct Thread *self)
 {
     ABORT_IF(
-        (errno = pthread_cancel(self->mThread)));
+        errno = pthread_cancel(self->mThread),
+        {
+            terminate("Unable to cancel thread");
+        });
 }
 
 /* -------------------------------------------------------------------------- */
