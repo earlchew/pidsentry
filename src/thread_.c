@@ -181,22 +181,12 @@ createThread_(void *self_)
     {
         int rc = -1;
 
-        if ( ! detached)
-        {
-#if 0
-            CATCH_IF(
-                (rc = callThreadMethod(method),
-                 -1 == rc));
+        ABORT_IF(
+            (rc = callThreadMethod(method),
+             -1 == rc));
 
-            future->mStatus = rc;
-#endif
-        }
-        else
+        if (detached)
         {
-            ABORT_IF(
-                (rc = callThreadMethod(method),
-                 -1 == rc));
-
             /* If a thread is detached, its parent will not join to recover
              * the thread future, so deallocate the thread future here. */
 
@@ -217,15 +207,44 @@ pthread_t *
 createThread(
     pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod)
 {
+    /* The caller can specify a null self to create a detached thread.
+     * Detached threads are not owned by the parent, and the parent will
+     * not join or close the detached thread. */
+
     struct Thread_ thread =
     {
-        .mDetached = 0,
+        .mDetached = ! self,
 
         .mMutex = PTHREAD_MUTEX_INITIALIZER,
         .mCond  = PTHREAD_COND_INITIALIZER,
 
         .mMethod = aMethod,
     };
+
+    pthread_t self_;
+    if ( ! self)
+        self = &self_;
+    else if (aAttr)
+    {
+        /* If the caller has specified a non-null self, ensure that there
+         * the thread is detached, since the parent is expected to join
+         * and close the thread. */
+
+        int detached;
+        ABORT_IF(
+            (errno = pthread_attr_getdetachstate(aAttr, &detached)),
+            {
+                terminate(
+                    errno,
+                    "Unable to query thread detached state attribute");
+            });
+
+        ABORT_IF(
+            detached,
+            {
+                errno = EINVAL;
+            });
+    }
 
     ABORT_UNLESS(
         (thread.mFuture = createThreadFuture_()),
@@ -234,17 +253,6 @@ createThread(
                 errno,
                 "Unable to create thread future");
         });
-
-    if (aAttr)
-    {
-        ABORT_IF(
-            (errno = pthread_attr_getdetachstate(aAttr, &thread.mDetached)),
-            {
-                terminate(
-                    errno,
-                    "Unable to query thread detached state attribute");
-            });
-    }
 
     pthread_mutex_t *lock = lockMutex(&thread.mMutex);
 
@@ -259,7 +267,7 @@ createThread(
     waitCond(&thread.mCond, lock);
     lock = unlockMutex(lock);
 
-    return self;
+    return self != &self_ ? self : 0;
 }
 
 /* -------------------------------------------------------------------------- */

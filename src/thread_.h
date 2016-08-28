@@ -176,9 +176,6 @@ createThreadAttr(pthread_attr_t *self);
 void
 destroyThreadAttr(pthread_attr_t *self);
 
-void
-setThreadAttrDetachState(pthread_attr_t *self, int aState);
-
 /* -------------------------------------------------------------------------- */
 CHECKED struct ThreadSigMutex *
 createThreadSigMutex(struct ThreadSigMutex *self);
