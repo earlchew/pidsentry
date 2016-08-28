@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -eu
+set -eux
 
 [ -z "${0##*/*}" ] || exec "$PWD/$0" "$@"
 
