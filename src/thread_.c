@@ -114,29 +114,6 @@ ownThreadId(void)
 }
 
 /* -------------------------------------------------------------------------- */
-struct ThreadFuture_
-{
-    int mStatus;
-};
-
-static struct ThreadFuture_ *
-createThreadFuture_(void)
-{
-    struct ThreadFuture_ *self = malloc(sizeof(*self));
-
-    if (self)
-        self->mStatus = -1;
-
-    return self;
-}
-
-static void
-destroyThreadFuture_(void *self_)
-{
-    free(self_);
-}
-
-/* -------------------------------------------------------------------------- */
 struct Thread *
 closeThread(struct Thread *self)
 {
@@ -151,7 +128,7 @@ closeThread(struct Thread *self)
             ABORT_IF(
                 joinThread(self),
                 {
-                    terminate("Unable to join thread");
+                    terminate(errno, "Unable to join thread");
                 });
         }
     }
@@ -162,14 +139,10 @@ closeThread(struct Thread *self)
 /* -------------------------------------------------------------------------- */
 struct Thread_
 {
-    int mDetached;
-
     pthread_mutex_t mMutex;
     pthread_cond_t  mCond;
 
     struct ThreadMethod mMethod;
-
-    struct ThreadFuture_ *mFuture;
 };
 
 static void *
@@ -179,10 +152,6 @@ createThread_(void *self_)
 
     struct ThreadMethod method = self->mMethod;
 
-    struct ThreadFuture_ *future = self->mFuture;
-
-    int detached = self->mDetached;
-
     pthread_mutex_t *lock = lockMutex(&self->mMutex);
     lock = unlockMutexSignal(lock, &self->mCond);
 
@@ -191,32 +160,10 @@ createThread_(void *self_)
      * not rely on a struct Thread instance because a detached thread
      * will not have one. */
 
-    pthread_cleanup_push(destroyThreadFuture_, future);
-    {
-        int rc = -1;
+    ABORT_IF(
+        callThreadMethod(method));
 
-        ABORT_IF(
-            (rc = callThreadMethod(method),
-             -1 == rc));
-
-        if ( ! detached)
-            future->mStatus = rc;
-        else
-        {
-            /* If a thread is detached, its parent will not join to recover
-             * the thread future, so deallocate the thread future here. */
-
-            destroyThreadFuture_(future);
-            future = 0;
-        }
-    }
-    pthread_cleanup_pop(0);
-
-    /* The registered cleanup handler is popped without being executed.
-     * If cancelled, the cleanup handler will be called, and the caller
-     * will receive PTHREAD_CANCELED. */
-
-    return future;
+    return 0;
 }
 
 struct Thread *
@@ -231,8 +178,6 @@ createThread(
 
     struct Thread_ thread =
     {
-        .mDetached = ! self,
-
         .mMutex = PTHREAD_MUTEX_INITIALIZER,
         .mCond  = PTHREAD_COND_INITIALIZER,
 
@@ -264,14 +209,6 @@ createThread(
             });
     }
 
-    ABORT_UNLESS(
-        (thread.mFuture = createThreadFuture_()),
-        {
-            terminate(
-                errno,
-                "Unable to create thread future");
-        });
-
     pthread_mutex_t *lock = lockMutex(&thread.mMutex);
 
     self->mJoined = false;
@@ -297,36 +234,31 @@ joinThread(struct Thread *self)
 {
     int rc = -1;
 
-    struct ThreadFuture_ *future = 0;
-
     ERROR_IF(
         self->mJoined,
         {
             errno = EINVAL;
         });
 
-    void *future_;
+    void *future;
     ERROR_IF(
-        (errno = pthread_join(self->mThread, &future_)));
+        (errno = pthread_join(self->mThread, &future)));
 
     self->mJoined = true;
 
     ERROR_IF(
-        PTHREAD_CANCELED == future_,
+        PTHREAD_CANCELED == future,
         {
             errno = ECANCELED;
         });
 
-    future = future_;
+    ensure( ! future);
 
-    rc = future->mStatus;
+    rc = 0;
 
 Finally:
 
-    FINALLY
-    ({
-        free(future);
-    });
+    FINALLY({});
 
     return rc;
 }
@@ -338,7 +270,7 @@ cancelThread(struct Thread *self)
     ABORT_IF(
         errno = pthread_cancel(self->mThread),
         {
-            terminate("Unable to cancel thread");
+            terminate(errno, "Unable to cancel thread");
         });
 }
 
