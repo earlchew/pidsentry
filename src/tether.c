@@ -736,9 +736,6 @@ closeTetherThread(struct TetherThread *self)
             lock = unlockMutexSignal(lock, self->mState.mCond);
         }
 
-        ABORT_IF(
-            joinThread(self->mThread));
-
         self->mThread = closeThread(self->mThread);
 
         ABORT_IF(
