@@ -93,9 +93,8 @@ createParentProcess(struct ParentProcess *self)
     if (1 == self->mParentPid.mPid)
         self->mParentPid = Pid(0);
 
-    createThread(&self->mThread_, 0,
-                 ThreadMethod(monitorParent_, self));
-    self->mThread = &self->mThread_;
+    self->mThread = createThread(&self->mThread_, 0,
+                                 ThreadMethod(monitorParent_, self));
 
     rc = 0;
 
@@ -116,6 +115,8 @@ closeParentProcess(struct ParentProcess *self)
 
         ABORT_UNLESS(
             joinThread(self->mThread) && ECANCELED == errno);
+
+        self->mThread = closeThread(self->mThread);
     }
 
     return 0;

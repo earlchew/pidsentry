@@ -595,6 +595,8 @@ Finally:
 static void
 closeTetherThread_(struct TetherThread *self)
 {
+    ensure( ! self->mThread);
+
     self->mControlPipe = closePipe(self->mControlPipe);
 
     self->mState.mCond     = destroyCond(self->mState.mCond);
@@ -627,8 +629,8 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
         struct ThreadSigMask *threadSigMask =
             pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
 
-        createThread(&self->mThread, 0,
-                     ThreadMethod(tetherThreadMain_, self));
+        self->mThread = createThread(&self->mThread_, 0,
+                                     ThreadMethod(tetherThreadMain_, self));
 
         threadSigMask = popThreadSigMask(threadSigMask);
     }
@@ -664,7 +666,7 @@ pingTetherThread(struct TetherThread *self)
     debug(0, "ping tether thread");
 
     ERROR_IF(
-        (errno = pthread_kill(self->mThread, SIGALRM)));
+        killThread(self->mThread, SIGALRM));
 
     rc = 0;
 
@@ -735,7 +737,9 @@ closeTetherThread(struct TetherThread *self)
         }
 
         ABORT_IF(
-            joinThread(&self->mThread));
+            joinThread(self->mThread));
+
+        self->mThread = closeThread(self->mThread);
 
         ABORT_IF(
             unwatchProcessClock());

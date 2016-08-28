@@ -137,6 +137,17 @@ destroyThreadFuture_(void *self_)
 }
 
 /* -------------------------------------------------------------------------- */
+pthread_t *
+closeThread(pthread_t *self)
+{
+    if (self)
+    {
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
 struct Thread_
 {
     int mDetached;
@@ -172,11 +183,13 @@ createThread_(void *self_)
 
         if ( ! detached)
         {
+#if 0
             CATCH_IF(
                 (rc = callThreadMethod(method),
                  -1 == rc));
 
             future->mStatus = rc;
+#endif
         }
         else
         {
@@ -200,7 +213,7 @@ createThread_(void *self_)
     return future;
 }
 
-void
+pthread_t *
 createThread(
     pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod)
 {
@@ -245,6 +258,8 @@ createThread(
 
     waitCond(&thread.mCond, lock);
     lock = unlockMutex(lock);
+
+    return self;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -285,6 +300,23 @@ cancelThread(pthread_t *self)
 {
     ABORT_IF(
         (errno = pthread_cancel(*self)));
+}
+
+/* -------------------------------------------------------------------------- */
+int
+killThread(pthread_t *self, int aSignal)
+{
+    int rc = -1;
+
+    ERROR_IF(
+        errno = pthread_kill(*self, aSignal));
+
+    rc = 0;
+
+Finally:
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

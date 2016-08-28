@@ -153,7 +153,7 @@ struct Tid
 ownThreadId(void);
 
 /* -------------------------------------------------------------------------- */
-void
+CHECKED pthread_t *
 createThread(
     pthread_t *self, pthread_attr_t *aAttr, struct ThreadMethod aMethod);
 
@@ -162,6 +162,12 @@ joinThread(pthread_t *self);
 
 void
 cancelThread(pthread_t *self);
+
+CHECKED pthread_t *
+closeThread(pthread_t *self);
+
+CHECKED int
+killThread(pthread_t *self, int aSignal);
 
 /* -------------------------------------------------------------------------- */
 void

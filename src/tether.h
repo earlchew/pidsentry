@@ -47,10 +47,11 @@ struct TetherThread
 {
     struct Pipe  mControlPipe_;
     struct Pipe *mControlPipe;
+    pthread_t    mThread_;
+    pthread_t   *mThread;
 
     struct Pipe *mNullPipe;
     bool         mFlushed;
-    pthread_t    mThread;
 
     struct {
         pthread_mutex_t        mMutex_;
