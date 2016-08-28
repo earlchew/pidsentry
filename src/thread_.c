@@ -183,7 +183,7 @@ createThread(
     struct Thread self_;
     if ( ! self)
         self = &self_;
-    else if (aAttr)
+    else
     {
         ABORT_UNLESS(
             self->mName = strdup(aName),
@@ -191,25 +191,29 @@ createThread(
                 terminate(errno, "Unable to copy thread name %s", aName);
             });
 
-        /* If the caller has specified a non-null self, ensure that there
-         * the thread is detached, since the parent is expected to join
-         * and close the thread. */
+        if (aAttr)
+        {
+            /* If the caller has specified a non-null self, ensure that there
+             * the thread is detached, since the parent is expected to join
+             * and close the thread. */
 
-        int detached;
-        ABORT_IF(
-            (errno = pthread_attr_getdetachstate(&aAttr->mAttr, &detached)),
-            {
-                terminate(
-                    errno,
-                    "Unable to query detached state attribute for thread %s",
-                    aName);
-            });
+            int detached;
+            ABORT_IF(
+                (errno = pthread_attr_getdetachstate(&aAttr->mAttr, &detached)),
+                {
+                    terminate(
+                        errno,
+                        "Unable to query detached state attribute "
+                        "for thread %s",
+                        aName);
+                });
 
-        ABORT_IF(
-            detached,
-            {
-                errno = EINVAL;
-            });
+            ABORT_IF(
+                detached,
+                {
+                    errno = EINVAL;
+                });
+        }
     }
 
     pthread_mutex_t *lock = lockMutex(&thread.mMutex);
