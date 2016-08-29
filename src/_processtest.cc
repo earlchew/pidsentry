@@ -395,11 +395,14 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
             }
 
             /* Two additional fds were opened, but one is closed, so the
-             * net difference should be one extra. */
+             * net difference should be one extra.
+             *
+             * There will be an additional extra fd for file used to
+             * coordinate the process lock. */
 
             unsigned openFds = countFds();
 
-            if (4 != openFds)
+            if (5 != openFds)
             {
                 fprintf(stderr, "%u %u\n", __LINE__, openFds);
                 break;
