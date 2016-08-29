@@ -171,8 +171,6 @@ closeFdExceptWhiteList(const struct FdSet *aFdSet)
 
     struct FdWhiteListVisitor_ whiteListVisitor;
 
-    fprintf(stderr, "@@closeFdExceptWhiteList\n");
-
     whiteListVisitor.mFd = 0;
 
     ERROR_IF(
@@ -198,8 +196,6 @@ closeFdExceptWhiteList(const struct FdSet *aFdSet)
 Finally:
 
     FINALLY({});
-
-    fprintf(stderr, "##closeFdExceptWhiteList\n");
 
     return rc;
 }
@@ -256,8 +252,6 @@ closeFdOnlyBlackList(const struct FdSet *aFdSet)
 
     struct FdBlackListVisitor_ blackListVisitor;
 
-    fprintf(stderr, "@@closeFdOnlyBlackList\n");
-
     ERROR_IF(
         getrlimit(RLIMIT_NOFILE, &blackListVisitor.mFdLimit));
 
@@ -271,8 +265,6 @@ closeFdOnlyBlackList(const struct FdSet *aFdSet)
 Finally:
 
     FINALLY({});
-
-    fprintf(stderr, "##closeFdOnlyBlackList\n");
 
     return rc;
 }
