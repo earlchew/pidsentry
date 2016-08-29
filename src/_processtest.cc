@@ -30,6 +30,8 @@
 #include "process_.h"
 #include "timekeeping_.h"
 #include "bellsocketpair_.h"
+#include "fdset_.h"
+#include "thread_.h"
 #include "macros_.h"
 
 #include <string>
@@ -37,6 +39,7 @@
 #include <unistd.h>
 
 #include <sys/mman.h>
+#include <sys/resource.h>
 
 #include <valgrind/valgrind.h>
 
@@ -106,8 +109,13 @@ TEST_F(ProcessTest, ProcessStatus)
 
     EXPECT_EQ(ChildProcessState::ChildProcessStateExited,
               monitorProcessChild(childpid).mChildState);
+
+    int status;
+    EXPECT_EQ(0, reapProcessChild(childpid, &status));
+    EXPECT_EQ(0, status);
 }
 
+#if 0
 static int sigTermCount_;
 
 static void
@@ -236,6 +244,412 @@ TEST_F(ProcessTest, ProcessDaemon)
     EXPECT_EQ(0, munmap(daemonState, sizeof(*daemonState)));
 
     bellSocket = closeBellSocketPair(bellSocket);
+}
+#endif
+
+struct ProcessForkArg
+{
+    bool             mStart;
+    pthread_cond_t   mCond_;
+    pthread_cond_t  *mCond;
+    pthread_mutex_t  mMutex_;
+    pthread_mutex_t *mMutex;
+};
+
+struct ProcessForkTest
+{
+    int        mPipeFds[2];
+    struct Pid mChildPid;
+};
+
+static unsigned
+countFds()
+{
+    struct rlimit fdLimit;
+
+    if (getrlimit(RLIMIT_NOFILE, &fdLimit))
+        abort();
+
+    unsigned numFds = 0;
+
+    for (unsigned fd = 0; fd < fdLimit.rlim_cur; ++fd)
+    {
+        if (ownFdValid(fd))
+            ++numFds;
+    }
+
+    return numFds;
+}
+
+static void
+processForkTest_Trivial_()
+{
+    /* Simple with no prefork or postfork methods */
+
+    struct Pid childPid =
+        forkProcessChildX(ForkProcessInheritProcessGroup,
+                          Pgid(0),
+                          ForkProcessMethodNil(),
+                          PreForkProcessMethodNil(),
+                          PostForkChildProcessMethodNil(),
+                          PostForkParentProcessMethodNil());
+
+    EXPECT_NE(-1, childPid.mPid);
+
+    if ( ! childPid.mPid)
+    {
+        execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
+    }
+
+    int status;
+    EXPECT_EQ(0, reapProcessChild(childPid, &status));
+    EXPECT_EQ(0, (extractProcessExitStatus(status, childPid).mStatus));
+}
+
+static void
+processForkTest_Usual_(struct ProcessForkArg *aArg)
+{
+    /* Standard use case */
+
+    struct ProcessForkTest forkTest;
+
+    struct Pid childPid =
+        forkProcessChildX(ForkProcessInheritProcessGroup,
+                          Pgid(0),
+                          ForkProcessMethodNil(),
+                          PreForkProcessMethod(
+                              LAMBDA(
+                                  int, (
+                                      struct ProcessForkTest      *self,
+                                      const struct PreForkProcess *aFork),
+                                  {
+                                      /* Provide time for competing threads
+                                       * to also run this code. */
+
+                                      sleep((getpid() / 2) % 3);
+                                      int err = pipe(self->mPipeFds);
+
+                                      err = err
+                                          ? err
+                                          : insertFdSetRange(
+                                              aFork->mBlacklistFds,
+                                              self->mPipeFds[1],
+                                              self->mPipeFds[1]);
+
+                                      err = err
+                                          ? err
+                                          : insertFdSetRange(
+                                              aFork->mWhitelistFds,
+                                              self->mPipeFds[1],
+                                              self->mPipeFds[1]);
+
+                                      return err;
+                                  }),
+                              &forkTest),
+                          PostForkChildProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                      return 0;
+                                  }),
+                              &forkTest),
+                          PostForkParentProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self,
+                                        struct Pid              aChildPid),
+                                  {
+                                      self->mChildPid = aChildPid;
+
+                                      return 0;
+                                  }),
+                              &forkTest));
+
+    EXPECT_NE(-1, childPid.mPid);
+
+    if ( ! childPid.mPid)
+    {
+        int rc = -1;
+
+        do
+        {
+            if ( ! ownFdValid(STDIN_FILENO))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDOUT_FILENO))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDERR_FILENO))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            /* Two additional fds were opened, but one is closed, so the
+             * net difference should be one extra. */
+
+            unsigned openFds = countFds();
+
+            if (4 != openFds)
+            {
+                fprintf(stderr, "%u %u\n", __LINE__, openFds);
+                break;
+            }
+
+            if (ownFdValid(forkTest.mPipeFds[0]))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if (1 != writeFd(forkTest.mPipeFds[1], "X", 1, 0))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            forkTest.mPipeFds[1] = closeFd(forkTest.mPipeFds[1]);
+
+            rc = 0;
+
+        } while (0);
+
+        if (rc)
+            execl("/bin/false", "false", (char *) 0);
+        else
+            execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
+    }
+    else
+    {
+        EXPECT_EQ(forkTest.mChildPid.mPid, childPid.mPid);
+
+        EXPECT_EQ(0, ownFdValid(forkTest.mPipeFds[1]));
+
+        char buf[1] = { '@' };
+
+        EXPECT_EQ(
+            1, readFd(forkTest.mPipeFds[0], buf, sizeof(buf), 0));
+
+        EXPECT_EQ('X', buf[0]);
+
+        forkTest.mPipeFds[0] = closeFd(forkTest.mPipeFds[0]);
+    }
+
+    int status;
+    EXPECT_EQ(0, reapProcessChild(childPid, &status));
+    EXPECT_EQ(0, (extractProcessExitStatus(status, childPid).mStatus));
+}
+
+static void
+processForkTest_FailedPreFork_()
+{
+    /* Failure in prefork */
+
+    struct ProcessForkTest forkTest;
+
+    errno = 0;
+
+    struct Pid childPid =
+        forkProcessChildX(ForkProcessInheritProcessGroup,
+                          Pgid(0),
+                          ForkProcessMethodNil(),
+                          PreForkProcessMethod(
+                              LAMBDA(
+                                  int, (
+                                      struct ProcessForkTest      *self,
+                                      const struct PreForkProcess *aFork),
+                                  {
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest),
+                          PostForkChildProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                      abort();
+
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest),
+                          PostForkParentProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self,
+                                        struct Pid              aChildPid),
+                                  {
+                                      abort();
+
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest));
+
+    EXPECT_EQ(-1, childPid.mPid);
+    EXPECT_EQ(EINVAL, errno);
+}
+
+static void
+processForkTest_FailedChildPostFork_()
+{
+    /* Failure in child postfork */
+
+    struct ProcessForkTest forkTest;
+
+    errno = 0;
+
+    struct Pid childPid =
+        forkProcessChildX(ForkProcessInheritProcessGroup,
+                          Pgid(0),
+                          ForkProcessMethodNil(),
+                          PreForkProcessMethod(
+                              LAMBDA(
+                                  int, (
+                                      struct ProcessForkTest      *self,
+                                      const struct PreForkProcess *aFork),
+                                  {
+                                      return 0;
+                                  }),
+                              &forkTest),
+                          PostForkChildProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest),
+                          PostForkParentProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self,
+                                        struct Pid              aChildPid),
+                                  {
+                                      abort();
+
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest));
+
+    EXPECT_EQ(-1, childPid.mPid);
+    EXPECT_EQ(EINVAL, errno);
+}
+
+static void
+processForkTest_FailedParentPostFork_()
+{
+    /* Failure in parent postfork */
+
+    struct ProcessForkTest forkTest;
+
+    errno = 0;
+
+    struct Pid childPid =
+        forkProcessChildX(ForkProcessInheritProcessGroup,
+                          Pgid(0),
+                          ForkProcessMethodNil(),
+                          PreForkProcessMethod(
+                              LAMBDA(
+                                  int, (
+                                      struct ProcessForkTest      *self,
+                                      const struct PreForkProcess *aFork),
+                                  {
+                                      return 0;
+                                  }),
+                              &forkTest),
+                          PostForkChildProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                      return 0;
+                                  }),
+                              &forkTest),
+                          PostForkParentProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self,
+                                        struct Pid              aChildPid),
+                                  {
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest));
+
+    EXPECT_EQ(-1, childPid.mPid);
+    EXPECT_EQ(EINVAL, errno);
+}
+
+static void
+processForkTest_(struct ProcessForkArg *aArg)
+{
+    pthread_mutex_t *lock = lockMutex(aArg->mMutex);
+
+    while ( ! aArg->mStart)
+        waitCond(aArg->mCond, lock);
+
+    lock = unlockMutex(lock);
+
+    processForkTest_Trivial_();
+    processForkTest_Usual_(aArg);
+    processForkTest_FailedPreFork_();
+    processForkTest_FailedChildPostFork_();
+    processForkTest_FailedParentPostFork_();
+}
+
+TEST_F(ProcessTest, ProcessFork)
+{
+    struct ProcessForkArg forkArg;
+
+    forkArg.mStart  = false;
+    forkArg.mMutex  = createMutex(&forkArg.mMutex_);
+    forkArg.mCond   = createCond(&forkArg.mCond_);
+
+    static const char *threadName[2] =
+    {
+        "thread 1",
+        "thread 2",
+    };
+
+    struct Thread  thread_[2];
+    struct Thread *thread[2] = { 0, 0 };
+
+    pthread_mutex_t *lock = lockMutex(forkArg.mMutex);
+    forkArg.mStart = false;
+
+    for (unsigned ix = 0; ix < NUMBEROF(thread); ++ix)
+    {
+        thread[ix] = createThread(&thread_[ix],
+                                 threadName[ix],
+                                  0,
+                                  ThreadMethod(
+                                      LAMBDA(
+                                          int, (struct ProcessForkArg *self),
+                                          {
+                                              processForkTest_(self);
+                                              return 0;
+                                          }),
+                                      &forkArg));
+        EXPECT_TRUE(thread[ix]);
+    }
+
+    forkArg.mStart = true;
+    lock = unlockMutexBroadcast(lock, forkArg.mCond);
+
+    for (unsigned ix = 0; ix < NUMBEROF(thread); ++ix)
+        thread[ix] = closeThread(thread[ix]);
+
+    int status;
+    EXPECT_EQ(-1, wait(&status));
+    EXPECT_EQ(ECHILD, errno);
+
+    forkArg.mCond  = destroyCond(forkArg.mCond);
+    forkArg.mMutex = destroyMutex(forkArg.mMutex);
 }
 
 #include "../googletest/src/gtest_main.cc"
