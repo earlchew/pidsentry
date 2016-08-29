@@ -1922,8 +1922,7 @@ forkProcessChildX(enum ForkProcessOption   aOption,
         {
             /* Always include stdin, stdout and stderr in the whitelisted
              * fds for the child. If required, the child can close these
-             * in the child post fork method.
-             */
+             * in the child post fork method. */
 
             const int stdwhitelist[] =
             {
@@ -1933,15 +1932,20 @@ forkProcessChildX(enum ForkProcessOption   aOption,
 
                 forkChannel->mResultSocket->mSocketPair->
                 mChildSocket->mSocket->mFile->mFd,
+
+                processLock_.mLock && processLock_.mLock->mFile
+                ? processLock_.mLock->mFile->mFd
+                : -1,
             };
 
             for (unsigned ix = 0; NUMBEROF(stdwhitelist) > ix; ++ix)
             {
-                ERROR_IF(
-                    insertFdSetRange(
-                        whitelistFds,
-                        stdwhitelist[ix],
-                        stdwhitelist[ix]) && EEXIST != errno);
+                if (-1 != stdwhitelist[ix])
+                    ERROR_IF(
+                        insertFdSetRange(
+                            whitelistFds,
+                            stdwhitelist[ix],
+                            stdwhitelist[ix]) && EEXIST != errno);
             }
 
             ERROR_IF(
