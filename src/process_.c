@@ -91,6 +91,18 @@ static struct
     .mMutex  = &processLock_.mMutex_,
 };
 
+static struct ProcessForkLock_
+{
+    pthread_mutex_t  mMutex_;
+    pthread_mutex_t *mMutex;
+    struct Pid       mProcess;
+    struct Tid       mThread;
+    unsigned         mCount;
+} processForkLock_ =
+{
+    .mMutex_ = PTHREAD_MUTEX_INITIALIZER,
+};
+
 static struct
 {
     pthread_mutex_t        mMutex_;
@@ -1351,6 +1363,67 @@ ownProcessAppLockFile(const struct ProcessAppLock *self)
 }
 
 /* -------------------------------------------------------------------------- */
+static CHECKED struct ProcessForkLock_ *
+acquireProcessForkLock_(struct ProcessForkLock_ *self)
+{
+    struct Tid tid = ownThreadId();
+    struct Pid pid = ownProcessId();
+
+    ensure( ! self->mProcess.mPid || self->mProcess.mPid == pid.mPid);
+
+    if (self->mThread.mTid == tid.mTid)
+        ++self->mCount;
+    else
+    {
+        pthread_mutex_t *lock = lockMutex(&self->mMutex_);
+
+        self->mMutex   = lock;
+        self->mThread  = tid;
+        self->mProcess = pid;
+
+        ensure( ! self->mCount);
+
+        ++self->mCount;
+    }
+
+    return self;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED struct ProcessForkLock_ *
+releaseProcessForkLock_(struct ProcessForkLock_ *self)
+{
+    if (self)
+    {
+        struct Tid tid = ownThreadId();
+        struct Pid pid = ownProcessId();
+
+        ensure(self->mCount);
+        ensure(self->mMutex == &self->mMutex_);
+
+        /* Note that the owning tid will not match in the main thread
+         * of the child process (which will have a different tid) after
+         * the lock is acquired and the parent process is forked. */
+
+        ensure(self->mProcess.mPid);
+        ensure(
+            self->mProcess.mPid != pid.mPid || self->mThread.mTid == tid.mTid);
+
+        if ( ! --self->mCount)
+        {
+            pthread_mutex_t *lock = self->mMutex;
+
+            self->mThread = Tid(0);
+            self->mMutex  = 0;
+
+            lock = unlockMutex(lock);
+        }
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 reapProcessChild(struct Pid aPid, int *aStatus)
 {
@@ -1620,7 +1693,18 @@ static CHECKED int
 recvForkProcessChildChannelAcknowledgement_(
     struct ForkProcessChildChannel_ *self)
 {
-    return waitBellSocketPairChild(self->mResultSocket, 0);
+    int rc = -1;
+
+    ERROR_IF(
+        waitBellSocketPairChild(self->mResultSocket, 0));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 static CHECKED int
@@ -1676,6 +1760,13 @@ forkProcessChildX(enum ForkProcessOption   aOption,
     struct ForkProcessChildChannel_  forkChannel_;
     struct ForkProcessChildChannel_ *forkChannel = 0;
 
+    /* Acquire the processForkLock_ so that other threads that issue
+     * a raw fork() will synchronise with this code via the pthread_atfork()
+     * handler. */
+
+    struct ProcessForkLock_ *forkLock =
+        acquireProcessForkLock_(&processForkLock_);
+
     ensure(ForkProcessSetProcessGroup == aOption || ! pgid);
 
 #ifdef __linux__
@@ -1694,6 +1785,7 @@ forkProcessChildX(enum ForkProcessOption   aOption,
     whitelistFds = &whitelistFds_;
 
     ERROR_IF(
+        ! ownPreForkProcessMethodNil(aPreForkMethod) &&
         callPreForkProcessMethod(
             aPreForkMethod,
             & (struct PreForkProcess)
@@ -1701,6 +1793,10 @@ forkProcessChildX(enum ForkProcessOption   aOption,
                 .mBlacklistFds = blacklistFds,
                 .mWhitelistFds = whitelistFds,
             }));
+
+    /* Do not open the fork channel until after the pre fork method
+     * has been run so that these additional file descriptors are
+     * not visible to that method. */
 
     ERROR_IF(
         createForkProcessChildChannel_(&forkChannel_));
@@ -1771,6 +1867,7 @@ forkProcessChildX(enum ForkProcessOption   aOption,
                 });
 
             ERROR_IF(
+                ! ownPostForkParentProcessMethodNil(aPostForkParentMethod) &&
                 callPostForkParentProcessMethod(
                     aPostForkParentMethod, Pid(childPid)));
 
@@ -1817,10 +1914,35 @@ forkProcessChildX(enum ForkProcessOption   aOption,
         closeForkProcessChildResultParent_(forkChannel);
 
         {
+            /* Always include stdin, stdout and stderr in the whitelisted
+             * fds for the child. If required, the child can close these
+             * in the child post fork method.
+             */
+
+            const int stdwhitelist[] =
+            {
+                STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
+
+                forkChannel->mResultPipe->mWrFile->mFd,
+
+                forkChannel->mResultSocket->mSocketPair->
+                mChildSocket->mSocket->mFile->mFd,
+            };
+
+            for (unsigned ix = 0; NUMBEROF(stdwhitelist) > ix; ++ix)
+            {
+                ERROR_IF(
+                    insertFdSetRange(
+                        whitelistFds,
+                        stdwhitelist[ix],
+                        stdwhitelist[ix]) && EEXIST != errno);
+            }
+
             ERROR_IF(
                 closeFdExceptWhiteList(whitelistFds));
 
             ERROR_IF(
+                ! ownPostForkChildProcessMethodNil(aPostForkChildMethod) &&
                 callPostForkChildProcessMethod(aPostForkChildMethod));
 
             /* Send the child fork process method result to the parent so
@@ -1849,6 +1971,8 @@ forkProcessChildX(enum ForkProcessOption   aOption,
                 exitProcess(EXIT_FAILURE);
             }
         }
+
+        forkLock = releaseProcessForkLock_(forkLock);
 
         childrc = 0;
 
@@ -1890,7 +2014,16 @@ Finally:
 
             exitProcess(EXIT_FAILURE);
         }
-        else if (-1 == rc)
+
+        ensure( ! childrc);
+
+        forkChannel  = closeForkProcessChildChannel_(forkChannel);
+        blacklistFds = closeFdSet(blacklistFds);
+        whitelistFds = closeFdSet(whitelistFds);
+
+        forkLock = releaseProcessForkLock_(forkLock);
+
+        if (-1 == rc)
         {
             /* If the parent has successfully created a child process, but
              * there is a problem, then the child needs to be reaped. */
@@ -1902,10 +2035,6 @@ Finally:
                     reapProcessChild(Pid(childPid), &status));
             }
         }
-
-        forkChannel  = closeForkProcessChildChannel_(forkChannel);
-        blacklistFds = closeFdSet(blacklistFds);
-        whitelistFds = closeFdSet(whitelistFds);
     });
 
     return Pid(rc);
@@ -2684,9 +2813,13 @@ postForkChild_(void)
     completeFork_();
 }
 
+static struct ProcessForkLock_ *processAtForkLock_;
+
 static void
 prepareProcessFork_(void)
 {
+    processAtForkLock_ = acquireProcessForkLock_(&processForkLock_);
+
     if (moduleInit_)
         prepareFork_();
 }
@@ -2696,6 +2829,12 @@ postProcessForkParent_(void)
 {
     if (moduleInit_)
         postForkParent_();
+
+    struct ProcessForkLock_ *lock = processAtForkLock_;
+
+    processAtForkLock_ = 0;
+
+    lock = releaseProcessForkLock_(lock);
 }
 
 static void
@@ -2703,6 +2842,12 @@ postProcessForkChild_(void)
 {
     if (moduleInit_)
         postForkChild_();
+
+    struct ProcessForkLock_ *lock = processAtForkLock_;
+
+    processAtForkLock_ = 0;
+
+    lock = releaseProcessForkLock_(lock);
 }
 
 /* -------------------------------------------------------------------------- */
