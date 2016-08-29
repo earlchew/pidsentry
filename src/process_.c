@@ -1406,8 +1406,14 @@ releaseProcessForkLock_(struct ProcessForkLock_ *self)
          * the lock is acquired and the parent process is forked. */
 
         ensure(self->mProcess.mPid);
-        ensure(
-            self->mProcess.mPid != pid.mPid || self->mThread.mTid == tid.mTid);
+
+        if (self->mProcess.mPid == pid.mPid)
+            ensure(self->mThread.mTid == tid.mTid);
+        else
+        {
+            self->mProcess = pid;
+            self->mThread  = tid;
+        }
 
         if ( ! --self->mCount)
         {
