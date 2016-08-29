@@ -254,6 +254,9 @@ struct ProcessForkArg
     pthread_cond_t  *mCond;
     pthread_mutex_t  mMutex_;
     pthread_mutex_t *mMutex;
+
+    unsigned mNumFds;
+    unsigned mNumForks;
 };
 
 struct ProcessForkTest
@@ -327,7 +330,7 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                       /* Provide time for competing threads
                                        * to also run this code. */
 
-                                      sleep((getpid() / 2) % 3);
+                                      sleep((ownThreadId().mTid / 2) % 3);
                                       int err = pipe(self->mPipeFds);
 
                                       err = err
@@ -602,14 +605,42 @@ processForkTest_(struct ProcessForkArg *aArg)
     processForkTest_FailedParentPostFork_();
 }
 
+static void
+processForkTest_Raw_(struct ProcessForkArg *aArg)
+{
+    pthread_mutex_t *lock = lockMutex(aArg->mMutex);
+
+    while ( ! aArg->mStart)
+        waitCond(aArg->mCond, lock);
+
+    lock = unlockMutex(lock);
+
+    sleep((ownThreadId().mTid / 2) % 3);
+
+    pid_t childpid = fork();
+
+    EXPECT_NE(-1, childpid);
+
+    if ( ! childpid)
+    {
+        execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
+    }
+
+    unsigned openFds = countFds();
+
+    EXPECT_GE(openFds, aArg->mNumFds);
+    EXPECT_LE(openFds, aArg->mNumFds + aArg->mNumForks);
+
+    struct Pid childPid = Pid(childpid);
+
+    int status;
+    EXPECT_EQ(0, reapProcessChild(childPid, &status));
+    EXPECT_EQ(0, (extractProcessExitStatus(status, childPid).mStatus));
+}
+
 TEST_F(ProcessTest, ProcessFork)
 {
-    struct ProcessForkArg forkArg;
-
-    forkArg.mStart  = false;
-    forkArg.mMutex  = createMutex(&forkArg.mMutex_);
-    forkArg.mCond   = createCond(&forkArg.mCond_);
-
     static const char *threadName[2] =
     {
         "thread 1",
@@ -618,6 +649,14 @@ TEST_F(ProcessTest, ProcessFork)
 
     struct Thread  thread_[2];
     struct Thread *thread[2] = { 0, 0 };
+
+    struct ProcessForkArg forkArg;
+
+    forkArg.mStart    = false;
+    forkArg.mMutex    = createMutex(&forkArg.mMutex_);
+    forkArg.mCond     = createCond(&forkArg.mCond_);
+    forkArg.mNumFds   = countFds();
+    forkArg.mNumForks = NUMBEROF(thread);
 
     pthread_mutex_t *lock = lockMutex(forkArg.mMutex);
     forkArg.mStart = false;
@@ -638,11 +677,30 @@ TEST_F(ProcessTest, ProcessFork)
         EXPECT_TRUE(thread[ix]);
     }
 
+    struct Thread  rawForkThread_;
+    struct Thread *rawForkThread;
+
+    rawForkThread = createThread(&rawForkThread_,
+                                 "rawkfork",
+                                 0,
+                                 ThreadMethod(
+                                     LAMBDA(
+                                         int, (struct ProcessForkArg *self),
+                                         {
+                                             processForkTest_Raw_(self);
+
+                                             return 0;
+                                         }),
+                                     &forkArg));
+    EXPECT_TRUE(rawForkThread);
+
     forkArg.mStart = true;
     lock = unlockMutexBroadcast(lock, forkArg.mCond);
 
     for (unsigned ix = 0; ix < NUMBEROF(thread); ++ix)
         thread[ix] = closeThread(thread[ix]);
+
+    rawForkThread = closeThread(rawForkThread);
 
     int status;
     EXPECT_EQ(-1, wait(&status));
