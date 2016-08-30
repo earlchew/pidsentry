@@ -386,14 +386,17 @@ temporaryFile(struct File *self)
          *
          * The above is only of passing interest for this use case. */
 
-        ERROR_IF(
-            (fd = openFd(tmpDir,
-                         O_TMPFILE | O_RDWR | O_DIRECTORY | O_CLOEXEC,
-                         S_IWUSR | S_IRUSR),
-             -1 == fd && EISDIR != errno && EOPNOTSUPP != errno));
+        if ( ! testAction(TestLevelRace))
+        {
+            ERROR_IF(
+                (fd = openFd(tmpDir,
+                             O_TMPFILE | O_RDWR | O_DIRECTORY | O_CLOEXEC,
+                             S_IWUSR | S_IRUSR),
+                 -1 == fd && EISDIR != errno && EOPNOTSUPP != errno));
 
-        if (-1 != fd)
-            break;
+            if (-1 != fd)
+                break;
+        }
 #endif
 
         ERROR_IF(
