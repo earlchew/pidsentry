@@ -1737,6 +1737,33 @@ callForkMethod_(struct ForkProcessMethod aMethod)
                         "Out of range exit status %d", status);
             });
 
+        /* When running with valgrind, use execl() to prevent
+         * valgrind performing a leak check on the temporary
+         * process. */
+
+        if (RUNNING_ON_VALGRIND)
+        {
+            static const char exitCmdFmt[] = "exit %d";
+
+            char exitCmd[sizeof(exitCmdFmt) + sizeof(status) * CHAR_BIT];
+
+            ABORT_IF(
+                0 > sprintf(exitCmd, exitCmdFmt, status),
+                {
+                    terminate(
+                        errno,
+                        "Unable to format exit status command: %d", status);
+                });
+
+            ABORT_IF(
+                (execl("/bin/sh", "sh", "-c", exitCmd, (char *) 0), true),
+                {
+                    terminate(
+                        errno,
+                        "Unable to exit process: %s", exitCmd);
+                });
+        }
+
         exitProcess(status);
     }
 }
