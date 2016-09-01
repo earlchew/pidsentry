@@ -1790,12 +1790,12 @@ callForkMethod_(struct ForkProcessMethod aMethod)
 }
 
 struct Pid
-forkProcessChildX(enum ForkProcessOption   aOption,
-                  struct Pgid              aPgid,
-                  struct ForkProcessMethod aMethod,
+forkProcessChildX(enum ForkProcessOption             aOption,
+                  struct Pgid                        aPgid,
                   struct PreForkProcessMethod        aPreForkMethod,
                   struct PostForkChildProcessMethod  aPostForkChildMethod,
-                  struct PostForkParentProcessMethod aPostForkParentMethod)
+                  struct PostForkParentProcessMethod aPostForkParentMethod,
+                  struct ForkProcessMethod           aMethod)
 {
     pid_t rc = -1;
 

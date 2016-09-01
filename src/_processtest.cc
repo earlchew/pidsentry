@@ -292,10 +292,10 @@ processForkTest_Trivial_()
     struct Pid childPid =
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
-                          ForkProcessMethodNil(),
                           PreForkProcessMethodNil(),
                           PostForkChildProcessMethodNil(),
-                          PostForkParentProcessMethodNil());
+                          PostForkParentProcessMethodNil(),
+                          ForkProcessMethodNil());
 
     EXPECT_NE(-1, childPid.mPid);
 
@@ -320,7 +320,6 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
     struct Pid childPid =
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
-                          ForkProcessMethodNil(),
                           PreForkProcessMethod(
                               LAMBDA(
                                   int, (
@@ -366,7 +365,8 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
 
                                       return 0;
                                   }),
-                              &forkTest));
+                              &forkTest),
+                          ForkProcessMethodNil());
 
     EXPECT_NE(-1, childPid.mPid);
 
@@ -465,7 +465,6 @@ processForkTest_FailedPreFork_()
     struct Pid childPid =
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
-                          ForkProcessMethodNil(),
                           PreForkProcessMethod(
                               LAMBDA(
                                   int, (
@@ -496,7 +495,8 @@ processForkTest_FailedPreFork_()
                                       errno = EINVAL;
                                       return -1;
                                   }),
-                              &forkTest));
+                              &forkTest),
+                          ForkProcessMethodNil());
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
@@ -514,7 +514,6 @@ processForkTest_FailedChildPostFork_()
     struct Pid childPid =
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
-                          ForkProcessMethodNil(),
                           PreForkProcessMethod(
                               LAMBDA(
                                   int, (
@@ -542,7 +541,8 @@ processForkTest_FailedChildPostFork_()
                                       errno = EINVAL;
                                       return -1;
                                   }),
-                              &forkTest));
+                              &forkTest),
+                          ForkProcessMethodNil());
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
@@ -560,7 +560,6 @@ processForkTest_FailedParentPostFork_()
     struct Pid childPid =
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
-                          ForkProcessMethodNil(),
                           PreForkProcessMethod(
                               LAMBDA(
                                   int, (
@@ -585,7 +584,8 @@ processForkTest_FailedParentPostFork_()
                                       errno = EINVAL;
                                       return -1;
                                   }),
-                              &forkTest));
+                              &forkTest),
+                          ForkProcessMethodNil());
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
