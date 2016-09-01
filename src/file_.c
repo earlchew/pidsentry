@@ -31,6 +31,7 @@
 #include "macros_.h"
 #include "error_.h"
 #include "fd_.h"
+#include "fdset_.h"
 #include "process_.h"
 #include "test_.h"
 #include "thread_.h"
@@ -203,37 +204,139 @@ Finally:
 
 struct TemporaryFileProcess_
 {
+    int                mFd;
     int                mErr;
-    struct SocketPair *mSocketPair;
     const char        *mDirName;
+    struct SocketPair  mSocketPair_;
+    struct SocketPair *mSocketPair;
+    struct Thread      mThread_;
+    struct Thread     *mThread;
 };
 
+static CHECKED struct TemporaryFileProcess_ *
+closeTemporaryFileProcess_(struct TemporaryFileProcess_ *self)
+{
+    if (self)
+    {
+        self->mSocketPair = closeSocketPair(self->mSocketPair);
+        self->mThread     = closeThread(self->mThread);
+    }
+
+    return 0;
+}
+
 static CHECKED int
-temporaryFileProcess_(struct TemporaryFileProcess_ *self)
+createTemporaryFileProcess_(struct TemporaryFileProcess_ *self,
+                            const char                   *aDirName)
+{
+    self->mFd         = -1;
+    self->mErr        = 0;
+    self->mDirName    = aDirName;
+    self->mSocketPair = 0;
+    self->mThread     = 0;
+
+    return 0;
+}
+
+static CHECKED int
+recvTemporaryFileProcessFd_(struct TemporaryFileProcess_ *self)
 {
     int rc = -1;
 
-    closeSocketPairParent(self->mSocketPair);
+    ssize_t rdlen;
+    ERROR_IF(
+        (rdlen = recvUnixSocket(
+            self->mSocketPair->mParentSocket,
+            (void *) &self->mErr,
+            sizeof(self->mErr)),
+         -1 == rdlen ||
+         (errno = 0, sizeof(self->mErr) != rdlen)));
 
-    {
-        struct ProcessAppLock *appLock = createProcessAppLock();
-
-        const struct File *appLockFile = ownProcessAppLockFile(appLock);
-
-        int whiteList[] =
+    ERROR_IF(
+        self->mErr,
         {
-            STDIN_FILENO,
-            STDOUT_FILENO,
-            STDERR_FILENO,
+            errno = self->mErr;
+        });
+
+    int tmpFd;
+    ERROR_IF(
+        (tmpFd = recvUnixSocketFd(self->mSocketPair->mParentSocket, O_CLOEXEC),
+         -1 == tmpFd));
+
+    self->mFd = tmpFd;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
+waitTemporaryFileProcessSocket_(struct TemporaryFileProcess_ *self)
+{
+    int rc = -1;
+
+    ERROR_IF(
+        joinThread(self->mThread));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
+prepareTemporaryFileProcessSocket_(struct TemporaryFileProcess_ *self,
+                                   const struct PreForkProcess  *aFork)
+{
+    int rc = -1;
+
+    ERROR_IF(
+        createSocketPair(&self->mSocketPair_, O_CLOEXEC));
+    self->mSocketPair = &self->mSocketPair_;
+
+    ERROR_UNLESS(
+        self->mThread = createThread(
+            &self->mThread_,
+            0,
+            0,
+            ThreadMethod(recvTemporaryFileProcessFd_, self)));
+
+    ERROR_IF(
+        insertFdSetRange(
+            aFork->mWhitelistFds,
+            self->mSocketPair->mParentSocket->mSocket->mFile->mFd,
+            self->mSocketPair->mParentSocket->mSocket->mFile->mFd));
+
+    ERROR_IF(
+        insertFdSetRange(
+            aFork->mWhitelistFds,
             self->mSocketPair->mChildSocket->mSocket->mFile->mFd,
-            appLockFile ? appLockFile->mFd : -1,
-        };
+            self->mSocketPair->mChildSocket->mSocket->mFile->mFd));
 
-        ERROR_IF(
-            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
+    rc = 0;
 
-        appLock = destroyProcessAppLock(appLock);
-    }
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            self = closeTemporaryFileProcess_(self);
+    });
+
+    return rc;
+}
+
+static CHECKED int
+sendTemporaryFileProcessFd_(struct TemporaryFileProcess_ *self)
+{
+    int rc = -1;
 
     int fd;
     {
@@ -261,16 +364,7 @@ temporaryFileProcess_(struct TemporaryFileProcess_ *self)
             sendUnixSocketFd(
                 self->mSocketPair->mChildSocket, fd));
 
-    /* When running with valgrind, use execl() to prevent
-     * valgrind performing a leak check on the temporary
-     * process. */
-
-    if (RUNNING_ON_VALGRIND)
-        ERROR_IF(
-            execl(
-                "/bin/true", "true", (char *) 0) || (errno = 0, true));
-
-    rc = EXIT_SUCCESS;
+    rc = 0;
 
 Finally:
 
@@ -284,14 +378,9 @@ temporaryFile_(const char *aDirName)
 {
     int rc = -1;
 
-    struct SocketPair  socketPair_;
-    struct SocketPair *socketPair = 0;
+    int tmpFd = -1;
 
     struct Pid tempPid = Pid(-1);
-
-    ERROR_IF(
-        createSocketPair(&socketPair_, O_CLOEXEC));
-    socketPair = &socketPair_;
 
     /* Because the of the inherent race in creating an anonymous
      * temporary file, try to minimise the chance of the littering
@@ -302,60 +391,80 @@ temporaryFile_(const char *aDirName)
      * o Placing that process in a separate session and process group
      */
 
-    struct TemporaryFileProcess_ temporaryFileProcess =
-    {
-        .mSocketPair = socketPair,
-        .mDirName    = aDirName,
-    };
+    struct TemporaryFileProcess_  temporaryFileProcess_;
+    struct TemporaryFileProcess_ *temporaryFileProcess;
 
     ERROR_IF(
-        (tempPid = forkProcessChild(
+        createTemporaryFileProcess_(&temporaryFileProcess_, aDirName));
+    temporaryFileProcess = &temporaryFileProcess_;
+
+    ERROR_IF(
+        (tempPid = forkProcessChildX(
             ForkProcessSetSessionLeader,
             Pgid(0),
-            ForkProcessMethod(temporaryFileProcess_, &temporaryFileProcess)),
+            PreForkProcessMethod(
+                LAMBDA(
+                    int, (struct TemporaryFileProcess_ *self,
+                          const struct PreForkProcess  *aFork),
+                    {
+                        return prepareTemporaryFileProcessSocket_(self, aFork);
+                    }),
+                temporaryFileProcess),
+            PostForkChildProcessMethod(
+                LAMBDA(
+                    int, (struct TemporaryFileProcess_ *self),
+                    {
+                        closeSocketPairParent(self->mSocketPair);
+
+                        return sendTemporaryFileProcessFd_(self);
+                    }),
+                temporaryFileProcess),
+            PostForkParentProcessMethod(
+                LAMBDA(
+                    int, (struct TemporaryFileProcess_ *self,
+                          struct Pid                    aChildPid),
+                    {
+                        closeSocketPairChild(self->mSocketPair);
+
+                        return waitTemporaryFileProcessSocket_(
+                            temporaryFileProcess);
+                    }),
+                temporaryFileProcess),
+            ForkProcessMethod(
+                LAMBDA(
+                    int, (struct TemporaryFileProcess_ *self),
+                    { return 0; }),
+                temporaryFileProcess)),
          -1 == tempPid.mPid));
 
-    closeSocketPairChild(socketPair);
-
-    ssize_t rdlen;
+    int status;
     ERROR_IF(
-        (rdlen = recvUnixSocket(
-            socketPair->mParentSocket,
-            (void *) &temporaryFileProcess.mErr,
-            sizeof(temporaryFileProcess.mErr)),
-         -1 == rdlen ||
-         (errno = 0, sizeof(temporaryFileProcess.mErr) != rdlen)));
+        reapProcessChild(tempPid, &status));
+
+    struct ExitCode exitCode =
+        extractProcessExitStatus(status, tempPid);
 
     ERROR_IF(
-        temporaryFileProcess.mErr,
+        exitCode.mStatus,
         {
-            errno = temporaryFileProcess.mErr;
+            errno = ECHILD;
         });
 
-    rc = recvUnixSocketFd(socketPair->mParentSocket, O_CLOEXEC);
+    int retFd = temporaryFileProcess->mFd;
+
+    ensure(-1 != retFd);
+
+    tmpFd = -1;
+    rc    = retFd;
 
 Finally:
 
     FINALLY
     ({
-        socketPair = closeSocketPair(socketPair);
+        temporaryFileProcess = closeTemporaryFileProcess_(temporaryFileProcess);
 
-        if (-1 != tempPid.mPid)
-        {
-            int status;
-
-            ABORT_IF(
-                reapProcessChild(tempPid, &status));
-
-            struct ExitCode exitCode =
-                extractProcessExitStatus(status, tempPid);
-
-            if (-1 != rc && exitCode.mStatus)
-            {
-                rc    = closeFd(rc);
-                errno = ECHILD;
-            }
-        }
+        if (-1 != tmpFd)
+            tmpFd = closeFd(tmpFd);
     });
 
     return rc;
