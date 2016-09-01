@@ -121,7 +121,10 @@ closeThread(struct Thread *self)
             ABORT_IF(
                 joinThread(self),
                 {
-                    terminate(errno, "Unable to join thread %s", self->mName);
+                    terminate(errno,
+                              "Unable to join thread%s%s",
+                              ! self->mName ? "" : " ",
+                              ! self->mName ? "" : self->mName);
                 });
         }
 
@@ -151,12 +154,13 @@ createThread_(void *self_)
 
     pthread_mutex_t *lock = lockMutex(&self->mMutex);
 
-    ABORT_IF(
-        errno = pthread_setname_np(pthread_self(), self->mName),
-        {
-            terminate(errno,
-                      "Unable to set thread name %s", self->mName);
-        });
+    if (self->mName)
+        ABORT_IF(
+            errno = pthread_setname_np(pthread_self(), self->mName),
+            {
+                terminate(errno,
+                          "Unable to set thread name %s", self->mName);
+            });
 
     lock = unlockMutexSignal(lock, &self->mCond);
 
@@ -197,11 +201,16 @@ createThread(
         self = &self_;
     else
     {
-        ABORT_UNLESS(
-            self->mName = strdup(aName),
-            {
-                terminate(errno, "Unable to copy thread name %s", aName);
-            });
+        self->mName = 0;
+
+        if (aName)
+        {
+            ABORT_UNLESS(
+                self->mName = strdup(aName),
+                {
+                    terminate(errno, "Unable to copy thread name %s", aName);
+                });
+        }
 
         if (aAttr)
         {
@@ -289,7 +298,10 @@ cancelThread(struct Thread *self)
     ABORT_IF(
         errno = pthread_cancel(self->mThread),
         {
-            terminate(errno, "Unable to cancel thread %s", self->mName);
+            terminate(errno,
+                      "Unable to cancel thread%s%s",
+                      ! self->mName ? "" : " ",
+                      ! self->mName ? "" : self->mName);
         });
 }
 
