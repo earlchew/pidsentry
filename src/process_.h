@@ -305,7 +305,7 @@ struct ProcessDirName
     char mDirName[sizeof(PROCESS_DIRNAME_FMT_) + sizeof(pid_t) * CHAR_BIT];
 };
 
-void
+CHECKED int
 initProcessDirName(struct ProcessDirName *self, struct Pid aPid);
 
 /* -------------------------------------------------------------------------- */

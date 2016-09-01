@@ -1085,10 +1085,21 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-void
+int
 initProcessDirName(struct ProcessDirName *self, struct Pid aPid)
 {
-    sprintf(self->mDirName, PROCESS_DIRNAME_FMT_, FMTd_Pid(aPid));
+    int rc = -1;
+
+    ERROR_IF(
+        0 > sprintf(self->mDirName, PROCESS_DIRNAME_FMT_, FMTd_Pid(aPid)));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1102,7 +1113,13 @@ formatProcessSignalName(struct ProcessSignalName *self, int aSigNum)
 
     if ( ! self->mSignalName)
     {
-        sprintf(self->mSignalText_, PROCESS_SIGNALNAME_FMT_, aSigNum);
+        static const char signalErr[] = "signal ?";
+
+        typedef char SignalErrCheckT[
+            2 * (sizeof(signalErr) < sizeof(PROCESS_SIGNALNAME_FMT_)) - 1];
+
+        if (0 > sprintf(self->mSignalText_, PROCESS_SIGNALNAME_FMT_, aSigNum))
+            strcpy(self->mSignalText_, signalErr);
         self->mSignalName = self->mSignalText_;
     }
 
@@ -1120,19 +1137,23 @@ fetchProcessState(struct Pid aPid)
 
     struct ProcessDirName processDirName;
 
-    initProcessDirName(&processDirName, aPid);
-
     static const char processStatFileNameFmt_[] = "%s/stat";
 
-    char processStatFileName[strlen(processDirName.mDirName) +
-                             sizeof(processStatFileNameFmt_)];
-
-    sprintf(processStatFileName,
-            processStatFileNameFmt_, processDirName.mDirName);
-
     ERROR_IF(
-        (statFd = openFd(processStatFileName, O_RDONLY, 0),
-         -1 == statFd));
+        initProcessDirName(&processDirName, aPid));
+
+    {
+        char processStatFileName[strlen(processDirName.mDirName) +
+                                 sizeof(processStatFileNameFmt_)];
+
+        ERROR_IF(
+            0 > sprintf(processStatFileName,
+                        processStatFileNameFmt_, processDirName.mDirName));
+
+        ERROR_IF(
+            (statFd = openFd(processStatFileName, O_RDONLY, 0),
+             -1 == statFd));
+    }
 
     ssize_t statlen;
     ERROR_IF(

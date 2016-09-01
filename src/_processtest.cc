@@ -71,7 +71,7 @@ TEST_F(ProcessTest, ProcessSignalName)
     static const char nsigFormat[] = "signal %zu";
 
     char nsigName[sizeof(nsigFormat) + CHAR_BIT * sizeof(size_t)];
-    sprintf(nsigName, nsigFormat, (size_t) NSIG);
+    EXPECT_FALSE(0 > sprintf(nsigName, nsigFormat, (size_t) NSIG));
 
     EXPECT_EQ(std::string("SIGHUP"), formatProcessSignalName(&sigName, SIGHUP));
     EXPECT_EQ(std::string("signal 0"), formatProcessSignalName(&sigName, 0));

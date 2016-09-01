@@ -77,7 +77,14 @@ createPollEventText(
     buf = pollEventTextBit_(buf, &mask, POLLNVAL);
 
     if (mask)
-        sprintf(buf, " 0x%x", mask);
+    {
+        if (0 > sprintf(buf, " 0x%x", mask))
+        {
+            buf[0] = ' ';
+            buf[1] = '?';
+            buf[2] = 0;
+        }
+    }
 
     return aPollEventText->mText + 1;
 }

@@ -73,15 +73,17 @@ fetchProcessSignature_(struct Pid aPid, char **aSignature)
     {
         struct ProcessDirName processDirName;
 
-        initProcessDirName(&processDirName, aPid);
+        ERROR_IF(
+            initProcessDirName(&processDirName, aPid));
 
         static const char processStatFileNameFmt_[] = "%s/stat";
 
         char processStatFileName[strlen(processDirName.mDirName) +
                                  sizeof(processStatFileNameFmt_)];
 
-        sprintf(processStatFileName,
-                processStatFileNameFmt_, processDirName.mDirName);
+        ERROR_IF(
+            0> sprintf(processStatFileName,
+                       processStatFileNameFmt_, processDirName.mDirName));
 
         ERROR_IF(
             (fd = openFd(processStatFileName, O_RDONLY, 0),

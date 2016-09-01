@@ -500,7 +500,8 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
                 char tetherArg[sizeof(int) * CHAR_BIT + 1];
 
-                sprintf(tetherArg, "%d", tetherFd);
+                ERROR_IF(
+                    0 > sprintf(tetherArg, "%d", tetherFd));
 
                 if (gOptions.mServer.mName)
                 {
@@ -547,14 +548,14 @@ runChildProcess_(struct ForkChildProcess_ *self)
                                         errno = ERANGE;
                                     });
 
-                                sprintf(
+                                ERROR_IF(
+                                  0 > sprintf(
                                     replacedArg,
                                     "%.*s%s%s",
                                     matchLen,
                                     cmd[ix],
                                     tetherArg,
-                                    matchArg + strlen(gOptions.mServer.mName));
-
+                                    matchArg + strlen(gOptions.mServer.mName)));
 
                                 char *dupArg = 0;
                                 ERROR_UNLESS(
