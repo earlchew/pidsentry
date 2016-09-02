@@ -69,6 +69,33 @@ fileList_ =
 };
 
 /* -------------------------------------------------------------------------- */
+EARLY_INITIALISER(
+    file_,
+    ({
+        ABORT_IF(
+            pthread_atfork(
+                LAMBDA(
+                    void, (void),
+                    {
+                        while (lockMutex(&fileList_.mMutex))
+                            break;
+                    }),
+                LAMBDA(
+                    void, (void),
+                    {
+                        while (unlockMutex(&fileList_.mMutex))
+                            break;
+                    }),
+                LAMBDA(
+                    void, (void),
+                    {
+                        while (unlockMutex(&fileList_.mMutex))
+                            break;
+                    })));
+    }),
+    ({ }));
+
+/* -------------------------------------------------------------------------- */
 int
 createFile(struct File *self, int aFd)
 {
