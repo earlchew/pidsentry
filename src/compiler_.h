@@ -46,6 +46,51 @@
 #endif
 
 /* -------------------------------------------------------------------------- */
+/* Instance Counter
+ *
+ * Provide a way to generate unique names by having a instance counter.
+ * If this is not available, the current line number is usually a good
+ * enough fallback.
+ */
+
+#ifdef __COUNTER__
+#define COUNTER __COUNTER__
+#else
+#error
+#define COUNTER __LINE__
+#endif
+
+/* -------------------------------------------------------------------------- */
+/* Ordered Initialisation
+ *
+ * Provide a way to order the initialisation of modules in libraries
+ * and executables.
+ */
+
+#define EARLY_INITIALISER(Name_, Ctor_, Dtor_)  \
+    EARLY_INITIALISER_(Name_, Ctor_, Dtor_)
+
+#define EARLY_INITIALISER_(Name_, Ctor_, Dtor_) \
+                                                \
+static __attribute__((__constructor__(101)))    \
+void Name_ ## _ctor_(void)                      \
+{                                               \
+    do                                          \
+        EXPAND Ctor_                            \
+    while (0);                                  \
+}                                               \
+                                                \
+static __attribute__((__destructor__(101)))     \
+void Name_ ## _dtor_(void)                      \
+{                                               \
+    do                                          \
+        EXPAND Dtor_                            \
+    while (0);                                  \
+}                                               \
+                                                \
+struct EarlyInit
+
+/* -------------------------------------------------------------------------- */
 /* Checked Return
  *
  * Where there are return code that need to be checked, this decorator
