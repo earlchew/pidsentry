@@ -1803,6 +1803,55 @@ callForkMethod_(struct ForkProcessMethod aMethod)
     }
 }
 
+static void
+callForkMethodX_(struct ForkProcessMethod aMethod) NORETURN;
+
+static void
+callForkMethodX_(struct ForkProcessMethod aMethod)
+{
+    int status = EXIT_SUCCESS;
+
+    if ( ! ownForkProcessMethodNil(aMethod))
+        ABORT_IF(
+            (status = callForkProcessMethod(aMethod),
+             -1 == status || (errno = 0, 0 > status || 255 < status)),
+            {
+                if (-1 != status)
+                    terminate(
+                        0,
+                        "Out of range exit status %d", status);
+            });
+
+    /* When running with valgrind, use execl() to prevent
+     * valgrind performing a leak check on the temporary
+     * process. */
+
+    if (RUNNING_ON_VALGRIND)
+    {
+        static const char exitCmdFmt[] = "exit %d";
+
+        char exitCmd[sizeof(exitCmdFmt) + sizeof(status) * CHAR_BIT];
+
+        ABORT_IF(
+            0 > sprintf(exitCmd, exitCmdFmt, status),
+            {
+                terminate(
+                    errno,
+                    "Unable to format exit status command: %d", status);
+            });
+
+        ABORT_IF(
+            (execl("/bin/sh", "sh", "-c", exitCmd, (char *) 0), true),
+            {
+                terminate(
+                    errno,
+                    "Unable to exit process: %s", exitCmd);
+            });
+    }
+
+    exitProcess(status);
+}
+
 struct Pid
 forkProcessChildX(enum ForkProcessOption             aOption,
                   struct Pgid                        aPgid,
@@ -2050,9 +2099,9 @@ forkProcessChildX(enum ForkProcessOption             aOption,
 
         childrc = 0;
 
-        callForkMethod_(aMethod);
+        callForkMethodX_(aMethod);
 
-        ensure( ! childrc && ! childPid);
+        ensure(0);
 
         break;
     }
