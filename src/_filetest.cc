@@ -29,6 +29,7 @@
 
 #include "file_.h"
 #include "process_.h"
+#include "fdset_.h"
 
 #include "gtest/gtest.h"
 
@@ -56,29 +57,46 @@ struct LockType
 checkLock(struct File *aFile)
 {
     struct Pid checkPid =
-        forkProcessChild(ForkProcessInheritProcessGroup,
-                         Pgid(0),
-                         ForkProcessMethodNil());
+        forkProcessChildX(ForkProcessInheritProcessGroup,
+                          Pgid(0),
+                          PreForkProcessMethod(
+                              aFile,
+                              LAMBDA(
+                                  int, (struct File                 *self,
+                                        const struct PreForkProcess *aPreFork),
+                                  {
+                                      return insertFdSetRange(
+                                          aPreFork->mWhitelistFds,
+                                          self->mFd,
+                                          self->mFd);
+                                  })),
+                          PostForkChildProcessMethodNil(),
+                          PostForkParentProcessMethodNil(),
+                          ForkProcessMethod(
+                              aFile,
+                              LAMBDA(
+                                  int, (struct File *self),
+                                  {
+                                      struct LockType lockType =
+                                          ownFileRegionLocked(self, 0, 1);
+
+                                      int rc = 0;
+
+                                      if (LockTypeUnlocked.mType
+                                          == lockType.mType)
+                                          rc = 1;
+                                      else if (LockTypeRead.mType
+                                               == lockType.mType)
+                                          rc = 2;
+                                      else if (LockTypeWrite.mType
+                                               == lockType.mType)
+                                          rc = 3;
+
+                                      return rc;
+                                  })));
 
     if (-1 == checkPid.mPid)
         return LockTypeError;
-
-    if ( ! checkPid.mPid)
-    {
-        struct LockType lockType = ownFileRegionLocked(aFile, 0, 1);
-
-        const char *cmd = "exit 0";
-
-        if (LockTypeUnlocked.mType == lockType.mType)
-            cmd = "exit 1";
-        else if (LockTypeRead.mType == lockType.mType)
-            cmd = "exit 2";
-        else if (LockTypeWrite.mType == lockType.mType)
-            cmd = "exit 3";
-
-        execl("/bin/sh", "sh", "-c", cmd, (char *) 0);
-        _exit(EXIT_SUCCESS);
-    }
 
     int status;
     if (reapProcessChild(checkPid, &status))
