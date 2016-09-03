@@ -41,9 +41,6 @@
 #include <sys/file.h>
 
 /* -------------------------------------------------------------------------- */
-static unsigned moduleInit_;
-
-/* -------------------------------------------------------------------------- */
 #define EINTR_FUNCTION_DEFN_(                                           \
     Eintr_, Enum_, Return_, Name_, Signature_, Args_, Predicate_, ...)  \
                                                                         \
@@ -1047,47 +1044,6 @@ static uintptr_t
 invokeSystemCall(enum SystemCallKind aKind)
 {
     return initSystemCall(&systemCall_[aKind]);
-}
-
-/* -------------------------------------------------------------------------- */
-bool
-Eintr_active(void)
-{
-    return testMode(TestLevelRace);
-}
-
-/* -------------------------------------------------------------------------- */
-int
-Eintr_init(struct EintrModule *self)
-{
-    int rc = -1;
-
-    self->mModule = self;
-
-    if ( ! moduleInit_)
-    { }
-
-    ++moduleInit_;
-
-    rc = 0;
-
-Finally:
-
-    FINALLY({});
-
-    return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-struct EintrModule *
-Eintr_exit(struct EintrModule *self)
-{
-    if (self)
-    {
-        --moduleInit_;
-    }
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */

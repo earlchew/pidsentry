@@ -386,15 +386,5 @@ EINTR_FUNCTION_DECL_(
     (useconds_t aTimeout));
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
-Eintr_init(struct EintrModule *self);
-
-CHECKED struct EintrModule *
-Eintr_exit(struct EintrModule *self);
-
-bool
-Eintr_active(void);
-
-/* -------------------------------------------------------------------------- */
 
 #endif /* EINTR_H */
