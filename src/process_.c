@@ -72,10 +72,6 @@ struct ProcessAppLock
 
 static struct ProcessAppLock processAppLock_;
 
-static pthread_rwlock_t      processSigVecLock_ = PTHREAD_RWLOCK_INITIALIZER;
-static struct ThreadSigMutex processSigMutex_ =
-    THREAD_SIG_MUTEX_INITIALIZER(processSigMutex_);
-
 static unsigned processAbort_;
 static unsigned processQuit_;
 
@@ -91,14 +87,14 @@ static struct
     .mMutex  = &processLock_.mMutex_,
 };
 
-static struct ProcessForkLock_
+static struct ProcessForkChildLock
 {
     pthread_mutex_t  mMutex_;
     pthread_mutex_t *mMutex;
     struct Pid       mProcess;
     struct Tid       mThread;
     unsigned         mCount;
-} processForkLock_ =
+} processForkChildLock_ =
 {
     .mMutex_ = PTHREAD_MUTEX_INITIALIZER,
 };
@@ -161,12 +157,24 @@ static const char *signalNames_[NSIG] =
 /* -------------------------------------------------------------------------- */
 static unsigned __thread processSignalContext_;
 
-static struct ProcessSignalVector
+struct ProcessSignalVector
 {
     struct sigaction mAction;
     pthread_mutex_t  mMutex_;
     pthread_mutex_t *mMutex;
-} processSignalVectors_[NSIG];
+};
+
+static struct
+{
+    struct ProcessSignalVector mVector[NSIG];
+    pthread_rwlock_t           mVectorLock;
+    struct ThreadSigMutex      mMutex;
+
+} processSignals_ =
+{
+    .mVectorLock = PTHREAD_RWLOCK_INITIALIZER,
+    .mMutex      = THREAD_SIG_MUTEX_INITIALIZER(processSignals_.mMutex),
+};
 
 static void
 dispatchSigExit_(int aSigNum)
@@ -186,7 +194,7 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
 {
     FINALLY
     ({
-        struct ProcessSignalVector *sv = &processSignalVectors_[aSigNum];
+        struct ProcessSignalVector *sv = &processSignals_.mVector[aSigNum];
 
         struct ProcessSignalName sigName;
         debug(1,
@@ -196,7 +204,9 @@ dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
         struct RWMutexReader  forkLock_;
         struct RWMutexReader *forkLock;
 
-        forkLock = createRWMutexReader(&forkLock_, &processSigVecLock_);
+        forkLock = createRWMutexReader(
+            &forkLock_, &processSignals_.mVectorLock);
+
         pthread_mutex_t *lock = lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
@@ -231,7 +241,7 @@ dispatchSigHandler_(int aSigNum)
 {
     FINALLY
     ({
-        struct ProcessSignalVector *sv = &processSignalVectors_[aSigNum];
+        struct ProcessSignalVector *sv = &processSignals_.mVector[aSigNum];
 
         struct ProcessSignalName sigName;
         debug(1,
@@ -241,7 +251,9 @@ dispatchSigHandler_(int aSigNum)
         struct RWMutexReader  forkLock_;
         struct RWMutexReader *forkLock;
 
-        forkLock = createRWMutexReader(&forkLock_, &processSigVecLock_);
+        forkLock = createRWMutexReader(
+            &forkLock_, &processSignals_.mVectorLock);
+
         pthread_mutex_t *lock = lockMutex(sv->mMutex);
         {
             dispatchSigExit_(aSigNum);
@@ -278,7 +290,7 @@ changeSigAction_(unsigned          aSigNum,
 {
     int rc = -1;
 
-    ensure(NUMBEROF(processSignalVectors_) > aSigNum);
+    ensure(NUMBEROF(processSignals_.mVector) > aSigNum);
 
     struct RWMutexReader  sigVecLock_;
     struct RWMutexReader *sigVecLock = 0;
@@ -319,22 +331,23 @@ changeSigAction_(unsigned          aSigNum,
         nextAction.sa_flags &= ~ SA_NODEFER;
     }
 
-    struct ThreadSigMutex *lock = lockThreadSigMutex(&processSigMutex_);
-    if ( ! processSignalVectors_[aSigNum].mMutex)
-        processSignalVectors_[aSigNum].mMutex =
-            createMutex(&processSignalVectors_[aSigNum].mMutex_);
+    struct ThreadSigMutex *lock = lockThreadSigMutex(&processSignals_.mMutex);
+    if ( ! processSignals_.mVector[aSigNum].mMutex)
+        processSignals_.mVector[aSigNum].mMutex =
+            createMutex(&processSignals_.mVector[aSigNum].mMutex_);
     lock = unlockThreadSigMutex(lock);
 
     /* Block signal delivery into this thread to avoid the signal
      * dispatch attempting to acquire the dispatch mutex recursively
      * in the same thread context. */
 
-    sigVecLock = createRWMutexReader(&sigVecLock_, &processSigVecLock_);
+    sigVecLock = createRWMutexReader(
+        &sigVecLock_, &processSignals_.mVectorLock);
 
     threadSigMask = pushThreadSigMask(
         &threadSigMask_, ThreadSigMaskBlock, (const int []) { aSigNum, 0 });
 
-    sigLock = lockMutex(processSignalVectors_[aSigNum].mMutex);
+    sigLock = lockMutex(processSignals_.mVector[aSigNum].mMutex);
 
     struct sigaction prevAction;
     ERROR_IF(
@@ -346,7 +359,7 @@ changeSigAction_(unsigned          aSigNum,
     if (aOldAction)
         *aOldAction = prevAction;
 
-    processSignalVectors_[aSigNum].mAction = aNewAction;
+    processSignals_.mVector[aSigNum].mAction = aNewAction;
 
     rc = 0;
 
@@ -1385,8 +1398,8 @@ ownProcessAppLockFile(const struct ProcessAppLock *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct ProcessForkLock_ *
-acquireProcessForkLock_(struct ProcessForkLock_ *self)
+static CHECKED struct ProcessForkChildLock *
+acquireProcessForkChildLock_(struct ProcessForkChildLock *self)
 {
     struct Tid tid = ownThreadId();
     struct Pid pid = ownProcessId();
@@ -1412,8 +1425,8 @@ acquireProcessForkLock_(struct ProcessForkLock_ *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct ProcessForkLock_ *
-releaseProcessForkLock_(struct ProcessForkLock_ *self)
+static CHECKED struct ProcessForkChildLock *
+releaseProcessForkChildLock_(struct ProcessForkChildLock *self)
 {
     if (self)
     {
@@ -1819,8 +1832,8 @@ forkProcessChildX(enum ForkProcessOption             aOption,
      * a raw fork() will synchronise with this code via the pthread_atfork()
      * handler. */
 
-    struct ProcessForkLock_ *forkLock =
-        acquireProcessForkLock_(&processForkLock_);
+    struct ProcessForkChildLock *forkLock =
+        acquireProcessForkChildLock_(&processForkChildLock_);
 
     ensure(ForkProcessSetProcessGroup == aOption || ! pgid);
 
@@ -2033,7 +2046,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
 
         forkChannel = closeForkProcessChildChannel_(forkChannel);
 
-        forkLock = releaseProcessForkLock_(forkLock);
+        forkLock = releaseProcessForkChildLock_(forkLock);
 
         childrc = 0;
 
@@ -2080,7 +2093,7 @@ Finally:
         blacklistFds = closeFdSet(blacklistFds);
         whitelistFds = closeFdSet(whitelistFds);
 
-        forkLock = releaseProcessForkLock_(forkLock);
+        forkLock = releaseProcessForkChildLock_(forkLock);
 
         if (-1 == rc)
         {
@@ -2807,12 +2820,12 @@ prepareFork_(void)
      * into the child process. */
 
     processFork_.mForkLock = createRWMutexWriter(
-        &processFork_.mForkLock_, &processSigVecLock_);
+        &processFork_.mForkLock_, &processSignals_.mVectorLock);
 
     /* Acquire the processSigMutex_ to ensure that there is no other
      * signal handler activity while the fork is in progress. */
 
-    processFork_.mSigLock = lockThreadSigMutex(&processSigMutex_);
+    processFork_.mSigLock = lockThreadSigMutex(&processSignals_.mMutex);
 
     processFork_.mParentPid = ownProcessId();
 
@@ -2879,12 +2892,12 @@ postForkChild_(void)
     completeFork_();
 }
 
-static struct ProcessForkLock_ *processAtForkLock_;
+static struct ProcessForkChildLock *processAtForkLock_;
 
 static void
 prepareProcessFork_(void)
 {
-    processAtForkLock_ = acquireProcessForkLock_(&processForkLock_);
+    processAtForkLock_ = acquireProcessForkChildLock_(&processForkChildLock_);
 
     if (moduleInit_)
         prepareFork_();
@@ -2896,11 +2909,11 @@ postProcessForkParent_(void)
     if (moduleInit_)
         postForkParent_();
 
-    struct ProcessForkLock_ *lock = processAtForkLock_;
+    struct ProcessForkChildLock *lock = processAtForkLock_;
 
     processAtForkLock_ = 0;
 
-    lock = releaseProcessForkLock_(lock);
+    lock = releaseProcessForkChildLock_(lock);
 }
 
 static void
@@ -2909,11 +2922,11 @@ postProcessForkChild_(void)
     if (moduleInit_)
         postForkChild_();
 
-    struct ProcessForkLock_ *lock = processAtForkLock_;
+    struct ProcessForkChildLock *lock = processAtForkLock_;
 
     processAtForkLock_ = 0;
 
-    lock = releaseProcessForkLock_(lock);
+    lock = releaseProcessForkChildLock_(lock);
 }
 
 /* -------------------------------------------------------------------------- */
