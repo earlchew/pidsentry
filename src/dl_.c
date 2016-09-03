@@ -28,11 +28,24 @@
 */
 
 #include "dl_.h"
+#include "thread_.h"
 #include "error_.h"
 
 #include <string.h>
 #include <errno.h>
 #include <link.h>
+
+/* -------------------------------------------------------------------------- */
+static struct ThreadSigMutex dlSigMutex_ =
+    THREAD_SIG_MUTEX_INITIALIZER(dlSigMutex_);
+
+/* Some versions of libdl are not thread safe, though more recent versions
+ * might have rectified this. Since shared library operations are fairly
+ * rare, ensure that the use of the library is synchronised. */
+
+THREAD_FORK_SENTRY(
+    lockThreadSigMutex(&dlSigMutex_),
+    unlockThreadSigMutex(&dlSigMutex_));
 
 /* -------------------------------------------------------------------------- */
 struct DlSymbolVisitor_
@@ -89,6 +102,8 @@ findDlSymbol(const char *aSymName, uintptr_t *aSymAddr, const char **aErr)
 {
     char *rc = 0;
 
+    struct ThreadSigMutex *lock = lockThreadSigMutex(&dlSigMutex_);
+
     if (aErr)
         *aErr = 0;
 
@@ -133,7 +148,10 @@ findDlSymbol(const char *aSymName, uintptr_t *aSymAddr, const char **aErr)
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        lock = unlockThreadSigMutex(lock);
+    });
 
     return rc;
 }
