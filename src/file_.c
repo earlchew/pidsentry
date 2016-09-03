@@ -68,32 +68,9 @@ fileList_ =
     .mMutex = PTHREAD_MUTEX_INITIALIZER,
 };
 
-/* -------------------------------------------------------------------------- */
-EARLY_INITIALISER(
-    file_,
-    ({
-        ABORT_IF(
-            pthread_atfork(
-                LAMBDA(
-                    void, (void),
-                    {
-                        while (lockMutex(&fileList_.mMutex))
-                            break;
-                    }),
-                LAMBDA(
-                    void, (void),
-                    {
-                        while (unlockMutex(&fileList_.mMutex))
-                            break;
-                    }),
-                LAMBDA(
-                    void, (void),
-                    {
-                        while (unlockMutex(&fileList_.mMutex))
-                            break;
-                    })));
-    }),
-    ({ }));
+THREAD_FORK_SENTRY(
+    lockMutex(&fileList_.mMutex),
+    unlockMutex(&fileList_.mMutex));
 
 /* -------------------------------------------------------------------------- */
 int
