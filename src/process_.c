@@ -1852,6 +1852,224 @@ callForkMethodX_(struct ForkProcessMethod aMethod)
     exitProcess(status);
 }
 
+static CHECKED int
+forkProcessChild_PostParent_(
+    struct ForkProcessChildChannel_   *self,
+    enum ForkProcessOption             aOption,
+    struct Pid                         aChildPid,
+    struct Pgid                        aChildPgid,
+    struct PostForkParentProcessMethod aPostForkParentMethod,
+    struct FdSet                      *aBlacklistFds)
+{
+    int rc = -1;
+
+    /* Forcibly set the process group of the child to avoid
+     * the race that would occur if only the child attempts
+     * to set its own process group */
+
+    if (ForkProcessSetProcessGroup == aOption)
+        ERROR_IF(
+            setpgid(aChildPid.mPid,
+                    aChildPgid.mPgid ? aChildPgid.mPgid : aChildPid.mPid));
+
+    /* On Linux, struct PidSignature uses the process start
+     * time from /proc/pid/stat, but that start time is measured
+     * in _SC_CLK_TCK periods which limits the rate at which
+     * processes can be forked without causing ambiguity. Although
+     * this ambiguity is largely theoretical, it is a simple matter
+     * to overcome by constraining the rate at which processes can
+     * fork. */
+
+#ifdef __linux__
+    {
+        long clocktick;
+        ERROR_IF(
+            (clocktick = sysconf(_SC_CLK_TCK),
+             -1 == clocktick));
+
+        monotonicSleep(
+            Duration(NanoSeconds(TimeScale_ns / clocktick * 5 / 4)));
+    }
+#endif
+
+    /* Sequence fork operations with the child so that the actions
+     * are completely synchronised. The actions are performed in
+     * the following order:
+     *
+     *      o Close all but whitelisted fds in child
+     *      o Run child post fork method
+     *      o Run parent post fork method
+     *      o Close only blacklisted fds in parent
+     *      o Continue both parent and child process
+     *
+     * The blacklisted fds in the parent will only be closed if there
+     * are no errors detected in either the child or the parent
+     * post fork method. This provides the parent with the potential
+     * to retry the operation. */
+
+    closeForkProcessChildResultChild_(self);
+
+    {
+        struct ForkProcessChildResult_ forkResult;
+
+        ERROR_IF(
+            recvForkProcessChildChannelResult_(self, &forkResult));
+
+        ERROR_IF(
+            forkResult.mReturnCode,
+            {
+                errno = forkResult.mErrCode;
+            });
+
+        ERROR_IF(
+            ! ownPostForkParentProcessMethodNil(aPostForkParentMethod) &&
+            callPostForkParentProcessMethod(
+                aPostForkParentMethod, aChildPid));
+
+        ERROR_IF(
+            closeFdOnlyBlackList(aBlacklistFds));
+
+        ERROR_IF(
+            sendForkProcessChildChannelAcknowledgement_(self));
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static void
+forkProcessChild_PostChild_(
+    struct ForkProcessChildChannel_   *self,
+    enum ForkProcessOption             aOption,
+    struct Pgid                        aChildPgid,
+    struct PostForkChildProcessMethod  aPostForkChildMethod,
+    struct FdSet                      *aWhitelistFds)
+{
+    int rc = -1;
+
+    /* Ensure that the behaviour of each child diverges from the
+     * behaviour of the parent. This is primarily useful for
+     * testing. */
+
+    srandom(ownProcessId().mPid);
+
+    if (ForkProcessSetSessionLeader == aOption)
+    {
+        ERROR_IF(
+            -1 == setsid());
+    }
+    else if (ForkProcessSetProcessGroup == aOption)
+    {
+        ERROR_IF(
+            setpgid(0, aChildPgid.mPgid));
+    }
+
+    /* Reset all the signals so that the child will not attempt
+     * to catch signals. The parent should have set the signal
+     * mask appropriately. */
+
+    ERROR_IF(
+        resetSignals_());
+
+    closeForkProcessChildResultParent_(self);
+
+    {
+        /* Always include stdin, stdout and stderr in the whitelisted
+         * fds for the child. If required, the child can close these
+         * in the child post fork method. */
+
+        const int stdwhitelist[] =
+            {
+                STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
+
+                self->mResultPipe->mWrFile->mFd,
+
+                self->mResultSocket->mSocketPair->
+                mChildSocket->mSocket->mFile->mFd,
+
+                processLock_.mLock && processLock_.mLock->mFile
+                ? processLock_.mLock->mFile->mFd
+                : -1,
+            };
+
+        for (unsigned ix = 0; NUMBEROF(stdwhitelist) > ix; ++ix)
+        {
+            if (-1 != stdwhitelist[ix])
+                ERROR_IF(
+                    insertFdSetRange(
+                        aWhitelistFds,
+                        stdwhitelist[ix],
+                        stdwhitelist[ix]) && EEXIST != errno);
+        }
+
+        ERROR_IF(
+            closeFdExceptWhiteList(aWhitelistFds));
+
+        ERROR_IF(
+            ! ownPostForkChildProcessMethodNil(aPostForkChildMethod) &&
+            callPostForkChildProcessMethod(aPostForkChildMethod));
+
+        /* Send the child fork process method result to the parent so
+         * that it can return an error code to the caller, then wait
+         * for the parent to acknowledge. */
+
+        struct ForkProcessChildResult_ forkResult =
+        {
+            .mReturnCode = 0,
+            .mErrCode    = 0,
+        };
+
+        if (sendForkProcessChildChannelResult_(self, &forkResult) ||
+            recvForkProcessChildChannelAcknowledgement_(self))
+        {
+            /* Terminate the child if the result could not be sent. The
+             * parent will detect the child has terminated because the
+             * result socket will close.
+             *
+             * Also terminate the child if the acknowledgement could not
+             * be received from the parent. This will typically be because
+             * the parent has terminated without sending the
+             * acknowledgement, so it is reasonable to simply terminate
+             * the child. */
+
+            exitProcess(EXIT_FAILURE);
+        }
+    }
+
+    rc = 0;
+
+Finally:
+
+    if (rc)
+    {
+        /* This is the error path running in the child. After attempting
+         * to send the error indication, simply terminate the child.
+         * The parent should either receive the failure indication, or
+         * detect that the child has terminated before sending the
+         * error indication. */
+
+        struct ForkProcessChildResult_ forkResult =
+        {
+            .mReturnCode = rc,
+            .mErrCode    = errno,
+        };
+
+        while (
+            sendForkProcessChildChannelResult_(self, &forkResult) ||
+            recvForkProcessChildChannelAcknowledgement_(self))
+        {
+            break;
+        }
+
+        exitProcess(EXIT_FAILURE);
+    }
+}
+
 struct Pid
 forkProcessChildX(enum ForkProcessOption             aOption,
                   struct Pgid                        aPgid,
@@ -1862,11 +2080,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
 {
     pid_t rc = -1;
 
-    pid_t childPid = -1;
-
-    int childrc = 0;
-
-    pid_t pgid = aPgid.mPgid;
+    struct Pid childPid = Pid(-1);
 
     struct FdSet  blacklistFds_;
     struct FdSet *blacklistFds = 0;
@@ -1884,14 +2098,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
     struct ProcessForkChildLock *forkLock =
         acquireProcessForkChildLock_(&processForkChildLock_);
 
-    ensure(ForkProcessSetProcessGroup == aOption || ! pgid);
-
-#ifdef __linux__
-    long clocktick;
-    ERROR_IF(
-        (clocktick = sysconf(_SC_CLK_TCK),
-         -1 == clocktick));
-#endif
+    ensure(ForkProcessSetProcessGroup == aOption || ! aPgid.mPgid);
 
     ERROR_IF(
         createFdSet(&blacklistFds_));
@@ -1926,218 +2133,48 @@ forkProcessChildX(enum ForkProcessOption             aOption,
 
     TEST_RACE
     ({
-        childPid = fork();
+        childPid = Pid(fork());
     });
 
-    switch (childPid)
+    switch (childPid.mPid)
     {
     default:
-
-        /* Forcibly set the process group of the child to avoid
-         * the race that would occur if only the child attempts
-         * to set its own process group */
-
-        if (ForkProcessSetProcessGroup == aOption)
-            ERROR_IF(
-                setpgid(childPid, pgid ? pgid : childPid));
-
-        /* On Linux, struct PidSignature uses the process start
-         * time from /proc/pid/stat, but that start time is measured
-         * in _SC_CLK_TCK periods which limits the rate at which
-         * processes can be forked without causing ambiguity. Although
-         * this ambiguity is largely theoretical, it is a simple matter
-         * to overcome by constraining the rate at which processes can
-         * fork. */
-
-#ifdef __linux__
-        monotonicSleep(
-            Duration(NanoSeconds(TimeScale_ns / clocktick * 5 / 4)));
-#endif
-
-        /* Sequence fork operations with the child so that the actions
-         * are completely synchronised. The actions are performed in
-         * the following order:
-         *
-         *      o Close all but whitelisted fds in child
-         *      o Run child post fork method
-         *      o Run parent post fork method
-         *      o Close only blacklisted fds in parent
-         *      o Continue both parent and child process
-         *
-         * The blacklisted fds in the parent will only be closed if there
-         * are no errors detected in either the child or the parent
-         * post fork method. This provides the parent with the potential
-         * to retry the operation. */
-
-        closeForkProcessChildResultChild_(forkChannel);
-
-        {
-            struct ForkProcessChildResult_ forkResult;
-
-            ERROR_IF(
-                recvForkProcessChildChannelResult_(forkChannel, &forkResult));
-
-            ERROR_IF(
-                forkResult.mReturnCode,
-                {
-                    errno = forkResult.mErrCode;
-                });
-
-            ERROR_IF(
-                ! ownPostForkParentProcessMethodNil(aPostForkParentMethod) &&
-                callPostForkParentProcessMethod(
-                    aPostForkParentMethod, Pid(childPid)));
-
-            ERROR_IF(
-                closeFdOnlyBlackList(blacklistFds));
-
-            ERROR_IF(
-                sendForkProcessChildChannelAcknowledgement_(forkChannel));
-        }
-
+        ERROR_IF(
+            forkProcessChild_PostParent_(
+                forkChannel,
+                aOption,
+                childPid,
+                aPgid,
+                aPostForkParentMethod,
+                blacklistFds));
         break;
 
     case -1:
         break;
 
     case 0:
-
-        childrc = -1;
-
-        /* Ensure that the behaviour of each child diverges from the
-         * behaviour of the parent. This is primarily useful for
-         * testing. */
-
-        srandom(ownProcessId().mPid);
-
-        if (ForkProcessSetSessionLeader == aOption)
-        {
-            ERROR_IF(
-                -1 == setsid());
-        }
-        else if (ForkProcessSetProcessGroup == aOption)
-        {
-            ERROR_IF(
-                setpgid(0, pgid));
-        }
-
-        /* Reset all the signals so that the child will not attempt
-         * to catch signals. The parent should have set the signal
-         * mask appropriately. */
-
-        ERROR_IF(
-            resetSignals_());
-
-        closeForkProcessChildResultParent_(forkChannel);
-
-        {
-            /* Always include stdin, stdout and stderr in the whitelisted
-             * fds for the child. If required, the child can close these
-             * in the child post fork method. */
-
-            const int stdwhitelist[] =
-            {
-                STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-
-                forkChannel->mResultPipe->mWrFile->mFd,
-
-                forkChannel->mResultSocket->mSocketPair->
-                mChildSocket->mSocket->mFile->mFd,
-
-                processLock_.mLock && processLock_.mLock->mFile
-                ? processLock_.mLock->mFile->mFd
-                : -1,
-            };
-
-            for (unsigned ix = 0; NUMBEROF(stdwhitelist) > ix; ++ix)
-            {
-                if (-1 != stdwhitelist[ix])
-                    ERROR_IF(
-                        insertFdSetRange(
-                            whitelistFds,
-                            stdwhitelist[ix],
-                            stdwhitelist[ix]) && EEXIST != errno);
-            }
-
-            ERROR_IF(
-                closeFdExceptWhiteList(whitelistFds));
-
-            ERROR_IF(
-                ! ownPostForkChildProcessMethodNil(aPostForkChildMethod) &&
-                callPostForkChildProcessMethod(aPostForkChildMethod));
-
-            /* Send the child fork process method result to the parent so
-             * that it can return an error code to the caller, then wait
-             * for the parent to acknowledge. */
-
-            struct ForkProcessChildResult_ forkResult =
-                {
-                    .mReturnCode = 0,
-                    .mErrCode    = 0,
-                };
-
-            if (sendForkProcessChildChannelResult_(forkChannel, &forkResult) ||
-                recvForkProcessChildChannelAcknowledgement_(forkChannel))
-            {
-                /* Terminate the child if the result could not be sent. The
-                 * parent will detect the child has terminated because the
-                 * result socket will close.
-                 *
-                 * Also terminate the child if the acknowledgement could not
-                 * be received from the parent. This will typically be because
-                 * the parent has terminated without sending the
-                 * acknowledgement, so it is reasonable to simply terminate
-                 * the child. */
-
-                exitProcess(EXIT_FAILURE);
-            }
-        }
+        forkProcessChild_PostChild_(
+                forkChannel,
+                aOption,
+                aPgid,
+                aPostForkChildMethod,
+                whitelistFds);
 
         forkChannel = closeForkProcessChildChannel_(forkChannel);
-
-        forkLock = releaseProcessForkChildLock_(forkLock);
-
-        childrc = 0;
+        forkLock    = releaseProcessForkChildLock_(forkLock);
 
         callForkMethodX_(aMethod);
 
         ensure(0);
-
         break;
     }
 
-    rc = childPid;
+    rc = childPid.mPid;
 
 Finally:
 
     FINALLY
     ({
-        if (childrc)
-        {
-            /* This is the error path running in the child. After attempting
-             * to send the error indication, simply terminate the child.
-             * The parent should either receive the failure indication, or
-             * detect that the child has terminated before sending the
-             * error indication. */
-
-            struct ForkProcessChildResult_ forkResult =
-            {
-                .mReturnCode = childrc,
-                .mErrCode    = errno,
-            };
-
-            while (
-                sendForkProcessChildChannelResult_(forkChannel, &forkResult) ||
-                recvForkProcessChildChannelAcknowledgement_(forkChannel))
-            {
-                break;
-            }
-
-            exitProcess(EXIT_FAILURE);
-        }
-
-        ensure( ! childrc);
-
         forkChannel  = closeForkProcessChildChannel_(forkChannel);
         blacklistFds = closeFdSet(blacklistFds);
         whitelistFds = closeFdSet(whitelistFds);
@@ -2149,11 +2186,11 @@ Finally:
             /* If the parent has successfully created a child process, but
              * there is a problem, then the child needs to be reaped. */
 
-            if (-1 != childPid)
+            if (-1 != childPid.mPid)
             {
                 int status;
                 ABORT_IF(
-                    reapProcessChild(Pid(childPid), &status));
+                    reapProcessChild(childPid, &status));
             }
         }
     });
