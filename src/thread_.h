@@ -93,6 +93,46 @@
 #define THREAD_NOT_IMPLEMENTED NOTIMPLEMENTED
 
 /* -------------------------------------------------------------------------- */
+/* Fork Sentry
+ *
+ * Register a fork handler that will lock a resource (typcially some kind
+ * of mutex) to prepare for the fork, and then unlock the resource
+ * as the fork completes.
+ */
+
+#define THREAD_FORK_SENTRY(Lock_, Unlock_)                      \
+    THREAD_FORK_SENTRY_1_(COUNTER, Lock_, Unlock_)
+
+#define THREAD_FORK_SENTRY_1_(Suffix_, Lock_, Unlock_)          \
+    THREAD_FORK_SENTRY_2_(Suffix_, Lock_, Unlock_)
+
+#define THREAD_FORK_SENTRY_2_(Suffix_, Lock_, Unlock_)          \
+    EARLY_INITIALISER(                                          \
+        threadForkLockSentry_ ## Suffix_,                       \
+        ({                                                      \
+            void (*lock_)(void) =                               \
+                LAMBDA(                                         \
+                    void, (void),                               \
+                    {                                           \
+                        while ((Lock_))                         \
+                            break;                              \
+                    });                                         \
+                                                                \
+            void (*unlock_)(void) =                             \
+                LAMBDA(                                         \
+                    void, (void),                               \
+                    {                                           \
+                        while ((Unlock_))                       \
+                            break;                              \
+                    });                                         \
+                                                                \
+            ABORT_IF(                                           \
+                pthread_atfork(lock_, unlock_, unlock_));       \
+        }),                                                     \
+        ({ }))
+
+
+/* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
 
 struct Tid;
