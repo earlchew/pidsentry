@@ -66,59 +66,69 @@ TEST(PidSignatureTest, CreateSignature)
     sigset_t sigMask;
     EXPECT_EQ(0, pthread_sigmask(SIG_BLOCK, 0, &sigMask));
 
-    struct Pid firstChild = forkProcessChild(ForkProcessInheritProcessGroup,
-                                             Pgid(0),
-                                             ForkProcessMethodNil());
+    struct Pid firstChild = forkProcessChildX(
+        ForkProcessInheritProcessGroup,
+        Pgid(0),
+        PreForkProcessMethodNil(),
+        PostForkChildProcessMethodNil(),
+        PostForkParentProcessMethodNil(),
+        ForkProcessMethod(
+            &sigMask,
+            LAMBDA(
+                int, (sigset_t *aSigMask),
+                {
+                    int rc = 0;
+
+                    do
+                    {
+                        sigset_t childSigMask;
+                        if (pthread_sigmask(SIG_BLOCK, 0, &childSigMask))
+                        {
+                            rc = 1;
+                            break;
+                        }
+
+                        if (sigismember(aSigMask, SIGSEGV) !=
+                            sigismember(&childSigMask, SIGSEGV))
+                        {
+                            rc = 2;
+                            break;
+                        }
+
+                        if (ownProcessAppLockCount())
+                        {
+                            rc = 3;
+                            break;
+                        }
+
+                    } while (0);
+
+                    return rc;
+                })));
+
     EXPECT_NE(-1, firstChild.mPid);
-
-    if ( ! firstChild.mPid)
-    {
-        do
-        {
-            sigset_t childSigMask;
-            if (pthread_sigmask(SIG_BLOCK, 0, &childSigMask))
-            {
-                fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
-                break;
-            }
-
-            if (sigismember(&sigMask, SIGSEGV) !=
-                sigismember(&childSigMask, SIGSEGV))
-            {
-                fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
-                break;
-            }
-
-            if (ownProcessAppLockCount())
-            {
-                fprintf(stderr, "%s %u\n", __FILE__, __LINE__);
-                break;
-            }
-
-            execl("/bin/true", "true", (char *) 0);
-
-        } while (0);
-
-        execl("/bin/false", "false", (char *) 0);
-        _exit(EXIT_FAILURE);
-    }
 
     EXPECT_EQ(0, acquireProcessAppLock());
     EXPECT_EQ(1u, ownProcessAppLockCount());
 
-    struct Pid secondChild = forkProcessChild(ForkProcessInheritProcessGroup,
-                                              Pgid(0),
-                                              ForkProcessMethodNil());
-    EXPECT_NE(-1, secondChild.mPid);
+    struct Pid secondChild = forkProcessChildX(
+        ForkProcessInheritProcessGroup,
+        Pgid(0),
+        PreForkProcessMethodNil(),
+        PostForkChildProcessMethodNil(),
+        PostForkParentProcessMethodNil(),
+        ForkProcessMethod(
+            (char *) "",
+            LAMBDA(
+                int, (char *self),
+                {
+                    return
+                        1 == ownProcessAppLockCount()
+                        ? EXIT_SUCCESS
+                        : EXIT_FAILURE;
+                })));
 
-    if ( ! secondChild.mPid)
-    {
-        if (1 != ownProcessAppLockCount())
-            execl("/bin/false", "false", (char *) 0);
-        else
-            execl("/bin/true", "true", (char *) 0);
-        _exit(EXIT_FAILURE);
-    }
+    EXPECT_NE(-1, secondChild.mPid);
 
     EXPECT_EQ(0, releaseProcessAppLock());
     EXPECT_EQ(0u, ownProcessAppLockCount());
