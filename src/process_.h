@@ -403,13 +403,13 @@ CHECKED int
 signalProcessGroup(struct Pgid aPgid, int aSignal);
 
 void
-exitProcess(int aStatus) __attribute__((__noreturn__));
+exitProcess(int aStatus) NORETURN;
 
 void
-abortProcess(void) __attribute__((__noreturn__));
+abortProcess(void) NORETURN;
 
 void
-quitProcess(void) __attribute__((__noreturn__));
+quitProcess(void) NORETURN;
 
 /* -------------------------------------------------------------------------- */
 CHECKED int
