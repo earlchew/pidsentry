@@ -110,6 +110,7 @@ static struct
     struct Pid             mParentPid;
     struct RWMutexWriter   mForkLock_;
     struct RWMutexWriter  *mForkLock;
+    struct ThreadSigMutex *mSigLock;
     struct ThreadSigMutex *mLock;
 } processFork_ =
 {
@@ -2030,11 +2031,11 @@ forkProcessChildX(enum ForkProcessOption             aOption,
             }
         }
 
+        forkChannel = closeForkProcessChildChannel_(forkChannel);
+
         forkLock = releaseProcessForkLock_(forkLock);
 
         childrc = 0;
-
-        forkChannel = closeForkProcessChildChannel_(forkChannel);
 
         callForkMethod_(aMethod);
 
@@ -2808,6 +2809,11 @@ prepareFork_(void)
     processFork_.mForkLock = createRWMutexWriter(
         &processFork_.mForkLock_, &processSigVecLock_);
 
+    /* Acquire the processSigMutex_ to ensure that there is no other
+     * signal handler activity while the fork is in progress. */
+
+    processFork_.mSigLock = lockThreadSigMutex(&processSigMutex_);
+
     processFork_.mParentPid = ownProcessId();
 
     debug(1, "prepare fork");
@@ -2822,6 +2828,8 @@ completeFork_(void)
          * process immediately after the fork completes. Both processes
          * release the resources acquired when preparations were made
          * immediately preceding the fork. */
+
+        processFork_.mSigLock = unlockThreadSigMutex(processFork_.mSigLock);
 
         processFork_.mForkLock = destroyRWMutexWriter(processFork_.mForkLock);
 
