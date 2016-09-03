@@ -85,6 +85,12 @@ struct EintrModule
  * an event loop, and should be updating deadlines when IO is interrupted,
  * of if the application must deal with SIGALRM. */
 
+struct SystemCall
+{
+    const char *mName;
+    uintptr_t   mAddr;
+};
+
 enum SystemCallKind
 {
     SYSTEMCALL_ACCEPT,
@@ -181,6 +187,7 @@ interruptSystemCall(enum SystemCallKind aKind, const char *aErrName);
         return rc;                                              \
                                                                 \
     } while (0)
+
 
 /* -------------------------------------------------------------------------- */
 EINTR_FUNCTION_DEFN_(
@@ -925,13 +932,29 @@ EINTR_FUNCTION_DEFN_(
     false);
 
 /* -------------------------------------------------------------------------- */
-#define SYSCALL_ENTRY_(Name_) { STRINGIFY(Name_), }
-
-struct SystemCall
+static uintptr_t
+initSystemCall(struct SystemCall *self)
 {
-    const char *mName;
-    uintptr_t   mAddr;
-};
+    uintptr_t addr = self->mAddr;
+
+    if ( ! addr)
+    {
+        const char *err;
+
+        char *libName = findDlSymbol(self->mName, &addr, &err);
+
+        ensure(libName);
+
+        free(libName);
+
+        self->mAddr = addr;
+    }
+
+    return addr;
+}
+
+/* -------------------------------------------------------------------------- */
+#define SYSCALL_ENTRY_(Name_) { STRINGIFY(Name_), }
 
 static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 {
@@ -989,26 +1012,16 @@ static struct SystemCall systemCall_[SYSTEMCALL_KINDS] =
 };
 
 /* -------------------------------------------------------------------------- */
-static uintptr_t
-initSystemCall(struct SystemCall *self)
-{
-    uintptr_t addr = self->mAddr;
-
-    if ( ! addr)
-    {
-        const char *err;
-
-        char *libName = findDlSymbol(self->mName, &addr, &err);
-
-        ensure(libName);
-
-        free(libName);
-
-        self->mAddr = addr;
-    }
-
-    return addr;
-}
+EARLY_INITIALISER(
+    eintr_,
+    ({
+        for (size_t sx = 0; NUMBEROF(systemCall_) > sx; ++sx)
+        {
+            ABORT_UNLESS(
+                initSystemCall(&systemCall_[sx]));
+        }
+    }),
+    ({ }));
 
 /* -------------------------------------------------------------------------- */
 static uintptr_t
@@ -1052,13 +1065,7 @@ Eintr_init(struct EintrModule *self)
     self->mModule = self;
 
     if ( ! moduleInit_)
-    {
-        for (size_t sx = 0; NUMBEROF(systemCall_) > sx; ++sx)
-        {
-            ERROR_UNLESS(
-                initSystemCall(&systemCall_[sx]));
-        }
-    }
+    { }
 
     ++moduleInit_;
 
