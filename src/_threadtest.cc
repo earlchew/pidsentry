@@ -177,12 +177,12 @@ TEST_F(ThreadTest, ThreadSharedMutex)
                 lockSharedMutex(
                     state->mMutex,
                     MutexRepairMethod(
+                        state,
                         LAMBDA(
                             int, (struct SharedMutexTestState *),
                             {
                                 return -1;
-                            }),
-                        state));
+                            })));
 
             if (mutex != state->mMutex)
             {
@@ -207,13 +207,13 @@ TEST_F(ThreadTest, ThreadSharedMutex)
                 lockSharedMutex(
                     state->mMutex,
                     MutexRepairMethod(
+                        state,
                         LAMBDA(
                             int, (struct SharedMutexTestState *self),
                             {
                                 self->mRepaired = true;
                                 return 0;
-                            }),
-                        state));
+                            })));
 
             EXPECT_EQ(mutex, state->mMutex);
             EXPECT_TRUE(state->mRepaired);

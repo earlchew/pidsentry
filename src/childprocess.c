@@ -256,7 +256,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChildProcess, self,
+                        self, printChildProcess,
                         "role %s pid %" PRId_Pid, aRole, FMTd_Pid(aPid));
 
         if (rc)
@@ -299,7 +299,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcess, self);
+        finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -329,7 +329,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcess, self,
+        finally_warn_if(rc, self, printChildProcess,
                         "signal %s",
                         formatProcessSignalName(&sigName, aSigNum));
     });
@@ -353,7 +353,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChildProcess, self,
+                        self, printChildProcess,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -378,7 +378,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChildProcess, self,
+                        self, printChildProcess,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -403,7 +403,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        printChildProcess, self,
+                        self, printChildProcess,
                         "child pgid %" PRId_Pgid, FMTd_Pgid(self->mPgid));
     });
 
@@ -688,7 +688,7 @@ forkChildProcess(
         (childPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
-            ForkProcessMethod(runChildProcess_, &childProcess)),
+            ForkProcessMethod(&childProcess, runChildProcess_)),
          -1 == childPid.mPid));
 
     /* Do not try to place the watchdog in the process group of the child.
@@ -730,7 +730,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcess, self);
+        finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -752,7 +752,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcess, self);
+        finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -785,7 +785,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcess, self);
+        finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -975,7 +975,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1008,7 +1008,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1131,7 +1131,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1355,7 +1355,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1405,7 +1405,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1446,7 +1446,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1556,7 +1556,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1656,7 +1656,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1700,7 +1700,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcessMonitor, self);
+        finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1738,7 +1738,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcess, self);
+        finally_warn_if(rc, self, printChildProcess);
 
         lock = unlockThreadSigMutex(lock);
     });
@@ -1918,13 +1918,13 @@ monitorChildProcess(struct ChildProcess     *self,
         .mPollFdActions =
         {
             [POLL_FD_CHILD_UMBILICAL]  = {
-                PollFdCallbackMethod(pollFdUmbilical_, &childMonitor_) },
+                PollFdCallbackMethod(&childMonitor_, pollFdUmbilical_) },
             [POLL_FD_CHILD_PARENT]     = {
-                PollFdCallbackMethod(pollFdParent_, &childMonitor_) },
+                PollFdCallbackMethod(&childMonitor_, pollFdParent_) },
             [POLL_FD_CHILD_EVENTPIPE] = {
-                PollFdCallbackMethod(pollFdEventPipe_, &childMonitor_) },
+                PollFdCallbackMethod(&childMonitor_, pollFdEventPipe_) },
             [POLL_FD_CHILD_TETHER]     = {
-                PollFdCallbackMethod(pollFdTether_, &childMonitor_) },
+                PollFdCallbackMethod(&childMonitor_, pollFdTether_) },
         },
 
         .mPollFdTimerActions =
@@ -1937,7 +1937,7 @@ monitorChildProcess(struct ChildProcess     *self,
                  * on activity on the tether. */
 
                 .mAction = PollFdCallbackMethod(
-                    pollFdTimerTether_, &childMonitor_),
+                    &childMonitor_, pollFdTimerTether_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(NanoSeconds(
                     NSECS(Seconds(gOptions.mServer.mTether
@@ -1948,7 +1948,7 @@ monitorChildProcess(struct ChildProcess     *self,
             [POLL_FD_CHILD_TIMER_UMBILICAL] =
             {
                 .mAction = PollFdCallbackMethod(
-                    pollFdTimerUmbilical_, &childMonitor_),
+                    &childMonitor_, pollFdTimerUmbilical_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(
                     NanoSeconds(
@@ -1960,7 +1960,7 @@ monitorChildProcess(struct ChildProcess     *self,
             [POLL_FD_CHILD_TIMER_TERMINATION] =
             {
                 .mAction = PollFdCallbackMethod(
-                    pollFdTimerTermination_, &childMonitor_),
+                    &childMonitor_, pollFdTimerTermination_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = ZeroDuration,
             },
@@ -1968,7 +1968,7 @@ monitorChildProcess(struct ChildProcess     *self,
             [POLL_FD_CHILD_TIMER_DISCONNECTION] =
             {
                 .mAction = PollFdCallbackMethod(
-                    pollFdTimerChild_, &childMonitor_),
+                    &childMonitor_, pollFdTimerChild_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = ZeroDuration,
             },
@@ -1980,22 +1980,19 @@ monitorChildProcess(struct ChildProcess     *self,
         EventLatchSettingError == bindEventLatchPipe(
             self->mLatch.mChild, eventPipe,
             EventLatchMethod(
-                pollFdReapChildEvent_,
-                childMonitor)));
+                childMonitor, pollFdReapChildEvent_)));
 
     ERROR_IF(
         EventLatchSettingError == bindEventLatchPipe(
             self->mLatch.mUmbilical, eventPipe,
             EventLatchMethod(
-                pollFdReapUmbilicalEvent_,
-                childMonitor)));
+                childMonitor, pollFdReapUmbilicalEvent_)));
 
     ERROR_IF(
         EventLatchSettingError == bindEventLatchPipe(
             contLatch, eventPipe,
             EventLatchMethod(
-                pollFdContEvent_,
-                childMonitor)));
+                childMonitor, pollFdContEvent_)));
 
     if ( ! gOptions.mServer.mTether)
         disconnectPollFdTether_(childMonitor);
@@ -2038,7 +2035,7 @@ monitorChildProcess(struct ChildProcess     *self,
             childMonitor->mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_CHILD_TIMER_KINDS,
 
-            PollFdCompletionMethod(pollFdCompletion_, childMonitor)));
+            PollFdCompletionMethod(childMonitor, pollFdCompletion_)));
     pollfd = &pollfd_;
 
     updateChildProcessMonitor_(self, childMonitor);
@@ -2052,7 +2049,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printChildProcess, self);
+        finally_warn_if(rc, self, printChildProcess);
 
         updateChildProcessMonitor_(self, 0);
 

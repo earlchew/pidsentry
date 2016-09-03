@@ -75,7 +75,7 @@ lockPidFile_(
     debug(0,
           "lock %s %" PRIs_Method,
           aLockName,
-          FMTs_Method(printPidFile, self));
+          FMTs_Method(self, printPidFile));
 
     ensure(aLockType);
     ensure( ! self->mLock);
@@ -290,7 +290,7 @@ releasePidFileLock_(struct PidFile *self)
 
     debug(0,
           "unlock %" PRIs_Method,
-          FMTs_Method(printPidFile, self));
+          FMTs_Method(self, printPidFile));
 
     rc = 0;
 
@@ -515,7 +515,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             if (unlinked)
                 debug(0,
                       "removing existing file %" PRIs_Method,
-                      FMTs_Method(printPidFile, self));
+                      FMTs_Method(self, printPidFile));
 
             ERROR_IF(
                 releasePidFileLock_(self));
@@ -764,7 +764,7 @@ writePidFile(struct PidFile           *self,
 
             debug(0,
                   "disregarding zombie %" PRIs_Method,
-                  FMTs_Method(printPidFile, self));
+                  FMTs_Method(self, printPidFile));
 
             ERROR_IF(
                 closePidFile(self));
@@ -800,7 +800,7 @@ writePidFile(struct PidFile           *self,
 
     debug(0,
           "initialised %" PRIs_Method,
-          FMTs_Method(printPidFile, self));
+          FMTs_Method(self, printPidFile));
 
     ERROR_IF(
         writePidFile_(self, aPid, aPidServerAddr));
@@ -819,7 +819,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printPidFile, self);
+        finally_warn_if(rc, self, printPidFile);
     });
 
     return rc ? pid : Pid(0);;

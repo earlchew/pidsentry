@@ -270,8 +270,8 @@ TEST(EventLatchTest, PipePolling)
     EXPECT_EQ(EventLatchSettingOff,
               bindEventLatchPipe(eventLatch, eventPipe,
                                  EventLatchMethod(
-                                     PipePolling::countPoll,
-                                     &pipePolling)));
+                                     &pipePolling,
+                                     PipePolling::countPoll)));
 
     struct EventClockTime  pollTime_ = eventclockTime();
     struct EventClockTime *pollTime = &pollTime_;

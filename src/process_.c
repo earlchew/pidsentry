@@ -2471,7 +2471,7 @@ forkProcessDaemon(struct ForkProcessMethod aForkMethod)
         ABORT_IF(
             watchProcessSignals(
                 WatchProcessSignalMethod(
-                    &forkProcessDaemonSignalHandler_, &processDaemon)));
+                    &processDaemon, &forkProcessDaemonSignalHandler_)));
 
         closeBellSocketPairParent(bellSocket);
         ABORT_IF(
@@ -2826,14 +2826,14 @@ purgeProcessOrphanedFds(void)
     unsigned numFds = NUMBEROF(stdfds);
 
     walkFileList(FileVisitor(
+                     &numFds,
                      LAMBDA(
                          int, (unsigned *aNumFds, const struct File *aFile),
                          {
                              ++(*aNumFds);
 
                              return 0;
-                         }),
-                     &numFds));
+                         })));
 
     /* Create the whitelist of file descriptors by copying the fds
      * from each of the explicitly created file descriptors. */
@@ -2857,6 +2857,7 @@ purgeProcessOrphanedFds(void)
 
         walkFileList(
             FileVisitor(
+                &fdWhiteList,
                 LAMBDA(
                     int, (struct ProcessFdWhiteList *aWhiteList,
                           const struct File         *aFile),
@@ -2864,8 +2865,7 @@ purgeProcessOrphanedFds(void)
                         aWhiteList->mList[aWhiteList->mLen++] = aFile->mFd;
 
                         return 0;
-                    }),
-                &fdWhiteList));
+                    })));
 
         ensure(fdWhiteList.mLen == numFds);
     }

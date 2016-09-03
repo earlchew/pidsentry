@@ -379,8 +379,7 @@ createUmbilicalMonitor(
         EventLatchSettingError == bindEventLatchPipe(
             self->mLatch.mEchoRequest, self->mEventPipe,
             EventLatchMethod(
-                pollFdSendEcho_,
-                self)));
+                self, pollFdSendEcho_)));
 
     self->mUmbilical = (DECLTYPE(self->mUmbilical))
     {
@@ -423,20 +422,20 @@ createUmbilicalMonitor(
         .mFdActions =
         {
             [POLL_FD_MONITOR_UMBILICAL] = {
-                PollFdCallbackMethod(pollFdUmbilical_, self) },
+                PollFdCallbackMethod(self, pollFdUmbilical_) },
             [POLL_FD_MONITOR_PIDSERVER] = {
-                PollFdCallbackMethod(pollFdPidServer_, self) },
+                PollFdCallbackMethod(self, pollFdPidServer_) },
             [POLL_FD_MONITOR_PIDCLIENT] = {
-                PollFdCallbackMethod(pollFdPidClient_, self) },
+                PollFdCallbackMethod(self, pollFdPidClient_) },
             [POLL_FD_MONITOR_EVENTPIPE] = {
-                PollFdCallbackMethod(pollFdEventPipe_, self) },
+                PollFdCallbackMethod(self, pollFdEventPipe_) },
         },
 
         .mFdTimerActions =
         {
             [POLL_FD_MONITOR_TIMER_UMBILICAL] =
             {
-                .mAction = PollFdCallbackMethod(pollFdTimerUmbilical_, self),
+                .mAction = PollFdCallbackMethod(self, pollFdTimerUmbilical_),
                 .mSince  = EVENTCLOCKTIME_INIT,
                 .mPeriod = Duration(
                     NanoSeconds(
@@ -518,7 +517,7 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
             pollFdNames_, POLL_FD_MONITOR_KINDS,
             self->mPoll.mFdTimerActions,
             pollFdTimerNames_, POLL_FD_MONITOR_TIMER_KINDS,
-            PollFdCompletionMethod(pollFdCompletion_, self)));
+            PollFdCompletionMethod(self, pollFdCompletion_)));
     pollfd = &pollfd_;
 
     ERROR_IF(
@@ -565,12 +564,12 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
             ForkProcessSetProcessGroup,
             self->mChildProcess->mPgid,
             ForkProcessMethod(
+                "",
                 LAMBDA(
                     int, (char *this),
                     {
                         return EXIT_SUCCESS;
-                    }),
-                "")),
+                    }))),
          -1 == self->mChildAnchor.mPid));
 
     ERROR_IF(
@@ -578,12 +577,12 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
             ForkProcessSetProcessGroup,
             self->mSentryPgid,
             ForkProcessMethod(
+                "",
                 LAMBDA(
                     int, (char *this),
                     {
                         return EXIT_SUCCESS;
-                    }),
-                "")),
+                    }))),
          -1 == self->mSentryAnchor.mPid));
 
     debug(0,
@@ -740,7 +739,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
         (umbilicalPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
-            ForkProcessMethod(runUmbilicalProcessChild_, self)),
+            ForkProcessMethod(self, runUmbilicalProcessChild_)),
          -1 == umbilicalPid.mPid));
     self->mPid = umbilicalPid;
 

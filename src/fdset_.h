@@ -53,9 +53,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_FdSetVisitor
 #include "method_.h"
 
-#define FdSetVisitor(Method_, Object_)          \
-    METHOD_TRAMPOLINE(                           \
-        Method_, Object_,                        \
+#define FdSetVisitor(Object_, Method_)          \
+    METHOD_TRAMPOLINE(                          \
+        Object_, Method_,                       \
         FdSetVisitor_,                          \
         METHOD_RETURN_FdSetVisitor,             \
         METHOD_CONST_FdSetVisitor,              \

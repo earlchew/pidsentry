@@ -83,14 +83,14 @@ createPidServerClientActivity_(
             self->mEvent,
             EventQueuePollRead,
             FileEventQueueActivityMethod(
+                self,
                 LAMBDA(
                     int, (struct PidServerClientActivity_ *self_),
                     {
                         return
                             callPidServerClientActivityMethod_(
                                 self_->mMethod, self_);
-                    }),
-                self)));
+                    }))));
 
     rc = 0;
 
@@ -182,7 +182,7 @@ createPidServer(struct PidServer *self, struct Pid aPid)
 
     debug(0,
           "create pid server for %" PRIs_Method,
-          FMTs_Method(printPidSignature, self->mPidSignature));
+          FMTs_Method(self->mPidSignature, printPidSignature));
 
     ERROR_IF(
         createUnixSocket(&self->mUnixSocket_, 0, 0, 0));
@@ -338,7 +338,7 @@ acceptPidServerConnection(struct PidServer *self)
         {
             warn(0,
                  "Discarding connection for %" PRIs_Method,
-                 FMTs_Method(printPidSignature, signature));
+                 FMTs_Method(signature, printPidSignature));
         });
 
     ERROR_UNLESS(
@@ -346,6 +346,7 @@ acceptPidServerConnection(struct PidServer *self)
             client,
             self->mEventQueue,
             PidServerClientActivityMethod_(
+                self,
                 LAMBDA(
                     int, (struct PidServer                *self_,
                           struct PidServerClientActivity_ *aActivity),
@@ -356,8 +357,7 @@ acceptPidServerConnection(struct PidServer *self)
                             discardPidServerConnection_(self_, activity_);
 
                         return 0;
-                    }),
-                self))));
+                    })))));
     client = 0;
 
     char buf[1] = { 0 };

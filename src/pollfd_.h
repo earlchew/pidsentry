@@ -50,9 +50,9 @@
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PollFdCompletionMethod
 #include "method_.h"
 
-#define PollFdCompletionMethod(Method_, Object_)  \
+#define PollFdCompletionMethod(Object_, Method_)  \
     METHOD_TRAMPOLINE(                            \
-        Method_, Object_,                         \
+        Object_, Method_,                         \
         PollFdCompletionMethod_,                  \
         METHOD_RETURN_PollFdCompletionMethod,     \
         METHOD_CONST_PollFdCompletionMethod,      \
@@ -76,9 +76,9 @@
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PollFdCallbackMethod
 #include "method_.h"
 
-#define PollFdCallbackMethod(Method_, Object_)  \
+#define PollFdCallbackMethod(Object_, Method_)  \
     METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
+        Object_, Method_,                       \
         PollFdCallbackMethod_,                  \
         METHOD_RETURN_PollFdCallbackMethod,     \
         METHOD_CONST_PollFdCallbackMethod,      \

@@ -54,9 +54,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_DeadlinePollMethod
 #include "method_.h"
 
-#define DeadlinePollMethod(Method_, Object_) \
+#define DeadlinePollMethod(Object_, Method_) \
     METHOD_TRAMPOLINE(                       \
-        Method_, Object_,                    \
+        Object_, Method_,                    \
         DeadlinePollMethod_,                 \
         METHOD_RETURN_DeadlinePollMethod,    \
         METHOD_CONST_DeadlinePollMethod,     \
@@ -77,9 +77,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_DeadlineWaitMethod
 #include "method_.h"
 
-#define DeadlineWaitMethod(Method_, Object_) \
+#define DeadlineWaitMethod(Object_, Method_) \
     METHOD_TRAMPOLINE(                       \
-        Method_, Object_,                    \
+        Object_, Method_,                    \
         DeadlineWaitMethod_,                 \
         METHOD_RETURN_DeadlineWaitMethod,    \
         METHOD_CONST_DeadlineWaitMethod,     \

@@ -519,17 +519,17 @@ tetherThreadMain_(struct TetherThread *self)
         .mPollFdActions =
         {
             [POLL_FD_TETHER_CONTROL] = {
-                PollFdCallbackMethod(pollFdControl_, &tetherpoll) },
+                PollFdCallbackMethod(&tetherpoll, pollFdControl_) },
             [POLL_FD_TETHER_INPUT]   = {
-                PollFdCallbackMethod(pollFdDrain_, &tetherpoll) },
+                PollFdCallbackMethod(&tetherpoll, pollFdDrain_) },
             [POLL_FD_TETHER_OUTPUT]  = {
-                PollFdCallbackMethod(pollFdDrain_, &tetherpoll) },
+                PollFdCallbackMethod(&tetherpoll, pollFdDrain_) },
         },
 
         .mPollFdTimerActions =
         {
             [POLL_FD_TETHER_TIMER_DISCONNECT] = {
-                PollFdCallbackMethod(pollFdTimerDisconnected_, &tetherpoll) },
+                PollFdCallbackMethod(&tetherpoll, pollFdTimerDisconnected_) },
         },
     };
 
@@ -542,7 +542,7 @@ tetherThreadMain_(struct TetherThread *self)
             pollFdNames_, POLL_FD_TETHER_KINDS,
             tetherpoll.mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_TETHER_TIMER_KINDS,
-            PollFdCompletionMethod(pollFdCompletion_, &tetherpoll)));
+            PollFdCompletionMethod(&tetherpoll, pollFdCompletion_)));
     pollfd = &pollfd_;
 
     ERROR_IF(
@@ -630,7 +630,7 @@ createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
             pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
 
         self->mThread = createThread(&self->mThread_, "childtether", 0,
-                                     ThreadMethod(tetherThreadMain_, self));
+                                     ThreadMethod(self, tetherThreadMain_));
 
         threadSigMask = popThreadSigMask(threadSigMask);
     }

@@ -49,9 +49,9 @@
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PrintfMethod
 #include "method_.h"
 
-#define PrintfMethod_(Method_, Object_)         \
+#define PrintfMethod_(Object_, Method_)         \
     METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
+        Object_, Method_,                       \
         PrintfMethod__,                         \
         METHOD_RETURN_PrintfMethod,             \
         METHOD_CONST_PrintfMethod,              \
@@ -96,19 +96,19 @@ PrintfMethodPtr_(const struct PrintfMethod &aMethod)
 }
 #endif
 
-#define PrintfMethod(Method_, Object_)                          \
+#define PrintfMethod(Object_, Method_)                          \
 (                                                               \
     PrintfMethodPtr_(                                           \
         ((struct PrintfMethod)                                  \
         {                                                       \
             mType   : &printfMethodType_,                       \
-            mMethod : PrintfMethod_((Method_), (Object_)),      \
+            mMethod : PrintfMethod_((Object_), (Method_)),      \
         }))                                                     \
 )
 
 /* -------------------------------------------------------------------------- */
 #define PRIs_Method "%%p<struct PrintfMethod>%%"
-#define FMTs_Method(Method_, Object_) ( PrintfMethod((Method_), (Object_)) )
+#define FMTs_Method(Object_, Method_) ( PrintfMethod((Object_), (Method_)) )
 
 /* -------------------------------------------------------------------------- */
 int

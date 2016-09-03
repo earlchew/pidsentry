@@ -64,22 +64,22 @@ TEST_F(DeadlineTest, ErrorReturn)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               errno = EPERM;
                               return -1;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
                           {
                               EXPECT_TRUE(false);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(EPERM, errno);
 
     // Verify that an error return from the wait method returns.
@@ -88,13 +88,14 @@ TEST_F(DeadlineTest, ErrorReturn)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
@@ -102,8 +103,7 @@ TEST_F(DeadlineTest, ErrorReturn)
                               EXPECT_FALSE(aTimeout);
                               errno = EINVAL;
                               return -1;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(EINVAL, errno);
 
     deadline = closeDeadline(deadline);
@@ -125,14 +125,15 @@ TEST_F(DeadlineTest, SuccessReturn)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *self),
                           {
                               self->mResult = 1;
                               return 1;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *self,
                                 const struct Duration *aTimeout),
@@ -140,8 +141,7 @@ TEST_F(DeadlineTest, SuccessReturn)
                               EXPECT_TRUE(false);
                               self->mResult = 2;
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(1, mResult);
     EXPECT_FALSE(ownDeadlineExpired(deadline));
 
@@ -151,21 +151,21 @@ TEST_F(DeadlineTest, SuccessReturn)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *self),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *self,
                                 const struct Duration *aTimeout),
                           {
                               self->mResult = 2;
                               return 1;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(2, mResult);
     EXPECT_FALSE(ownDeadlineExpired(deadline));
 
@@ -190,21 +190,21 @@ TEST_F(DeadlineTest, InfiniteTimeout)
                   checkDeadlineExpired(
                       deadline,
                       DeadlinePollMethod(
+                          fixture,
                           LAMBDA(
                               int, (class DeadlineTest *),
                               {
                                   return 0;
-                              }),
-                          fixture),
+                              })),
                       DeadlineWaitMethod(
+                          fixture,
                           LAMBDA(
                               int, (class DeadlineTest *,
                                     const struct Duration *aTimeout),
                               {
                                   EXPECT_FALSE(aTimeout);
                                   return 0;
-                              }),
-                          fixture)));
+                              }))));
         EXPECT_FALSE(ownDeadlineExpired(deadline));
     }
 
@@ -227,42 +227,42 @@ TEST_F(DeadlineTest, ZeroTimeout)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
                           {
                               EXPECT_FALSE(aTimeout->duration.ns);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     EXPECT_EQ(-1,
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
                           {
                               EXPECT_TRUE(false);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(ETIMEDOUT, errno);
     EXPECT_TRUE(ownDeadlineExpired(deadline));
 
@@ -272,21 +272,21 @@ TEST_F(DeadlineTest, ZeroTimeout)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
                           {
                               EXPECT_TRUE(false);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(ETIMEDOUT, errno);
     EXPECT_TRUE(ownDeadlineExpired(deadline));
 
@@ -311,21 +311,21 @@ TEST_F(DeadlineTest, NonZeroTimeout)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
                           {
                               EXPECT_TRUE(aTimeout);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     // Verify that the deadline is not expired on the second iteration.
@@ -334,13 +334,14 @@ TEST_F(DeadlineTest, NonZeroTimeout)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
@@ -348,8 +349,7 @@ TEST_F(DeadlineTest, NonZeroTimeout)
                               EXPECT_TRUE(aTimeout);
                               monotonicSleep(*aTimeout);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     // Verify that the deadline is expired on the third iteration.
@@ -358,21 +358,21 @@ TEST_F(DeadlineTest, NonZeroTimeout)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 0;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
                           {
                               EXPECT_FALSE(true);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(ETIMEDOUT, errno);
     EXPECT_TRUE(ownDeadlineExpired(deadline));
 
@@ -397,13 +397,14 @@ TEST_F(DeadlineTest, NonZeroTimeoutAlwaysReady)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 1;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
@@ -411,8 +412,7 @@ TEST_F(DeadlineTest, NonZeroTimeoutAlwaysReady)
                               EXPECT_FALSE(aTimeout);
                               EXPECT_TRUE(false);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_FALSE(ownDeadlineExpired(deadline));
 
     // Verify that the second iteration expires.
@@ -423,13 +423,14 @@ TEST_F(DeadlineTest, NonZeroTimeoutAlwaysReady)
               checkDeadlineExpired(
                   deadline,
                   DeadlinePollMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *),
                           {
                               return 1;
-                          }),
-                      fixture),
+                          })),
                   DeadlineWaitMethod(
+                      fixture,
                       LAMBDA(
                           int, (class DeadlineTest *,
                                 const struct Duration *aTimeout),
@@ -437,8 +438,7 @@ TEST_F(DeadlineTest, NonZeroTimeoutAlwaysReady)
                               EXPECT_FALSE(aTimeout);
                               EXPECT_TRUE(false);
                               return 0;
-                          }),
-                      fixture)));
+                          }))));
     EXPECT_EQ(ETIMEDOUT, errno);
     EXPECT_TRUE(ownDeadlineExpired(deadline));
 

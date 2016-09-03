@@ -69,9 +69,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PreForkProcessMethod
 #include "method_.h"
 
-#define PreForkProcessMethod(Method_, Object_)     \
+#define PreForkProcessMethod(Object_, Method_)     \
     METHOD_TRAMPOLINE(                             \
-        Method_, Object_,                          \
+        Object_, Method_,                          \
         PreForkProcessMethod_,                     \
         METHOD_RETURN_PreForkProcessMethod,        \
         METHOD_CONST_PreForkProcessMethod,         \
@@ -92,9 +92,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PostForkParentProcessMethod
 #include "method_.h"
 
-#define PostForkParentProcessMethod(Method_, Object_)     \
+#define PostForkParentProcessMethod(Object_, Method_)     \
     METHOD_TRAMPOLINE(                                    \
-        Method_, Object_,                                 \
+        Object_, Method_,                                 \
         PostForkParentProcessMethod_,                     \
         METHOD_RETURN_PostForkParentProcessMethod,        \
         METHOD_CONST_PostForkParentProcessMethod,         \
@@ -115,9 +115,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PostForkChildProcessMethod
 #include "method_.h"
 
-#define PostForkChildProcessMethod(Method_, Object_)     \
+#define PostForkChildProcessMethod(Object_, Method_)     \
     METHOD_TRAMPOLINE(                                   \
-        Method_, Object_,                                \
+        Object_, Method_,                                \
         PostForkChildProcessMethod_,                     \
         METHOD_RETURN_PostForkChildProcessMethod,        \
         METHOD_CONST_PostForkChildProcessMethod,         \
@@ -138,9 +138,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_ForkProcessMethod
 #include "method_.h"
 
-#define ForkProcessMethod(Method_, Object_)     \
+#define ForkProcessMethod(Object_, Method_)     \
     METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
+        Object_, Method_,                       \
         ForkProcessMethod_,                     \
         METHOD_RETURN_ForkProcessMethod,        \
         METHOD_CONST_ForkProcessMethod,         \
@@ -161,9 +161,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_WatchProcessMethod
 #include "method_.h"
 
-#define WatchProcessMethod(Method_, Object_)    \
+#define WatchProcessMethod(Object_, Method_)    \
     METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
+        Object_, Method_,                       \
         WatchProcessMethod_,                    \
         METHOD_RETURN_WatchProcessMethod,       \
         METHOD_CONST_WatchProcessMethod,        \
@@ -186,9 +186,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_WatchProcessSignalMethod
 #include "method_.h"
 
-#define WatchProcessSignalMethod(Method_, Object_)      \
+#define WatchProcessSignalMethod(Object_, Method_)      \
     METHOD_TRAMPOLINE(                                  \
-        Method_, Object_,                               \
+        Object_, Method_,                               \
         WatchProcessSignalMethod_,                      \
         METHOD_RETURN_WatchProcessSignalMethod,         \
         METHOD_CONST_WatchProcessSignalMethod,          \

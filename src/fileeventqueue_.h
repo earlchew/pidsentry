@@ -51,9 +51,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_FileEventQueueActivityMethod
 #include "method_.h"
 
-#define FileEventQueueActivityMethod(Method_, Object_)  \
+#define FileEventQueueActivityMethod(Object_, Method_)  \
     METHOD_TRAMPOLINE(                                  \
-        Method_, Object_,                               \
+        Object_, Method_,                               \
         FileEventQueueActivityMethod_,                  \
         METHOD_RETURN_FileEventQueueActivityMethod,     \
         METHOD_CONST_FileEventQueueActivityMethod,      \

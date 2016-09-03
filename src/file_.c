@@ -310,7 +310,7 @@ prepareTemporaryFileProcessSocket_(struct TemporaryFileProcess_ *self,
             &self->mThread_,
             0,
             0,
-            ThreadMethod(recvTemporaryFileProcessFd_, self)));
+            ThreadMethod(self, recvTemporaryFileProcessFd_)));
 
     ERROR_IF(
         insertFdSetRange(
@@ -407,23 +407,24 @@ temporaryFile_(const char *aDirName)
             ForkProcessSetSessionLeader,
             Pgid(0),
             PreForkProcessMethod(
+                temporaryFileProcess,
                 LAMBDA(
                     int, (struct TemporaryFileProcess_ *self,
                           const struct PreForkProcess  *aFork),
                     {
                         return prepareTemporaryFileProcessSocket_(self, aFork);
-                    }),
-                temporaryFileProcess),
+                    })),
             PostForkChildProcessMethod(
+                temporaryFileProcess,
                 LAMBDA(
                     int, (struct TemporaryFileProcess_ *self),
                     {
                         closeSocketPairParent(self->mSocketPair);
 
                         return sendTemporaryFileProcessFd_(self);
-                    }),
-                temporaryFileProcess),
+                    })),
             PostForkParentProcessMethod(
+                temporaryFileProcess,
                 LAMBDA(
                     int, (struct TemporaryFileProcess_ *self,
                           struct Pid                    aChildPid),
@@ -432,8 +433,7 @@ temporaryFile_(const char *aDirName)
 
                         return waitTemporaryFileProcessSocket_(
                             temporaryFileProcess);
-                    }),
-                temporaryFileProcess),
+                    })),
             ForkProcessMethodNil()),
          -1 == tempPid.mPid));
 

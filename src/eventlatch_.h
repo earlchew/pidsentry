@@ -56,9 +56,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_EventLatchMethod
 #include "method_.h"
 
-#define EventLatchMethod(Method_, Object_)     \
-    METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
+#define EventLatchMethod(Object_, Method_)     \
+    METHOD_TRAMPOLINE(                         \
+        Object_, Method_,                      \
         EventLatchMethod_,                     \
         METHOD_RETURN_EventLatchMethod,        \
         METHOD_CONST_EventLatchMethod,         \

@@ -50,9 +50,9 @@
 #define METHOD_CALL_LIST METHOD_CALL_LIST_ThreadMethod
 #include "method_.h"
 
-#define ThreadMethod(Method_, Object_)          \
+#define ThreadMethod(Object_, Method_)          \
     METHOD_TRAMPOLINE(                          \
-        Method_, Object_,                       \
+        Object_, Method_,                       \
         ThreadMethod_,                          \
         METHOD_RETURN_ThreadMethod,             \
         METHOD_CONST_ThreadMethod,              \
@@ -73,9 +73,9 @@
 #define METHOD_CALL_LIST METHOD_CALL_LIST_MutexRepairMethod
 #include "method_.h"
 
-#define MutexRepairMethod(Method_, Object_)          \
+#define MutexRepairMethod(Object_, Method_)          \
     METHOD_TRAMPOLINE(                               \
-        Method_, Object_,                            \
+        Object_, Method_,                            \
         MutexRepairMethod_,                          \
         METHOD_RETURN_MutexRepairMethod,             \
         METHOD_CONST_MutexRepairMethod,              \

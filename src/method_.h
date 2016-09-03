@@ -41,20 +41,20 @@ BEGIN_C_SCOPE;
 #else
 #define METHOD_CTOR_(Const_, Struct_)                   \
     explicit Struct_()                                  \
-    : mMethod(0),                                       \
-      mObject(0)                                        \
+    : mObject(0),                                       \
+      mMethod(0)                                        \
     { }                                                 \
                                                         \
-    explicit Struct_(CONCAT(Struct_, T_) aMethod,       \
-                     Const_ void        *aObject)       \
-    : mMethod(aMethod),                                 \
-      mObject(aObject)                                  \
+    explicit Struct_(Const_ void        *aObject,       \
+                     CONCAT(Struct_, T_) aMethod)       \
+    : mObject(aObject),                                 \
+      mMethod(aMethod)                                  \
     { }
 #endif
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_TRAMPOLINE(                                               \
-    Method_, Object_, Name_, Return_, Const_, ArgList_, CallList_)       \
+    Object_, Method_, Name_, Return_, Const_, ArgList_, CallList_)       \
 ({                                                                       \
     typedef Const_ DECLTYPE(*(Object_)) *ObjectT_;                       \
                                                                          \
@@ -63,25 +63,25 @@ BEGIN_C_SCOPE;
     Return_ (*ValidateMethod_)(ObjectT_ ARGS ArgList_) = (Method_);      \
                                                                          \
     Name_(                                                               \
-        ! ValidateMethod_                                                \
-        ? 0                                                              \
-        : LAMBDA(                                                        \
-            Return_, (Const_ void *Self_ ARGS ArgList_),                 \
-            {                                                            \
-                Return_ (*method_)(                                      \
-                  ObjectT_ ARGS ArgList_) = (Method_);                   \
+        (ValidateObject_),                                               \
+        ( ! ValidateMethod_                                              \
+          ? 0                                                            \
+          : LAMBDA(                                                      \
+              Return_, (Const_ void *Self_ ARGS ArgList_),               \
+              {                                                          \
+                  Return_ (*method_)(                                    \
+                    ObjectT_ ARGS ArgList_) = (Method_);                 \
                                                                          \
-                return method_(                                          \
-                    (ObjectT_) Self_ ARGS CallList_);                    \
-            }),                                                          \
-        (ValidateObject_));                                              \
+                  return method_(                                        \
+                      (ObjectT_) Self_ ARGS CallList_);                  \
+              })));                                                      \
 })
 
 /* -------------------------------------------------------------------------- */
 void
 methodEnsure_(const char *aFunction, const char *aFile, unsigned aLine,
               const char *aPredicate)
-    __attribute__ ((__noreturn__));
+    NORETURN;
 
 #define METHOD_ENSURE_(aPredicate)                                      \
     do                                                                  \
@@ -105,20 +105,20 @@ typedef METHOD_RETURN (*CONCAT(METHOD_NAME, T_))(
     METHOD_CONST void *self EXPAND(ARGS METHOD_ARG_LIST));
 
 static __inline__ struct METHOD_NAME
-CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
-                        METHOD_CONST void      *aObject);
+CONCAT(METHOD_NAME, _) (METHOD_CONST void      *aObject,
+                        CONCAT(METHOD_NAME, T_) aMethod);
 
 struct METHOD_NAME
 {
     METHOD_CTOR_(METHOD_CONST, METHOD_NAME)
 
-    CONCAT(METHOD_NAME, T_) mMethod;
     METHOD_CONST void      *mObject;
+    CONCAT(METHOD_NAME, T_) mMethod;
 };
 
 static __inline__ struct METHOD_NAME
-CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
-                        METHOD_CONST void      *aObject)
+CONCAT(METHOD_NAME, _) (METHOD_CONST void      *aObject,
+                        CONCAT(METHOD_NAME, T_) aMethod)
 {
     METHOD_ENSURE_(aMethod || ! aObject);
 
@@ -128,8 +128,8 @@ CONCAT(METHOD_NAME, _) (CONCAT(METHOD_NAME, T_) aMethod,
 
     return (struct METHOD_NAME)
     {
-        mMethod : aMethod,
         mObject : aObject,
+        mMethod : aMethod,
     };
 }
 

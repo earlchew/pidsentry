@@ -151,7 +151,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printAgent, self);
+        finally_warn_if(rc, self, printAgent);
 
         sentry = closeSentry(sentry);
     });
@@ -255,7 +255,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
             (agentPid = forkProcessChild(
                 ForkProcessSetProcessGroup,
                 Pgid(0),
-                ForkProcessMethod(runAgentChildProcess_, &agentChild)),
+                ForkProcessMethod(&agentChild, runAgentChildProcess_)),
              -1 == agentPid.mPid));
 
         self->mAgentPid = agentPid;
@@ -271,12 +271,12 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
     ERROR_IF(
         watchJobControlSignals(
             jobControl,
-            WatchProcessSignalMethod(raiseAgentSignal_, self)));
+            WatchProcessSignalMethod(self, raiseAgentSignal_)));
 
     ERROR_IF(
         watchJobControlStop(jobControl,
-                            WatchProcessMethod(raiseAgentStop_, self),
-                            WatchProcessMethod(raiseAgentResume_, self)));
+                            WatchProcessMethod(self, raiseAgentStop_),
+                            WatchProcessMethod(self, raiseAgentResume_)));
 
     {
         struct ProcessAppLock *appLock = createProcessAppLock();
@@ -365,7 +365,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, printAgent, self);
+        finally_warn_if(rc, self, printAgent);
 
         parentPipe    = closePipe(parentPipe);
         stdFdFiller   = closeStdFdFiller(stdFdFiller);

@@ -43,13 +43,13 @@ armTestFileQueueActivity(struct FileEventQueueActivity *aActivity)
         aActivity,
         EventQueuePollRead,
         FileEventQueueActivityMethod(
+            (char *) 0,
             LAMBDA(
                 int, (char *self_),
                 {
                     ++eventCount_;
                     return 0;
-                }),
-            (char *) 0));
+                })));
 }
 
 class FileEventQueueTest : public ::testing::Test

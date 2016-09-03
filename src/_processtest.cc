@@ -318,6 +318,7 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
                           PreForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (
                                       struct ProcessForkTest      *self,
@@ -344,16 +345,16 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                               self->mPipeFds[1]);
 
                                       return err;
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkChildProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
                                       return 0;
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkParentProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self,
                                         struct Pid              aChildPid),
@@ -363,9 +364,9 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                       self->mPipeFds[1] = -1;
 
                                       return 0;
-                                  }),
-                              &forkTest),
+                                  })),
                           ForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
@@ -431,8 +432,7 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                       } while (0);
 
                                       return rc;
-                                  }),
-                              &forkTest));
+                                  })));
 
     EXPECT_NE(-1, childPid.mPid);
 
@@ -470,6 +470,7 @@ processForkTest_FailedPreFork_()
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
                           PreForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (
                                       struct ProcessForkTest      *self,
@@ -477,9 +478,9 @@ processForkTest_FailedPreFork_()
                                   {
                                       errno = EINVAL;
                                       return -1;
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkChildProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
@@ -487,9 +488,9 @@ processForkTest_FailedPreFork_()
 
                                       errno = EINVAL;
                                       return -1;
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkParentProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self,
                                         struct Pid              aChildPid),
@@ -498,9 +499,9 @@ processForkTest_FailedPreFork_()
 
                                       errno = EINVAL;
                                       return -1;
-                                  }),
-                              &forkTest),
+                                  })),
                           ForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
@@ -508,8 +509,7 @@ processForkTest_FailedPreFork_()
 
                                       errno = EINVAL;
                                       return -1;
-                                  }),
-                              &forkTest));
+                                  })));
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
@@ -548,22 +548,23 @@ processForkTest_FailedChildPostFork_()
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
                           PreForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (
                                       struct ProcessForkTest      *self,
                                       const struct PreForkProcess *aFork),
                                   {
                                       return 0;
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkChildProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
                                       return processForkTest_Error_();
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkParentProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self,
                                         struct Pid              aChildPid),
@@ -572,9 +573,9 @@ processForkTest_FailedChildPostFork_()
 
                                       errno = EINVAL;
                                       return -1;
-                                  }),
-                              &forkTest),
+                                  })),
                           ForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
@@ -582,8 +583,7 @@ processForkTest_FailedChildPostFork_()
 
                                   errno = EINVAL;
                                   return -1;
-                                  }),
-                              &forkTest));
+                                  })));
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
@@ -602,30 +602,31 @@ processForkTest_FailedParentPostFork_()
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
                           PreForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (
                                       struct ProcessForkTest      *self,
                                       const struct PreForkProcess *aFork),
                                   {
                                       return 0;
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkChildProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
                                       return 0;
-                                  }),
-                              &forkTest),
+                                  })),
                           PostForkParentProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self,
                                         struct Pid              aChildPid),
                                   {
                                       return processForkTest_Error_();
-                                  }),
-                              &forkTest),
+                                  })),
                           ForkProcessMethod(
+                              &forkTest,
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
@@ -633,8 +634,7 @@ processForkTest_FailedParentPostFork_()
 
                                       errno = EINVAL;
                                       return -1;
-                                  }),
-                              &forkTest));
+                                  })));
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
@@ -739,13 +739,13 @@ TEST_F(ProcessTest, ProcessFork)
                                  threadName[ix],
                                   0,
                                   ThreadMethod(
+                                      &forkArg,
                                       LAMBDA(
                                           int, (struct ProcessForkArg *self),
                                           {
                                               processForkTest_(self);
                                               return 0;
-                                          }),
-                                      &forkArg));
+                                          })));
         EXPECT_TRUE(thread[ix]);
     }
 
@@ -756,14 +756,14 @@ TEST_F(ProcessTest, ProcessFork)
                                  "rawkfork",
                                  0,
                                  ThreadMethod(
+                                     &forkArg,
                                      LAMBDA(
                                          int, (struct ProcessForkArg *self),
                                          {
                                              processForkTest_Raw_(self);
 
                                              return 0;
-                                         }),
-                                     &forkArg));
+                                         })));
     EXPECT_TRUE(rawForkThread);
 
     forkArg.mStart = true;

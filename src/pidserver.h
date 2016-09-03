@@ -58,9 +58,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_PidServerClientActivityMethod
 #include "method_.h"
 
-#define PidServerClientActivityMethod_(Method_, Object_)        \
+#define PidServerClientActivityMethod_(Object_, Method_)        \
     METHOD_TRAMPOLINE(                                          \
-        Method_, Object_,                                       \
+        Object_, Method_,                                       \
         PidServerClientActivityMethod__,                        \
         METHOD_RETURN_PidServerClientActivityMethod,            \
         METHOD_CONST_PidServerClientActivityMethod,             \

@@ -363,7 +363,7 @@ pollEventLatchListEntry(struct EventLatchListEntry  *self,
             {
                 warn(errno,
                      "Unable to reset event latch %" PRIs_Method,
-                     FMTs_Method(printEventLatch, self->mLatch));
+                     FMTs_Method(self->mLatch, printEventLatch));
             });
 
         if (EventLatchSettingOff != setting)

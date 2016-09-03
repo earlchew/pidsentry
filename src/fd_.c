@@ -179,7 +179,7 @@ closeFdExceptWhiteList(const struct FdSet *aFdSet)
     ERROR_IF(
         -1 == visitFdSet(
             aFdSet,
-            FdSetVisitor(closeFdWhiteListVisitor_, &whiteListVisitor)));
+            FdSetVisitor(&whiteListVisitor, closeFdWhiteListVisitor_)));
 
     /* Cover off all the file descriptors from the end of the last
      * whitelisted range, to the end of the process file descriptor
@@ -258,7 +258,7 @@ closeFdOnlyBlackList(const struct FdSet *aFdSet)
     ERROR_IF(
         -1 == visitFdSet(
             aFdSet,
-            FdSetVisitor(closeFdBlackListVisitor_, &blackListVisitor)));
+            FdSetVisitor(&blackListVisitor, closeFdBlackListVisitor_)));
 
     rc = 0;
 
@@ -779,6 +779,7 @@ waitFdReadyDeadline_(int aFd, unsigned aPollMask, struct Deadline *aDeadline)
             (ready = checkDeadlineExpired(
                 aDeadline,
                 DeadlinePollMethod(
+                    &readyDeadline,
                     LAMBDA(
                         int, (struct FdReadyDeadline *self_),
                         {
@@ -786,9 +787,9 @@ waitFdReadyDeadline_(int aFd, unsigned aPollMask, struct Deadline *aDeadline)
                                 self_->mFd,
                                 self_->mPollMask,
                                 &ZeroDuration);
-                        }),
-                    &readyDeadline),
+                        })),
                 DeadlineWaitMethod(
+                    &readyDeadline,
                     LAMBDA(
                         int, (struct FdReadyDeadline *self_,
                               const struct Duration  *aTimeout),
@@ -797,8 +798,7 @@ waitFdReadyDeadline_(int aFd, unsigned aPollMask, struct Deadline *aDeadline)
                                 self_->mFd,
                                 self_->mPollMask,
                                 aTimeout);
-                        }),
-                    &readyDeadline)),
+                        }))),
              -1 == ready));
     }
 
@@ -844,20 +844,20 @@ readFdDeadline_(int aFd,
                 (ready = checkDeadlineExpired(
                     aDeadline,
                     DeadlinePollMethod(
+                        &aFd,
                         LAMBDA(
                             int, (int *fd),
                             {
                                 return waitFdReadReady(*fd, &ZeroDuration);
-                            }),
-                        &aFd),
+                            })),
                     DeadlineWaitMethod(
+                        &aFd,
                         LAMBDA(
                             int, (int *fd,
                                   const struct Duration *aTimeout),
                             {
                                 return waitFdReadReady(*fd, aTimeout);
-                            }),
-                        &aFd)),
+                            }))),
                  -1 == ready && bufPtr == aBuf));
 
             if (-1 == ready)
@@ -937,20 +937,20 @@ writeFdDeadline_(int aFd,
                 (ready = checkDeadlineExpired(
                     aDeadline,
                     DeadlinePollMethod(
+                        &aFd,
                         LAMBDA(
                             int, (int *fd),
                             {
                                 return waitFdWriteReady(*fd, &ZeroDuration);
-                            }),
-                        &aFd),
+                            })),
                     DeadlineWaitMethod(
+                        &aFd,
                         LAMBDA(
                             int, (int *fd,
                                   const struct Duration *aTimeout),
                             {
                                 return waitFdWriteReady(*fd, aTimeout);
-                            }),
-                        &aFd)),
+                            }))),
                  -1 == ready && bufPtr == aBuf));
 
             if (-1 == ready)

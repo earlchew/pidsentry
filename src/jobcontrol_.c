@@ -185,7 +185,7 @@ watchJobControlSignals(struct JobControl              *self,
 
     ERROR_IF(
         watchProcessSignals(
-            WatchProcessSignalMethod(raiseJobControlSignal_, self)),
+            WatchProcessSignalMethod(self, raiseJobControlSignal_)),
         {
             self->mRaise.mMethod = WatchProcessSignalMethodNil();
         });
@@ -247,7 +247,7 @@ watchJobControlDone(struct JobControl        *self,
     self->mReap.mMethod = aReapMethod;
 
     ERROR_IF(
-        watchProcessChildren(WatchProcessMethod(reapJobControl_, self)),
+        watchProcessChildren(WatchProcessMethod(self, reapJobControl_)),
         {
             self->mReap.mMethod = WatchProcessMethodNil();
         });
@@ -314,7 +314,7 @@ watchJobControlStop(struct JobControl        *self,
 
     ERROR_IF(
         watchProcessSigStop(
-            WatchProcessMethod(raiseJobControlSigStop_, self)),
+            WatchProcessMethod(self, raiseJobControlSigStop_)),
         {
             self->mStop.mPauseMethod  = WatchProcessMethodNil();
             self->mStop.mResumeMethod = WatchProcessMethodNil();
@@ -380,7 +380,7 @@ watchJobControlContinue(struct JobControl        *self,
 
     ERROR_IF(
         watchProcessSigCont(
-            WatchProcessMethod(raiseJobControlSigCont_, self)),
+            WatchProcessMethod(self, raiseJobControlSigCont_)),
         {
             self->mContinue.mMethod = WatchProcessMethodNil();
         });

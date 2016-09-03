@@ -55,9 +55,9 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST METHOD_CALL_LIST_FileVisitor
 #include "method_.h"
 
-#define FileVisitor(Method_, Object_)          \
+#define FileVisitor(Object_, Method_)          \
     METHOD_TRAMPOLINE(                         \
-        Method_, Object_,                      \
+        Object_, Method_,                      \
         FileVisitor_,                          \
         METHOD_RETURN_FileVisitor,             \
         METHOD_CONST_FileVisitor,              \

@@ -105,8 +105,8 @@ TEST(MethodTest, CallMethod)
 
     struct TestMethod testMethod =
         TestMethod(
-            calledTestMethod,
-            testMethodContextPtr);
+            testMethodContextPtr,
+            calledTestMethod);
 
     int value = 3;
 
@@ -134,8 +134,8 @@ TEST(MethodTest, CallConstMethod)
 
     struct ConstTestMethod constTestMethod =
         ConstTestMethod(
-            calledConstTestMethod,
-            constTestMethodContextPtr);
+            constTestMethodContextPtr,
+            calledConstTestMethod);
 
     int value = 3;
 

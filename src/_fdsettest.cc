@@ -164,7 +164,7 @@ TEST(FdTest, Visitor)
 
     EXPECT_EQ(
         3,
-        visitFdSet(fdset, FdSetVisitor(TestVisitor::visit, &testVisitor)));
+        visitFdSet(fdset, FdSetVisitor(&testVisitor, TestVisitor::visit)));
 
     EXPECT_EQ(3, testVisitor.mNext);
 
@@ -173,7 +173,7 @@ TEST(FdTest, Visitor)
 
     EXPECT_EQ(
         2,
-        visitFdSet(fdset, FdSetVisitor(TestVisitor::visit, &testVisitor)));
+        visitFdSet(fdset, FdSetVisitor(&testVisitor, TestVisitor::visit)));
 
     EXPECT_EQ(1, testVisitor.mNext);
 

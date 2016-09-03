@@ -100,7 +100,7 @@ Finally:
 
     FINALLY
     ({
-        finally_warn_if(rc, print, nilClass);
+        finally_warn_if(rc, nilClass, print);
     });
 
     return rc;
@@ -131,7 +131,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        print, nilClass,
+                        nilClass, print,
                         "Error context at testFinallyIfFail_1");
 
         ABORT_UNLESS(
@@ -159,7 +159,7 @@ Finally:
     FINALLY
     ({
         finally_warn_if(rc,
-                        print, nilClass,
+                        nilClass, print,
                         "Error context at testFinallyIfFail_2");
 
         ABORT_UNLESS(
