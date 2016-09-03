@@ -363,6 +363,8 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                   {
                                       self->mChildPid = aChildPid;
 
+                                      self->mPipeFds[1] = -1;
+
                                       return 0;
                                   }),
                               &forkTest),
@@ -397,7 +399,7 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
             /* Two additional fds were opened, but one is closed, so the
              * net difference should be one extra.
              *
-             * There will be an additional extra fd for file used to
+             * There will be an additional extra fd for the file used to
              * coordinate the process lock. */
 
             unsigned openFds = countFds();
@@ -436,7 +438,7 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
     {
         EXPECT_EQ(forkTest.mChildPid.mPid, childPid.mPid);
 
-        EXPECT_EQ(0, ownFdValid(forkTest.mPipeFds[1]));
+        EXPECT_EQ(-1, forkTest.mPipeFds[1]);
 
         char buf[1] = { '@' };
 
@@ -502,6 +504,26 @@ processForkTest_FailedPreFork_()
     EXPECT_EQ(EINVAL, errno);
 }
 
+static int
+processForkTest_Error_()
+{
+    int rc = -1;
+
+    ERROR_IF(
+        true,
+        {
+            errno = EINVAL;
+        });
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
 static void
 processForkTest_FailedChildPostFork_()
 {
@@ -527,8 +549,7 @@ processForkTest_FailedChildPostFork_()
                               LAMBDA(
                                   int, (struct ProcessForkTest *self),
                                   {
-                                      errno = EINVAL;
-                                      return -1;
+                                      return processForkTest_Error_();
                                   }),
                               &forkTest),
                           PostForkParentProcessMethod(
@@ -581,8 +602,7 @@ processForkTest_FailedParentPostFork_()
                                   int, (struct ProcessForkTest *self,
                                         struct Pid              aChildPid),
                                   {
-                                      errno = EINVAL;
-                                      return -1;
+                                      return processForkTest_Error_();
                                   }),
                               &forkTest),
                           ForkProcessMethodNil());
@@ -626,14 +646,34 @@ processForkTest_Raw_(struct ProcessForkArg *aArg)
 
     if ( ! childpid)
     {
-        execl("/bin/true", "true", (char *) 0);
+        int rc = -1;
+
+        do
+        {
+            unsigned openFds = countFds();
+
+            if (openFds < aArg->mNumFds)
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if (openFds > aArg->mNumFds + aArg->mNumForks)
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            rc = 0;
+
+        } while (0);
+
+        if (rc)
+            execl("/bin/false", "false", (char *) 0);
+        else
+            execl("/bin/true", "true", (char *) 0);
         _exit(EXIT_FAILURE);
     }
-
-    unsigned openFds = countFds();
-
-    EXPECT_GE(openFds, aArg->mNumFds);
-    EXPECT_LE(openFds, aArg->mNumFds + aArg->mNumForks);
 
     struct Pid childPid = Pid(childpid);
 
