@@ -300,10 +300,7 @@ processForkTest_Trivial_()
     EXPECT_NE(-1, childPid.mPid);
 
     if ( ! childPid.mPid)
-    {
-        execl("/bin/true", "true", (char *) 0);
-        _exit(EXIT_FAILURE);
-    }
+        abort();
 
     int status;
     EXPECT_EQ(0, reapProcessChild(childPid, &status));
@@ -368,87 +365,92 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                       return 0;
                                   }),
                               &forkTest),
-                          ForkProcessMethodNil());
+                          ForkProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                      int rc = -1;
+
+                                      do
+                                      {
+                                          if ( ! ownFdValid(STDIN_FILENO))
+                                          {
+                                              fprintf(stderr, "%u\n", __LINE__);
+                                              break;
+                                          }
+
+                                          if ( ! ownFdValid(STDOUT_FILENO))
+                                          {
+                                              fprintf(stderr, "%u\n", __LINE__);
+                                              break;
+                                          }
+
+                                          if ( ! ownFdValid(STDERR_FILENO))
+                                          {
+                                              fprintf(stderr, "%u\n", __LINE__);
+                                              break;
+                                          }
+
+                                          /* Two additional fds were opened,
+                                           * but one is closed, so the
+                                           * net difference should be one extra.
+                                           *
+                                           * There will be an additional extra
+                                           * fd for the file used to
+                                           * coordinate the process lock. */
+
+                                          unsigned openFds = countFds();
+
+                                          if (5 != openFds)
+                                          {
+                                              fprintf(
+                                                  stderr,
+                                                  "%u %u\n", __LINE__, openFds);
+                                              break;
+                                          }
+
+                                          if (ownFdValid(self->mPipeFds[0]))
+                                          {
+                                              fprintf(stderr, "%u\n", __LINE__);
+                                              break;
+                                          }
+
+                                          if (1 != writeFd(
+                                                  self->mPipeFds[1],
+                                                  "X", 1, 0))
+                                          {
+                                              fprintf(stderr, "%u\n", __LINE__);
+                                              break;
+                                          }
+
+                                          self->mPipeFds[1] =
+                                              closeFd(self->mPipeFds[1]);
+
+                                          rc = 0;
+
+                                      } while (0);
+
+                                      return rc;
+                                  }),
+                              &forkTest));
 
     EXPECT_NE(-1, childPid.mPid);
 
     if ( ! childPid.mPid)
-    {
-        int rc = -1;
+        abort();
 
-        do
-        {
-            if ( ! ownFdValid(STDIN_FILENO))
-            {
-                fprintf(stderr, "%u\n", __LINE__);
-                break;
-            }
+    EXPECT_EQ(forkTest.mChildPid.mPid, childPid.mPid);
 
-            if ( ! ownFdValid(STDOUT_FILENO))
-            {
-                fprintf(stderr, "%u\n", __LINE__);
-                break;
-            }
+    EXPECT_EQ(-1, forkTest.mPipeFds[1]);
 
-            if ( ! ownFdValid(STDERR_FILENO))
-            {
-                fprintf(stderr, "%u\n", __LINE__);
-                break;
-            }
+    char buf[1] = { '@' };
 
-            /* Two additional fds were opened, but one is closed, so the
-             * net difference should be one extra.
-             *
-             * There will be an additional extra fd for the file used to
-             * coordinate the process lock. */
+    EXPECT_EQ(
+        1, readFd(forkTest.mPipeFds[0], buf, sizeof(buf), 0));
 
-            unsigned openFds = countFds();
+    EXPECT_EQ('X', buf[0]);
 
-            if (5 != openFds)
-            {
-                fprintf(stderr, "%u %u\n", __LINE__, openFds);
-                break;
-            }
-
-            if (ownFdValid(forkTest.mPipeFds[0]))
-            {
-                fprintf(stderr, "%u\n", __LINE__);
-                break;
-            }
-
-            if (1 != writeFd(forkTest.mPipeFds[1], "X", 1, 0))
-            {
-                fprintf(stderr, "%u\n", __LINE__);
-                break;
-            }
-
-            forkTest.mPipeFds[1] = closeFd(forkTest.mPipeFds[1]);
-
-            rc = 0;
-
-        } while (0);
-
-        if (rc)
-            execl("/bin/false", "false", (char *) 0);
-        else
-            execl("/bin/true", "true", (char *) 0);
-        _exit(EXIT_FAILURE);
-    }
-    else
-    {
-        EXPECT_EQ(forkTest.mChildPid.mPid, childPid.mPid);
-
-        EXPECT_EQ(-1, forkTest.mPipeFds[1]);
-
-        char buf[1] = { '@' };
-
-        EXPECT_EQ(
-            1, readFd(forkTest.mPipeFds[0], buf, sizeof(buf), 0));
-
-        EXPECT_EQ('X', buf[0]);
-
-        forkTest.mPipeFds[0] = closeFd(forkTest.mPipeFds[0]);
-    }
+    forkTest.mPipeFds[0] = closeFd(forkTest.mPipeFds[0]);
 
     int status;
     EXPECT_EQ(0, reapProcessChild(childPid, &status));
@@ -498,7 +500,16 @@ processForkTest_FailedPreFork_()
                                       return -1;
                                   }),
                               &forkTest),
-                          ForkProcessMethodNil());
+                          ForkProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                      abort();
+
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest));
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
@@ -563,7 +574,16 @@ processForkTest_FailedChildPostFork_()
                                       return -1;
                                   }),
                               &forkTest),
-                          ForkProcessMethodNil());
+                          ForkProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                  abort();
+
+                                  errno = EINVAL;
+                                  return -1;
+                                  }),
+                              &forkTest));
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
@@ -605,7 +625,16 @@ processForkTest_FailedParentPostFork_()
                                       return processForkTest_Error_();
                                   }),
                               &forkTest),
-                          ForkProcessMethodNil());
+                          ForkProcessMethod(
+                              LAMBDA(
+                                  int, (struct ProcessForkTest *self),
+                                  {
+                                      abort();
+
+                                      errno = EINVAL;
+                                      return -1;
+                                  }),
+                              &forkTest));
 
     EXPECT_EQ(-1, childPid.mPid);
     EXPECT_EQ(EINVAL, errno);
