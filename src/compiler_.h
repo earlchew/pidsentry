@@ -91,7 +91,15 @@ void Name_ ## _dtor_(void)                      \
 struct EarlyInit
 
 /* -------------------------------------------------------------------------- */
-/* Checked Return
+/* No Return
+ *
+ * Mark a function as not returning. This only makes sense if the function
+ * has a void return. */
+
+#define NORETURN __attribute__((__noreturn__))
+
+/* -------------------------------------------------------------------------- */
+/* Checked Return Value
  *
  * Where there are return code that need to be checked, this decorator
  * is used to have the compiler enforce policy. */
