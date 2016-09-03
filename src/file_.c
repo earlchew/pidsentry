@@ -434,11 +434,7 @@ temporaryFile_(const char *aDirName)
                             temporaryFileProcess);
                     }),
                 temporaryFileProcess),
-            ForkProcessMethod(
-                LAMBDA(
-                    int, (struct TemporaryFileProcess_ *self),
-                    { return 0; }),
-                temporaryFileProcess)),
+            ForkProcessMethodNil()),
          -1 == tempPid.mPid));
 
     int status;
