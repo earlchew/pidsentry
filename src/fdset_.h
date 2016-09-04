@@ -37,14 +37,29 @@
 
 /* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
-struct File;
+struct FdRange;
+
+struct FdRange
+FdRange_(int aLhs, int aRhs);
+
+struct FdRange
+{
+#ifdef __cplusplus
+    FdRange(int aLhs, int aRhs)
+    { *this = FdRange_(aLhs, aRhs); }
+#endif
+
+    int mLhs;
+    int mRhs;
+};
 END_C_SCOPE;
 
+/* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
 #define METHOD_RETURN_FdSetVisitor    int
 #define METHOD_CONST_FdSetVisitor
-#define METHOD_ARG_LIST_FdSetVisitor  (int aFirstFd_, int aLastFd_)
-#define METHOD_CALL_LIST_FdSetVisitor (aFirstFd_, aLastFd_)
+#define METHOD_ARG_LIST_FdSetVisitor  (struct FdRange aFdRange_)
+#define METHOD_CALL_LIST_FdSetVisitor (aFdRange_)
 
 #define METHOD_NAME      FdSetVisitor
 #define METHOD_RETURN    METHOD_RETURN_FdSetVisitor
@@ -69,8 +84,7 @@ struct FdSetElement_
 {
     RB_ENTRY(FdSetElement_) mTree;
 
-    int mFirstFd;
-    int mLastFd;
+    struct FdRange mRange;
 };
 
 typedef RB_HEAD(FdSetTree_, FdSetElement_) FdSetTreeT_;
@@ -93,13 +107,37 @@ struct FdSet *
 closeFdSet(struct FdSet *self);
 
 CHECKED int
-insertFdSetRange(struct FdSet *self, int aFirstFd, int aLastFd);
+insertFdSetRange(struct FdSet *self, struct FdRange aRange);
 
 CHECKED int
-removeFdSetRange(struct FdSet *self, int aFirstFd, int aLastFd);
+removeFdSetRange(struct FdSet *self, struct FdRange aRange);
 
 CHECKED ssize_t
 visitFdSet(const struct FdSet *self, struct FdSetVisitor aVisitor);
+
+/* -------------------------------------------------------------------------- */
+#ifndef __cplusplus
+static inline struct FdRange
+FdRange(int aLhs, int aRhs)
+{
+    return FdRange_(aLhs, aRhs);
+}
+#endif
+
+int
+containsFdRange(struct FdRange self, struct FdRange aOther);
+
+bool
+leftFdRangeOf(struct FdRange self, struct FdRange aOther);
+
+bool
+rightFdRangeOf(struct FdRange self, struct FdRange aOther);
+
+bool
+leftFdRangeNeighbour(struct FdRange self, struct FdRange aOther);
+
+bool
+rightFdRangeNeighbour(struct FdRange self, struct FdRange aOther);
 
 /* -------------------------------------------------------------------------- */
 

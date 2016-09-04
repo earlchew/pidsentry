@@ -31,6 +31,77 @@
 
 #include "gtest/gtest.h"
 
+TEST(FdTest, RangeContains)
+{
+    EXPECT_EQ( 0, containsFdRange(FdRange(20, 29), FdRange(10, 19)));
+    EXPECT_EQ( 0, containsFdRange(FdRange(20, 29), FdRange(10, 20)));
+    EXPECT_EQ( 0, containsFdRange(FdRange(20, 29), FdRange(10, 25)));
+    EXPECT_EQ(+1, containsFdRange(FdRange(20, 29), FdRange(20, 20)));
+    EXPECT_EQ(+1, containsFdRange(FdRange(20, 29), FdRange(20, 25)));
+    EXPECT_EQ(+3, containsFdRange(FdRange(20, 29), FdRange(20, 29)));
+    EXPECT_EQ(-1, containsFdRange(FdRange(20, 29), FdRange(21, 28)));
+    EXPECT_EQ(+2, containsFdRange(FdRange(20, 29), FdRange(25, 29)));
+    EXPECT_EQ(+2, containsFdRange(FdRange(20, 29), FdRange(29, 29)));
+    EXPECT_EQ( 0, containsFdRange(FdRange(20, 29), FdRange(25, 35)));
+    EXPECT_EQ( 0, containsFdRange(FdRange(20, 29), FdRange(30, 39)));
+}
+
+TEST(FdTest, RightNeighbour)
+{
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(10, 19)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(10, 20)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(10, 25)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(20, 20)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(20, 25)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(25, 29)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(29, 29)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(25, 35)));
+    EXPECT_TRUE(rightFdRangeNeighbour(FdRange(20, 29),  FdRange(30, 39)));
+    EXPECT_FALSE(rightFdRangeNeighbour(FdRange(20, 29), FdRange(35, 39)));
+}
+
+TEST(FdTest, LeftNeighbour)
+{
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(10, 15)));
+    EXPECT_TRUE(leftFdRangeNeighbour(FdRange(20, 29),  FdRange(10, 19)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(10, 20)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(10, 25)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(20, 20)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(20, 25)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(25, 29)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(29, 29)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(25, 35)));
+    EXPECT_FALSE(leftFdRangeNeighbour(FdRange(20, 29), FdRange(30, 39)));
+}
+
+TEST(FdTest, RightOf)
+{
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(10, 19)));
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(10, 20)));
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(10, 25)));
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(20, 20)));
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(20, 25)));
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(25, 29)));
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(29, 29)));
+    EXPECT_FALSE(rightFdRangeOf(FdRange(20, 29), FdRange(25, 35)));
+    EXPECT_TRUE(rightFdRangeOf(FdRange(20, 29),  FdRange(30, 39)));
+    EXPECT_TRUE(rightFdRangeOf(FdRange(20, 29),  FdRange(35, 39)));
+}
+
+TEST(FdTest, LeftOf)
+{
+    EXPECT_TRUE(leftFdRangeOf(FdRange(20, 29),  FdRange(10, 15)));
+    EXPECT_TRUE(leftFdRangeOf(FdRange(20, 29),  FdRange(10, 19)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(10, 20)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(10, 25)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(20, 20)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(20, 25)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(25, 29)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(29, 29)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(25, 35)));
+    EXPECT_FALSE(leftFdRangeOf(FdRange(20, 29), FdRange(30, 39)));
+}
+
 TEST(FdTest, CreateDestroy)
 {
     struct FdSet  fdset_;
@@ -39,8 +110,8 @@ TEST(FdTest, CreateDestroy)
     EXPECT_EQ(0, createFdSet(&fdset_));
     fdset = &fdset_;
 
-    EXPECT_EQ(0, insertFdSetRange(fdset, 0, 2));
-    EXPECT_NE(0, insertFdSetRange(fdset, 1, 2));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 2)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(1, 2)));
     EXPECT_EQ(EEXIST, errno);
 
     fdset = closeFdSet(fdset);
@@ -54,11 +125,11 @@ TEST(FdTest, InsertRemove)
     EXPECT_EQ(0, createFdSet(&fdset_));
     fdset = &fdset_;
 
-    EXPECT_EQ(0, insertFdSetRange(fdset, 0, 2));
-    EXPECT_NE(0, insertFdSetRange(fdset, 0, -1));
-    EXPECT_EQ(0, removeFdSetRange(fdset, 0, 2));
-    EXPECT_NE(0, removeFdSetRange(fdset, 0, -1));
-    EXPECT_NE(0, removeFdSetRange(fdset, 0, 2));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 2)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(0, 2)));
+    EXPECT_NE(0, removeFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_NE(0, removeFdSetRange(fdset, FdRange(0, 2)));
     EXPECT_EQ(ENOENT, errno);
 
     fdset = closeFdSet(fdset);
@@ -72,55 +143,112 @@ TEST(FdTest, InsertOverlap)
     EXPECT_EQ(0, createFdSet(&fdset_));
     fdset = &fdset_;
 
-    EXPECT_EQ(0, insertFdSetRange(fdset, 0, 2));
-    EXPECT_EQ(0, insertFdSetRange(fdset, 4, 6));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 2)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(4, 6)));
 
-    EXPECT_NE(0, insertFdSetRange(fdset, -1, 1));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 1)));
     EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, -1, 2));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 2)));
     EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, -1, 3));
-    EXPECT_EQ(EEXIST, errno);
-
-    EXPECT_NE(0, insertFdSetRange(fdset, 0, 1));
-    EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 0, 2));
-    EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 0, 3));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 3)));
     EXPECT_EQ(EEXIST, errno);
 
-    EXPECT_NE(0, insertFdSetRange(fdset, 1, 2));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 1)));
     EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 1, 3));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 2)));
     EXPECT_EQ(EEXIST, errno);
-
-    EXPECT_NE(0, insertFdSetRange(fdset, 3, 4));
-    EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 3, 5));
-    EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 3, 6));
-    EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 3, 7));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 3)));
     EXPECT_EQ(EEXIST, errno);
 
-    EXPECT_NE(0, insertFdSetRange(fdset, 4, 4));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(1, 2)));
     EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 4, 5));
-    EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 4, 6));
-    EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 4, 7));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(1, 3)));
     EXPECT_EQ(EEXIST, errno);
 
-    EXPECT_NE(0, insertFdSetRange(fdset, 5, 6));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(3, 4)));
     EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 5, 7));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(3, 5)));
+    EXPECT_EQ(EEXIST, errno);
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(3, 6)));
+    EXPECT_EQ(EEXIST, errno);
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(3, 7)));
     EXPECT_EQ(EEXIST, errno);
 
-    EXPECT_NE(0, insertFdSetRange(fdset, 6, 6));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(4, 4)));
     EXPECT_EQ(EEXIST, errno);
-    EXPECT_NE(0, insertFdSetRange(fdset, 6, 7));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(4, 5)));
     EXPECT_EQ(EEXIST, errno);
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(4, 6)));
+    EXPECT_EQ(EEXIST, errno);
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(4, 7)));
+    EXPECT_EQ(EEXIST, errno);
+
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(5, 6)));
+    EXPECT_EQ(EEXIST, errno);
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(5, 7)));
+    EXPECT_EQ(EEXIST, errno);
+
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(6, 6)));
+    EXPECT_EQ(EEXIST, errno);
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(6, 7)));
+    EXPECT_EQ(EEXIST, errno);
+
+    fdset = closeFdSet(fdset);
+}
+
+TEST(FdTest, RemoveOverlap)
+{
+    struct FdSet  fdset_;
+    struct FdSet *fdset = 0;
+
+    EXPECT_EQ(0, createFdSet(&fdset_));
+    fdset = &fdset_;
+
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 2)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(4, 6)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(8, 10)));
+
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 1)));
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(0, 1)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 1)));
+
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 2)));
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(0, 2)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 2)));
+
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(1, 2)));
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(1, 2)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(1, 2)));
+
+    EXPECT_NE(0, removeFdSetRange(fdset, FdRange(3, 3)));
+    EXPECT_NE(0, removeFdSetRange(fdset, FdRange(3, 4)));
+    EXPECT_NE(0, removeFdSetRange(fdset, FdRange(3, 5)));
+    EXPECT_NE(0, removeFdSetRange(fdset, FdRange(3, 6)));
+    EXPECT_NE(0, removeFdSetRange(fdset, FdRange(3, 7)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(4, 4)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(4, 4)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(4, 5)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(4, 5)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(5, 6)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(5, 6)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(6, 6)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(6, 6)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(8, 8)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(8, 8)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(8, 9)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(8, 9)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(9, 10)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(9, 10)));
+
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(10, 10)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(10, 10)));
 
     fdset = closeFdSet(fdset);
 }
@@ -131,15 +259,15 @@ struct TestVisitor
     int mStop;
 
     static int
-    visit(struct TestVisitor *self, int aFirstFd, int aLastFd)
+    visit(struct TestVisitor *self, struct FdRange aRange)
     {
-        EXPECT_EQ(aFirstFd, aLastFd);
-        EXPECT_EQ(self->mNext, aFirstFd);
+        EXPECT_EQ(aRange.mLhs, aRange.mRhs);
+        EXPECT_EQ(self->mNext, aRange.mLhs);
 
-        if (aFirstFd == self->mStop)
+        if (aRange.mLhs == self->mStop)
             return 1;
 
-        ++self->mNext;
+        self->mNext += 2;
 
         return 0;
     }
@@ -153,9 +281,9 @@ TEST(FdTest, Visitor)
     EXPECT_EQ(0, createFdSet(&fdset_));
     fdset = &fdset_;
 
-    EXPECT_EQ(0, insertFdSetRange(fdset, 0, 0));
-    EXPECT_EQ(0, insertFdSetRange(fdset, 1, 1));
-    EXPECT_EQ(0, insertFdSetRange(fdset, 2, 2));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(2, 2)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(4, 4)));
 
     struct TestVisitor testVisitor;
 
@@ -166,16 +294,16 @@ TEST(FdTest, Visitor)
         3,
         visitFdSet(fdset, FdSetVisitor(&testVisitor, TestVisitor::visit)));
 
-    EXPECT_EQ(3, testVisitor.mNext);
+    EXPECT_EQ(6, testVisitor.mNext);
 
     testVisitor.mNext = 0;
-    testVisitor.mStop = 1;
+    testVisitor.mStop = 2;
 
     EXPECT_EQ(
         2,
         visitFdSet(fdset, FdSetVisitor(&testVisitor, TestVisitor::visit)));
 
-    EXPECT_EQ(1, testVisitor.mNext);
+    EXPECT_EQ(2, testVisitor.mNext);
 
     fdset = closeFdSet(fdset);
 }
