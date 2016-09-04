@@ -85,14 +85,65 @@ Finally:
 void
 clearFdSet(struct FdSet *self)
 {
-    while ( ! RB_EMPTY(&self->mRoot))
+    struct FdSetElement_ *elem = RB_ROOT(&self->mRoot);
+
+    while (elem)
     {
-        struct FdSetElement_ *elem = RB_ROOT(&self->mRoot);
+        /* The loop invariant is that the subtree rooted at elem is still
+         * valid, and must be cleared. Clear the two subtrees before freeing
+         * the root of the subtree. */
 
-        RB_REMOVE(FdSetTree_, &self->mRoot, elem);
+        struct FdSetElement_ *lh = RB_LEFT(elem, mTree);
+        struct FdSetElement_ *rh = RB_RIGHT(elem, mTree);
 
-        free(elem);
+        if (lh)
+        {
+            elem = lh;
+            continue;
+        }
+
+        if (rh)
+        {
+            elem = rh;
+            continue;
+        }
+
+        /* Only free the root of the subtree while walking up the
+         * subtree, thus ensuring that the left and right child
+         * subtrees have already been released. */
+
+        do
+        {
+            /* The loop-invariant is that children, if any, of the subtree
+             * rooted at elem have been cleared, leaving the root itself
+             * to be freed. */
+
+            struct FdSetElement_ *parent = RB_PARENT(elem, mTree);
+
+            free(elem);
+
+            if (parent)
+            {
+                struct FdSetElement_ *plhs = RB_LEFT(parent, mTree);
+                struct FdSetElement_ *prhs = RB_RIGHT(parent, mTree);
+
+                if (elem == plhs && prhs)
+                {
+                    /* If the subtree rooted at elem is the left subtree
+                     * of its parent, and there is a right subtree, then
+                     * the next step is to process the right subtree. */
+
+                    elem = prhs;
+                    break;
+                }
+            }
+
+            elem = parent;
+
+        } while (elem);
     }
+
+    RB_INIT(&self->mRoot);
 }
 
 /* -------------------------------------------------------------------------- */
