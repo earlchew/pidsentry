@@ -2003,8 +2003,9 @@ forkProcessChild_PostChild_(
                 ERROR_IF(
                     insertFdSetRange(
                         aWhitelistFds,
-                        stdwhitelist[ix],
-                        stdwhitelist[ix]) && EEXIST != errno);
+                        FdRange(
+                            stdwhitelist[ix],
+                            stdwhitelist[ix])) && EEXIST != errno);
         }
 
         ERROR_IF(

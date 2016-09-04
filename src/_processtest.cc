@@ -334,15 +334,17 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                           ? err
                                           : insertFdSetRange(
                                               aFork->mBlacklistFds,
-                                              self->mPipeFds[1],
-                                              self->mPipeFds[1]);
+                                              FdRange(
+                                                  self->mPipeFds[1],
+                                                  self->mPipeFds[1]));
 
                                       err = err
                                           ? err
                                           : insertFdSetRange(
                                               aFork->mWhitelistFds,
-                                              self->mPipeFds[1],
-                                              self->mPipeFds[1]);
+                                              FdRange(
+                                                  self->mPipeFds[1],
+                                                  self->mPipeFds[1]));
 
                                       return err;
                                   })),

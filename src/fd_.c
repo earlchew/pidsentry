@@ -119,7 +119,7 @@ struct FdWhiteListVisitor_
 
 static int
 closeFdWhiteListVisitor_(
-    struct FdWhiteListVisitor_ *self, int aFdFirst, int aFdLast)
+    struct FdWhiteListVisitor_ *self, struct FdRange aRange)
 {
     int rc = -1;
 
@@ -131,12 +131,12 @@ closeFdWhiteListVisitor_(
     if (self->mFdLimit.rlim_cur)
     {
         fdEnd =
-            aFdLast < self->mFdLimit.rlim_cur
-            ? aFdLast + 1
+            aRange.mRhs < self->mFdLimit.rlim_cur
+            ? aRange.mRhs + 1
             : self->mFdLimit.rlim_cur;
     }
 
-    int fdBegin = aFdFirst;
+    int fdBegin = aRange.mLhs;
 
     if (fdBegin > fdEnd)
         fdBegin = fdEnd;
@@ -188,8 +188,9 @@ closeFdExceptWhiteList(const struct FdSet *aFdSet)
     ERROR_UNLESS(
         1 == closeFdWhiteListVisitor_(
             &whiteListVisitor,
-            whiteListVisitor.mFdLimit.rlim_cur,
-            whiteListVisitor.mFdLimit.rlim_cur));
+            FdRange(
+                whiteListVisitor.mFdLimit.rlim_cur,
+                whiteListVisitor.mFdLimit.rlim_cur)));
 
     rc = 0;
 
@@ -208,13 +209,13 @@ struct FdBlackListVisitor_
 
 static int
 closeFdBlackListVisitor_(
-    struct FdBlackListVisitor_ *self, int aFdFirst, int aFdLast)
+    struct FdBlackListVisitor_ *self, struct FdRange aRange)
 {
     int rc = -1;
 
     int done = 1;
 
-    int fd = aFdFirst;
+    int fd = aRange.mLhs;
 
     while (fd != self->mFdLimit.rlim_cur)
     {
@@ -227,7 +228,7 @@ closeFdBlackListVisitor_(
         while (valid && closeFd(fd))
             break;
 
-        if (fd == aFdLast)
+        if (fd == aRange.mRhs)
         {
             done = 0;
             break;

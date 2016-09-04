@@ -144,15 +144,16 @@ TEST(FdTest, CloseExceptWhiteList)
     EXPECT_EQ(0, createFdSet(&fdset_));
     fdset = &fdset_;
 
-    EXPECT_EQ(0, insertFdSetRange(fdset, STDERR_FILENO, STDERR_FILENO));
-    EXPECT_EQ(0, insertFdSetRange(fdset, pipefd[1], pipefd[1]));
-    EXPECT_EQ(0, insertFdSetRange(fdset, pipefd[2], pipefd[2]));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(STDERR_FILENO,STDERR_FILENO)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(pipefd[1], pipefd[1])));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(pipefd[2], pipefd[2])));
 
     /* Half the time, include a range that exceeds the number of
      * available file descriptors. */
 
     if ((getpid() / 2) & 1)
-        EXPECT_EQ(0, insertFdSetRange(fdset, fdLimit.rlim_cur, INT_MAX));
+        EXPECT_EQ(0, insertFdSetRange(fdset,
+                                      FdRange(fdLimit.rlim_cur, INT_MAX)));
 
     pid_t childpid = fork();
 
@@ -247,15 +248,16 @@ TEST(FdTest, CloseOnlyBlackList)
     EXPECT_EQ(0, createFdSet(&fdset_));
     fdset = &fdset_;
 
-    EXPECT_EQ(0, insertFdSetRange(fdset, STDIN_FILENO, STDIN_FILENO));
-    EXPECT_EQ(0, insertFdSetRange(fdset, STDOUT_FILENO, STDOUT_FILENO));
-    EXPECT_EQ(0, insertFdSetRange(fdset, pipefd[0], pipefd[0]));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(STDIN_FILENO,STDIN_FILENO)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(STDOUT_FILENO,STDOUT_FILENO)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(pipefd[0], pipefd[0])));
 
     /* Half the time, include a range that exceeds the number of
      * available file descriptors. */
 
     if ((getpid() / 2) & 1)
-        EXPECT_EQ(0, insertFdSetRange(fdset, fdLimit.rlim_cur, INT_MAX));
+        EXPECT_EQ(0, insertFdSetRange(fdset,
+                                      FdRange(fdLimit.rlim_cur, INT_MAX)));
 
     pid_t childpid = fork();
 

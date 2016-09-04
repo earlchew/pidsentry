@@ -315,14 +315,16 @@ prepareTemporaryFileProcessSocket_(struct TemporaryFileProcess_ *self,
     ERROR_IF(
         insertFdSetRange(
             aFork->mWhitelistFds,
-            self->mSocketPair->mParentSocket->mSocket->mFile->mFd,
-            self->mSocketPair->mParentSocket->mSocket->mFile->mFd));
+            FdRange(
+                self->mSocketPair->mParentSocket->mSocket->mFile->mFd,
+                self->mSocketPair->mParentSocket->mSocket->mFile->mFd)));
 
     ERROR_IF(
         insertFdSetRange(
             aFork->mWhitelistFds,
-            self->mSocketPair->mChildSocket->mSocket->mFile->mFd,
-            self->mSocketPair->mChildSocket->mSocket->mFile->mFd));
+            FdRange(
+                self->mSocketPair->mChildSocket->mSocket->mFile->mFd,
+                self->mSocketPair->mChildSocket->mSocket->mFile->mFd)));
 
     rc = 0;
 
