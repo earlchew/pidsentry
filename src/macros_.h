@@ -52,4 +52,12 @@
 #define IFEMPTY_1_(A_, B_, C_)       IFEMPTY_2_(A_, B_, C_)
 #define IFEMPTY_2_(A_, B_, C_, ...)  C_
 
+#define SWAP(Lhs_, Rhs_)                        \
+do                                              \
+{                                               \
+    AUTO(swp_, Lhs_);                           \
+    Lhs_ = Rhs_;                                \
+    Rhs_ = swp_;                                \
+} while (0)
+
 #endif /* MACROS_H */
