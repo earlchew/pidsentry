@@ -119,7 +119,7 @@ TEST(FdTest, CreateDestroy)
     fdset = closeFdSet(fdset);
 }
 
-TEST(FdTest, CreateDestroyScale)
+TEST(FdTest, Clear)
 {
     struct FdSet  fdset_;
     struct FdSet *fdset = 0;
@@ -153,6 +153,12 @@ TEST(FdTest, CreateDestroyScale)
                                       FdRange(fdList[ix], fdList[ix])));
         EXPECT_EQ(EEXIST, errno);
     }
+
+    clearFdSet(fdset);
+
+    for (unsigned ix = 0; NUMBEROF(fdList) > ix; ++ix)
+        EXPECT_EQ(0, insertFdSetRange(fdset,
+                                      FdRange(fdList[ix], fdList[ix])));
 
     fdset = closeFdSet(fdset);
 }
