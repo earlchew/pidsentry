@@ -107,6 +107,9 @@ createFdSet(struct FdSet *self);
 struct FdSet *
 closeFdSet(struct FdSet *self);
 
+void
+clearFdSet(struct FdSet *self);
+
 CHECKED int
 insertFdSetRange(struct FdSet *self, struct FdRange aRange);
 

@@ -57,14 +57,7 @@ closeFdSet(struct FdSet *self)
 {
     if (self)
     {
-        while ( ! RB_EMPTY(&self->mRoot))
-        {
-            struct FdSetElement_ *elem = RB_ROOT(&self->mRoot);
-
-            RB_REMOVE(FdSetTree_, &self->mRoot, elem);
-
-            free(elem);
-        }
+        clearFdSet(self);
     }
 
     return 0;
@@ -86,6 +79,20 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+void
+clearFdSet(struct FdSet *self)
+{
+    while ( ! RB_EMPTY(&self->mRoot))
+    {
+        struct FdSetElement_ *elem = RB_ROOT(&self->mRoot);
+
+        RB_REMOVE(FdSetTree_, &self->mRoot, elem);
+
+        free(elem);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
