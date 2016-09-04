@@ -28,6 +28,7 @@
 */
 
 #include "fdset_.h"
+#include "file_.h"
 #include "error_.h"
 
 #include <stdlib.h>
@@ -85,6 +86,20 @@ Finally:
     FINALLY({});
 
     return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+insertFdSetFile(struct FdSet *self, const struct File *aFile)
+{
+    return insertFdSetRange(self, FdRange(aFile->mFd, aFile->mFd));
+}
+
+/* -------------------------------------------------------------------------- */
+int
+removeFdSetFile(struct FdSet *self, const struct File *aFile)
+{
+    return insertFdSetRange(self, FdRange(aFile->mFd, aFile->mFd));
 }
 
 /* -------------------------------------------------------------------------- */

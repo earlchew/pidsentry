@@ -37,6 +37,7 @@
 
 /* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;
+struct File;
 struct FdRange;
 
 struct FdRange
@@ -111,6 +112,12 @@ insertFdSetRange(struct FdSet *self, struct FdRange aRange);
 
 CHECKED int
 removeFdSetRange(struct FdSet *self, struct FdRange aRange);
+
+CHECKED int
+insertFdSetFile(struct FdSet *self, const struct File *aFile);
+
+CHECKED int
+removeFdSetFile(struct FdSet *self, const struct File *aFile);
 
 CHECKED ssize_t
 visitFdSet(const struct FdSet *self, struct FdSetVisitor aVisitor);
