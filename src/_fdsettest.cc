@@ -31,6 +31,8 @@
 
 #include "gtest/gtest.h"
 
+#include <sys/resource.h>
+
 TEST(FdTest, RangeContains)
 {
     EXPECT_EQ( 0, containsFdRange(FdRange(20, 29), FdRange(10, 19)));
@@ -113,6 +115,44 @@ TEST(FdTest, CreateDestroy)
     EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 2)));
     EXPECT_NE(0, insertFdSetRange(fdset, FdRange(1, 2)));
     EXPECT_EQ(EEXIST, errno);
+
+    fdset = closeFdSet(fdset);
+}
+
+TEST(FdTest, CreateDestroyScale)
+{
+    struct FdSet  fdset_;
+    struct FdSet *fdset = 0;
+
+    EXPECT_EQ(0, createFdSet(&fdset_));
+    fdset = &fdset_;
+
+    struct rlimit fdLimit;
+    EXPECT_EQ(0, getrlimit(RLIMIT_NOFILE, &fdLimit));
+
+    int fdList[fdLimit.rlim_cur / 2 - 1];
+
+    for (unsigned ix = 0; NUMBEROF(fdList) > ix; ++ix)
+        fdList[ix] = 2 * ix;
+
+    for (unsigned ix = 0; NUMBEROF(fdList) > ix; ++ix)
+    {
+        unsigned jx = random() % (NUMBEROF(fdList) - ix) + ix;
+
+        SWAP(fdList[ix], fdList[jx]);
+    }
+
+    for (unsigned ix = 0; NUMBEROF(fdList) > ix; ++ix)
+        EXPECT_EQ(0, insertFdSetRange(fdset,
+                                      FdRange(fdList[ix], fdList[ix])));
+
+    for (unsigned ix = 0; NUMBEROF(fdList) > ix; ++ix)
+    {
+        errno = 0;
+        EXPECT_NE(0, insertFdSetRange(fdset,
+                                      FdRange(fdList[ix], fdList[ix])));
+        EXPECT_EQ(EEXIST, errno);
+    }
 
     fdset = closeFdSet(fdset);
 }
