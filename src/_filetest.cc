@@ -65,9 +65,8 @@ checkLock(struct File *aFile)
                                   int, (struct File                 *self,
                                         const struct PreForkProcess *aPreFork),
                                   {
-                                      return insertFdSetRange(
-                                          aPreFork->mWhitelistFds,
-                                          FdRange(self->mFd, self->mFd));
+                                      return insertFdSetFile(
+                                          aPreFork->mWhitelistFds, self);
                                   })),
                           PostForkChildProcessMethodNil(),
                           PostForkParentProcessMethodNil(),

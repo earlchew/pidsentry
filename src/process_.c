@@ -1984,28 +1984,33 @@ forkProcessChild_PostChild_(
          * in the child post fork method. */
 
         const int stdwhitelist[] =
-            {
-                STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-
-                self->mResultPipe->mWrFile->mFd,
-
-                self->mResultSocket->mSocketPair->
-                mChildSocket->mSocket->mFile->mFd,
-
-                processLock_.mLock && processLock_.mLock->mFile
-                ? processLock_.mLock->mFile->mFd
-                : -1,
-            };
+        {
+            STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
+        };
 
         for (unsigned ix = 0; NUMBEROF(stdwhitelist) > ix; ++ix)
         {
-            if (-1 != stdwhitelist[ix])
+            ERROR_IF(
+                insertFdSetRange(
+                    aWhitelistFds,
+                    FdRange(
+                        stdwhitelist[ix],
+                        stdwhitelist[ix])) && EEXIST != errno);
+        }
+
+        const struct File *filewhitelist[] =
+        {
+            self->mResultPipe->mWrFile,
+            self->mResultSocket->mSocketPair->mChildSocket->mSocket->mFile,
+            processLock_.mLock ? processLock_.mLock->mFile : 0,
+        };
+
+        for (unsigned ix = 0; NUMBEROF(filewhitelist) > ix; ++ix)
+        {
+            if (filewhitelist[ix])
                 ERROR_IF(
-                    insertFdSetRange(
-                        aWhitelistFds,
-                        FdRange(
-                            stdwhitelist[ix],
-                            stdwhitelist[ix])) && EEXIST != errno);
+                    insertFdSetFile(
+                        aWhitelistFds, filewhitelist[ix]) && EEXIST != errno);
         }
 
         ERROR_IF(
