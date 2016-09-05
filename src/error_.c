@@ -68,13 +68,42 @@ static struct
 
 } __thread errorStack_;
 
+struct ErrorDtor
+{
+    bool          mInit;
+    pthread_key_t mKey;
+};
+
+static struct ErrorDtor errorDtor_;
+
+static void
+destroyErrorKey_(void *self_)
+{ }
+
+EARLY_INITIALISER(
+    error_,
+    ({
+        ABORT_IF(
+            errno = pthread_key_create(&errorDtor_.mKey, destroyErrorKey_));
+
+        errorDtor_.mInit = true;
+    }),
+    ({ }));
+
 static void
 initErrorFrame_(void)
 {
     ensure(0 == ErrorFrameStackThread);
 
     if ( ! errorStack_.mStack)
+    {
         errorStack_.mStack = &errorStack_.mStack_[ErrorFrameStackThread];
+
+        if (errorDtor_.mInit)
+            ABORT_IF(
+                errno = pthread_setspecific(
+                    errorDtor_.mKey, errorStack_.mStack));
+    }
 }
 
 /* -------------------------------------------------------------------------- */
