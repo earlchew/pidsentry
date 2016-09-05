@@ -33,6 +33,8 @@
 
 #include <sys/resource.h>
 
+#include <limits.h>
+
 TEST(FdTest, RangeContains)
 {
     EXPECT_EQ( 0, containsFdRange(FdRange(20, 29), FdRange(10, 19)));
@@ -159,6 +161,86 @@ TEST(FdTest, Clear)
     for (unsigned ix = 0; NUMBEROF(fdList) > ix; ++ix)
         EXPECT_EQ(0, insertFdSetRange(fdset,
                                       FdRange(fdList[ix], fdList[ix])));
+
+    fdset = closeFdSet(fdset);
+}
+
+TEST(FdTest, InvertEmpty)
+{
+    struct FdSet  fdset_;
+    struct FdSet *fdset = 0;
+
+    EXPECT_EQ(0, createFdSet(&fdset_));
+    fdset = &fdset_;
+
+    EXPECT_EQ(0, invertFdSet(fdset));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+    EXPECT_EQ(0, invertFdSet(fdset));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+
+    fdset = closeFdSet(fdset);
+}
+
+TEST(FdTest, InvertSingle)
+{
+    struct FdSet  fdset_;
+    struct FdSet *fdset = 0;
+
+    EXPECT_EQ(0, createFdSet(&fdset_));
+    fdset = &fdset_;
+
+    /* Single left side fd */
+    clearFdSet(fdset);
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_EQ(0, invertFdSet(fdset));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(1, 1)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 0)));
+
+    /* Range left side fd */
+    clearFdSet(fdset);
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 1)));
+    EXPECT_EQ(0, invertFdSet(fdset));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(2, 2)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 1)));
+
+    /* Single right side fd */
+    clearFdSet(fdset);
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+    EXPECT_EQ(0, invertFdSet(fdset));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX-1, INT_MAX-1)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+
+    /* Range right side fd */
+    clearFdSet(fdset);
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(INT_MAX-1, INT_MAX)));
+    EXPECT_EQ(0, invertFdSet(fdset));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX-2, INT_MAX-2)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(INT_MAX-1, INT_MAX)));
+
+    /* Two and three ranges */
+    clearFdSet(fdset);
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 1)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(INT_MAX-1, INT_MAX)));
+    EXPECT_EQ(0, invertFdSet(fdset));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(2, 2)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX-2, INT_MAX-2)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_EQ(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_EQ(0, removeFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
+
+    EXPECT_EQ(0, invertFdSet(fdset));
+
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(0, 0)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(1, 1)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX-1, INT_MAX-1)));
+    EXPECT_NE(0, insertFdSetRange(fdset, FdRange(INT_MAX, INT_MAX)));
 
     fdset = closeFdSet(fdset);
 }

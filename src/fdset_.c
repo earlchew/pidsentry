@@ -32,6 +32,7 @@
 #include "error_.h"
 
 #include <stdlib.h>
+#include <limits.h>
 
 /* -------------------------------------------------------------------------- */
 static int
@@ -50,6 +51,39 @@ rankFdSetElement_(struct FdSetElement_ *aLhs, struct FdSetElement_ *aRhs)
 }
 
 RB_GENERATE_STATIC(FdSetTree_, FdSetElement_, mTree, rankFdSetElement_)
+
+/* -------------------------------------------------------------------------- */
+int
+printFdSet(const struct FdSet *self, FILE *aFile)
+{
+    int rc = -1;
+
+    int printed = 0;
+
+    ERROR_IF(
+        PRINTF(printed, fprintf(aFile, "<fdset %p", self)));
+
+    struct FdSetElement_ *elem;
+    RB_FOREACH(elem, FdSetTree_, &((struct FdSet *) self)->mRoot)
+    {
+        ERROR_IF(
+            PRINTF(
+                printed,
+                fprintf(aFile,
+                        " (%d,%d)", elem->mRange.mLhs, elem->mRange.mRhs)));
+    }
+
+    ERROR_IF(
+        PRINTF(printed, fprintf(aFile, ">")));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return printed ? printed : rc;
+}
 
 /* -------------------------------------------------------------------------- */
 struct FdSet *
@@ -144,6 +178,94 @@ clearFdSet(struct FdSet *self)
     }
 
     RB_INIT(&self->mRoot);
+}
+
+/* -------------------------------------------------------------------------- */
+int
+invertFdSet(struct FdSet *self)
+{
+    int rc = -1;
+
+    struct FdSetElement_ *elem = 0;
+
+    /* Inverting the set can be modelled as creating a new set of the gaps
+     * between the ranges of the old set. If there are N ranges in the old
+     * set, there will be up to N+1 ranges in the new inverted set. */
+
+    if (RB_EMPTY(&self->mRoot))
+    {
+        ERROR_IF(
+            insertFdSetRange(self, FdRange(0, INT_MAX)));
+    }
+    else
+    {
+        struct FdSetElement_ *next = RB_MAX(FdSetTree_, &self->mRoot);
+
+        if (INT_MAX == next->mRange.mRhs)
+        {
+            do
+            {
+                if ( ! next->mRange.mLhs)
+                {
+                    RB_REMOVE(FdSetTree_, &self->mRoot, next);
+                    free(next);
+                    next = 0;
+                }
+                else
+                {
+                    struct FdSetElement_ *prev =
+                        RB_PREV(FdSetTree_, &self->mRoot, next);
+
+                    next->mRange.mRhs = next->mRange.mLhs - 1;
+                    next->mRange.mLhs = prev ? prev->mRange.mRhs + 1 : 0;
+
+                    next = prev;
+                }
+            } while (next);
+        }
+        else
+        {
+            struct FdSetElement_ *prev = RB_MIN(FdSetTree_, &self->mRoot);
+
+            if (prev->mRange.mLhs)
+            {
+                ERROR_UNLESS(
+                    elem = malloc(sizeof(*elem)));
+
+                elem->mRange = FdRange(0, prev->mRange.mLhs - 1);
+
+                ERROR_IF(
+                    RB_INSERT(FdSetTree_, &self->mRoot, elem),
+                    {
+                        errno = EEXIST;
+                    });
+
+                elem = 0;
+            }
+
+            do
+            {
+                next = RB_NEXT(FdSetTree_, &self->mRoot, prev);
+
+                prev->mRange.mLhs = prev->mRange.mRhs + 1;
+                prev->mRange.mRhs = next ? next->mRange.mLhs - 1 : INT_MAX;
+
+                prev = next;
+
+            } while (prev);
+        }
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        free(elem);
+    });
+
+    return rc;
 }
 
 /* -------------------------------------------------------------------------- */

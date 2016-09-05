@@ -33,6 +33,8 @@
 
 #include "tree_.h"
 
+#include <stdio.h>
+
 #include <sys/types.h>
 
 /* -------------------------------------------------------------------------- */
@@ -107,8 +109,14 @@ createFdSet(struct FdSet *self);
 struct FdSet *
 closeFdSet(struct FdSet *self);
 
+int
+printFdSet(const struct FdSet *self, FILE *aFile);
+
 void
 clearFdSet(struct FdSet *self);
+
+CHECKED int
+invertFdSet(struct FdSet *self);
 
 CHECKED int
 insertFdSetRange(struct FdSet *self, struct FdRange aRange);
