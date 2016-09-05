@@ -406,7 +406,10 @@ removeFdSetRange(struct FdSet *self, struct FdRange aRange)
             });
 
         ERROR_UNLESS(
-            contained = containsFdRange(elem->mRange, aRange));
+            contained = containsFdRange(elem->mRange, aRange),
+            {
+                errno = ENOENT;
+            });
     }
 
     switch (contained)
