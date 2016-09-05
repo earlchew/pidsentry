@@ -270,6 +270,20 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+insertFdSet(struct FdSet *self, int aFd)
+{
+    return insertFdSetRange(self, FdRange(aFd, aFd));
+}
+
+/* -------------------------------------------------------------------------- */
+int
+removeFdSet(struct FdSet *self, int aFd)
+{
+    return removeFdSetRange(self, FdRange(aFd, aFd));
+}
+
+/* -------------------------------------------------------------------------- */
+int
 insertFdSetFile(struct FdSet *self, const struct File *aFile)
 {
     return insertFdSetRange(self, FdRange(aFile->mFd, aFile->mFd));
@@ -279,7 +293,7 @@ insertFdSetFile(struct FdSet *self, const struct File *aFile)
 int
 removeFdSetFile(struct FdSet *self, const struct File *aFile)
 {
-    return insertFdSetRange(self, FdRange(aFile->mFd, aFile->mFd));
+    return removeFdSetRange(self, FdRange(aFile->mFd, aFile->mFd));
 }
 
 /* -------------------------------------------------------------------------- */

@@ -125,6 +125,12 @@ CHECKED int
 removeFdSetRange(struct FdSet *self, struct FdRange aRange);
 
 CHECKED int
+insertFdSet(struct FdSet *self, int aFd);
+
+CHECKED int
+removeFdSet(struct FdSet *self, int aFd);
+
+CHECKED int
 insertFdSetFile(struct FdSet *self, const struct File *aFile);
 
 CHECKED int
