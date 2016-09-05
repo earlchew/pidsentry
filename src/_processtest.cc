@@ -115,7 +115,6 @@ TEST_F(ProcessTest, ProcessStatus)
     EXPECT_EQ(0, status);
 }
 
-#if 0
 static int sigTermCount_;
 
 static void
@@ -245,7 +244,6 @@ TEST_F(ProcessTest, ProcessDaemon)
 
     bellSocket = closeBellSocketPair(bellSocket);
 }
-#endif
 
 struct ProcessForkArg
 {
@@ -254,6 +252,8 @@ struct ProcessForkArg
     pthread_cond_t  *mCond;
     pthread_mutex_t  mMutex_;
     pthread_mutex_t *mMutex;
+    struct FdSet     mFdSet_;
+    struct FdSet    *mFdSet;
 
     unsigned mNumFds;
     unsigned mNumForks;
@@ -266,7 +266,7 @@ struct ProcessForkTest
 };
 
 static unsigned
-countFds()
+countFds(struct FdSet *aFdSet)
 {
     struct rlimit fdLimit;
 
@@ -278,10 +278,43 @@ countFds()
     for (unsigned fd = 0; fd < fdLimit.rlim_cur; ++fd)
     {
         if (ownFdValid(fd))
+        {
+            if (aFdSet)
+            {
+                if (insertFdSet(aFdSet, fd))
+                    abort();
+            }
             ++numFds;
+        }
     }
 
     return numFds;
+}
+
+static int
+filterFds(struct ProcessForkArg *aArg,
+          struct FdSet *aBlacklist)
+{
+    return visitFdSet(aArg->mFdSet,
+                      FdSetVisitor(
+                          aBlacklist,
+                          LAMBDA(
+                              int, (struct FdSet  *aBlacklist_,
+                                    struct FdRange aRange),
+                              {
+                                  for (int fd = aRange.mLhs; ; ++fd)
+                                  {
+                                      if (removeFdSet(aBlacklist_, fd) &&
+                                          ENOENT != errno)
+                                      {
+                                          abort();
+                                      }
+                                      if (fd == aRange.mRhs)
+                                          break;
+                                  }
+
+                                  return 0;
+                              })));
 }
 
 static void
@@ -293,6 +326,71 @@ processForkTest_Trivial_()
         forkProcessChildX(ForkProcessInheritProcessGroup,
                           Pgid(0),
                           PreForkProcessMethodNil(),
+                          PostForkChildProcessMethodNil(),
+                          PostForkParentProcessMethodNil(),
+                          ForkProcessMethodNil());
+
+    EXPECT_NE(-1, childPid.mPid);
+
+    if ( ! childPid.mPid)
+        abort();
+
+    int status;
+    EXPECT_EQ(0, reapProcessChild(childPid, &status));
+    EXPECT_EQ(0, (extractProcessExitStatus(status, childPid).mStatus));
+}
+
+static void
+processForkTest_CloseFds_(struct ProcessForkArg *aArg)
+{
+    /* Simple with no prefork or postfork methods */
+
+    struct Pid childPid =
+        forkProcessChildX(ForkProcessInheritProcessGroup,
+                          Pgid(0),
+                          PreForkProcessMethod(
+                              aArg,
+                              LAMBDA(
+                                  int, (struct ProcessForkArg       *aArg_,
+                                        const struct PreForkProcess *aPreFork),
+                                  {
+                                      int rc = -1;
+
+                                      do
+                                      {
+                                          if (insertFdSetRange(
+                                                  aPreFork->mWhitelistFds,
+                                                  FdRange(0, INT_MAX)))
+                                          {
+                                              fprintf(stderr, "%u 1\n",
+                                                      __LINE__);
+                                              break;
+                                          }
+
+                                          if (insertFdSetRange(
+                                                  aPreFork->mBlacklistFds,
+                                                  FdRange(0, INT_MAX)))
+                                          {
+                                              fprintf(stderr, "%u 2\n",
+                                                      __LINE__);
+                                              break;
+                                          }
+
+                                          if (-1 == filterFds(
+                                                  aArg_,
+                                                  aPreFork->mBlacklistFds))
+                                          {
+                                              fprintf(stderr, "%u 3\n",
+                                                      __LINE__);
+                                              break;
+                                          }
+
+                                         rc = 0;
+
+                                      } while (0);
+
+                                      return rc;
+                                  })),
                           PostForkChildProcessMethodNil(),
                           PostForkParentProcessMethodNil(),
                           ForkProcessMethodNil());
@@ -332,19 +430,15 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
 
                                       err = err
                                           ? err
-                                          : insertFdSetRange(
+                                          : insertFdSet(
                                               aFork->mBlacklistFds,
-                                              FdRange(
-                                                  self->mPipeFds[1],
-                                                  self->mPipeFds[1]));
+                                              self->mPipeFds[1]);
 
                                       err = err
                                           ? err
-                                          : insertFdSetRange(
+                                          : insertFdSet(
                                               aFork->mWhitelistFds,
-                                              FdRange(
-                                                  self->mPipeFds[1],
-                                                  self->mPipeFds[1]));
+                                              self->mPipeFds[1]);
 
                                       return err;
                                   })),
@@ -402,7 +496,7 @@ processForkTest_Usual_(struct ProcessForkArg *aArg)
                                            * fd for the file used to
                                            * coordinate the process lock. */
 
-                                          unsigned openFds = countFds();
+                                          unsigned openFds = countFds(0);
 
                                           if (5 != openFds)
                                           {
@@ -653,6 +747,7 @@ processForkTest_(struct ProcessForkArg *aArg)
     lock = unlockMutex(lock);
 
     processForkTest_Trivial_();
+    processForkTest_CloseFds_(aArg);
     processForkTest_Usual_(aArg);
     processForkTest_FailedPreFork_();
     processForkTest_FailedChildPostFork_();
@@ -681,17 +776,19 @@ processForkTest_Raw_(struct ProcessForkArg *aArg)
 
         do
         {
-            unsigned openFds = countFds();
+            unsigned openFds = countFds(0);
 
             if (openFds < aArg->mNumFds)
             {
-                fprintf(stderr, "%u\n", __LINE__);
+                fprintf(stderr, "%u 1 %u %u\n",
+                        __LINE__, openFds, aArg->mNumFds);
                 break;
             }
 
             if (openFds > aArg->mNumFds + aArg->mNumForks)
             {
-                fprintf(stderr, "%u\n", __LINE__);
+                fprintf(stderr, "%u 2 %u %u\n",
+                        __LINE__, openFds, aArg->mNumFds);
                 break;
             }
 
@@ -729,8 +826,12 @@ TEST_F(ProcessTest, ProcessFork)
     forkArg.mStart    = false;
     forkArg.mMutex    = createMutex(&forkArg.mMutex_);
     forkArg.mCond     = createCond(&forkArg.mCond_);
-    forkArg.mNumFds   = countFds();
     forkArg.mNumForks = NUMBEROF(thread);
+
+    EXPECT_EQ(
+        0, createFdSet(&forkArg.mFdSet_));
+    forkArg.mFdSet  = &forkArg.mFdSet_;
+    forkArg.mNumFds = countFds(forkArg.mFdSet);
 
     pthread_mutex_t *lock = lockMutex(forkArg.mMutex);
     forkArg.mStart = false;
@@ -738,7 +839,7 @@ TEST_F(ProcessTest, ProcessFork)
     for (unsigned ix = 0; ix < NUMBEROF(thread); ++ix)
     {
         thread[ix] = createThread(&thread_[ix],
-                                 threadName[ix],
+                                  threadName[ix],
                                   0,
                                   ThreadMethod(
                                       &forkArg,
@@ -780,6 +881,7 @@ TEST_F(ProcessTest, ProcessFork)
     EXPECT_EQ(-1, wait(&status));
     EXPECT_EQ(ECHILD, errno);
 
+    forkArg.mFdSet = closeFdSet(forkArg.mFdSet);
     forkArg.mCond  = destroyCond(forkArg.mCond);
     forkArg.mMutex = destroyMutex(forkArg.mMutex);
 }

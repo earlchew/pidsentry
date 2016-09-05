@@ -1685,6 +1685,78 @@ Finally:
 }
 
 static CHECKED int
+insertForkProcessChildChannelWhitelist_(
+    const struct ForkProcessChildChannel_ *self,
+    struct FdSet                          *aWhitelist)
+{
+    int rc = -1;
+
+    struct File *filelist[] =
+    {
+        self->mResultPipe->mRdFile,
+        self->mResultPipe->mWrFile,
+
+        self->mResultSocket->mSocketPair->mChildSocket ?
+        self->mResultSocket->mSocketPair->mChildSocket->mSocket->mFile : 0,
+
+        self->mResultSocket->mSocketPair->mParentSocket ?
+        self->mResultSocket->mSocketPair->mParentSocket->mSocket->mFile : 0,
+    };
+
+    for (unsigned ix = 0; NUMBEROF(filelist) > ix; ++ix)
+    {
+        if (filelist[ix])
+            ERROR_IF(
+                insertFdSetFile(aWhitelist, filelist[ix]) &&
+                EEXIST != errno);
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
+removeForkProcessChildChannelBlacklist_(
+    const struct ForkProcessChildChannel_ *self,
+    struct FdSet                          *aBlacklist)
+{
+    int rc = -1;
+
+    struct File *filelist[] =
+    {
+        self->mResultPipe->mRdFile,
+        self->mResultPipe->mWrFile,
+
+        self->mResultSocket->mSocketPair->mChildSocket ?
+        self->mResultSocket->mSocketPair->mChildSocket->mSocket->mFile : 0,
+
+        self->mResultSocket->mSocketPair->mParentSocket ?
+        self->mResultSocket->mSocketPair->mParentSocket->mSocket->mFile : 0,
+    };
+
+    for (unsigned ix = 0; NUMBEROF(filelist) > ix; ++ix)
+    {
+        if (filelist[ix])
+            ERROR_IF(
+                removeFdSetFile(aBlacklist, filelist[ix]) &&
+                ENOENT != errno);
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
 sendForkProcessChildChannelResult_(
     struct ForkProcessChildChannel_      *self,
     const struct ForkProcessChildResult_ *aResult)
@@ -1812,6 +1884,7 @@ callForkMethodX_(struct ForkProcessMethod aMethod)
     int status = EXIT_SUCCESS;
 
     if ( ! ownForkProcessMethodNil(aMethod))
+    {
         ABORT_IF(
             (status = callForkProcessMethod(aMethod),
              -1 == status || (errno = 0, 0 > status || 255 < status)),
@@ -1821,6 +1894,7 @@ callForkMethodX_(struct ForkProcessMethod aMethod)
                         0,
                         "Out of range exit status %d", status);
             });
+    }
 
     /* When running with valgrind, use execl() to prevent
      * valgrind performing a leak check on the temporary
@@ -1909,6 +1983,9 @@ forkProcessChild_PostParent_(
 
     closeForkProcessChildResultChild_(self);
 
+    ERROR_IF(
+        removeForkProcessChildChannelBlacklist_(self, aBlacklistFds));
+
     {
         struct ForkProcessChildResult_ forkResult;
 
@@ -1978,48 +2055,17 @@ forkProcessChild_PostChild_(
 
     closeForkProcessChildResultParent_(self);
 
+    ERROR_IF(
+        insertForkProcessChildChannelWhitelist_(self, aWhitelistFds));
+
+    ERROR_IF(
+        closeFdExceptWhiteList(aWhitelistFds));
+
+    ERROR_IF(
+        ! ownPostForkChildProcessMethodNil(aPostForkChildMethod) &&
+        callPostForkChildProcessMethod(aPostForkChildMethod));
+
     {
-        /* Always include stdin, stdout and stderr in the whitelisted
-         * fds for the child. If required, the child can close these
-         * in the child post fork method. */
-
-        const int stdwhitelist[] =
-        {
-            STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-        };
-
-        for (unsigned ix = 0; NUMBEROF(stdwhitelist) > ix; ++ix)
-        {
-            ERROR_IF(
-                insertFdSetRange(
-                    aWhitelistFds,
-                    FdRange(
-                        stdwhitelist[ix],
-                        stdwhitelist[ix])) && EEXIST != errno);
-        }
-
-        const struct File *filewhitelist[] =
-        {
-            self->mResultPipe->mWrFile,
-            self->mResultSocket->mSocketPair->mChildSocket->mSocket->mFile,
-            processLock_.mLock ? processLock_.mLock->mFile : 0,
-        };
-
-        for (unsigned ix = 0; NUMBEROF(filewhitelist) > ix; ++ix)
-        {
-            if (filewhitelist[ix])
-                ERROR_IF(
-                    insertFdSetFile(
-                        aWhitelistFds, filewhitelist[ix]) && EEXIST != errno);
-        }
-
-        ERROR_IF(
-            closeFdExceptWhiteList(aWhitelistFds));
-
-        ERROR_IF(
-            ! ownPostForkChildProcessMethodNil(aPostForkChildMethod) &&
-            callPostForkChildProcessMethod(aPostForkChildMethod));
-
         /* Send the child fork process method result to the parent so
          * that it can return an error code to the caller, then wait
          * for the parent to acknowledge. */
@@ -2131,6 +2177,35 @@ forkProcessChildX(enum ForkProcessOption             aOption,
     ERROR_IF(
         createForkProcessChildChannel_(&forkChannel_));
     forkChannel = &forkChannel_;
+
+    /* Always include stdin, stdout and stderr in the whitelisted
+     * fds for the child, and never include these in the blacklisted
+     * fds for the parent. If required, the child and the parent can
+     * close these in their post fork methods. */
+
+    const int stdfdlist[] =
+    {
+        STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
+    };
+
+    for (unsigned ix = 0; NUMBEROF(stdfdlist) > ix; ++ix)
+    {
+        ERROR_IF(
+            insertFdSet(whitelistFds, stdfdlist[ix]) && EEXIST != errno);
+
+        ERROR_IF(
+            removeFdSet(blacklistFds, stdfdlist[ix]) && ENOENT != errno);
+    }
+
+    if (processLock_.mLock)
+    {
+        ERROR_IF(
+            insertFdSetFile(whitelistFds,
+                            processLock_.mLock->mFile) && EEXIST != errno);
+        ERROR_IF(
+            removeFdSetFile(blacklistFds,
+                            processLock_.mLock->mFile) && ENOENT != errno);
+    }
 
     /* Note that the fork() will complete and launch the child process
      * before the child pid is recorded in the local variable. This
