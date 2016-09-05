@@ -218,9 +218,15 @@ struct ErrorFrame
 
 #define ERRORFRAME_INIT(aText) { __FILE__, __LINE__, __func__, aText }
 
+struct ErrorFrameIter
+{
+    unsigned           mIndex;
+    struct ErrorFrame *mFrame;
+};
+
 struct ErrorFrameSequence
 {
-    unsigned mSequence;
+    struct ErrorFrameIter mIter;
 };
 
 enum ErrorFrameStackKind

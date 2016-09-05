@@ -45,12 +45,21 @@
 #include <string.h>
 #include <execinfo.h>
 
+#include <sys/queue.h>
+
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
 static unsigned moduleInit_;
 
 static struct ErrorUnwindFrame_ __thread errorUnwind_;
+
+struct ErrorFrameChunk
+{
+    TAILQ_ENTRY(ErrorFrameChunk) mList;
+
+    struct ErrorFrame mFrame[64];
+};
 
 static struct
 {
@@ -61,9 +70,13 @@ static struct
 
     struct
     {
-        unsigned          mLevel;
-        unsigned          mSequence;
-        struct ErrorFrame mFrame[64];
+        struct ErrorFrameIter  mLevel;
+        struct ErrorFrameIter  mSequence;
+        struct ErrorFrame      mFrame[64];
+        struct ErrorFrameChunk mChunk;
+
+        TAILQ_HEAD(, ErrorFrameChunk) mHead;
+
     } mStack_[ErrorFrameStackKinds], *mStack;
 
 } __thread errorStack_;
@@ -99,6 +112,19 @@ initErrorFrame_(void)
     {
         errorStack_.mStack = &errorStack_.mStack_[ErrorFrameStackThread];
 
+        errorStack_.mStack->mLevel = (struct ErrorFrameIter)
+        {
+            .mIndex = 0,
+            .mFrame = &errorStack_.mStack->mFrame[0],
+        };
+        errorStack_.mStack->mSequence = errorStack_.mStack->mLevel;
+
+        TAILQ_INIT(&errorStack_.mStack->mHead);
+        TAILQ_INSERT_TAIL(
+            &errorStack_.mStack->mHead,
+            &errorStack_.mStack->mChunk,
+            mList);
+
         if (errorDtor_.mInit)
             ABORT_IF(
                 errno = pthread_setspecific(
@@ -112,13 +138,16 @@ addErrorFrame(const struct ErrorFrame *aFrame, int aErrno)
 {
     initErrorFrame_();
 
-    unsigned level = errorStack_.mStack->mLevel++;
+    unsigned level = errorStack_.mStack->mLevel.mIndex;
 
     if (NUMBEROF(errorStack_.mStack->mFrame) <= level)
         abortProcess();
 
-    errorStack_.mStack->mFrame[level]        = *aFrame;
-    errorStack_.mStack->mFrame[level].mErrno = aErrno;
+    errorStack_.mStack->mLevel.mFrame[0]        = *aFrame;
+    errorStack_.mStack->mLevel.mFrame[0].mErrno = aErrno;
+
+    ++errorStack_.mStack->mLevel.mIndex;
+    ++errorStack_.mStack->mLevel.mFrame;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -136,13 +165,13 @@ pushErrorFrameSequence(void)
 {
     initErrorFrame_();
 
-    unsigned sequence = errorStack_.mStack->mSequence;
+    struct ErrorFrameIter iter = errorStack_.mStack->mSequence;
 
     errorStack_.mStack->mSequence = errorStack_.mStack->mLevel;
 
     return (struct ErrorFrameSequence)
     {
-        .mSequence = sequence,
+        .mIter = iter,
     };
 }
 
@@ -152,7 +181,7 @@ popErrorFrameSequence(struct ErrorFrameSequence aSequence)
 {
     restartErrorFrameSequence();
 
-    errorStack_.mStack->mSequence = aSequence.mSequence;
+    errorStack_.mStack->mSequence = aSequence.mIter;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -175,7 +204,7 @@ ownErrorFrameLevel(void)
 {
     initErrorFrame_();
 
-    return errorStack_.mStack->mLevel;
+    return errorStack_.mStack->mLevel.mIndex;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -185,7 +214,7 @@ ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
     initErrorFrame_();
 
     return
-        (aLevel >= errorStack_.mStack->mLevel)
+        (aLevel >= errorStack_.mStack->mLevel.mIndex)
         ? 0
         : &errorStack_.mStack->mFrame[aLevel];
 }
@@ -197,20 +226,21 @@ logErrorFrameSequence(void)
     initErrorFrame_();
 
     unsigned seqLen =
-        errorStack_.mStack->mLevel - errorStack_.mStack->mSequence;
+        errorStack_.mStack->mLevel.mIndex -
+        errorStack_.mStack->mSequence.mIndex;
 
     for (unsigned ix = 0; ix < seqLen; ++ix)
     {
-        unsigned frame = errorStack_.mStack->mSequence + ix;
+        struct ErrorFrame *frame = errorStack_.mStack->mSequence.mFrame + ix;
 
         errorWarn(
-            errorStack_.mStack->mFrame[frame].mErrno,
-            errorStack_.mStack->mFrame[frame].mName,
-            errorStack_.mStack->mFrame[frame].mFile,
-            errorStack_.mStack->mFrame[frame].mLine,
+            frame->mErrno,
+            frame->mName,
+            frame->mFile,
+            frame->mLine,
             "Error frame %u - %s",
             seqLen - ix - 1,
-            errorStack_.mStack->mFrame[frame].mText);
+            frame->mText);
     }
 }
 
