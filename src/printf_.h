@@ -107,6 +107,21 @@ PrintfMethodPtr_(const struct PrintfMethod &aMethod)
 )
 
 /* -------------------------------------------------------------------------- */
+/* Accumulate Printed Output Count
+ *
+ * The printf() family of functions return a negative result on error,
+ * otherwise a count of the number of characters printed. When output
+ * comprises a series of printf() calls, it is necessary to sum the
+ * contributions, but at the same time watching for an error. */
+
+#define PRINTF(IOCount_, Expr_)                 \
+    ({                                          \
+        int io_ = (Expr_);                      \
+                                                \
+        0 > io_ ? io_ : (IOCount_ += io_, 0);   \
+    })
+
+/* -------------------------------------------------------------------------- */
 #define PRIs_Method "%%p<struct PrintfMethod>%%"
 #define FMTs_Method(Object_, Method_) ( PrintfMethod((Object_), (Method_)) )
 
