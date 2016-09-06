@@ -31,6 +31,8 @@
 #include "sentry.h"
 #include "parentprocess.h"
 
+#include "fdset_.h"
+
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -164,8 +166,81 @@ struct RunAgentProcess_
 {
     struct Agent *mAgent;
     struct Pid    mParentPid;
+    struct Pipe   mParentPipe_;
     struct Pipe  *mParentPipe;
 };
+
+static CHECKED struct RunAgentProcess_ *
+closeAgentChildProcess_(struct RunAgentProcess_ *self)
+{
+    if (self)
+    {
+        self->mParentPipe = closePipe(self->mParentPipe);
+    }
+
+    return 0;
+}
+
+static CHECKED int
+createAgentChildProcess_(struct RunAgentProcess_ *self,
+                         struct Agent            *aAgent)
+{
+    int rc = -1;
+
+    self->mAgent      = aAgent;
+    self->mParentPid  = ownProcessId();
+    self->mParentPipe = 0;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static CHECKED int
+prepareAgentChildProcessFork_(struct RunAgentProcess_     *self,
+                              const struct PreForkProcess *aPreFork)
+{
+    int rc = -1;
+
+    struct StdFdFiller  stdFdFiller_;
+    struct StdFdFiller *stdFdFiller = 0;
+
+    /* Ensure that the parent pipe does not inadvertently become
+     * stdin, stdout or stderr. */
+
+    ERROR_IF(
+        createStdFdFiller(&stdFdFiller_));
+    stdFdFiller = &stdFdFiller_;
+
+    ERROR_IF(
+        createPipe(&self->mParentPipe_, O_CLOEXEC | O_NONBLOCK));
+    self->mParentPipe = &self->mParentPipe_;
+
+    ERROR_IF(
+        insertFdSetRange(aPreFork->mWhitelistFds, FdRange(0, INT_MAX)));
+
+    ERROR_IF(
+        insertFdSetRange(aPreFork->mBlacklistFds, FdRange(0, INT_MAX)));
+    ERROR_IF(
+        removeFdSetFile(aPreFork->mBlacklistFds, self->mParentPipe->mWrFile));
+    ERROR_IF(
+        removeFdSetFile(aPreFork->mBlacklistFds, self->mParentPipe->mRdFile));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        stdFdFiller = closeStdFdFiller(stdFdFiller);
+    });
+
+    return rc;
+}
 
 static CHECKED int
 runAgentChildProcess_(struct RunAgentProcess_ *self)
@@ -178,8 +253,6 @@ runAgentChildProcess_(struct RunAgentProcess_ *self)
         FMTd_Pid(ownProcessId()), FMTd_Pgid(ownProcessGroupId()));
 
     ensure(ownProcessId().mPid == ownProcessGroupId().mPgid);
-
-    closePipeWriter(self->mParentPipe);
 
     struct ExitCode exitCode = { EXIT_FAILURE };
 
@@ -198,7 +271,6 @@ Finally:
     return rc;
 }
 
-/* -------------------------------------------------------------------------- */
 static CHECKED int
 runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
 {
@@ -210,11 +282,11 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
     struct ParentProcess  parentProcess_;
     struct ParentProcess *parentProcess = 0;
 
+    struct RunAgentProcess_  agentChild_;
+    struct RunAgentProcess_ *agentChild = 0;
+
     struct StdFdFiller  stdFdFiller_;
     struct StdFdFiller *stdFdFiller = 0;
-
-    struct Pipe  parentPipe_;
-    struct Pipe *parentPipe = 0;
 
     ERROR_IF(
         createJobControl(&jobControl_));
@@ -227,41 +299,40 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
         parentProcess = &parentProcess_;
     }
 
-    /* Ensure that the parent pipe does not inadvertently become
-     * stdin, stdout or stderr. */
+    ERROR_IF(
+        createAgentChildProcess_(&agentChild_, self));
+    agentChild = &agentChild_;
 
-    {
-        ERROR_IF(
-            createStdFdFiller(&stdFdFiller_));
-        stdFdFiller = &stdFdFiller_;
+    struct Pid agentPid;
+    ERROR_IF(
+        (agentPid = forkProcessChildX(
+            ForkProcessSetProcessGroup,
+            Pgid(0),
+            PreForkProcessMethod(
+                agentChild, prepareAgentChildProcessFork_),
+            PostForkChildProcessMethod(
+                agentChild,
+                LAMBDA(
+                    int, (struct RunAgentProcess_ *self_),
+                    {
+                        closePipeWriter(self_->mParentPipe);
 
-        ERROR_IF(
-            createPipe(&parentPipe_, O_CLOEXEC | O_NONBLOCK));
-        parentPipe = &parentPipe_;
+                        return 0;
+                    })),
+            PostForkParentProcessMethod(
+                agentChild,
+                LAMBDA(
+                    int, (struct RunAgentProcess_ *self_,
+                          struct Pid               aChildPid),
+                    {
+                        closePipeReader(self_->mParentPipe);
 
-        stdFdFiller = closeStdFdFiller(stdFdFiller);
-    }
+                        return 0;
+                    })),
+            ForkProcessMethod(agentChild, runAgentChildProcess_)),
+         -1 == agentPid.mPid));
 
-    {
-        struct RunAgentProcess_ agentChild =
-        {
-            .mAgent      = self,
-            .mParentPid  = ownProcessId(),
-            .mParentPipe = parentPipe,
-        };
-
-        struct Pid agentPid;
-        ERROR_IF(
-            (agentPid = forkProcessChild(
-                ForkProcessSetProcessGroup,
-                Pgid(0),
-                ForkProcessMethod(&agentChild, runAgentChildProcess_)),
-             -1 == agentPid.mPid));
-
-        self->mAgentPid = agentPid;
-    }
-
-    closePipeReader(parentPipe);
+    self->mAgentPid = agentPid;
 
     /* Be prepared to deliver signals to the agent process only after
      * the process exists. Before this point, these signals will cause
@@ -277,24 +348,6 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
         watchJobControlStop(jobControl,
                             WatchProcessMethod(self, raiseAgentStop_),
                             WatchProcessMethod(self, raiseAgentResume_)));
-
-    {
-        struct ProcessAppLock *appLock = createProcessAppLock();
-
-        int whiteList[] =
-        {
-            STDIN_FILENO,
-            STDOUT_FILENO,
-            STDERR_FILENO,
-            parentPipe->mWrFile->mFd,
-            ownProcessAppLockFile(appLock)->mFd,
-        };
-
-        ERROR_IF(
-            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
-
-        appLock = destroyProcessAppLock(appLock);
-    }
 
     /* Hold a reference to stderr, but do not hold references to the
      * original stdin and stdout to allow the monitored process to control
@@ -332,17 +385,17 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
         }
     }
 
-    ERROR_IF(
-        unwatchJobControlStop(jobControl));
-
-    ERROR_IF(
-        unwatchJobControlSignals(jobControl));
-
     {
+        ERROR_IF(
+            unwatchJobControlStop(jobControl));
+
+        ERROR_IF(
+            unwatchJobControlSignals(jobControl));
+
         /* Capture the pid of the agent process, then reset the data member
          * so that any signal races can be caught. */
 
-        struct Pid agentPid = self->mAgentPid;
+        agentPid = self->mAgentPid;
 
         self->mAgentPid = Pid(0);
 
@@ -367,8 +420,8 @@ Finally:
     ({
         finally_warn_if(rc, self, printAgent);
 
-        parentPipe    = closePipe(parentPipe);
         stdFdFiller   = closeStdFdFiller(stdFdFiller);
+        agentChild    = closeAgentChildProcess_(agentChild);
         parentProcess = closeParentProcess(parentProcess);
         jobControl    = closeJobControl(jobControl);
     });
