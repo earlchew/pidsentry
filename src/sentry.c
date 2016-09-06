@@ -479,15 +479,6 @@ runSentry(struct Sentry   *self,
             aParentPid,
             aParentPipe));
 
-    ERROR_IF(
-        unwatchJobControlContinue(self->mJobControl));
-
-    ERROR_IF(
-        unwatchJobControlSignals(self->mJobControl));
-
-    ERROR_IF(
-        unwatchJobControlDone(self->mJobControl));
-
     /* If a pid file is in use, do not reap the child process until
      * a lock on the pid file can be acquired, and the pid file invalidated.
      *
@@ -527,6 +518,8 @@ runSentry(struct Sentry   *self,
              "Unable to stop umbilical process pid %" PRId_Pid" cleanly",
              FMTd_Pid(umbilicalPid));
 
+    self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
+
     /* The child process group is cleaned up from both the umbilical process
      * and the watchdog with the expectation that at least one of them
      * will succeed. At this point, the child process has already terminated
@@ -541,6 +534,24 @@ runSentry(struct Sentry   *self,
                 "stopped pid %" PRId_Pid " %s",
                 FMTd_Pid(childPid),
                 ownShellCommandName(self->mChildProcess->mShellCommand));
+
+    /* The child process has terminated, and the umbilical process should
+     * have terminated, so detach the signal watchers. After this point
+     * a signal received by the watchdog will likely cause it to terminate,
+     * but the child process group has already been cleaned up and the
+     * the only action left from here is to reap the child process. */
+
+    ERROR_IF(
+        unwatchJobControlContinue(self->mJobControl));
+
+    ERROR_IF(
+        unwatchJobControlStop(self->mJobControl));
+
+    ERROR_IF(
+        unwatchJobControlSignals(self->mJobControl));
+
+    ERROR_IF(
+        unwatchJobControlDone(self->mJobControl));
 
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and
@@ -558,11 +569,6 @@ runSentry(struct Sentry   *self,
           "reaped child pid %" PRId_Pid " status %d",
           FMTd_Pid(childPid),
           childStatus);
-
-    self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
-
-    ERROR_IF(
-        resetProcessSigPipe());
 
     *aExitCode = extractProcessExitStatus(childStatus, childPid);
 

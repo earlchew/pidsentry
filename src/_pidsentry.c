@@ -162,6 +162,9 @@ cmdMonitorChild(const char * const *aCmd, struct ExitCode *aExitCode)
     ERROR_IF(
         runAgent(agent, &exitCode));
 
+    ERROR_IF(
+        resetProcessSigPipe());
+
     *aExitCode = exitCode;
 
     rc = 0;
