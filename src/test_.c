@@ -116,11 +116,10 @@ testFinally(const struct ErrorFrame *aFrame)
             {
                 int         mCode;
                 const char *mText;
-            }  errTable[] =
-                   {
-                       { EINTR, "EINTR" },
-                       { EIO,   "EIO" },
-                   };
+            }  errTable[] = {
+                { EINTR, "EINTR" },
+                { EIO,   "EIO" },
+            };
 
             unsigned choice = random() % NUMBEROF(errTable);
 
