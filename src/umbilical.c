@@ -813,7 +813,14 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
 
         struct EventClockTime since = EVENTCLOCKTIME_INIT;
 
-        while (1)
+        enum
+        {
+            Running,
+            Stopping,
+            Stopped
+        } umbilicalState = Running;
+
+        while (Stopped != umbilicalState)
         {
             struct Duration remaining;
 
@@ -832,29 +839,52 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
                 continue;
             }
 
-            /* The umbilical process might have been in the midst of
-             * responding to a ping, so take the trouble to drain the
-             * connection to get a clean shutdown. */
-
-            int ready = 0;
-            ERROR_IF(
-                (ready = waitUnixSocketReadReady(
-                    self->mSocket->mParentSocket, &remaining),
-                 -1 == ready));
-
-            if (ready)
+            if (Running == umbilicalState)
             {
-                ssize_t rdlen = 0;
+                /* The umbilical process might have been in the midst of
+                 * responding to a ping, so take the trouble to drain the
+                 * connection to get a clean shutdown. */
+
+                int ready = 0;
                 ERROR_IF(
-                    (rdlen = recvUnixSocket(
-                        self->mSocket->mParentSocket, buf, 1),
-                     -1 == rdlen && ECONNRESET != errno));
+                    (ready = waitUnixSocketReadReady(
+                        self->mSocket->mParentSocket, &remaining),
+                     -1 == ready));
 
-                if (rdlen)
-                    continue;
+                if (ready)
+                {
+                    ssize_t rdlen = 0;
+                    ERROR_IF(
+                        (rdlen = recvUnixSocket(
+                            self->mSocket->mParentSocket, buf, 1),
+                         -1 == rdlen && ECONNRESET != errno));
+
+                    if (rdlen)
+                        continue;
+                }
+
+                umbilicalState = Stopping;
             }
+            else if (Stopping == umbilicalState)
+            {
+                struct ChildProcessState processState;
 
-            break;
+                ERROR_IF(
+                    (processState = waitProcessChild(self->mPid),
+                     ChildProcessStateError == processState.mChildState));
+
+                switch (processState.mChildState)
+                {
+                default:
+                    break;
+
+                case ChildProcessStateExited:
+                case ChildProcessStateKilled:
+                case ChildProcessStateDumped:
+                    umbilicalState = Stopped;
+                    break;
+                }
+            }
         }
     }
 
