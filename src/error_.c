@@ -110,20 +110,23 @@ initErrorFrame_(void)
 
     if ( ! errorStack_.mStack)
     {
-        errorStack_.mStack = &errorStack_.mStack_[ErrorFrameStackThread];
-
-        errorStack_.mStack->mLevel = (struct ErrorFrameIter)
+        for (unsigned ix = NUMBEROF(errorStack_.mStack_); ix--; )
         {
-            .mIndex = 0,
-            .mFrame = &errorStack_.mStack->mFrame[0],
-        };
-        errorStack_.mStack->mSequence = errorStack_.mStack->mLevel;
+            errorStack_.mStack = &errorStack_.mStack_[ix];
 
-        TAILQ_INIT(&errorStack_.mStack->mHead);
-        TAILQ_INSERT_TAIL(
-            &errorStack_.mStack->mHead,
-            &errorStack_.mStack->mChunk,
-            mList);
+            errorStack_.mStack->mLevel = (struct ErrorFrameIter)
+            {
+                .mIndex = 0,
+                .mFrame = &errorStack_.mStack->mFrame[0],
+            };
+            errorStack_.mStack->mSequence = errorStack_.mStack->mLevel;
+
+            TAILQ_INIT(&errorStack_.mStack->mHead);
+            TAILQ_INSERT_TAIL(
+                &errorStack_.mStack->mHead,
+                &errorStack_.mStack->mChunk,
+                mList);
+        }
 
         if (errorDtor_.mInit)
             ABORT_IF(
