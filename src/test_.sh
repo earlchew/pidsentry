@@ -11,6 +11,9 @@ pidsentryexec()
     # If RPATH is configured, and the program interpreter is specified
     # using a relative path, use it to find the appropriate program
     # interpreter.
+    #
+    # Usually RPATH is set by the --with-test-environment configuration
+    # option.
 
     if [ -n "${RPATH++}" ] ; then
         set -- "$(
