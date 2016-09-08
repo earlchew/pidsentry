@@ -32,9 +32,9 @@
 #include "compiler_.h"
 #include "thread_.h"
 #include "method_.h"
+#include "queue_.h"
 
 #include <stdio.h>
-#include <sys/queue.h>
 
 /* -------------------------------------------------------------------------- */
 BEGIN_C_SCOPE;

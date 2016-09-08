@@ -35,6 +35,7 @@
 #include "thread_.h"
 #include "printf_.h"
 #include "process_.h"
+#include "queue_.h"
 #include "eintr_.h"
 
 #include <stdlib.h>
@@ -44,8 +45,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <execinfo.h>
-
-#include <sys/queue.h>
 
 #include <valgrind/valgrind.h>
 

@@ -33,9 +33,9 @@
 #include "pipe_.h"
 #include "thread_.h"
 #include "eventlatch_.h"
+#include "queue_.h"
 
 #include <stdbool.h>
-#include <sys/queue.h>
 
 BEGIN_C_SCOPE;
 

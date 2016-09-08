@@ -33,9 +33,9 @@
 #include "unixsocket_.h"
 #include "fileeventqueue_.h"
 #include "pidsignature_.h"
+#include "queue_.h"
 
 #include <sys/un.h>
-#include <sys/queue.h>
 #include <sys/socket.h>
 
 /* -------------------------------------------------------------------------- */
