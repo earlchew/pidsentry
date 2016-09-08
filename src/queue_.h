@@ -30,10 +30,10 @@
  * $FreeBSD$
  */
 
-#ifndef _SYS_QUEUE_H_
-#define	_SYS_QUEUE_H_
+#ifndef QUEUE_H
+#define QUEUE_H
 
-#include <sys/cdefs.h>
+#include "compiler_.h"
 
 /*
  * This file defines four types of data structures: singly-linked lists,
