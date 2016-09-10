@@ -60,4 +60,20 @@ do                                              \
     Rhs_ = swp_;                                \
 } while (0)
 
+#define MIN(Lhs_, Rhs_)                         \
+({                                              \
+    AUTO(lhs_, (Lhs_));                         \
+    AUTO(rhs_, (Rhs_));                         \
+                                                \
+    lhs_ < rhs_ ? lhs_ : rhs_;                  \
+})
+
+#define MAX(Lhs_, Rhs_)                         \
+({                                              \
+    AUTO(lhs_, (Lhs_));                         \
+    AUTO(rhs_, (Rhs_));                         \
+                                                \
+    lhs_ < rhs_ ? rhs_ : lhs_;                  \
+})
+
 #endif /* MACROS_H */
