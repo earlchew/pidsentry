@@ -35,6 +35,7 @@
 #include "process_.h"
 #include "deadline_.h"
 #include "fdset_.h"
+#include "system_.h"
 #include "eintr_.h"
 
 #include <errno.h>
@@ -1117,7 +1118,7 @@ readFdFully(int aFd, char **aBuf, size_t aBufSize)
             len =
                 len ? 2 * len :
                 testMode(TestLevelRace) ? 1 :
-                aBufSize ? aBufSize : getpagesize();
+                aBufSize ? aBufSize : fetchSystemPageSize();
 
             char *ptr;
             ERROR_UNLESS(
