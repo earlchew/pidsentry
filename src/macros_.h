@@ -76,4 +76,18 @@ do                                              \
     lhs_ < rhs_ ? rhs_ : lhs_;                  \
 })
 
+#define ROUNDUP(Value_, Alignment_)                             \
+({                                                              \
+    AUTO(alignment_, (Alignment_));                             \
+                                                                \
+    ( (Value_) + alignment_ - 1 ) / alignment_ * alignment_;    \
+})
+
+#define ROUNDDOWN(Value_, Alignment_)           \
+({                                              \
+    AUTO(alignment_, (Alignment_));             \
+                                                \
+    (Value_) / alignment_ * alignment_;         \
+})
+
 #endif /* MACROS_H */
