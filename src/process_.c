@@ -1661,8 +1661,18 @@ createForkProcessChildChannel_(
 {
     int rc = -1;
 
+    struct StdFdFiller  stdFdFiller_;
+    struct StdFdFiller *stdFdFiller = 0;
+
     self->mResultPipe   = 0;
     self->mResultSocket = 0;
+
+    /* Prevent the fork communication channels from inadvertently becoming
+     * stdin, stdout or stderr. */
+
+    ERROR_IF(
+        createStdFdFiller(&stdFdFiller_));
+    stdFdFiller = &stdFdFiller_;
 
     ERROR_IF(
         createPipe(&self->mResultPipe_, O_CLOEXEC));
@@ -1680,6 +1690,8 @@ Finally:
     ({
         if (rc)
             self = closeForkProcessChildChannel_(self);
+
+        stdFdFiller = closeStdFdFiller(stdFdFiller);
     });
 
     return rc;
