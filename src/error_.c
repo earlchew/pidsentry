@@ -46,6 +46,8 @@
 #include <string.h>
 #include <execinfo.h>
 
+#include <sys/mman.h>
+
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
@@ -53,11 +55,19 @@ static unsigned moduleInit_;
 
 static struct ErrorUnwindFrame_ __thread errorUnwind_;
 
+typedef TAILQ_HEAD(ErrorFrameChunkList, ErrorFrameChunk) ErrorFrameChunkListT;
+
 struct ErrorFrameChunk
 {
-    TAILQ_ENTRY(ErrorFrameChunk) mList;
+    TAILQ_ENTRY(ErrorFrameChunk) mStackList;
 
-    struct ErrorFrame mFrame[64];
+    struct ErrorFrameChunk *mChunkList;
+    size_t                  mChunkSize;
+
+    struct ErrorFrame *mBegin;
+    struct ErrorFrame *mEnd;
+
+    struct ErrorFrame  mFrame_[];
 };
 
 static struct
@@ -69,38 +79,144 @@ static struct
 
     struct
     {
-        struct ErrorFrameIter  mLevel;
-        struct ErrorFrameIter  mSequence;
-        struct ErrorFrame      mFrame[64];
-        struct ErrorFrameChunk mChunk;
+        struct ErrorFrameIter mLevel;
+        struct ErrorFrameIter mSequence;
 
-        TAILQ_HEAD(, ErrorFrameChunk) mHead;
+        ErrorFrameChunkListT mHead;
 
     } mStack_[ErrorFrameStackKinds], *mStack;
 
 } __thread errorStack_;
 
+/* -------------------------------------------------------------------------- */
+/* Thread specific error frame cleanup
+ *
+ * Error frames are collected for each thread, and their number is allowed
+ * to grow as required. When the thread terminates, the collected frames
+ * must be released.
+ *
+ * To do this, attach a callback to be invoked when the thread is destroyed
+ * by using pthread_key_create(). Use pthread_once() and EARLY_INITIALISER()
+ * to ensure that pthread_key_create() is invoked at some time during
+ * program initialisation. Most likely there will only be one thread
+ * running at this time, but this cannot be guaranteed necessitating
+ * the use of pthread_once(). */
+
 struct ErrorDtor
 {
-    bool          mInit;
-    pthread_key_t mKey;
+    pthread_key_t  mKey;
+    pthread_once_t mOnce;
 };
 
-static struct ErrorDtor errorDtor_;
+static struct ErrorDtor errorDtor_ =
+{
+    .mOnce = PTHREAD_ONCE_INIT,
+};
 
 static void
-destroyErrorKey_(void *self_)
-{ }
+destroyErrorKey_(void *aChunk_)
+{
+    struct ErrorFrameChunk *chunk = aChunk_;
+
+    while (chunk)
+    {
+        struct ErrorFrameChunk *next = chunk->mChunkList;
+
+        if (munmap(chunk, chunk->mChunkSize))
+            abortProcess();
+
+        VALGRIND_FREELIKE_BLOCK(chunk, 0);
+
+        chunk = next;
+    }
+}
+
+static void
+initErrorKey_(void)
+{
+    if (pthread_once(
+            &errorDtor_.mOnce,
+            LAMBDA(
+                void, (void),
+                {
+                    if (pthread_key_create(
+                            &errorDtor_.mKey, destroyErrorKey_))
+                        abortProcess();
+                })))
+        abortProcess();
+}
+
+static void
+setErrorKey_(struct ErrorFrameChunk *aChunk)
+{
+    initErrorKey_();
+
+    if (pthread_setspecific(errorDtor_.mKey, aChunk))
+        abortProcess();
+}
 
 EARLY_INITIALISER(
     error_,
     ({
-        ABORT_IF(
-            errno = pthread_key_create(&errorDtor_.mKey, destroyErrorKey_));
-
-        errorDtor_.mInit = true;
+        initErrorKey_();
     }),
     ({ }));
+
+/* -------------------------------------------------------------------------- */
+static struct ErrorFrameChunk *
+createErrorFrameChunk_(struct ErrorFrameChunk *aParent)
+{
+    struct ErrorFrameChunk *self = 0;
+
+    /* Do not use fetchSystemPageSize() because that might cause a recursive
+     * reference to createErrorFrameChunk_(). */
+
+    long pageSize = sysconf(_SC_PAGESIZE);
+
+    if (-1 == pageSize || ! pageSize)
+        abortProcess();
+
+    /* Do not use malloc() because the the implementation in malloc_.c
+     * will cause a recursive reference to createErrorFrameChunk_(). */
+
+    size_t chunkSize =
+        ROUNDUP(sizeof(*self) + sizeof(self->mFrame_[0]), pageSize);
+
+    self = mmap(0, chunkSize,
+                PROT_READ | PROT_WRITE,
+                MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+
+    if (MAP_FAILED == self)
+        abortProcess();
+
+    VALGRIND_MALLOCLIKE_BLOCK(self, chunkSize, 0, 0);
+
+    self->mChunkList = 0;
+    self->mChunkSize = chunkSize;
+
+    /* Find out the number of frames that will fit in the allocated
+     * space, but only use a small number during test in order to
+     * exercise the frame allocator. */
+
+    size_t numFrames =
+        (chunkSize - sizeof(*self)) / sizeof(self->mFrame_[0]);
+
+    unsigned testFrames = 2;
+
+    if (testMode(TestLevelRace) && numFrames > testFrames)
+        numFrames = testFrames;
+
+    self->mBegin = &self->mFrame_[0];
+    self->mEnd   = &self->mFrame_[numFrames];
+
+    if (aParent)
+    {
+        self->mChunkList    = aParent->mChunkList;
+        aParent->mChunkList = self;
+    }
+
+    return self;
+}
 
 static void
 initErrorFrame_(void)
@@ -109,28 +225,39 @@ initErrorFrame_(void)
 
     if ( ! errorStack_.mStack)
     {
+        struct ErrorFrameChunk *parentChunk = 0;
+
         for (unsigned ix = NUMBEROF(errorStack_.mStack_); ix--; )
         {
             errorStack_.mStack = &errorStack_.mStack_[ix];
 
+            TAILQ_INIT(&errorStack_.mStack->mHead);
+
+            struct ErrorFrameChunk *chunk = createErrorFrameChunk_(parentChunk);
+
+            if ( ! parentChunk)
+                parentChunk = chunk;
+
             errorStack_.mStack->mLevel = (struct ErrorFrameIter)
             {
                 .mIndex = 0,
-                .mFrame = &errorStack_.mStack->mFrame[0],
+                .mFrame = 0,
+                .mChunk = 0,
             };
-            errorStack_.mStack->mSequence = errorStack_.mStack->mLevel;
 
-            TAILQ_INIT(&errorStack_.mStack->mHead);
-            TAILQ_INSERT_TAIL(
-                &errorStack_.mStack->mHead,
-                &errorStack_.mStack->mChunk,
-                mList);
+            struct ErrorFrameIter *iter = &errorStack_.mStack->mLevel;
+
+            TAILQ_INSERT_TAIL(&errorStack_.mStack->mHead, chunk, mStackList);
+
+            iter->mChunk = chunk;
+            iter->mFrame = chunk->mBegin;
+
+            errorStack_.mStack->mSequence = *iter;
         }
 
-        if (errorDtor_.mInit)
-            ABORT_IF(
-                errno = pthread_setspecific(
-                    errorDtor_.mKey, errorStack_.mStack));
+        ensure(parentChunk);
+
+        setErrorKey_(parentChunk);
     }
 }
 
@@ -140,16 +267,23 @@ addErrorFrame(const struct ErrorFrame *aFrame, int aErrno)
 {
     initErrorFrame_();
 
-    unsigned level = errorStack_.mStack->mLevel.mIndex;
+    struct ErrorFrameIter *iter = &errorStack_.mStack->mLevel;
 
-    if (NUMBEROF(errorStack_.mStack->mFrame) <= level)
-        abortProcess();
+    if (iter->mFrame == iter->mChunk->mEnd)
+    {
+        struct ErrorFrameChunk *chunk = createErrorFrameChunk_(iter->mChunk);
 
-    errorStack_.mStack->mLevel.mFrame[0]        = *aFrame;
-    errorStack_.mStack->mLevel.mFrame[0].mErrno = aErrno;
+        TAILQ_INSERT_TAIL(&errorStack_.mStack->mHead, chunk, mStackList);
 
-    ++errorStack_.mStack->mLevel.mIndex;
-    ++errorStack_.mStack->mLevel.mFrame;
+        iter->mChunk = chunk;
+        iter->mFrame = chunk->mBegin;
+    }
+
+    iter->mFrame[0]        = *aFrame;
+    iter->mFrame[0].mErrno = aErrno;
+
+    ++iter->mIndex;
+    ++iter->mFrame;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -215,10 +349,40 @@ ownErrorFrame(enum ErrorFrameStackKind aStack, unsigned aLevel)
 {
     initErrorFrame_();
 
-    return
-        (aLevel >= errorStack_.mStack->mLevel.mIndex)
-        ? 0
-        : &errorStack_.mStack->mFrame[aLevel];
+    struct ErrorFrame *frame = 0;
+
+    if (aLevel < errorStack_.mStack->mLevel.mIndex)
+    {
+        struct ErrorFrame *begin = errorStack_.mStack->mLevel.mChunk->mBegin;
+        struct ErrorFrame *end   = errorStack_.mStack->mLevel.mFrame;
+
+        unsigned top = errorStack_.mStack->mLevel.mIndex;
+
+        while (1)
+        {
+            unsigned size   = end - begin;
+            unsigned bottom = top - size;
+
+            if (aLevel >= bottom)
+            {
+                frame = begin + (aLevel - bottom);
+                break;
+            }
+
+            struct ErrorFrameChunk *prevChunk =
+                TAILQ_PREV(errorStack_.mStack->mLevel.mChunk,
+                           ErrorFrameChunkList,
+                           mStackList);
+
+            ensure(prevChunk);
+
+            begin = prevChunk->mBegin;
+            end   = prevChunk->mEnd;
+            top   = bottom;
+        }
+    }
+
+    return frame;
 }
 
 /* -------------------------------------------------------------------------- */

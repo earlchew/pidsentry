@@ -218,10 +218,13 @@ struct ErrorFrame
 
 #define ERRORFRAME_INIT(aText) { __FILE__, __LINE__, __func__, aText }
 
+struct ErrorFrameChunk;
+
 struct ErrorFrameIter
 {
-    unsigned           mIndex;
-    struct ErrorFrame *mFrame;
+    unsigned                mIndex;
+    struct ErrorFrame      *mFrame;
+    struct ErrorFrameChunk *mChunk;
 };
 
 struct ErrorFrameSequence
