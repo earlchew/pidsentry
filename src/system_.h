@@ -31,11 +31,16 @@
 
 #include "compiler_.h"
 
+#include <stddef.h>
+
 BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 const char *
 fetchSystemIncarnation(void);
+
+size_t
+fetchSystemPageSize(void);
 
 /* -------------------------------------------------------------------------- */
 

@@ -37,6 +37,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 /* -------------------------------------------------------------------------- */
 static const char     *bootIncarnation_;
@@ -111,6 +112,22 @@ fetchSystemIncarnation(void)
         errno = bootIncarnationErr_;
 
     return bootIncarnation_;
+}
+
+/* -------------------------------------------------------------------------- */
+size_t
+fetchSystemPageSize(void)
+{
+    long pageSize = sysconf(_SC_PAGESIZE);
+
+    ABORT_IF(-1 == pageSize || ! pageSize,
+        {
+            terminate(
+                pageSize ? errno : 0,
+                "Unable to fetch system page size");
+        });
+
+    return pageSize;
 }
 
 /* -------------------------------------------------------------------------- */
