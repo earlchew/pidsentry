@@ -33,6 +33,7 @@
 #include "pathname_.h"
 #include "fd_.h"
 #include "pipe_.h"
+#include "stdfdfiller_.h"
 #include "socketpair_.h"
 #include "bellsocketpair_.h"
 #include "test_.h"
@@ -1937,6 +1938,9 @@ forkProcessChild_PostParent_(
 {
     int rc = -1;
 
+    struct StdFdFiller  stdFdFiller_;
+    struct StdFdFiller *stdFdFiller = 0;
+
     /* Forcibly set the process group of the child to avoid
      * the race that would occur if only the child attempts
      * to set its own process group */
@@ -2003,6 +2007,50 @@ forkProcessChild_PostParent_(
             callPostForkParentProcessMethod(
                 aPostForkParentMethod, aChildPid));
 
+        /* Always remove the stdin, stdout and stderr from the blacklisted
+         * file descriptors. If they were indeed blacklisted, then for stdin
+         * and stdout, close and replace each so that the descriptors themselves
+         * remain valid, but leave stderr intact. */
+
+        {
+            ERROR_IF(
+                createStdFdFiller(&stdFdFiller_));
+            stdFdFiller = &stdFdFiller_;
+
+            const struct
+            {
+                int  mFd;
+                int  mAltFd;
+
+            } stdfdlist[] = {
+                { .mFd = STDIN_FILENO,
+                  .mAltFd = stdFdFiller->mFile[0]->mFd },
+
+                { .mFd = STDOUT_FILENO,
+                  .mAltFd = stdFdFiller->mFile[1]->mFd },
+
+                { .mFd = STDERR_FILENO,
+                  .mAltFd = -1 },
+            };
+
+            for (unsigned ix = 0; NUMBEROF(stdfdlist) > ix; ++ix)
+            {
+                int fd    = stdfdlist[ix].mFd;
+                int altFd = stdfdlist[ix].mAltFd;
+
+                int err;
+                ERROR_IF(
+                    (err = removeFdSet(aBlacklistFds, fd),
+                     err && ENOENT != errno));
+
+                if ( ! err && -1 != altFd)
+                    ERROR_IF(
+                        fd != dup2(altFd, fd));
+            }
+
+            stdFdFiller = closeStdFdFiller(stdFdFiller);
+        }
+
         ERROR_IF(
             closeFdOnlyBlackList(aBlacklistFds));
 
@@ -2014,7 +2062,10 @@ forkProcessChild_PostParent_(
 
 Finally:
 
-    FINALLY({});
+    FINALLY
+    ({
+        stdFdFiller = closeStdFdFiller(stdFdFiller);
+    });
 
     return rc;
 }
