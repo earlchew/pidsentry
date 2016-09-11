@@ -105,8 +105,8 @@ static struct
     pthread_mutex_t        mMutex_;
     pthread_mutex_t       *mMutex;
     struct Pid             mParentPid;
-    struct RWMutexWriter   mForkLock_;
-    struct RWMutexWriter  *mForkLock;
+    struct RWMutexWriter   mSigVecLock_;
+    struct RWMutexWriter  *mSigVecLock;
     struct ThreadSigMutex *mSigLock;
     struct ThreadSigMutex *mLock;
 } processFork_ =
@@ -161,20 +161,20 @@ static unsigned __thread processSignalContext_;
 struct ProcessSignalVector
 {
     struct sigaction mAction;
-    pthread_mutex_t  mMutex_;
-    pthread_mutex_t *mMutex;
+    pthread_mutex_t  mActionMutex_;
+    pthread_mutex_t *mActionMutex;
 };
 
 static struct
 {
     struct ProcessSignalVector mVector[NSIG];
     pthread_rwlock_t           mVectorLock;
-    struct ThreadSigMutex      mMutex;
+    struct ThreadSigMutex      mSignalMutex;
 
 } processSignals_ =
 {
-    .mVectorLock = PTHREAD_RWLOCK_INITIALIZER,
-    .mMutex      = THREAD_SIG_MUTEX_INITIALIZER(processSignals_.mMutex),
+    .mVectorLock  = PTHREAD_RWLOCK_INITIALIZER,
+    .mSignalMutex = THREAD_SIG_MUTEX_INITIALIZER(processSignals_.mSignalMutex),
 };
 
 static void
@@ -191,50 +191,100 @@ dispatchSigExit_(int aSigNum)
 }
 
 static void
+runSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
+{
+    struct ProcessSignalVector *sv = &processSignals_.mVector[aSigNum];
+
+    struct RWMutexReader  sigVecLock_;
+    struct RWMutexReader *sigVecLock;
+
+    sigVecLock = createRWMutexReader(
+        &sigVecLock_, &processSignals_.mVectorLock);
+
+    enum ErrorFrameStackKind stackKind =
+        switchErrorFrameStack(ErrorFrameStackSignal);
+
+    struct ProcessSignalName sigName;
+    debug(1,
+          "dispatch signal %s",
+          formatProcessSignalName(&sigName, aSigNum));
+
+    pthread_mutex_t *actionLock = lockMutex(sv->mActionMutex);
+    {
+        dispatchSigExit_(aSigNum);
+
+        if (SIG_DFL != sv->mAction.sa_handler &&
+            SIG_IGN != sv->mAction.sa_handler)
+        {
+            ++processSignalContext_;
+
+            struct ErrorFrameSequence frameSequence =
+                pushErrorFrameSequence();
+
+            sv->mAction.sa_sigaction(aSigNum, aSigInfo, aSigContext);
+
+            popErrorFrameSequence(frameSequence);
+
+            --processSignalContext_;
+        }
+    }
+    actionLock = unlockMutex(actionLock);
+
+    switchErrorFrameStack(stackKind);
+    sigVecLock = destroyRWMutexReader(sigVecLock);
+}
+
+static void
 dispatchSigAction_(int aSigNum, siginfo_t *aSigInfo, void *aSigContext)
 {
     FINALLY
     ({
-        struct ProcessSignalVector *sv = &processSignals_.mVector[aSigNum];
-
-        struct ProcessSignalName sigName;
-        debug(1,
-              "dispatch signal %s",
-              formatProcessSignalName(&sigName, aSigNum));
-
-        struct RWMutexReader  forkLock_;
-        struct RWMutexReader *forkLock;
-
-        forkLock = createRWMutexReader(
-            &forkLock_, &processSignals_.mVectorLock);
-
-        pthread_mutex_t *lock = lockMutex(sv->mMutex);
-        {
-            dispatchSigExit_(aSigNum);
-
-            if (SIG_DFL != sv->mAction.sa_handler &&
-                SIG_IGN != sv->mAction.sa_handler)
-            {
-                ++processSignalContext_;
-
-                enum ErrorFrameStackKind stackKind =
-                    switchErrorFrameStack(ErrorFrameStackSignal);
-
-                struct ErrorFrameSequence frameSequence =
-                    pushErrorFrameSequence();
-
-                sv->mAction.sa_sigaction(aSigNum, aSigInfo, aSigContext);
-
-                popErrorFrameSequence(frameSequence);
-
-                switchErrorFrameStack(stackKind);
-
-                --processSignalContext_;
-            }
-        }
-        lock = unlockMutex(lock);
-        forkLock = destroyRWMutexReader(forkLock);
+        runSigAction_(aSigNum, aSigInfo, aSigContext);
     });
+}
+
+static void
+runSigHandler_(int aSigNum)
+{
+    struct ProcessSignalVector *sv = &processSignals_.mVector[aSigNum];
+
+    struct RWMutexReader  sigVecLock_;
+    struct RWMutexReader *sigVecLock;
+
+    sigVecLock = createRWMutexReader(
+        &sigVecLock_, &processSignals_.mVectorLock);
+
+    enum ErrorFrameStackKind stackKind =
+        switchErrorFrameStack(ErrorFrameStackSignal);
+
+    struct ProcessSignalName sigName;
+    debug(1,
+          "dispatch signal %s",
+          formatProcessSignalName(&sigName, aSigNum));
+
+    pthread_mutex_t *actionLock = lockMutex(sv->mActionMutex);
+    {
+        dispatchSigExit_(aSigNum);
+
+        if (SIG_DFL != sv->mAction.sa_handler &&
+            SIG_IGN != sv->mAction.sa_handler)
+        {
+            ++processSignalContext_;
+
+            struct ErrorFrameSequence frameSequence =
+                pushErrorFrameSequence();
+
+            sv->mAction.sa_handler(aSigNum);
+
+            popErrorFrameSequence(frameSequence);
+
+            --processSignalContext_;
+        }
+    }
+    actionLock = unlockMutex(actionLock);
+
+    switchErrorFrameStack(stackKind);
+    sigVecLock = destroyRWMutexReader(sigVecLock);
 }
 
 static void
@@ -242,45 +292,7 @@ dispatchSigHandler_(int aSigNum)
 {
     FINALLY
     ({
-        struct ProcessSignalVector *sv = &processSignals_.mVector[aSigNum];
-
-        struct ProcessSignalName sigName;
-        debug(1,
-              "dispatch signal %s",
-              formatProcessSignalName(&sigName, aSigNum));
-
-        struct RWMutexReader  forkLock_;
-        struct RWMutexReader *forkLock;
-
-        forkLock = createRWMutexReader(
-            &forkLock_, &processSignals_.mVectorLock);
-
-        pthread_mutex_t *lock = lockMutex(sv->mMutex);
-        {
-            dispatchSigExit_(aSigNum);
-
-            if (SIG_DFL != sv->mAction.sa_handler &&
-                SIG_IGN != sv->mAction.sa_handler)
-            {
-                ++processSignalContext_;
-
-                enum ErrorFrameStackKind stackKind =
-                    switchErrorFrameStack(ErrorFrameStackSignal);
-
-                struct ErrorFrameSequence frameSequence =
-                    pushErrorFrameSequence();
-
-                sv->mAction.sa_handler(aSigNum);
-
-                popErrorFrameSequence(frameSequence);
-
-                switchErrorFrameStack(stackKind);
-
-                --processSignalContext_;
-            }
-        }
-        lock = unlockMutex(lock);
-        forkLock = destroyRWMutexReader(forkLock);
+        runSigHandler_(aSigNum);
     });
 }
 
@@ -299,7 +311,7 @@ changeSigAction_(unsigned          aSigNum,
     struct ThreadSigMask  threadSigMask_;
     struct ThreadSigMask *threadSigMask = 0;
 
-    pthread_mutex_t *sigLock = 0;
+    pthread_mutex_t *actionLock = 0;
 
     struct sigaction nextAction = aNewAction;
 
@@ -322,21 +334,31 @@ changeSigAction_(unsigned          aSigNum,
             (nextAction.sa_flags & SA_RESTART));
 
         /* Require that signal delivery is not recursive to avoid
-         * having to deal with too many levels of re-entrancy. */
+         * having to deal with too many levels of re-entrancy, but
+         * allow programmatic failures to be delivered in order to
+         * terminate the program. */
 
         sigset_t filledSigSet;
         ERROR_IF(
             sigfillset(&filledSigSet));
 
+        ERROR_IF(
+            sigdelset(&filledSigSet, SIGABRT));
+
         nextAction.sa_mask   = filledSigSet;
         nextAction.sa_flags &= ~ SA_NODEFER;
     }
 
-    struct ThreadSigMutex *lock = lockThreadSigMutex(&processSignals_.mMutex);
-    if ( ! processSignals_.mVector[aSigNum].mMutex)
-        processSignals_.mVector[aSigNum].mMutex =
-            createMutex(&processSignals_.mVector[aSigNum].mMutex_);
-    lock = unlockThreadSigMutex(lock);
+    {
+        struct ThreadSigMutex *sigLock =
+            lockThreadSigMutex(&processSignals_.mSignalMutex);
+
+        if ( ! processSignals_.mVector[aSigNum].mActionMutex)
+            processSignals_.mVector[aSigNum].mActionMutex =
+                createMutex(&processSignals_.mVector[aSigNum].mActionMutex_);
+
+        sigLock = unlockThreadSigMutex(sigLock);
+    }
 
     /* Block signal delivery into this thread to avoid the signal
      * dispatch attempting to acquire the dispatch mutex recursively
@@ -348,7 +370,7 @@ changeSigAction_(unsigned          aSigNum,
     threadSigMask = pushThreadSigMask(
         &threadSigMask_, ThreadSigMaskBlock, (const int []) { aSigNum, 0 });
 
-    sigLock = lockMutex(processSignals_.mVector[aSigNum].mMutex);
+    actionLock = lockMutex(processSignals_.mVector[aSigNum].mActionMutex);
 
     struct sigaction prevAction;
     ERROR_IF(
@@ -368,7 +390,7 @@ Finally:
 
     FINALLY
     ({
-        sigLock = unlockMutex(sigLock);
+        actionLock = unlockMutex(actionLock);
 
         threadSigMask = popThreadSigMask(threadSigMask);
 
@@ -3203,13 +3225,13 @@ prepareFork_(void)
      * in progress, since those locked mutexes will then be transferred
      * into the child process. */
 
-    processFork_.mForkLock = createRWMutexWriter(
-        &processFork_.mForkLock_, &processSignals_.mVectorLock);
+    processFork_.mSigVecLock = createRWMutexWriter(
+        &processFork_.mSigVecLock_, &processSignals_.mVectorLock);
 
     /* Acquire the processSigMutex_ to ensure that there is no other
      * signal handler activity while the fork is in progress. */
 
-    processFork_.mSigLock = lockThreadSigMutex(&processSignals_.mMutex);
+    processFork_.mSigLock = lockThreadSigMutex(&processSignals_.mSignalMutex);
 
     processFork_.mParentPid = ownProcessId();
 
@@ -3226,9 +3248,11 @@ completeFork_(void)
          * release the resources acquired when preparations were made
          * immediately preceding the fork. */
 
-        processFork_.mSigLock = unlockThreadSigMutex(processFork_.mSigLock);
+        processFork_.mSigLock =
+            unlockThreadSigMutex(processFork_.mSigLock);
 
-        processFork_.mForkLock = destroyRWMutexWriter(processFork_.mForkLock);
+        processFork_.mSigVecLock =
+            destroyRWMutexWriter(processFork_.mSigVecLock);
 
         processFork_.mLock = unlockThreadSigMutex(processLock_.mMutex);
 
