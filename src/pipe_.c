@@ -30,6 +30,7 @@
 #include "pipe_.h"
 #include "fd_.h"
 #include "error_.h"
+#include "process_.h"
 #include "macros_.h"
 
 #include <unistd.h>
@@ -42,7 +43,10 @@ createPipe(struct Pipe *self, unsigned aFlags)
 {
     int rc = -1;
 
-    int fd[2] = { -1, -1 };
+    struct ProcessFdPair fdPair =
+    {
+        .mFds = { -1, -1 },
+    };
 
     self->mRdFile = 0;
     self->mWrFile = 0;
@@ -54,32 +58,32 @@ createPipe(struct Pipe *self, unsigned aFlags)
         });
 
     ERROR_IF(
-        pipe2(fd, aFlags),
+        (fdPair = openProcessFdPair(
+            OpenProcessFdPairMethod(
+                &aFlags,
+                LAMBDA(
+                    int, (unsigned             *aFlags_,
+                          struct ProcessFdPair *aFdPair_),
+                    {
+                        return pipe2(aFdPair_->mFds, *aFlags_);
+                    }))),
+         -1 == fdPair.mFds[0] || -1 == fdPair.mFds[1]),
         {
-            fd[0] = -1;
-            fd[1] = -1;
+            fdPair.mFds[0] = -1;
+            fdPair.mFds[1] = -1;
         });
 
     ERROR_IF(
-        -1 == fd[0] || -1 == fd[1],
-        {
-            errno = EINVAL;
-        });
-
-    ensure( ! stdFd(fd[0]));
-    ensure( ! stdFd(fd[1]));
-
-    ERROR_IF(
-        createFile(&self->mRdFile_, fd[0]));
+        createFile(&self->mRdFile_, fdPair.mFds[0]));
     self->mRdFile = &self->mRdFile_;
 
-    fd[0] = -1;
+    fdPair.mFds[0] = -1;
 
     ERROR_IF(
-        createFile(&self->mWrFile_, fd[1]));
+        createFile(&self->mWrFile_, fdPair.mFds[1]));
     self->mWrFile = &self->mWrFile_;
 
-    fd[1] = -1;
+    fdPair.mFds[1] = -1;
 
     rc = 0;
 
@@ -87,8 +91,8 @@ Finally:
 
     FINALLY
     ({
-        fd[0] = closeFd(fd[0]);
-        fd[1] = closeFd(fd[1]);
+        fdPair.mFds[0] = closeFd(fdPair.mFds[0]);
+        fdPair.mFds[1] = closeFd(fdPair.mFds[1]);
 
         if (rc)
         {
