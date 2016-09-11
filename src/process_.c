@@ -2343,6 +2343,160 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static CHECKED int
+openProcessFd_(int aFd)
+{
+    int rc = -1;
+    int fd = -1;
+
+    int stdfds[3];
+
+    for (unsigned ix = 0; NUMBEROF(stdfds) > ix; ++ix)
+        stdfds[ix] = -1;
+
+    if (-1 != aFd)
+    {
+        if (STDIN_FILENO  != aFd &&
+            STDOUT_FILENO != aFd &&
+            STDERR_FILENO != aFd)
+        {
+            fd  = aFd;
+            aFd = -1;
+        }
+        else
+        {
+            /* The file descriptor collides with either stdin, stdout or
+             * stderr. Duplicate the file descriptor until a satisfactory
+             * alternative is found. */
+
+            for (unsigned ix = 0; NUMBEROF(stdfds) > ix; ++ix)
+            {
+                ensure(-1 == fd);
+
+                ERROR_IF(
+                    (fd = dup(aFd), -1 == fd));
+
+                if (STDIN_FILENO  != fd &&
+                    STDOUT_FILENO != fd &&
+                    STDERR_FILENO != fd)
+                    break;
+
+                stdfds[ix] = fd;
+
+                fd = -1;
+            }
+        }
+    }
+
+    rc = fd;
+
+Finally:
+
+    FINALLY
+    ({
+        for (unsigned ix = 0; NUMBEROF(stdfds) > ix; ++ix)
+            stdfds[ix] = closeFd(stdfds[ix]);
+
+        if ( ! rc)
+            aFd = closeFd(aFd);
+    });
+
+    return rc;
+}
+
+int
+openProcessFd(struct OpenProcessFdMethod aMethod)
+{
+    int rc = -1;
+    int fd = -1;
+
+    struct ProcessForkChildLock *forkLock = 0;
+
+    if ( ! ownOpenProcessFdMethodNil(aMethod))
+    {
+        /* Prevent fork from creating a child process when the file
+         * descriptor has not been finalised. */
+
+        forkLock = acquireProcessForkChildLock_(&processForkChildLock_);
+
+        ERROR_IF(
+            (fd = callOpenProcessFdMethod(aMethod), -1 == fd));
+
+        int dupfd;
+        ERROR_IF(
+            (dupfd = openProcessFd_(fd), -1 == dupfd));
+        fd = dupfd;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        forkLock = releaseProcessForkChildLock_(forkLock);
+
+        if (rc)
+            fd = closeFd(fd);
+    });
+
+    return fd;
+}
+
+struct ProcessFdPair
+openProcessFdPair(struct OpenProcessFdPairMethod aMethod)
+{
+    int rc = -1;
+
+    struct ProcessFdPair fdPair;
+
+    for (unsigned ix = 0; NUMBEROF(fdPair.mFds) > ix; ++ix)
+        fdPair.mFds[ix] = -1;
+
+    struct ProcessForkChildLock *forkLock = 0;
+
+    if ( ! ownOpenProcessFdPairMethodNil(aMethod))
+    {
+        /* Prevent fork from creating a child process when the file
+         * descriptor has not been finalised. */
+
+        forkLock = acquireProcessForkChildLock_(&processForkChildLock_);
+
+        ERROR_IF(
+            callOpenProcessFdPairMethod(aMethod, &fdPair),
+            {
+                for (unsigned ix = 0; NUMBEROF(fdPair.mFds) > ix; ++ix)
+                    fdPair.mFds[ix] = -1;
+            });
+
+        for (unsigned ix = 0; NUMBEROF(fdPair.mFds) > ix; ++ix)
+        {
+            int dupfd;
+            ERROR_IF(
+                (dupfd = openProcessFd_(fdPair.mFds[ix]), -1 == dupfd));
+            fdPair.mFds[ix] = dupfd;
+        }
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        forkLock = releaseProcessForkChildLock_(forkLock);
+
+        if (rc)
+        {
+            for (unsigned ix = 0; NUMBEROF(fdPair.mFds) > ix; ++ix)
+                fdPair.mFds[ix] = closeFd(fdPair.mFds[ix]);
+        }
+    });
+
+    return fdPair;
+}
+
+/* -------------------------------------------------------------------------- */
 struct Pid
 forkProcessChild(enum ForkProcessOption   aOption,
                  struct Pgid              aPgid,

@@ -886,4 +886,136 @@ TEST_F(ProcessTest, ProcessFork)
     forkArg.mMutex = destroyMutex(forkArg.mMutex);
 }
 
+TEST_F(ProcessTest, OpenFd)
+{
+    int testfds[] = { STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO };
+
+    for (unsigned ix = 0; NUMBEROF(testfds) > ix; ++ix)
+    {
+        int testfd = testfds[ix];
+
+        int pipe1[2];
+        int pipe2[2];
+
+        EXPECT_EQ(0, pipe(pipe1));
+        EXPECT_EQ(0, pipe(pipe2));
+
+        int stdfd = dup(testfd);
+        EXPECT_NE(-1, stdfd);
+        while (closeFd(testfd))
+            break;
+
+        int fd;
+
+        fd = openProcessFd(
+            OpenProcessFdMethod(
+                (char *) "",
+                LAMBDA(
+                    int, (char *self_),
+                    {
+                        errno = ENOSYS;
+                        return -1;
+                    })));
+        EXPECT_EQ(-1, fd);
+        EXPECT_EQ(ENOSYS, errno);
+
+        fd = openProcessFd(
+            OpenProcessFdMethod(
+                (char *) "",
+                LAMBDA(
+                    int, (char *self_),
+                    {
+                        return socket(AF_UNIX, SOCK_STREAM, 0);
+                    })));
+
+        EXPECT_NE(-1, fd);
+        EXPECT_NE(testfd, fd);
+        EXPECT_NE(STDIN_FILENO, fd);
+        EXPECT_NE(STDOUT_FILENO, fd);
+        EXPECT_NE(STDERR_FILENO, fd);
+
+        EXPECT_NE(-1, dup2(stdfd, testfd));
+
+        pipe1[0] = closeFd(pipe1[0]);
+        pipe1[1] = closeFd(pipe1[1]);
+        pipe2[0] = closeFd(pipe2[0]);
+        pipe2[1] = closeFd(pipe2[1]);
+
+        fd    = closeFd(fd);
+        stdfd = closeFd(stdfd);
+    }
+}
+
+TEST_F(ProcessTest, OpenFdPair)
+{
+    int testfds[] = { STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO };
+
+    for (unsigned ix = 0; NUMBEROF(testfds) > ix; ++ix)
+    {
+        int testfd = testfds[ix];
+
+        int pipe1[2];
+        int pipe2[2];
+
+        EXPECT_EQ(0, pipe(pipe1));
+        EXPECT_EQ(0, pipe(pipe2));
+
+        int stdfd = dup(testfd);
+        EXPECT_NE(-1, stdfd);
+        while (closeFd(testfd))
+            break;
+
+        struct ProcessFdPair fdPair;
+
+        fdPair = openProcessFdPair(
+            OpenProcessFdPairMethod(
+                (char *) "",
+                LAMBDA(
+                    int, (char                 *self_,
+                          struct ProcessFdPair *aPair),
+                    {
+                        aPair->mFds[0] = -2;
+                        aPair->mFds[0] = -3;
+
+                        errno = ENOSYS;
+                        return -1;
+                    })));
+
+        EXPECT_EQ(-1, fdPair.mFds[0]);
+        EXPECT_EQ(-1, fdPair.mFds[1]);
+
+        fdPair = openProcessFdPair(
+            OpenProcessFdPairMethod(
+                (char *) "",
+                LAMBDA(
+                    int, (char                 *self_,
+                          struct ProcessFdPair *aPair),
+                    {
+                        return pipe(aPair->mFds);
+                    })));
+
+        EXPECT_NE(-1, fdPair.mFds[0]);
+        EXPECT_NE(-1, fdPair.mFds[1]);
+        EXPECT_NE(testfd, fdPair.mFds[0]);
+        EXPECT_NE(testfd, fdPair.mFds[1]);
+        EXPECT_NE(STDIN_FILENO, fdPair.mFds[0]);
+        EXPECT_NE(STDIN_FILENO, fdPair.mFds[1]);
+        EXPECT_NE(STDOUT_FILENO, fdPair.mFds[0]);
+        EXPECT_NE(STDOUT_FILENO, fdPair.mFds[1]);
+        EXPECT_NE(STDERR_FILENO, fdPair.mFds[0]);
+        EXPECT_NE(STDERR_FILENO, fdPair.mFds[1]);
+
+        EXPECT_NE(-1, dup2(stdfd, testfd));
+
+        pipe1[0] = closeFd(pipe1[0]);
+        pipe1[1] = closeFd(pipe1[1]);
+        pipe2[0] = closeFd(pipe2[0]);
+        pipe2[1] = closeFd(pipe2[1]);
+
+        fdPair.mFds[0] = closeFd(fdPair.mFds[0]);
+        fdPair.mFds[1] = closeFd(fdPair.mFds[1]);
+        stdfd = closeFd(stdfd);
+    }
+}
+
 #include "../googletest/src/gtest_main.cc"

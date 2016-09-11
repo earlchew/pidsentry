@@ -52,7 +52,58 @@ struct PreForkProcess
     struct FdSet *mWhitelistFds;
 };
 
+struct ProcessFdPair
+{
+    int mFds[2];
+};
+
 END_C_SCOPE;
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_OpenProcessFdMethod    int
+#define METHOD_CONST_OpenProcessFdMethod
+#define METHOD_ARG_LIST_OpenProcessFdMethod  ()
+#define METHOD_CALL_LIST_OpenProcessFdMethod ()
+
+#define METHOD_NAME      OpenProcessFdMethod
+#define METHOD_RETURN    METHOD_RETURN_OpenProcessFdMethod
+#define METHOD_CONST     METHOD_CONST_OpenProcessFdMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_OpenProcessFdMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_OpenProcessFdMethod
+#include "method_.h"
+
+#define OpenProcessFdMethod(Object_, Method_)     \
+    METHOD_TRAMPOLINE(                            \
+        Object_, Method_,                         \
+        OpenProcessFdMethod_,                     \
+        METHOD_RETURN_OpenProcessFdMethod,        \
+        METHOD_CONST_OpenProcessFdMethod,         \
+        METHOD_ARG_LIST_OpenProcessFdMethod,      \
+        METHOD_CALL_LIST_OpenProcessFdMethod)
+
+/* -------------------------------------------------------------------------- */
+#define METHOD_DEFINITION
+#define METHOD_RETURN_OpenProcessFdPairMethod    int
+#define METHOD_CONST_OpenProcessFdPairMethod
+#define METHOD_ARG_LIST_OpenProcessFdPairMethod  (struct ProcessFdPair *aPair_)
+#define METHOD_CALL_LIST_OpenProcessFdPairMethod (aPair_)
+
+#define METHOD_NAME      OpenProcessFdPairMethod
+#define METHOD_RETURN    METHOD_RETURN_OpenProcessFdPairMethod
+#define METHOD_CONST     METHOD_CONST_OpenProcessFdPairMethod
+#define METHOD_ARG_LIST  METHOD_ARG_LIST_OpenProcessFdPairMethod
+#define METHOD_CALL_LIST METHOD_CALL_LIST_OpenProcessFdPairMethod
+#include "method_.h"
+
+#define OpenProcessFdPairMethod(Object_, Method_)     \
+    METHOD_TRAMPOLINE(                                \
+        Object_, Method_,                             \
+        OpenProcessFdPairMethod_,                     \
+        METHOD_RETURN_OpenProcessFdPairMethod,        \
+        METHOD_CONST_OpenProcessFdPairMethod,         \
+        METHOD_ARG_LIST_OpenProcessFdPairMethod,      \
+        METHOD_CALL_LIST_OpenProcessFdPairMethod)
 
 /* -------------------------------------------------------------------------- */
 #define METHOD_DEFINITION
@@ -365,6 +416,12 @@ bool
 checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
+CHECKED int
+openProcessFd(struct OpenProcessFdMethod aMethod);
+
+CHECKED struct ProcessFdPair
+openProcessFdPair(struct OpenProcessFdPairMethod aMethod);
+
 CHECKED struct Pid
 forkProcessChildX(enum ForkProcessOption             aOption,
                   struct Pgid                        aPgid,
