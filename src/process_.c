@@ -2393,24 +2393,27 @@ openProcessFd_(int aFd)
 
             for (unsigned ix = 0; NUMBEROF(stdfds) > ix; ++ix)
             {
-                ensure(-1 == fd);
+                int dupfd;
 
                 ERROR_IF(
-                    (fd = dup(aFd), -1 == fd));
+                    (dupfd = dup(aFd), -1 == dupfd));
 
-                if (STDIN_FILENO  != fd &&
-                    STDOUT_FILENO != fd &&
-                    STDERR_FILENO != fd)
+                if (STDIN_FILENO  != dupfd &&
+                    STDOUT_FILENO != dupfd &&
+                    STDERR_FILENO != dupfd)
+                {
+                    fd = dupfd;
                     break;
+                }
 
-                stdfds[ix] = fd;
-
-                fd = -1;
+                stdfds[ix] = dupfd;
             }
+
+            ensure(-1 != fd);
         }
     }
 
-    rc = fd;
+    rc = 0;
 
 Finally:
 
@@ -2423,7 +2426,7 @@ Finally:
             aFd = closeFd(aFd);
     });
 
-    return rc;
+    return rc ? rc : fd;
 }
 
 int
