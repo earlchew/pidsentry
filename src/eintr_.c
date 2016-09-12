@@ -32,6 +32,7 @@
 #include "dl_.h"
 #include "error_.h"
 #include "timekeeping_.h"
+#include "random_.h"
 #include "test_.h"
 
 #include <unistd.h>
@@ -1028,7 +1029,7 @@ interruptSystemCall(enum SystemCallKind aKind, const char *aErrName)
 
     uintptr_t addr = 0;
 
-    if (testAction(TestLevelRace) && 1 > random() % 10)
+    if (testAction(TestLevelRace) && 1 > fetchRandomRange(10))
         debug(0,
               "inject %s into %s",
               (aErrName ? aErrName : "EINTR"),
