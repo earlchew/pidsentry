@@ -285,9 +285,6 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
     struct RunAgentProcess_  agentChild_;
     struct RunAgentProcess_ *agentChild = 0;
 
-    struct StdFdFiller  stdFdFiller_;
-    struct StdFdFiller *stdFdFiller = 0;
-
     ERROR_IF(
         createJobControl(&jobControl_));
     jobControl = &jobControl_;
@@ -349,26 +346,6 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
                             WatchProcessMethod(self, raiseAgentStop_),
                             WatchProcessMethod(self, raiseAgentResume_)));
 
-    /* Hold a reference to stderr, but do not hold references to the
-     * original stdin and stdout to allow the monitored process to control
-     * when those file descriptors are released. */
-
-    {
-        ERROR_IF(
-            createStdFdFiller(&stdFdFiller_));
-        stdFdFiller = &stdFdFiller_;
-
-        ERROR_IF(
-            STDIN_FILENO != dup2(
-                stdFdFiller->mFile[0]->mFd, STDIN_FILENO));
-
-        ERROR_IF(
-            STDOUT_FILENO != dup2(
-                stdFdFiller->mFile[1]->mFd, STDOUT_FILENO));
-
-        stdFdFiller = closeStdFdFiller(stdFdFiller);
-    }
-
     {
         struct ChildProcessState agentState;
         ERROR_IF(
@@ -420,7 +397,6 @@ Finally:
     ({
         finally_warn_if(rc, self, printAgent);
 
-        stdFdFiller   = closeStdFdFiller(stdFdFiller);
         agentChild    = closeAgentChildProcess_(agentChild);
         parentProcess = closeParentProcess(parentProcess);
         jobControl    = closeJobControl(jobControl);
