@@ -43,6 +43,7 @@
 #include "system_.h"
 #include "lambda_.h"
 #include "fdset_.h"
+#include "random_.h"
 #include "eintr_.h"
 
 #include <stdio.h>
@@ -2118,7 +2119,7 @@ forkProcessChild_PostChild_(
      * behaviour of the parent. This is primarily useful for
      * testing. */
 
-    srandom(ownProcessId().mPid);
+    scrambleRandomSeed(ownProcessId().mPid);
 
     if (ForkProcessSetSessionLeader == aOption)
     {
@@ -2588,7 +2589,7 @@ forkProcessChild(enum ForkProcessOption   aOption,
          * behaviour of the parent. This is primarily useful for
          * testing. */
 
-        srandom(ownProcessId().mPid);
+        scrambleRandomSeed(ownProcessId().mPid);
 
         if (ForkProcessSetSessionLeader == aOption)
         {
@@ -3369,8 +3370,6 @@ Process_init(struct ProcessModule *self, const char *aArg0)
         do
             --processTimeBase_.monotonic.ns;
         while ( ! processTimeBase_.monotonic.ns);
-
-        srandom(ownProcessId().mPid);
 
         moduleInitOnce_ = true;
     }
