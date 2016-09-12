@@ -67,11 +67,7 @@ createPipe(struct Pipe *self, unsigned aFlags)
                     {
                         return pipe2(aFdPair_->mFds, *aFlags_);
                     }))),
-         -1 == fdPair.mFds[0] || -1 == fdPair.mFds[1]),
-        {
-            fdPair.mFds[0] = -1;
-            fdPair.mFds[1] = -1;
-        });
+         -1 == fdPair.mFds[0] || -1 == fdPair.mFds[1]));
 
     ERROR_IF(
         createFile(&self->mRdFile_, fdPair.mFds[0]));
