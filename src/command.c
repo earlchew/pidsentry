@@ -37,6 +37,7 @@
 #include "pidsignature_.h"
 #include "timescale_.h"
 #include "process_.h"
+#include "fdset_.h"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -44,6 +45,16 @@
 #include <ctype.h>
 
 #include <sys/un.h>
+
+/* -------------------------------------------------------------------------- */
+struct Command *
+closeCommand(struct Command *self)
+{
+    if (self)
+        self->mKeeperTether = closeUnixSocket(self->mKeeperTether);
+
+    return 0;
+}
 
 /* -------------------------------------------------------------------------- */
 enum CommandStatus
@@ -206,22 +217,116 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-struct RunCommandProcess_
+struct CommandProcess_
 {
-    struct Command     *mCommand;
-    struct Pipe        *mSyncPipe;
-    const char * const *mCmd;
+    struct Command *mCommand;
+
+    struct ShellCommand  mShellCommand_;
+    struct ShellCommand *mShellCommand;
 };
 
+static CHECKED struct CommandProcess_ *
+closeCommandProcess_(struct CommandProcess_ *self)
+{
+    if (self)
+    {
+        self->mShellCommand = closeShellCommand(self->mShellCommand);
+    }
+
+    return 0;
+}
+
 static CHECKED int
-runCommandChildProcess_(struct RunCommandProcess_ *self)
+createCommandProcess_(struct CommandProcess_ *self,
+                      struct Command         *aCommand,
+                      const char * const     *aCmd)
 {
     int rc = -1;
 
-    struct ShellCommand  shellCommand_;
-    struct ShellCommand *shellCommand = 0;
+    self->mCommand      = aCommand;
+    self->mShellCommand = 0;
+
+    ERROR_IF(
+        createShellCommand(&self->mShellCommand_, aCmd));
+    self->mShellCommand = &self->mShellCommand_;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            self = closeCommandProcess_(self);
+    });
+
+    return rc;
+}
+
+static CHECKED int
+runCommandProcess_(struct CommandProcess_ *self)
+{
+    int rc = -1;
+
+    execShellCommand(self->mShellCommand);
+
+    warn(errno,
+         "Unable to execute '%s'", ownShellCommandText(self->mShellCommand));
+
+    rc = EXIT_FAILURE;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED int
+prepareCommandProcess_(struct CommandProcess_      *self,
+                       const struct PreForkProcess *aPreFork)
+{
+    int rc = -1;
+
+    ERROR_IF(
+        insertFdSetRange(
+            aPreFork->mWhitelistFds,
+            FdRange(0, INT_MAX)));
+
+    ERROR_IF(
+        insertFdSetRange(
+            aPreFork->mBlacklistFds,
+            FdRange(0, INT_MAX)));
+
+    if (self->mCommand->mKeeperTether)
+        ERROR_IF(
+            removeFdSetFile(
+                aPreFork->mBlacklistFds,
+                self->mCommand->mKeeperTether->mSocket->mFile));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED int
+postCommandProcessChild_(struct CommandProcess_ *self)
+{
+    int rc = -1;
 
     self->mCommand->mPid = ownProcessId();
+
+    /* Do not allow the child process to retain a reference to the tether
+     * to avoid giving it a chance to scribble into it. */
+
+    self->mCommand->mKeeperTether = closeUnixSocket(
+        self->mCommand->mKeeperTether);
 
     debug(0,
           "starting command process pid %" PRId_Pid,
@@ -245,46 +350,33 @@ runCommandChildProcess_(struct RunCommandProcess_ *self)
         debug(0, "%s=%s", pidSentryPidEnv, watchdogChildPid);
     }
 
-    /* Wait here until the parent process has completed its
-     * initialisation, and sends a positive acknowledgement. */
-
-    closePipeWriter(self->mSyncPipe);
-
-    char buf[1];
-
-    ssize_t rdlen;
-    ERROR_IF(
-        (rdlen = readFile(self->mSyncPipe->mRdFile, buf, sizeof(buf), 0),
-         -1 == rdlen));
-
-    self->mSyncPipe = closePipe(self->mSyncPipe);
-
-    debug(0, "command process synchronised");
-
-    /* Exit in sympathy if the parent process did not indicate
-     * that it intialised successfully. Otherwise attempt to
-     * execute the specified program. */
-
-    if (1 == rdlen)
-    {
-        ERROR_IF(
-            createShellCommand(&shellCommand_, self->mCmd));
-        shellCommand = &shellCommand_;
-
-        execShellCommand(shellCommand);
-
-        warn(errno,
-             "Unable to execute '%s'", ownShellCommandText(shellCommand));
-    }
-
-    rc = EXIT_FAILURE;
+    rc = 0;
 
 Finally:
 
-    FINALLY
-    ({
-        shellCommand = closeShellCommand(shellCommand);
-    });
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED int
+postCommandProcessParent_(struct CommandProcess_ *self,
+                          struct Pid              aPid)
+{
+    int rc = -1;
+
+    self->mCommand->mPid = aPid;
+
+    debug(0,
+          "running command pid %" PRId_Pid,
+          FMTd_Pid(self->mCommand->mPid));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
 
     return rc;
 }
@@ -297,52 +389,27 @@ runCommand(struct Command     *self,
 {
     int rc = -1;
 
-    struct Pid pid = Pid(-1);
-
-    struct Pipe  syncPipe_;
-    struct Pipe *syncPipe = 0;
+    struct CommandProcess_  commandProcess_;
+    struct CommandProcess_ *commandProcess = 0;
 
     ERROR_IF(
-        createPipe(&syncPipe_, O_CLOEXEC));
-    syncPipe = &syncPipe_;
+        createCommandProcess_(&commandProcess_, self, aCmd));
+    commandProcess = &commandProcess_;
 
-    struct RunCommandProcess_ commandProcess =
-    {
-        .mCommand  = self,
-        .mSyncPipe = syncPipe,
-        .mCmd      = aCmd,
-    };
-
+    struct Pid pid;
     ERROR_IF(
-        (pid = forkProcessChild(
+        (pid = forkProcessChildX(
             ForkProcessInheritProcessGroup,
             Pgid(0),
-            ForkProcessMethod(&commandProcess, runCommandChildProcess_)),
+            PreForkProcessMethod(
+                commandProcess, prepareCommandProcess_),
+            PostForkChildProcessMethod(
+                commandProcess, postCommandProcessChild_),
+            PostForkParentProcessMethod(
+                commandProcess, postCommandProcessParent_),
+            ForkProcessMethod(
+                commandProcess, runCommandProcess_)),
          -1 == pid.mPid));
-
-    self->mPid = pid;
-
-    debug(0,
-          "running command pid %" PRId_Pid,
-          FMTd_Pid(self->mPid));
-
-    ERROR_IF(
-        purgeProcessOrphanedFds());
-
-    /* Only send a positive acknowledgement to the command process
-     * after initialisation is successful. If initialisation fails,
-     * the command process will terminate sympathetically. */
-
-    closePipeReader(syncPipe);
-
-    {
-        char buf[1] = { 0 };
-
-        ssize_t wrlen;
-        ERROR_IF(
-            (wrlen = writeFile(syncPipe->mWrFile, buf, sizeof(buf), 0),
-             -1 == wrlen || (errno = EIO, 1 != wrlen)));
-    }
 
     rc = 0;
 
@@ -350,7 +417,7 @@ Finally:
 
     FINALLY
     ({
-        syncPipe = closePipe(syncPipe);
+        commandProcess = closeCommandProcess_(commandProcess);
     });
 
     return rc;
@@ -396,16 +463,6 @@ Finally:
     FINALLY({});
 
     return rc;
-}
-
-/* -------------------------------------------------------------------------- */
-struct Command *
-closeCommand(struct Command *self)
-{
-    if (self)
-        self->mKeeperTether = closeUnixSocket(self->mKeeperTether);
-
-    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
