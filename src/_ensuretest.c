@@ -37,8 +37,6 @@ int main(int argc, char **argv)
 {
     gOptions.mTest = TestLevelRace;
 
-    srandom(getpid());
-
     errorEnsure(__func__, __FILE__, __LINE__, 0);
 
     return EXIT_FAILURE;
