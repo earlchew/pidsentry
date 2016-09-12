@@ -33,6 +33,7 @@
 #include "macros_.h"
 #include "timekeeping_.h"
 #include "env_.h"
+#include "random_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -65,7 +66,7 @@ testAction(enum TestLevel aLevel)
     /* If test mode has been enabled, choose to activate a test action
      * a small percentage of the time. */
 
-    return aLevel <= gOptions.mTest && 3 > random() % 10;
+    return aLevel <= gOptions.mTest && 3 > fetchRandomRange(10);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -86,7 +87,7 @@ testSleep(enum TestLevel aLevel)
             slept = true;
             monotonicSleep(
                 Duration(
-                    NSECS(MicroSeconds(random() % (500 * 1000)))));
+                    NSECS(MicroSeconds(fetchRandomRange(500 * 1000)))));
         }
     }
 
@@ -121,7 +122,7 @@ testFinally(const struct ErrorFrame *aFrame)
                 { EIO,   "EIO" },
             };
 
-            unsigned choice = random() % NUMBEROF(errTable);
+            unsigned choice = fetchRandomRange(NUMBEROF(errTable));
 
             debug(0,
                   "inject %s into %s %s %u",
