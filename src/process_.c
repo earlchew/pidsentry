@@ -2320,6 +2320,20 @@ forkProcessChildX(enum ForkProcessOption             aOption,
         break;
 
     case 0:
+        {
+            /* At the first chance, reset the fork lock so that
+             * its internal state can be synchronised to the new
+             * child process. This allows the code in the
+             * PostForkChildProcessMethod to invoke
+             * acquireProcessForkChildLock_() without triggering
+             * assertions. */
+
+            struct ProcessForkChildLock *childForkLock = forkLock;
+
+            forkLock = releaseProcessForkChildLock_(forkLock);
+            forkLock = acquireProcessForkChildLock_(childForkLock);
+        }
+
         forkProcessChild_PostChild_(
                 forkChannel,
                 aOption,
