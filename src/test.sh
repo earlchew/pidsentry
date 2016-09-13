@@ -25,7 +25,8 @@ pidsentry()
         ( pidsentryexec "$@" ) ||
         {
             set -- $?
-            [ x"$1" != x"$PIDSENTRY_VALGRIND_ERROR" ] ||
+            { [ x"$1" != x"$PIDSENTRY_VALGRIND_ERROR" ] &&
+              [ x"$1" != x"$((128 + 6))" ]              ; } ||
                 kill -15 "$PIDSENTRY_TEST_PID"
             return $1
         }
