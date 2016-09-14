@@ -89,13 +89,18 @@ static struct
     .mMutex  = &processLock_.mMutex_,
 };
 
-static struct ProcessForkChildLock
+struct ForkProcessChannel_;
+
+static struct ProcessForkChildLock_
 {
     pthread_mutex_t  mMutex_;
     pthread_mutex_t *mMutex;
     struct Pid       mProcess;
     struct Tid       mThread;
     unsigned         mCount;
+
+    struct ForkProcessChannel_ *mChannelList;
+
 } processForkChildLock_ =
 {
     .mMutex_ = PTHREAD_MUTEX_INITIALIZER,
@@ -1422,8 +1427,8 @@ ownProcessAppLockFile(const struct ProcessAppLock *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct ProcessForkChildLock *
-acquireProcessForkChildLock_(struct ProcessForkChildLock *self)
+static CHECKED struct ProcessForkChildLock_ *
+acquireProcessForkChildLock_(struct ProcessForkChildLock_ *self)
 {
     struct Tid tid = ownThreadId();
     struct Pid pid = ownProcessId();
@@ -1449,8 +1454,8 @@ acquireProcessForkChildLock_(struct ProcessForkChildLock *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct ProcessForkChildLock *
-releaseProcessForkChildLock_(struct ProcessForkChildLock *self)
+static CHECKED struct ProcessForkChildLock_ *
+releaseProcessForkChildLock_(struct ProcessForkChildLock_ *self)
 {
     if (self)
     {
@@ -1642,6 +1647,9 @@ struct ForkProcessResult_
 
 struct ForkProcessChannel_
 {
+    struct ForkProcessChannel_  *mPrev;
+    struct ForkProcessChannel_ **mList;
+
     struct Pipe  mResultPipe_;
     struct Pipe *mResultPipe;
 
@@ -1655,6 +1663,9 @@ closeForkProcessChannel_(
 {
     if (self)
     {
+        *self->mList = self->mPrev;
+        self->mPrev  = 0;
+
         self->mResultSocket = closeBellSocketPair(self->mResultSocket);
         self->mResultPipe   = closePipe(self->mResultPipe);
     }
@@ -1680,7 +1691,7 @@ closeForkProcessChannelResultParent_(
 
 static CHECKED int
 createForkProcessChannel_(
-    struct ForkProcessChannel_ *self)
+    struct ForkProcessChannel_ *self, struct ForkProcessChannel_ **aList)
 {
     int rc = -1;
 
@@ -1689,6 +1700,10 @@ createForkProcessChannel_(
 
     self->mResultPipe   = 0;
     self->mResultSocket = 0;
+    self->mList         = aList;
+
+    self->mPrev  = *aList;
+    *self->mList = self;
 
     /* Prevent the fork communication channels from inadvertently becoming
      * stdin, stdout or stderr. */
@@ -2233,7 +2248,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
      * a raw fork() will synchronise with this code via the pthread_atfork()
      * handler. */
 
-    struct ProcessForkChildLock *forkLock =
+    struct ProcessForkChildLock_ *forkLock =
         acquireProcessForkChildLock_(&processForkChildLock_);
 
     ensure(ForkProcessSetProcessGroup == aOption || ! aPgid.mPgid);
@@ -2261,7 +2276,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
      * not visible to that method. */
 
     ERROR_IF(
-        createForkProcessChannel_(&forkChannel_));
+        createForkProcessChannel_(&forkChannel_, &forkLock->mChannelList));
     forkChannel = &forkChannel_;
 
     /* Always include stdin, stdout and stderr in the whitelisted
@@ -2328,7 +2343,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
              * acquireProcessForkChildLock_() without triggering
              * assertions. */
 
-            struct ProcessForkChildLock *childForkLock = forkLock;
+            struct ProcessForkChildLock_ *childForkLock = forkLock;
 
             forkLock = releaseProcessForkChildLock_(forkLock);
             forkLock = acquireProcessForkChildLock_(childForkLock);
@@ -2450,7 +2465,7 @@ openProcessFd(struct OpenProcessFdMethod aMethod)
     int rc = -1;
     int fd = -1;
 
-    struct ProcessForkChildLock *forkLock = 0;
+    struct ProcessForkChildLock_ *forkLock = 0;
 
     if ( ! ownOpenProcessFdMethodNil(aMethod))
     {
@@ -2493,7 +2508,7 @@ openProcessFdPair(struct OpenProcessFdPairMethod aMethod)
     for (unsigned ix = 0; NUMBEROF(fdPair.mFds) > ix; ++ix)
         fdPair.mFds[ix] = -1;
 
-    struct ProcessForkChildLock *forkLock = 0;
+    struct ProcessForkChildLock_ *forkLock = 0;
 
     if ( ! ownOpenProcessFdPairMethodNil(aMethod))
     {
@@ -3318,7 +3333,7 @@ postForkChild_(void)
     completeFork_();
 }
 
-static struct ProcessForkChildLock *processAtForkLock_;
+static struct ProcessForkChildLock_ *processAtForkLock_;
 
 static void
 prepareProcessFork_(void)
@@ -3335,7 +3350,7 @@ postProcessForkParent_(void)
     if (moduleInit_)
         postForkParent_();
 
-    struct ProcessForkChildLock *lock = processAtForkLock_;
+    struct ProcessForkChildLock_ *lock = processAtForkLock_;
 
     processAtForkLock_ = 0;
 
@@ -3348,7 +3363,7 @@ postProcessForkChild_(void)
     if (moduleInit_)
         postForkChild_();
 
-    struct ProcessForkChildLock *lock = processAtForkLock_;
+    struct ProcessForkChildLock_ *lock = processAtForkLock_;
 
     processAtForkLock_ = 0;
 
