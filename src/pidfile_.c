@@ -431,40 +431,21 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-struct Pid
-openPidFile(struct PidFile *self, unsigned aFlags)
+static CHECKED struct Pid
+createPidFile_(struct PidFile *self, unsigned aFlags)
 {
     int rc = -1;
 
-    struct Pid pid = Pid(-1);
-
     struct PidSignature *pidSignature = 0;
 
-    ERROR_IF(
-        self->mFile || self->mLock,
-        {
-            errno = EALREADY;
-        });
-    self->mLock = 0;
+    struct Pid pid = Pid(-1);
 
-    ERROR_IF(
-        aFlags & ~ (O_CLOEXEC | O_CREAT),
-        {
-            errno = EINVAL;
-        });
+    ensure( ! (aFlags & ~ O_CLOEXEC));
+    ensure( ! self->mFile);
 
-    unsigned openFlags = aFlags & O_CLOEXEC;
+    int err;
 
-    if ( ! (aFlags & O_CREAT))
-    {
-        ERROR_IF(
-            createFile(
-                &self->mFile_,
-                openPathName(self->mPathName,
-                             O_RDONLY | O_NOFOLLOW | openFlags, 0)));
-        self->mFile = &self->mFile_;
-    }
-    else
+    do
     {
         /* If O_CREAT is specified, a successful return provides the
          * caller with a new, empty pidfile that was created
@@ -476,12 +457,11 @@ openPidFile(struct PidFile *self, unsigned aFlags)
          * pre-existing pidfile in the directory with the same name
          * must be removed, if possible. */
 
-        int err;
         ERROR_IF(
             (err = createFile(
                 &self->mFile_,
                 openPathName(self->mPathName,
-                             O_RDONLY | O_NOFOLLOW | openFlags, 0)),
+                             O_RDONLY | O_NOFOLLOW | aFlags, 0)),
              err && ENOENT != errno));
 
         if ( ! err)
@@ -539,13 +519,71 @@ openPidFile(struct PidFile *self, unsigned aFlags)
         TEST_RACE
         ({
             ERROR_IF(
-                createFile(
+                (err = createFile(
                     &self->mFile_,
                     openPathName(
                         self->mPathName,
-                        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | openFlags,
-                        S_IRUSR)));
+                        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | aFlags,
+                        S_IRUSR)),
+                 err && EEXIST != errno));
         });
+
+    } while (err);
+
+    self->mFile = &self->mFile_;
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        if (rc)
+            self->mFile = closeFile(self->mFile);
+
+        pidSignature = destroyPidSignature(pidSignature);
+    });
+
+    return rc ? pid : Pid(0);
+}
+
+struct Pid
+openPidFile(struct PidFile *self, unsigned aFlags)
+{
+    int rc = -1;
+
+    struct Pid pid = Pid(-1);
+
+    int already = -1;
+    {
+        ERROR_IF(
+            self->mFile || self->mLock,
+            {
+                errno = EALREADY;
+            });
+        self->mLock = 0;
+    }
+    already = 0;
+
+    ERROR_IF(
+        aFlags & ~ (O_CLOEXEC | O_CREAT),
+        {
+            errno = EINVAL;
+        });
+
+    unsigned openFlags = aFlags & O_CLOEXEC;
+
+    if (aFlags & O_CREAT)
+        ERROR_IF(
+            (pid = createPidFile_(self, openFlags),
+             pid.mPid));
+    else
+    {
+        ERROR_IF(
+            createFile(
+                &self->mFile_,
+                openPathName(self->mPathName,
+                             O_RDONLY | O_NOFOLLOW | openFlags, 0)));
         self->mFile = &self->mFile_;
     }
 
@@ -559,11 +597,12 @@ Finally:
     ({
         if (rc)
         {
-            self->mFile = closeFile(self->mFile);
-            self->mLock = 0;
+            if ( ! already)
+            {
+                self->mFile = closeFile(self->mFile);
+                self->mLock = 0;
+            }
         }
-
-        pidSignature = destroyPidSignature(pidSignature);
     });
 
     return rc ? pid : Pid(0);
