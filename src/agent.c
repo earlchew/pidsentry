@@ -221,10 +221,10 @@ prepareAgentChildProcessFork_(struct RunAgentProcess_     *self,
     self->mParentPipe = &self->mParentPipe_;
 
     ERROR_IF(
-        insertFdSetRange(aPreFork->mWhitelistFds, FdRange(0, INT_MAX)));
+        fillFdSet(aPreFork->mWhitelistFds));
 
     ERROR_IF(
-        insertFdSetRange(aPreFork->mBlacklistFds, FdRange(0, INT_MAX)));
+        fillFdSet(aPreFork->mBlacklistFds));
     ERROR_IF(
         removeFdSetFile(aPreFork->mBlacklistFds, self->mParentPipe->mWrFile));
     ERROR_IF(
