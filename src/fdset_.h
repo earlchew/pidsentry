@@ -119,6 +119,9 @@ CHECKED int
 invertFdSet(struct FdSet *self);
 
 CHECKED int
+fillFdSet(struct FdSet *self);
+
+CHECKED int
 insertFdSetRange(struct FdSet *self, struct FdRange aRange);
 
 CHECKED int

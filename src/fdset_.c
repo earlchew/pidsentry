@@ -270,6 +270,14 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
+fillFdSet(struct FdSet *self)
+{
+    clearFdSet(self);
+    return invertFdSet(self);
+}
+
+/* -------------------------------------------------------------------------- */
+int
 insertFdSet(struct FdSet *self, int aFd)
 {
     return insertFdSetRange(self, FdRange(aFd, aFd));
