@@ -290,14 +290,10 @@ prepareCommandProcess_(struct CommandProcess_      *self,
     int rc = -1;
 
     ERROR_IF(
-        insertFdSetRange(
-            aPreFork->mWhitelistFds,
-            FdRange(0, INT_MAX)));
+        fillFdSet(aPreFork->mWhitelistFds));
 
     ERROR_IF(
-        insertFdSetRange(
-            aPreFork->mBlacklistFds,
-            FdRange(0, INT_MAX)));
+        fillFdSet(aPreFork->mBlacklistFds));
 
     if (self->mCommand->mKeeperTether)
         ERROR_IF(
