@@ -1634,13 +1634,13 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-struct ForkProcessChildResult_
+struct ForkProcessResult_
 {
     int mReturnCode;
     int mErrCode;
 };
 
-struct ForkProcessChildChannel_
+struct ForkProcessChannel_
 {
     struct Pipe  mResultPipe_;
     struct Pipe *mResultPipe;
@@ -1649,9 +1649,9 @@ struct ForkProcessChildChannel_
     struct BellSocketPair *mResultSocket;
 };
 
-static CHECKED struct ForkProcessChildChannel_ *
-closeForkProcessChildChannel_(
-    struct ForkProcessChildChannel_ *self)
+static CHECKED struct ForkProcessChannel_ *
+closeForkProcessChannel_(
+    struct ForkProcessChannel_ *self)
 {
     if (self)
     {
@@ -1663,24 +1663,24 @@ closeForkProcessChildChannel_(
 }
 
 static void
-closeForkProcessChildResultChild_(
-    struct ForkProcessChildChannel_ *self)
+closeForkProcessChannelResultChild_(
+    struct ForkProcessChannel_ *self)
 {
     closePipeWriter(self->mResultPipe);
     closeBellSocketPairChild(self->mResultSocket);
 }
 
 static void
-closeForkProcessChildResultParent_(
-    struct ForkProcessChildChannel_ *self)
+closeForkProcessChannelResultParent_(
+    struct ForkProcessChannel_ *self)
 {
     closePipeReader(self->mResultPipe);
     closeBellSocketPairParent(self->mResultSocket);
 }
 
 static CHECKED int
-createForkProcessChildChannel_(
-    struct ForkProcessChildChannel_ *self)
+createForkProcessChannel_(
+    struct ForkProcessChannel_ *self)
 {
     int rc = -1;
 
@@ -1712,7 +1712,7 @@ Finally:
     FINALLY
     ({
         if (rc)
-            self = closeForkProcessChildChannel_(self);
+            self = closeForkProcessChannel_(self);
 
         stdFdFiller = closeStdFdFiller(stdFdFiller);
     });
@@ -1721,9 +1721,9 @@ Finally:
 }
 
 static CHECKED int
-insertForkProcessChildChannelWhitelist_(
-    const struct ForkProcessChildChannel_ *self,
-    struct FdSet                          *aWhitelist)
+insertForkProcessChannelWhitelist_(
+    const struct ForkProcessChannel_ *self,
+    struct FdSet                     *aWhitelist)
 {
     int rc = -1;
 
@@ -1757,9 +1757,9 @@ Finally:
 }
 
 static CHECKED int
-removeForkProcessChildChannelBlacklist_(
-    const struct ForkProcessChildChannel_ *self,
-    struct FdSet                          *aBlacklist)
+removeForkProcessChannelBlacklist_(
+    const struct ForkProcessChannel_ *self,
+    struct FdSet                     *aBlacklist)
 {
     int rc = -1;
 
@@ -1793,9 +1793,9 @@ Finally:
 }
 
 static CHECKED int
-sendForkProcessChildChannelResult_(
-    struct ForkProcessChildChannel_      *self,
-    const struct ForkProcessChildResult_ *aResult)
+sendForkProcessChannelResult_(
+    struct ForkProcessChannel_      *self,
+    const struct ForkProcessResult_ *aResult)
 {
     int rc = -1;
 
@@ -1816,9 +1816,9 @@ Finally:
 }
 
 static CHECKED int
-recvForkProcessChildChannelResult_(
-    struct ForkProcessChildChannel_ *self,
-    struct ForkProcessChildResult_  *aResult)
+recvForkProcessChannelResult_(
+    struct ForkProcessChannel_ *self,
+    struct ForkProcessResult_  *aResult)
 {
     int rc = -1;
 
@@ -1839,8 +1839,8 @@ Finally:
 }
 
 static CHECKED int
-recvForkProcessChildChannelAcknowledgement_(
-    struct ForkProcessChildChannel_ *self)
+recvForkProcessChannelAcknowledgement_(
+    struct ForkProcessChannel_ *self)
 {
     int rc = -1;
 
@@ -1857,8 +1857,8 @@ Finally:
 }
 
 static CHECKED int
-sendForkProcessChildChannelAcknowledgement_(
-    struct ForkProcessChildChannel_ *self)
+sendForkProcessChannelAcknowledgement_(
+    struct ForkProcessChannel_ *self)
 {
     return ringBellSocketPairParent(self->mResultSocket);
 }
@@ -1964,7 +1964,7 @@ callForkMethodX_(struct ForkProcessMethod aMethod)
 
 static CHECKED int
 forkProcessChild_PostParent_(
-    struct ForkProcessChildChannel_   *self,
+    struct ForkProcessChannel_        *self,
     enum ForkProcessOption             aOption,
     struct Pid                         aChildPid,
     struct Pgid                        aChildPgid,
@@ -2020,16 +2020,16 @@ forkProcessChild_PostParent_(
      * post fork method. This provides the parent with the potential
      * to retry the operation. */
 
-    closeForkProcessChildResultChild_(self);
+    closeForkProcessChannelResultChild_(self);
 
     ERROR_IF(
-        removeForkProcessChildChannelBlacklist_(self, aBlacklistFds));
+        removeForkProcessChannelBlacklist_(self, aBlacklistFds));
 
     {
-        struct ForkProcessChildResult_ forkResult;
+        struct ForkProcessResult_ forkResult;
 
         ERROR_IF(
-            recvForkProcessChildChannelResult_(self, &forkResult));
+            recvForkProcessChannelResult_(self, &forkResult));
 
         ERROR_IF(
             forkResult.mReturnCode,
@@ -2090,7 +2090,7 @@ forkProcessChild_PostParent_(
             closeFdOnlyBlackList(aBlacklistFds));
 
         ERROR_IF(
-            sendForkProcessChildChannelAcknowledgement_(self));
+            sendForkProcessChannelAcknowledgement_(self));
     }
 
     rc = 0;
@@ -2107,7 +2107,7 @@ Finally:
 
 static void
 forkProcessChild_PostChild_(
-    struct ForkProcessChildChannel_   *self,
+    struct ForkProcessChannel_        *self,
     enum ForkProcessOption             aOption,
     struct Pgid                        aChildPgid,
     struct PostForkChildProcessMethod  aPostForkChildMethod,
@@ -2139,10 +2139,10 @@ forkProcessChild_PostChild_(
     ERROR_IF(
         resetSignals_());
 
-    closeForkProcessChildResultParent_(self);
+    closeForkProcessChannelResultParent_(self);
 
     ERROR_IF(
-        insertForkProcessChildChannelWhitelist_(self, aWhitelistFds));
+        insertForkProcessChannelWhitelist_(self, aWhitelistFds));
 
     ERROR_IF(
         closeFdExceptWhiteList(aWhitelistFds));
@@ -2156,14 +2156,14 @@ forkProcessChild_PostChild_(
          * that it can return an error code to the caller, then wait
          * for the parent to acknowledge. */
 
-        struct ForkProcessChildResult_ forkResult =
+        struct ForkProcessResult_ forkResult =
         {
             .mReturnCode = 0,
             .mErrCode    = 0,
         };
 
-        if (sendForkProcessChildChannelResult_(self, &forkResult) ||
-            recvForkProcessChildChannelAcknowledgement_(self))
+        if (sendForkProcessChannelResult_(self, &forkResult) ||
+            recvForkProcessChannelAcknowledgement_(self))
         {
             /* Terminate the child if the result could not be sent. The
              * parent will detect the child has terminated because the
@@ -2191,15 +2191,15 @@ Finally:
          * detect that the child has terminated before sending the
          * error indication. */
 
-        struct ForkProcessChildResult_ forkResult =
+        struct ForkProcessResult_ forkResult =
         {
             .mReturnCode = rc,
             .mErrCode    = errno,
         };
 
         while (
-            sendForkProcessChildChannelResult_(self, &forkResult) ||
-            recvForkProcessChildChannelAcknowledgement_(self))
+            sendForkProcessChannelResult_(self, &forkResult) ||
+            recvForkProcessChannelAcknowledgement_(self))
         {
             break;
         }
@@ -2226,8 +2226,8 @@ forkProcessChildX(enum ForkProcessOption             aOption,
     struct FdSet  whitelistFds_;
     struct FdSet *whitelistFds = 0;
 
-    struct ForkProcessChildChannel_  forkChannel_;
-    struct ForkProcessChildChannel_ *forkChannel = 0;
+    struct ForkProcessChannel_  forkChannel_;
+    struct ForkProcessChannel_ *forkChannel = 0;
 
     /* Acquire the processForkLock_ so that other threads that issue
      * a raw fork() will synchronise with this code via the pthread_atfork()
@@ -2261,7 +2261,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
      * not visible to that method. */
 
     ERROR_IF(
-        createForkProcessChildChannel_(&forkChannel_));
+        createForkProcessChannel_(&forkChannel_));
     forkChannel = &forkChannel_;
 
     /* Always include stdin, stdout and stderr in the whitelisted
@@ -2341,7 +2341,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
                 aPostForkChildMethod,
                 whitelistFds);
 
-        forkChannel = closeForkProcessChildChannel_(forkChannel);
+        forkChannel = closeForkProcessChannel_(forkChannel);
         forkLock    = releaseProcessForkChildLock_(forkLock);
 
         callForkMethodX_(aMethod);
@@ -2356,7 +2356,7 @@ Finally:
 
     FINALLY
     ({
-        forkChannel  = closeForkProcessChildChannel_(forkChannel);
+        forkChannel  = closeForkProcessChannel_(forkChannel);
         blacklistFds = closeFdSet(blacklistFds);
         whitelistFds = closeFdSet(whitelistFds);
 
