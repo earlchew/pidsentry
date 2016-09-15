@@ -1455,7 +1455,8 @@ acquireProcessForkChildLock_(struct ProcessForkChildLock_ *self)
 
 /* -------------------------------------------------------------------------- */
 static CHECKED struct ProcessForkChildLock_ *
-releaseProcessForkChildLock_(struct ProcessForkChildLock_ *self)
+relinquishProcessForkChildLock_(struct ProcessForkChildLock_ *self,
+                                unsigned                      aRelease)
 {
     if (self)
     {
@@ -1479,7 +1480,11 @@ releaseProcessForkChildLock_(struct ProcessForkChildLock_ *self)
             self->mThread  = tid;
         }
 
-        if ( ! --self->mCount)
+        ensure(aRelease <= self->mCount);
+
+        self->mCount -= aRelease;
+
+        if ( ! self->mCount)
         {
             pthread_mutex_t *lock = self->mMutex;
 
@@ -1491,6 +1496,20 @@ releaseProcessForkChildLock_(struct ProcessForkChildLock_ *self)
     }
 
     return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED struct ProcessForkChildLock_ *
+releaseProcessForkChildLock_(struct ProcessForkChildLock_ *self)
+{
+    return relinquishProcessForkChildLock_(self, 1);
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED struct ProcessForkChildLock_ *
+resetProcessForkChildLock_(struct ProcessForkChildLock_ *self)
+{
+    return relinquishProcessForkChildLock_(self, self->mCount);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1736,9 +1755,9 @@ Finally:
 }
 
 static CHECKED int
-insertForkProcessChannelWhitelist_(
+includeForkProcessChannelFdSet_(
     const struct ForkProcessChannel_ *self,
-    struct FdSet                     *aWhitelist)
+    struct FdSet                     *aFdSet)
 {
     int rc = -1;
 
@@ -1758,7 +1777,7 @@ insertForkProcessChannelWhitelist_(
     {
         if (filelist[ix])
             ERROR_IF(
-                insertFdSetFile(aWhitelist, filelist[ix]) &&
+                insertFdSetFile(aFdSet, filelist[ix]) &&
                 EEXIST != errno);
     }
 
@@ -1772,9 +1791,9 @@ Finally:
 }
 
 static CHECKED int
-removeForkProcessChannelBlacklist_(
+excludeForkProcessChannelFdSet_(
     const struct ForkProcessChannel_ *self,
-    struct FdSet                     *aBlacklist)
+    struct FdSet                     *aFdSet)
 {
     int rc = -1;
 
@@ -1794,7 +1813,7 @@ removeForkProcessChannelBlacklist_(
     {
         if (filelist[ix])
             ERROR_IF(
-                removeFdSetFile(aBlacklist, filelist[ix]) &&
+                removeFdSetFile(aFdSet, filelist[ix]) &&
                 ENOENT != errno);
     }
 
@@ -2037,8 +2056,13 @@ forkProcessChild_PostParent_(
 
     closeForkProcessChannelResultChild_(self);
 
-    ERROR_IF(
-        removeForkProcessChannelBlacklist_(self, aBlacklistFds));
+    for (struct ForkProcessChannel_ *processChannel = self;
+         processChannel;
+         processChannel = processChannel->mPrev)
+    {
+        ERROR_IF(
+            excludeForkProcessChannelFdSet_(processChannel, aBlacklistFds));
+    }
 
     {
         struct ForkProcessResult_ forkResult;
@@ -2130,6 +2154,11 @@ forkProcessChild_PostChild_(
 {
     int rc = -1;
 
+    /* Detach this instance from its recursive ancestors if any because
+     * the child process will only interact with its direct parent. */
+
+    self->mPrev = 0;
+
     /* Ensure that the behaviour of each child diverges from the
      * behaviour of the parent. This is primarily useful for
      * testing. */
@@ -2157,7 +2186,7 @@ forkProcessChild_PostChild_(
     closeForkProcessChannelResultParent_(self);
 
     ERROR_IF(
-        insertForkProcessChannelWhitelist_(self, aWhitelistFds));
+        includeForkProcessChannelFdSet_(self, aWhitelistFds));
 
     ERROR_IF(
         closeFdExceptWhiteList(aWhitelistFds));
@@ -2345,7 +2374,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
 
             struct ProcessForkChildLock_ *childForkLock = forkLock;
 
-            forkLock = releaseProcessForkChildLock_(forkLock);
+            forkLock = resetProcessForkChildLock_(forkLock);
             forkLock = acquireProcessForkChildLock_(childForkLock);
         }
 
