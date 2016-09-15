@@ -1049,6 +1049,9 @@ pollFdCloseUmbilical_(struct ChildMonitor         *self,
     self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd     = -1;
     self->mPollFds[POLL_FD_CHILD_UMBILICAL].events = 0;
 
+    /* Since the umbilical connection is no longer being monitored, there
+     * is no reason to run its associated timer. */
+
     umbilicalTimer->mPeriod = ZeroDuration;
 
     activateFdTimerTermination_(self, ChildTermination_Terminate, aPollTime);
@@ -1296,8 +1299,7 @@ pollFdTimerUmbilical_(struct ChildMonitor         *self,
                 {
                     warn(0, "Umbilical connection timed out");
 
-                    activateFdTimerTermination_(
-                        self, ChildTermination_Terminate, aPollTime);
+                    pollFdCloseUmbilical_(self, aPollTime);
                 }
             }
         }
