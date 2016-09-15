@@ -1018,4 +1018,108 @@ TEST_F(ProcessTest, OpenFdPair)
     }
 }
 
+static int
+runSlave(void)
+{
+    int rc = -1;
+
+    do
+    {
+        struct Pid childPid =
+            forkProcessChildX(
+                ForkProcessInheritProcessGroup,
+                Pgid(0),
+                PreForkProcessMethod(
+                    (char *) "",
+                    LAMBDA(
+                        int, (char                        *self_,
+                              const struct PreForkProcess *aPreFork),
+                        {
+                            return fillFdSet(
+                                aPreFork->mBlacklistFds);
+                        })),
+                PostForkChildProcessMethodNil(),
+                PostForkParentProcessMethodNil(),
+                ForkProcessMethodNil());
+
+        if (-1 == childPid.mPid)
+            break;
+
+        int status;
+        if (reapProcessChild(childPid, &status))
+            break;
+
+        if (extractProcessExitStatus(status, childPid).mStatus)
+            break;
+
+        rc = 0;
+
+    } while (0);
+
+    return rc;
+}
+
+TEST_F(ProcessTest, ProcessForkRecursiveParent)
+{
+    struct Pid childPid = forkProcessChildX(
+        ForkProcessInheritProcessGroup,
+        Pgid(0),
+        PreForkProcessMethod(
+            (char *) "",
+            LAMBDA(
+                int, (char                        *self_,
+                      const struct PreForkProcess *aPreFork),
+                {
+                    return fillFdSet(
+                        aPreFork->mBlacklistFds);
+                })),
+        PostForkChildProcessMethodNil(),
+        PostForkParentProcessMethod(
+            (char *) "",
+            LAMBDA(
+                int, (char      *self_,
+                      struct Pid aChildPid),
+                {
+                    return runSlave();
+                })),
+        ForkProcessMethodNil());
+
+    EXPECT_NE(-1, childPid.mPid);
+
+    int status;
+    EXPECT_EQ(0, reapProcessChild(childPid, &status));
+    EXPECT_EQ(0, (extractProcessExitStatus(status, childPid).mStatus));
+}
+
+TEST_F(ProcessTest, ProcessForkRecursiveChild)
+{
+    struct Pid childPid = forkProcessChildX(
+        ForkProcessInheritProcessGroup,
+        Pgid(0),
+        PreForkProcessMethod(
+            (char *) "",
+            LAMBDA(
+                int, (char                        *self_,
+                      const struct PreForkProcess *aPreFork),
+                {
+                    return fillFdSet(
+                        aPreFork->mBlacklistFds);
+                })),
+        PostForkChildProcessMethod(
+            (char *) "",
+            LAMBDA(
+                int, (char *self_),
+                {
+                    return runSlave();
+                })),
+        PostForkParentProcessMethodNil(),
+        ForkProcessMethodNil());
+
+    EXPECT_NE(-1, childPid.mPid);
+
+    int status;
+    EXPECT_EQ(0, reapProcessChild(childPid, &status));
+    EXPECT_EQ(0, (extractProcessExitStatus(status, childPid).mStatus));
+}
+
 #include "../googletest/src/gtest_main.cc"
