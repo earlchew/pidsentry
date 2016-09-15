@@ -135,6 +135,12 @@ closeFdUmbilical_(struct UmbilicalMonitor *self)
 
     self->mPoll.mFds[POLL_FD_MONITOR_PIDSERVER].fd     = -1;
     self->mPoll.mFds[POLL_FD_MONITOR_PIDSERVER].events = 0;
+
+    /* Since the umbilical connection is no longer being monitored, there
+     * is no reason to run its associated timer. */
+
+    self->mPoll.mFdTimerActions[POLL_FD_MONITOR_TIMER_UMBILICAL].mPeriod =
+        ZeroDuration;
 }
 
 static CHECKED int
