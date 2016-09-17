@@ -39,6 +39,7 @@
 #include "error_.h"
 #include "macros_.h"
 #include "process_.h"
+#include "fdset_.h"
 #include "eintr_.h"
 
 #include <stdlib.h>
@@ -550,25 +551,63 @@ ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self)
 
 /* -------------------------------------------------------------------------- */
 static CHECKED int
-runUmbilicalProcessChild_(struct UmbilicalProcess *self)
+prepareUmbilicalProcess_(struct UmbilicalProcess     *self,
+                         const struct PreForkProcess *aPreFork)
 {
     int rc = -1;
 
-    struct ProcessAppLock *appLock = 0;
+    ERROR_IF(
+        insertFdSetFile(
+            aPreFork->mWhitelistFds,
+            self->mSocket->mParentSocket->mSocket->mFile));
 
-    struct UmbilicalMonitor  umbilicalMonitor_;
-    struct UmbilicalMonitor *umbilicalMonitor = 0;
+    ERROR_IF(
+        insertFdSetFile(
+            aPreFork->mWhitelistFds,
+            self->mSocket->mChildSocket->mSocket->mFile));
+
+    if (self->mPidServer)
+    {
+        ERROR_IF(
+            insertFdSetFile(
+                aPreFork->mWhitelistFds,
+                self->mPidServer->mUnixSocket->mSocket->mFile));
+
+        ERROR_IF(
+            insertFdSetFile(
+                aPreFork->mWhitelistFds,
+                self->mPidServer->mEventQueue->mFile));
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED int
+postUmbilicalProcessChild_(struct UmbilicalProcess *self)
+{
+    int rc = -1;
 
     self->mPid = ownProcessId();
 
     /* The umbilical process will create an anchor in the process
-     * group of the child and the sentry so that the pids will uniquely
-     * identify those process groups while the umbilical exists. */
+     * group of the child and the process group of the sentry so that
+     * the pids will uniquely identify those process groups while
+     * the umbilical exists. */
 
     ERROR_IF(
-        (self->mChildAnchor = forkProcessChild(
+        (self->mChildAnchor = forkProcessChildX(
             ForkProcessSetProcessGroup,
             self->mChildProcess->mPgid,
+            PreForkProcessMethodNil(),
+            PostForkChildProcessMethodNil(),
+            PostForkParentProcessMethodNil(),
             ForkProcessMethod(
                 "",
                 LAMBDA(
@@ -579,9 +618,12 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
          -1 == self->mChildAnchor.mPid));
 
     ERROR_IF(
-        (self->mSentryAnchor = forkProcessChild(
+        (self->mSentryAnchor = forkProcessChildX(
             ForkProcessSetProcessGroup,
             self->mSentryPgid,
+            PreForkProcessMethodNil(),
+            PostForkChildProcessMethodNil(),
+            PostForkParentProcessMethodNil(),
             ForkProcessMethod(
                 "",
                 LAMBDA(
@@ -602,14 +644,6 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
 
     closeSocketPairParent(self->mSocket);
 
-    char buf[1] = { 0 };
-
-    ssize_t wrLen;
-    ERROR_IF(
-        (wrLen = sendUnixSocket(
-            self->mSocket->mChildSocket, buf, sizeof(buf)),
-         -1 == wrLen || (errno = 0, sizeof(buf) != wrLen)));
-
     ERROR_IF(
         STDIN_FILENO !=
         dup2(self->mSocket->mChildSocket->mSocket->mFile->mFd, STDIN_FILENO));
@@ -620,26 +654,41 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
 
     self->mSocket = closeSocketPair(self->mSocket);
 
-    {
-        appLock = createProcessAppLock();
+    rc = 0;
 
-        int whiteList[] =
-        {
-            STDIN_FILENO,
-            STDOUT_FILENO,
-            STDERR_FILENO,
-            ownProcessAppLockFile(appLock)->mFd,
-            self->mPidServer
-            ? self->mPidServer->mUnixSocket->mSocket->mFile->mFd : -1,
-            self->mPidServer
-            ? self->mPidServer->mEventQueue->mFile->mFd : -1,
-        };
+Finally:
 
-        ERROR_IF(
-            closeFdDescriptors(whiteList, NUMBEROF(whiteList)));
+    FINALLY({});
 
-        appLock = destroyProcessAppLock(appLock);
-    }
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED int
+postUmbilicalProcessParent_(struct UmbilicalProcess *self,
+                            struct Pid               aChildPid)
+{
+    int rc = -1;
+
+    closeSocketPairChild(self->mSocket);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+static CHECKED int
+runUmbilicalProcessChild_(struct UmbilicalProcess *self)
+{
+    int rc = -1;
+
+    struct UmbilicalMonitor  umbilicalMonitor_;
+    struct UmbilicalMonitor *umbilicalMonitor = 0;
 
     if (testMode(TestLevelSync))
     {
@@ -701,8 +750,6 @@ Finally:
     FINALLY
     ({
         umbilicalMonitor = closeUmbilicalMonitor(umbilicalMonitor);
-
-        appLock = destroyProcessAppLock(appLock);
     });
 
     return rc;
@@ -731,7 +778,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     /* Ensure that SIGHUP is blocked so that the umbilical process
      * will not terminate should it be orphaned when the parent process
-     * terminates. Do this first in the parent is important to avoid
+     * terminates. Doing this first in the parent is important to avoid
      * a termination race.
      *
      * Note that forkProcess() will reset all handled signals in
@@ -742,25 +789,19 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     struct Pid umbilicalPid;
     ERROR_IF(
-        (umbilicalPid = forkProcessChild(
+        (umbilicalPid = forkProcessChildX(
             ForkProcessSetProcessGroup,
             Pgid(0),
-            ForkProcessMethod(self, runUmbilicalProcessChild_)),
+            PreForkProcessMethod(
+                self, prepareUmbilicalProcess_),
+            PostForkChildProcessMethod(
+                self, postUmbilicalProcessChild_),
+            PostForkParentProcessMethod(
+                self, postUmbilicalProcessParent_),
+            ForkProcessMethod(
+                self, runUmbilicalProcessChild_)),
          -1 == umbilicalPid.mPid));
     self->mPid = umbilicalPid;
-
-    closeSocketPairChild(self->mSocket);
-
-    ERROR_IF(
-        -1 == waitUnixSocketReadReady(self->mSocket->mParentSocket, 0));
-
-    char buf[1];
-
-    ssize_t rdLen;
-    ERROR_IF(
-        (rdLen = recvUnixSocket(
-            self->mSocket->mParentSocket, buf, sizeof(buf)),
-         -1 == rdLen || (errno = 0, sizeof(buf) != rdLen)));
 
     rc = 0;
 
