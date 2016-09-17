@@ -988,34 +988,52 @@ runTests()
 
     testCaseBegin 'Test output is non-blocking even when pipe buffer is filled'
     testOutput AABB = '$(
+        set PS4='\''+ $$ '\''
+        set -x
+        : > scratch/teststep1
+        : > scratch/teststep2
+        : > scratch/teststep3
         exec 3>&1
         {
-            trap '\''[ -z "$TESTPID" ] || kill -- "$TESTPID"'\'' 15
-            sh -c '\''/bin/echo $PPID'\''
+            sh -c '\''/bin/echo $PPID'\'' > scratch/testpid
             dd if=/dev/zero bs=$((64 * 1024)) count=1
-            ( sleep 2
-                dd if=/dev/zero bs=$((32 * 1024)) count=1 ) &
+            rm scratch/teststep1
+            dd if=/dev/zero bs=$((32 * 1024)) count=1 &
             pidsentry exec -s -dd -- "
-               trap '\''/bin/echo -n AA >&3; exit 2'\'' 15
-               sleep 2
+               set -x
+               set PS4='\''+ CHILD '\''
+               trap '\''/bin/echo -n AA >&3
+                   [ -z \"\${SLAVEPID++}\" ] || {
+                       kill \"\$SLAVEPID\" 2>/dev/null
+                       wait \"\$SLAVEPID\"
+                       rm scratch/teststep3
+                   }
+                   exit 2'\'' 15
                dd if=/dev/zero bs=$((64 * 1024)) count=1 &
-               while : ; do sleep 1 ; done" &
-            TESTPID=$!
-            wait $TESTPID
+               SLAVEPID=\$!
+               rm scratch/teststep2
+               while : ; do sleep 1 ; done"
         } | {
-            read SUBSHELL
+            while [ -f scratch/teststep1 ] ; do sleep 1 ; done
+            while [ -f scratch/teststep2 ] ; do sleep 1 ; done
 
-            # Wait a little time before making some space in the pipe. The
+            read TESTPID < scratch/testpid
+            : $TESTPID
+
+            # Once both writers are competing make some space in the pipe. The
             # two pipe writers will compete to fill the space.
-            sleep 3
+
             dd of=/dev/null bs=$((32 * 1024)) count=1
 
             # Provide some time to let the competitors fill the pipe, then
-            # try to have the watchdoog propagate a signal to the child.
+            # try to have the watchdog propagate a signal to the child.
 
-            sleep 2
-            kill $SUBSHELL
-            sleep 2
+            kill $TESTPID
+            while [ -f scratch/teststep3 ] ; do sleep 1 ; done
+
+            dd of=/dev/null bs=$((8 * 1024))
+
+            while [ kill -0 $TESTPID 2>/dev/null ; do sleep 1 ; done
             /bin/echo -n BB
         }
     )'
