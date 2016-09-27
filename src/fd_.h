@@ -91,6 +91,9 @@ CHECKED int
 openFd(const char *aPathName, int aFlags, mode_t aMode);
 
 CHECKED int
+openStdFds(void);
+
+CHECKED int
 closeFd(int aFd);
 
 CHECKED int

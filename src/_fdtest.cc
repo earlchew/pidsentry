@@ -332,4 +332,132 @@ TEST(FdTest, CloseOnlyBlackList)
     close(pipefd[1]);
 }
 
+TEST(FdTest, OpenStdFds)
+{
+    pid_t childpid = fork();
+
+    EXPECT_NE(-1, childpid);
+
+    if ( ! childpid)
+    {
+        int rc = -1;
+
+        do
+        {
+            char buf[1];
+
+            int errfd = dup(STDERR_FILENO);
+            if (-1 == errfd)
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            FILE *errfp = fdopen(errfd, "w");
+            if ( ! errfp)
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            if (SIG_ERR == signal(SIGPIPE, SIG_IGN))
+            {
+                fprintf(stderr, "%u\n", __LINE__);
+                break;
+            }
+
+            close(STDIN_FILENO);
+            close(STDOUT_FILENO);
+            close(STDERR_FILENO);
+
+            if (openStdFds())
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDIN_FILENO) || read(STDIN_FILENO, buf, 1))
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDOUT_FILENO) ||
+                 -1 != write(STDOUT_FILENO, buf, 1) || EPIPE != errno)
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDERR_FILENO) ||
+                 -1 != write(STDERR_FILENO, buf, 1) || EPIPE != errno)
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            close(STDIN_FILENO);
+
+            if (openStdFds())
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDIN_FILENO) || read(STDIN_FILENO, buf, 1))
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            close(STDOUT_FILENO);
+
+            if (openStdFds())
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDOUT_FILENO) ||
+                 -1 != write(STDOUT_FILENO, buf, 1) || EPIPE != errno)
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            close(STDERR_FILENO);
+
+            if (openStdFds())
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            if ( ! ownFdValid(STDERR_FILENO) ||
+                 -1 != write(STDERR_FILENO, buf, 1) || EPIPE != errno)
+            {
+                fprintf(errfp, "%u\n", __LINE__);
+                break;
+            }
+
+            rc = 0;
+
+        } while (0);
+
+        if (rc)
+        {
+            execl("/bin/false", "false", (char *) 0);
+            _exit(EXIT_FAILURE);
+        }
+
+        execl("/bin/true", "true", (char *) 0);
+        _exit(EXIT_FAILURE);
+    }
+
+    int status;
+    EXPECT_EQ(childpid, waitpid(childpid, &status, 0));
+    EXPECT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(EXIT_SUCCESS, WEXITSTATUS(status));
+}
+
 #include "../googletest/src/gtest_main.cc"

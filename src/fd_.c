@@ -98,6 +98,111 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+static int
+openBlockedFd_(int aSelector, int aFd)
+{
+    int rc = -1;
+    int fd = -1;
+
+    int pipefd[2];
+
+    ERROR_IF(
+        pipe2(pipefd, O_CLOEXEC));
+
+    int selected   = 0 + aSelector;
+    int unselected = 1 - aSelector;
+
+    pipefd[unselected] = closeFd(pipefd[unselected]);
+
+    if (aFd != pipefd[selected])
+    {
+        fd = pipefd[selected];
+
+        ERROR_IF(
+            aFd != dup2(fd, aFd));
+
+        fd = closeFd(fd);
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY
+    ({
+        fd = closeFd(fd);
+    });
+
+    return rc;
+}
+
+static int
+openBlockedInput_(int aFd)
+{
+    return openBlockedFd_(0, aFd);
+}
+
+static int
+openBlockedOutput_(int aFd)
+{
+    return openBlockedFd_(1, aFd);
+}
+
+int
+openStdFds(void)
+{
+    int rc = -1;
+
+    /* Create a file descriptor to take the place of stdin, stdout or stderr
+     * as required. Any created file descriptor will automatically be
+     * closed on exec(). If an input file descriptor is created, that
+     * descriptor will return eof on any attempted read. Conversely
+     * if an output file descriptor is created, that descriptor will
+     * return eof or SIGPIPE on any attempted write. */
+
+    int validStdin;
+    ERROR_IF(
+        (validStdin = ownFdValid(STDIN_FILENO),
+         -1 == validStdin));
+
+    int validStdout;
+    ERROR_IF(
+        (validStdout = ownFdValid(STDOUT_FILENO),
+         -1 == validStdout));
+
+    int validStderr;
+    ERROR_IF(
+        (validStderr = ownFdValid(STDERR_FILENO),
+         -1 == validStderr));
+
+    if ( ! validStdin)
+        ERROR_IF(
+            openBlockedInput_(STDIN_FILENO));
+
+    if ( ! validStdout && ! validStderr)
+    {
+        ERROR_IF(
+            openBlockedOutput_(STDOUT_FILENO));
+        ERROR_IF(
+            STDERR_FILENO != dup2(STDOUT_FILENO, STDERR_FILENO));
+    }
+    else if ( ! validStdout)
+        ERROR_IF(
+            openBlockedOutput_(STDOUT_FILENO));
+    else if ( ! validStderr)
+        ERROR_IF(
+            openBlockedOutput_(STDERR_FILENO));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
 int
 closeFd(int aFd)
 {
