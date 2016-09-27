@@ -73,7 +73,7 @@ lockPidFile_(
     int rc = -1;
 
     debug(0,
-          "lock %s %" PRIs_Method,
+          "locking %s %" PRIs_Method,
           aLockName,
           FMTs_Method(self, printPidFile));
 
@@ -85,6 +85,11 @@ lockPidFile_(
         ERROR_IF(
             lockFile(self->mFile, *aLockType));
     });
+
+    debug(0,
+          "locked %s %" PRIs_Method,
+          aLockName,
+          FMTs_Method(self, printPidFile));
 
     self->mLock = aLockType;
 
@@ -289,7 +294,7 @@ releasePidFileLock_(struct PidFile *self)
     self->mLock = 0;
 
     debug(0,
-          "unlock %" PRIs_Method,
+          "unlocked %" PRIs_Method,
           FMTs_Method(self, printPidFile));
 
     rc = 0;
