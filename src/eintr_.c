@@ -338,14 +338,21 @@ fcntl_raw_(uintptr_t aFcntlAddr, int aFd, int aCmd, va_list aArgs)
 #ifdef F_GETSIG
     case F_GETSIG:
 #endif
-#ifdef F_DUPFD_CLOEXEC
-    case F_DUPFD_CLOEXEC:
-#endif
-    case F_DUPFD:
     case F_GETFD:
     case F_GETFL:
     case F_GETOWN:
         rc = fcntlp(aFd, aCmd);
+        break;
+
+#ifdef F_DUPFD_CLOEXEC
+    case F_DUPFD_CLOEXEC:
+#endif
+    case F_DUPFD:
+        {
+            long arg = va_arg(aArgs, long);
+
+            rc = fcntlp(aFd, aCmd, arg);
+        }
         break;
 
 #ifdef F_SETPIPE_SZ
