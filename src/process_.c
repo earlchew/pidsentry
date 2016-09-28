@@ -3417,6 +3417,12 @@ Process_init(struct ProcessModule *self, const char *aArg0)
     programName_ = strrchr(processArg0_, '/');
     programName_ = programName_ ? programName_ + 1 : processArg0_;
 
+    /* Open file descriptors to overlay stdin, stdout and stderr
+     * to prevent other files inadvertently taking on these personas. */
+
+    ERROR_IF(
+        openStdFds());
+
     /* Ensure that the recorded time base is non-zero to allow it
      * to be distinguished from the case that it was not recorded
      * at all, and also ensure that the measured elapsed process
