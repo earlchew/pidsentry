@@ -119,7 +119,7 @@ openBlockedFd_(int aSelector, int aFd)
         fd = pipefd[selected];
 
         ERROR_IF(
-            aFd != dup2(fd, aFd));
+            aFd != duplicateFd(fd, aFd));
 
         fd = closeFd(fd);
     }
@@ -184,7 +184,7 @@ openStdFds(void)
         ERROR_IF(
             openBlockedOutput_(STDOUT_FILENO));
         ERROR_IF(
-            STDERR_FILENO != dup2(STDOUT_FILENO, STDERR_FILENO));
+            STDERR_FILENO != duplicateFd(STDOUT_FILENO, STDERR_FILENO));
     }
     else if ( ! validStdout)
         ERROR_IF(
@@ -523,6 +523,51 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
         fcntl(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec));
 
     rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+duplicateFd(int aFd, int aTargetFd)
+{
+    /* Strangely dup() and dup2() do not preserve FD_CLOEXEC when duplicating
+     * the file descriptor. This function interrogates the source file
+     * descriptor, and transfers the FD_CLOEXEC flag when duplicating
+     * the source to the target file descriptor. */
+
+    int rc = -1;
+    int fd = -1;
+
+    int cloexec;
+    ERROR_IF(
+        (cloexec = ownFdCloseOnExec(aFd),
+         -1 == cloexec));
+
+    if (-1 == aTargetFd)
+    {
+        long otherFd = 0;
+
+        ERROR_IF(
+            (fd = fcntl(aFd, cloexec ? F_DUPFD_CLOEXEC : F_DUPFD, otherFd),
+             -1 == fd));
+    }
+    else if (aFd == aTargetFd)
+    {
+        fd = aTargetFd;
+    }
+    else
+    {
+        ERROR_IF(
+            (fd = dup3(aFd, aTargetFd, cloexec ? O_CLOEXEC : 0),
+             -1 == fd));
+    }
+
+    rc = fd;
 
 Finally:
 

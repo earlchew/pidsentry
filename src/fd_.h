@@ -109,6 +109,9 @@ bool
 stdFd(int aFd);
 
 CHECKED int
+duplicateFd(int aFd, int aTargetFd);
+
+CHECKED int
 nullifyFd(int aFd);
 
 CHECKED int
