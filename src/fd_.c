@@ -63,27 +63,8 @@ openFd(const char *aPath, int aFlags, mode_t aMode)
 
     do
     {
-        struct OpenFd_
-        {
-            const char *mPath;
-            int         mFlags;
-            mode_t      mMode;
-        } openfd = {
-            .mPath  = aPath,
-            .mFlags = aFlags,
-            .mMode  = aMode,
-        };
-
         ERROR_IF(
-            (fd = openProcessFd(
-                OpenProcessFdMethod(
-                    &openfd,
-                    LAMBDA(
-                        int, (struct OpenFd_ *self),
-                        {
-                            return open(
-                                self->mPath, self->mFlags, self->mMode);
-                        }))),
+            (fd = open(aPath, aFlags, aMode),
              -1 == fd && EINTR != errno));
     }
     while (-1 == fd);
