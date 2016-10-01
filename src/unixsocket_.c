@@ -283,10 +283,7 @@ createUnixSocketPair(struct UnixSocket *aParent,
 {
     int rc = -1;
 
-    struct ProcessFdPair fdPair =
-    {
-        .mFds = { -1, -1 },
-    };
+    int fd[2] = { -1, -1 };
 
     aParent->mSocket = 0;
     aChild->mSocket  = 0;
@@ -306,30 +303,26 @@ createUnixSocketPair(struct UnixSocket *aParent,
         sockFlags |= SOCK_CLOEXEC;
 
     ERROR_IF(
-        (fdPair = openProcessFdPair(
-            OpenProcessFdPairMethod(
-                &sockFlags,
-                LAMBDA(
-                    int, (int                  *aSockFlags_,
-                          struct ProcessFdPair *aFdPair_),
-                    {
-                        return socketpair(
-                            AF_UNIX,
-                            SOCK_STREAM | *aSockFlags_, 0, aFdPair_->mFds);
-                    }))),
-         -1 == fdPair.mFds[0] || -1 == fdPair.mFds[1]));
+        socketpair(AF_UNIX, SOCK_STREAM | sockFlags, 0, fd),
+        {
+            fd[0] = -1;
+            fd[1] = -1;
+        });
 
     ERROR_IF(
-        createSocket(&aParent->mSocket_, fdPair.mFds[0]));
+        -1 == fd[0] || -1 == fd[1]);
+
+    ERROR_IF(
+        createSocket(&aParent->mSocket_, fd[0]));
     aParent->mSocket = &aParent->mSocket_;
 
-    fdPair.mFds[0] = -1;
+    fd[0] = -1;
 
     ERROR_IF(
-        createSocket(&aChild->mSocket_, fdPair.mFds[1]));
+        createSocket(&aChild->mSocket_, fd[1]));
     aChild->mSocket = &aChild->mSocket_;
 
-    fdPair.mFds[1] = -1;
+    fd[1] = -1;
 
     rc = 0;
 
@@ -337,8 +330,8 @@ Finally:
 
     FINALLY
     ({
-        fdPair.mFds[0] = closeFd(fdPair.mFds[0]);
-        fdPair.mFds[1] = closeFd(fdPair.mFds[1]);
+        fd[0] = closeFd(fd[0]);
+        fd[1] = closeFd(fd[1]);
 
         if (rc)
         {
