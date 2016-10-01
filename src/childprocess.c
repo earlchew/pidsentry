@@ -41,6 +41,7 @@
 #include "printf_.h"
 #include "error_.h"
 #include "process_.h"
+#include "fdset_.h"
 #include "eintr_.h"
 
 #include <ctype.h>
@@ -685,10 +686,21 @@ forkChildProcess(
 
     struct Pid childPid;
     ERROR_IF(
-        (childPid = forkProcessChild(
+        (childPid = forkProcessChildX(
             ForkProcessSetProcessGroup,
             Pgid(0),
-            ForkProcessMethod(&childProcess, runChildProcess_)),
+            PreForkProcessMethod(
+                &childProcess,
+                LAMBDA(
+                    int, (struct ForkChildProcess_    *self_,
+                          const struct PreForkProcess *aPreFork),
+                    {
+                        return fillFdSet(aPreFork->mWhitelistFds);
+                    })),
+            PostForkChildProcessMethodNil(),
+            PostForkParentProcessMethodNil(),
+            ForkProcessMethod(
+                &childProcess, runChildProcess_)),
          -1 == childPid.mPid));
 
     /* Do not try to place the watchdog in the process group of the child.
