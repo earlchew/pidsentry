@@ -151,37 +151,13 @@ acceptSocket(struct Socket *self, unsigned aFlags)
     case O_CLOEXEC:              flags = SOCK_CLOEXEC;                 break;
     }
 
-    if ( ! RUNNING_ON_VALGRIND)
+    while (1)
     {
-        while (1)
-        {
-            ERROR_IF(
-                (fd = accept4(self->mFile->mFd, 0, 0, flags),
-                 -1 == fd && EINTR != errno));
-            if (-1 != fd)
-                break;
-        }
-    }
-    else
-    {
-        appLock = createProcessAppLock();
-
-        while (1)
-        {
-            ERROR_IF(
-                (fd = accept(self->mFile->mFd, 0, 0),
-                 -1 == fd && EINTR != errno));
-            if (-1 != fd)
-                break;
-        }
-
-        if (flags & SOCK_CLOEXEC)
-            ERROR_IF(
-                closeFdOnExec(fd, O_CLOEXEC));
-
-        if (flags & SOCK_NONBLOCK)
-            ERROR_IF(
-                nonBlockingFd(fd));
+        ERROR_IF(
+            (fd = accept4(self->mFile->mFd, 0, 0, flags),
+             -1 == fd && EINTR != errno));
+        if (-1 != fd)
+            break;
     }
 
     rc = fd;
