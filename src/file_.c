@@ -597,12 +597,12 @@ walkFileList(struct FileVisitor aVisitor)
 
 /* -------------------------------------------------------------------------- */
 int
-dupFile(struct File *self, const struct File *aOther)
+duplicateFile(struct File *self, const struct File *aFile)
 {
     int rc = -1;
 
     ERROR_IF(
-        createFile(self, dup(aOther->mFd)));
+        createFile(self, duplicateFd(aFile->mFd, -1)));
 
     rc = 0;
 

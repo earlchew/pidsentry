@@ -72,11 +72,11 @@ createStdFdFiller(struct StdFdFiller *self)
     fd[0] = -1;
 
     ERROR_IF(
-        dupFile(&self->mFile_[1], &self->mFile_[0]));
+        duplicateFile(&self->mFile_[1], &self->mFile_[0]));
     self->mFile[1] = &self->mFile_[1];
 
     ERROR_IF(
-        dupFile(&self->mFile_[2], &self->mFile_[0]));
+        duplicateFile(&self->mFile_[2], &self->mFile_[0]));
     self->mFile[2] = &self->mFile_[2];
 
     rc = 0;

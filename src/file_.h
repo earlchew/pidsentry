@@ -95,7 +95,7 @@ void
 walkFileList(struct FileVisitor aVisitor);
 
 CHECKED int
-dupFile(struct File *self, const struct File *aOther);
+duplicateFile(struct File *self, const struct File *aOther);
 
 CHECKED int
 nonBlockingFile(struct File *self);
