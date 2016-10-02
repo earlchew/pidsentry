@@ -495,13 +495,16 @@ closeFdOnExec(int aFd, unsigned aCloseOnExec)
         closeOnExec = FD_CLOEXEC;
     }
 
-    int flags;
+    int prevFlags;
     ERROR_IF(
-        (flags = fcntl(aFd, F_GETFD),
-         -1 == flags));
+        (prevFlags = fcntl(aFd, F_GETFD),
+         -1 == prevFlags));
 
-    ERROR_IF(
-        fcntl(aFd, F_SETFD, (flags & ~FD_CLOEXEC) | closeOnExec));
+    int nextFlags = (prevFlags & ~FD_CLOEXEC) | closeOnExec;
+
+    if (prevFlags != nextFlags)
+        ERROR_IF(
+            fcntl(aFd, F_SETFD, nextFlags));
 
     rc = 0;
 
