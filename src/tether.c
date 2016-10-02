@@ -460,7 +460,7 @@ tetherThreadMain_(struct TetherThread *self)
      * so it is known to be nonblocking. The file descriptor for stdout
      * is inherited, so it is likely blocking. */
 
-    ensure(nonBlockingFd(srcFd));
+    ensure(0 < ownFdNonBlocking(srcFd));
 
     /* The splice() call is not supported on Linux if stdout is configured
      * for O_APPEND. In this case, fall back to using the slower
