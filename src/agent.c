@@ -206,16 +206,6 @@ prepareAgentChildProcessFork_(struct RunAgentProcess_     *self,
 {
     int rc = -1;
 
-    struct StdFdFiller  stdFdFiller_;
-    struct StdFdFiller *stdFdFiller = 0;
-
-    /* Ensure that the parent pipe does not inadvertently become
-     * stdin, stdout or stderr. */
-
-    ERROR_IF(
-        createStdFdFiller(&stdFdFiller_));
-    stdFdFiller = &stdFdFiller_;
-
     ERROR_IF(
         createPipe(&self->mParentPipe_, O_CLOEXEC | O_NONBLOCK));
     self->mParentPipe = &self->mParentPipe_;
@@ -234,10 +224,7 @@ prepareAgentChildProcessFork_(struct RunAgentProcess_     *self,
 
 Finally:
 
-    FINALLY
-    ({
-        stdFdFiller = closeStdFdFiller(stdFdFiller);
-    });
+    FINALLY({});
 
     return rc;
 }
