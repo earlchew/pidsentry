@@ -2072,7 +2072,7 @@ forkProcessChild_PostParent_(
 
                 if ( ! err && -1 != altFd)
                     ERROR_IF(
-                        fd != dup2(altFd, fd));
+                        fd != duplicateFd(altFd, fd));
             }
 
             stdFdFiller = closeStdFdFiller(stdFdFiller);
