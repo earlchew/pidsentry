@@ -614,29 +614,37 @@ nonBlockingFd(int aFd, unsigned aNonBlocking)
         nonBlocking = O_NONBLOCK;
     }
 
-    int statusFlags;
+    int prevStatusFlags;
     ERROR_IF(
-        (statusFlags = fcntl(aFd, F_GETFL),
-         -1 == statusFlags));
+        (prevStatusFlags = fcntl(aFd, F_GETFL),
+         -1 == prevStatusFlags));
 
-    int descriptorFlags;
-    ERROR_IF(
-        (descriptorFlags = fcntl(aFd, F_GETFD),
-         -1 == descriptorFlags));
+    int nextStatusFlags = (prevStatusFlags & ~O_NONBLOCK) | nonBlocking;
 
-    /* Because O_NONBLOCK affects the underlying open file, to get some
-     * peace of mind, only allow non-blocking mode on file descriptors
-     * that are not going to be shared. This is not a water-tight
-     * defense, but seeks to prevent some careless mistakes. */
-
-    ERROR_UNLESS(
-        descriptorFlags & FD_CLOEXEC,
+    if (prevStatusFlags != nextStatusFlags)
+    {
+        if (nonBlocking)
         {
-            errno = EBADF;
-        });
+            int descriptorFlags;
+            ERROR_IF(
+                (descriptorFlags = fcntl(aFd, F_GETFD),
+                 -1 == descriptorFlags));
 
-    ERROR_IF(
-        fcntl(aFd, F_SETFL, (statusFlags & ~O_NONBLOCK) | nonBlocking));
+            /* Because O_NONBLOCK affects the underlying open file, to get some
+             * peace of mind, only allow non-blocking mode on file descriptors
+             * that are not going to be shared. This is not a water-tight
+             * defense, but seeks to prevent some careless mistakes. */
+
+            ERROR_UNLESS(
+                descriptorFlags & FD_CLOEXEC,
+                {
+                    errno = EBADF;
+                });
+        }
+
+        ERROR_IF(
+            fcntl(aFd, F_SETFL, nextStatusFlags));
+    }
 
     rc = 0;
 
