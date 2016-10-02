@@ -207,7 +207,7 @@ createSentry(struct Sentry      *self,
      * original stdin file table entry. */
 
     ERROR_IF(
-        STDIN_FILENO != dup2(
+        STDIN_FILENO != duplicateFd(
             self->mChildProcess->mTetherPipe->mRdFile->mFd, STDIN_FILENO));
 
     /* Now that the tether has been duplicated onto stdin and stdout
