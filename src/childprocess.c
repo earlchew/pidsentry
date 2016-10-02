@@ -589,7 +589,8 @@ runChildProcess_(struct ForkChildProcess_ *self)
                     break;
 
                 ERROR_IF(
-                    dup2(self->mChildProcess->mTetherPipe->mWrFile->mFd,
+                    duplicateFd(
+                        self->mChildProcess->mTetherPipe->mWrFile->mFd,
                          tetherFd) != tetherFd);
             }
 
