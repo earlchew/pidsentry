@@ -176,14 +176,14 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-nonBlockingPipe(struct Pipe *self)
+nonBlockingPipe(struct Pipe *self, unsigned aNonBlocking)
 {
     int rc = -1;
 
     ERROR_IF(
-        nonBlockingFile(self->mRdFile));
+        nonBlockingFile(self->mRdFile, aNonBlocking));
     ERROR_IF(
-        nonBlockingFile(self->mWrFile));
+        nonBlockingFile(self->mWrFile, aNonBlocking));
 
     rc = 0;
 

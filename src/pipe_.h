@@ -65,7 +65,7 @@ CHECKED int
 closePipeOnExec(struct Pipe *self, unsigned aCloseOnExec);
 
 CHECKED int
-nonBlockingPipe(struct Pipe *self);
+nonBlockingPipe(struct Pipe *self, unsigned aNonBlocking);
 
 /* -------------------------------------------------------------------------- */
 

@@ -615,9 +615,9 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-nonBlockingFile(struct File *self)
+nonBlockingFile(struct File *self, unsigned aNonBlocking)
 {
-    return nonBlockingFd(self->mFd);
+    return nonBlockingFd(self->mFd, aNonBlocking);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -98,7 +98,7 @@ CHECKED int
 duplicateFile(struct File *self, const struct File *aOther);
 
 CHECKED int
-nonBlockingFile(struct File *self);
+nonBlockingFile(struct File *self, unsigned aNonBlocking);
 
 CHECKED int
 ownFileNonBlocking(const struct File *self);

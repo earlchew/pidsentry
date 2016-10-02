@@ -597,9 +597,22 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-nonBlockingFd(int aFd)
+nonBlockingFd(int aFd, unsigned aNonBlocking)
 {
     int rc = -1;
+
+    unsigned nonBlocking = 0;
+
+    if (aNonBlocking)
+    {
+        ERROR_IF(
+            aNonBlocking != O_NONBLOCK,
+            {
+                errno = EINVAL;
+            });
+
+        nonBlocking = O_NONBLOCK;
+    }
 
     int statusFlags;
     ERROR_IF(
@@ -622,9 +635,8 @@ nonBlockingFd(int aFd)
             errno = EBADF;
         });
 
-    if ( ! (statusFlags & O_NONBLOCK))
-        ERROR_IF(
-            fcntl(aFd, F_SETFL, statusFlags | O_NONBLOCK));
+    ERROR_IF(
+        fcntl(aFd, F_SETFL, (statusFlags & ~O_NONBLOCK) | nonBlocking));
 
     rc = 0;
 

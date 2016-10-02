@@ -115,7 +115,7 @@ CHECKED int
 nullifyFd(int aFd);
 
 CHECKED int
-nonBlockingFd(int aFd);
+nonBlockingFd(int aFd, unsigned aNonBlocking);
 
 CHECKED int
 ownFdNonBlocking(int aFd);
