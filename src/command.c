@@ -394,7 +394,7 @@ runCommand(struct Command     *self,
 
     struct Pid pid;
     ERROR_IF(
-        (pid = forkProcessChildX(
+        (pid = forkProcessChild(
             ForkProcessInheritProcessGroup,
             Pgid(0),
             PreForkProcessMethod(

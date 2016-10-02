@@ -401,7 +401,7 @@ temporaryFile_(const char *aDirName)
     temporaryFileProcess = &temporaryFileProcess_;
 
     ERROR_IF(
-        (tempPid = forkProcessChildX(
+        (tempPid = forkProcessChild(
             ForkProcessSetSessionLeader,
             Pgid(0),
             PreForkProcessMethod(

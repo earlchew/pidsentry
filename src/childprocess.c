@@ -686,7 +686,7 @@ forkChildProcess(
 
     struct Pid childPid;
     ERROR_IF(
-        (childPid = forkProcessChildX(
+        (childPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
             PreForkProcessMethod(

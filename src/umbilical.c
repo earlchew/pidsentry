@@ -602,7 +602,7 @@ postUmbilicalProcessChild_(struct UmbilicalProcess *self)
      * the umbilical exists. */
 
     ERROR_IF(
-        (self->mChildAnchor = forkProcessChildX(
+        (self->mChildAnchor = forkProcessChild(
             ForkProcessSetProcessGroup,
             self->mChildProcess->mPgid,
             PreForkProcessMethodNil(),
@@ -618,7 +618,7 @@ postUmbilicalProcessChild_(struct UmbilicalProcess *self)
          -1 == self->mChildAnchor.mPid));
 
     ERROR_IF(
-        (self->mSentryAnchor = forkProcessChildX(
+        (self->mSentryAnchor = forkProcessChild(
             ForkProcessSetProcessGroup,
             self->mSentryPgid,
             PreForkProcessMethodNil(),
@@ -789,7 +789,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     struct Pid umbilicalPid;
     ERROR_IF(
-        (umbilicalPid = forkProcessChildX(
+        (umbilicalPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
             PreForkProcessMethod(

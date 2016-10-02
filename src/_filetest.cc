@@ -57,41 +57,41 @@ struct LockType
 checkLock(struct File *aFile)
 {
     struct Pid checkPid =
-        forkProcessChildX(ForkProcessInheritProcessGroup,
-                          Pgid(0),
-                          PreForkProcessMethod(
-                              aFile,
-                              LAMBDA(
-                                  int, (struct File                 *self,
-                                        const struct PreForkProcess *aPreFork),
-                                  {
-                                      return insertFdSetFile(
-                                          aPreFork->mWhitelistFds, self);
-                                  })),
-                          PostForkChildProcessMethodNil(),
-                          PostForkParentProcessMethodNil(),
-                          ForkProcessMethod(
-                              aFile,
-                              LAMBDA(
-                                  int, (struct File *self),
-                                  {
-                                      struct LockType lockType =
-                                          ownFileRegionLocked(self, 0, 1);
+        forkProcessChild(ForkProcessInheritProcessGroup,
+                         Pgid(0),
+                         PreForkProcessMethod(
+                             aFile,
+                             LAMBDA(
+                                 int, (struct File                 *self,
+                                       const struct PreForkProcess *aPreFork),
+                                 {
+                                     return insertFdSetFile(
+                                         aPreFork->mWhitelistFds, self);
+                                 })),
+                         PostForkChildProcessMethodNil(),
+                         PostForkParentProcessMethodNil(),
+                         ForkProcessMethod(
+                             aFile,
+                             LAMBDA(
+                                 int, (struct File *self),
+                                 {
+                                     struct LockType lockType =
+                                         ownFileRegionLocked(self, 0, 1);
 
-                                      int rc = 0;
+                                     int rc = 0;
 
-                                      if (LockTypeUnlocked.mType
-                                          == lockType.mType)
-                                          rc = 1;
-                                      else if (LockTypeRead.mType
-                                               == lockType.mType)
-                                          rc = 2;
-                                      else if (LockTypeWrite.mType
-                                               == lockType.mType)
-                                          rc = 3;
+                                     if (LockTypeUnlocked.mType
+                                         == lockType.mType)
+                                         rc = 1;
+                                     else if (LockTypeRead.mType
+                                              == lockType.mType)
+                                         rc = 2;
+                                     else if (LockTypeWrite.mType
+                                              == lockType.mType)
+                                         rc = 3;
 
-                                      return rc;
-                                  })));
+                                     return rc;
+                                 })));
 
     if (-1 == checkPid.mPid)
         return LockTypeError;

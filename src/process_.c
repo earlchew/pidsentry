@@ -1899,10 +1899,10 @@ sendForkProcessChannelAcknowledgement_(
 
 /* -------------------------------------------------------------------------- */
 static void
-callForkMethodX_(struct ForkProcessMethod aMethod) NORETURN;
+callForkMethod_(struct ForkProcessMethod aMethod) NORETURN;
 
 static void
-callForkMethodX_(struct ForkProcessMethod aMethod)
+callForkMethod_(struct ForkProcessMethod aMethod)
 {
     int status = EXIT_SUCCESS;
 
@@ -2206,12 +2206,12 @@ Finally:
 }
 
 struct Pid
-forkProcessChildX(enum ForkProcessOption             aOption,
-                  struct Pgid                        aPgid,
-                  struct PreForkProcessMethod        aPreForkMethod,
-                  struct PostForkChildProcessMethod  aPostForkChildMethod,
-                  struct PostForkParentProcessMethod aPostForkParentMethod,
-                  struct ForkProcessMethod           aForkMethod)
+forkProcessChild(enum ForkProcessOption             aOption,
+                 struct Pgid                        aPgid,
+                 struct PreForkProcessMethod        aPreForkMethod,
+                 struct PostForkChildProcessMethod  aPostForkChildMethod,
+                 struct PostForkParentProcessMethod aPostForkParentMethod,
+                 struct ForkProcessMethod           aForkMethod)
 {
     pid_t rc = -1;
 
@@ -2341,7 +2341,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
         forkChannel = closeForkProcessChannel_(forkChannel);
         forkLock    = releaseProcessForkChildLock_(forkLock);
 
-        callForkMethodX_(aForkMethod);
+        callForkMethod_(aForkMethod);
 
         ensure(0);
         break;
@@ -2469,7 +2469,7 @@ forkProcessDaemonGuardian_(struct ForkProcessDaemon *self)
 
     struct Pid daemonPid;
     ERROR_IF(
-        (daemonPid = forkProcessChildX(
+        (daemonPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
             PreForkProcessMethod(
@@ -2608,7 +2608,7 @@ forkProcessDaemon(struct PreForkProcessMethod        aPreForkMethod,
 
     struct Pid serverPid;
     ERROR_IF(
-        (serverPid = forkProcessChildX(
+        (serverPid = forkProcessChild(
             ForkProcessInheritProcessGroup,
             Pgid(0),
             PreForkProcessMethod(

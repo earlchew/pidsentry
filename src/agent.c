@@ -302,7 +302,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
 
     struct Pid agentPid;
     ERROR_IF(
-        (agentPid = forkProcessChildX(
+        (agentPid = forkProcessChild(
             ForkProcessSetProcessGroup,
             Pgid(0),
             PreForkProcessMethod(

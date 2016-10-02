@@ -366,12 +366,12 @@ checkProcessSigContTracker(struct ProcessSigContTracker *self);
 
 /* -------------------------------------------------------------------------- */
 CHECKED struct Pid
-forkProcessChildX(enum ForkProcessOption             aOption,
-                  struct Pgid                        aPgid,
-                  struct PreForkProcessMethod        aPreForkMethod,
-                  struct PostForkChildProcessMethod  aPostForkChildMethod,
-                  struct PostForkParentProcessMethod aPostForkParentMethod,
-                  struct ForkProcessMethod           aMethod);
+forkProcessChild(enum ForkProcessOption             aOption,
+                 struct Pgid                        aPgid,
+                 struct PreForkProcessMethod        aPreForkMethod,
+                 struct PostForkChildProcessMethod  aPostForkChildMethod,
+                 struct PostForkParentProcessMethod aPostForkParentMethod,
+                 struct ForkProcessMethod           aMethod);
 
 CHECKED struct Pid
 forkProcessDaemon(struct PreForkProcessMethod        aPreForkMethod,
