@@ -416,7 +416,6 @@ struct ForkChildProcess_
 {
     struct ChildProcess   *mChildProcess;
     const char * const    *mCmd;
-    struct StdFdFiller    *mStdFdFiller;
     struct BellSocketPair *mSyncSocket;
     struct SocketPair     *mUmbilicalSocket;
 };
@@ -448,13 +447,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
          * note that the parent will wait for the child to synchronise
          * before sending it signals, so that there is no race here.
          *
-         * Close the StdFdFiller in case this will free up stdin, stdout or
-         * stderr. The remaining operations will close the remaining
-         * unwanted file descriptors. */
-
-        self->mStdFdFiller = closeStdFdFiller(self->mStdFdFiller);
-
-        /* There is no need to manipulate the umbilical socket
+         * There is no need to manipulate the umbilical socket
          * within the contex of the child. */
 
         self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
@@ -655,7 +648,6 @@ int
 forkChildProcess(
     struct ChildProcess   *self,
     const char * const    *aCmd,
-    struct StdFdFiller    *aStdFdFiller,
     struct BellSocketPair *aSyncSocket,
     struct SocketPair     *aUmbilicalSocket)
 {
@@ -680,7 +672,6 @@ forkChildProcess(
     {
         .mChildProcess    = self,
         .mCmd             = aCmd,
-        .mStdFdFiller     = aStdFdFiller,
         .mSyncSocket      = aSyncSocket,
         .mUmbilicalSocket = aUmbilicalSocket,
     };

@@ -48,9 +48,6 @@ struct Pipe;
 /* -------------------------------------------------------------------------- */
 struct Sentry
 {
-    struct StdFdFiller  mStdFdFiller_;
-    struct StdFdFiller *mStdFdFiller;
-
     struct SocketPair  mUmbilicalSocket_;
     struct SocketPair *mUmbilicalSocket;
 

@@ -42,7 +42,6 @@
 
 BEGIN_C_SCOPE;
 
-struct StdFdFiller;
 struct SocketPair;
 struct BellSocketPair;
 struct ChildMonitor;
@@ -90,7 +89,6 @@ CHECKED int
 forkChildProcess(
     struct ChildProcess   *self,
     const char * const    *aCmd,
-    struct StdFdFiller    *aStdFdFiller,
     struct BellSocketPair *aSyncSocket,
     struct SocketPair     *aUmbilicalSocket);
 

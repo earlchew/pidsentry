@@ -91,7 +91,6 @@ createSentry(struct Sentry      *self,
 {
     int rc = -1;
 
-    self->mStdFdFiller      = 0;
     self->mUmbilicalSocket  = 0;
     self->mChildProcess     = 0;
     self->mJobControl       = 0;
@@ -99,14 +98,6 @@ createSentry(struct Sentry      *self,
     self->mPidFile          = 0;
     self->mPidServer        = 0;
     self->mUmbilicalProcess = 0;
-
-    /* The instance of the StdFdFiller guarantees that any further file
-     * descriptors that are opened will not be mistaken for stdin,
-     * stdout or stderr. */
-
-    ERROR_IF(
-        createStdFdFiller(&self->mStdFdFiller_));
-    self->mStdFdFiller = &self->mStdFdFiller_;
 
     ERROR_IF(
         createSocketPair(&self->mUmbilicalSocket_, O_NONBLOCK | O_CLOEXEC));
@@ -131,8 +122,7 @@ createSentry(struct Sentry      *self,
     ERROR_IF(
         forkChildProcess(
             self->mChildProcess,
-            aCmd,
-            self->mStdFdFiller, self->mSyncSocket, self->mUmbilicalSocket));
+            aCmd, self->mSyncSocket, self->mUmbilicalSocket));
 
     /* Be prepared to deliver signals to the child process only after
      * the child exists. Before this point, these signals will cause
@@ -195,12 +185,6 @@ createSentry(struct Sentry      *self,
             });
     }
 
-    /* With the child process launched, close the instance of StdFdFiller
-     * so that stdin, stdout and stderr become available for manipulation
-     * and will not be closed multiple times. */
-
-    self->mStdFdFiller = closeStdFdFiller(self->mStdFdFiller);
-
     /* Discard the original stdin file descriptor, and instead attach
      * the reading end of the tether as stdin. This means that the
      * watchdog does not contribute any more references to the
@@ -246,7 +230,6 @@ closeSentry(struct Sentry *self)
         self->mJobControl      = closeJobControl(self->mJobControl);
         self->mChildProcess    = closeChildProcess(self->mChildProcess);
         self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
-        self->mStdFdFiller     = closeStdFdFiller(self->mStdFdFiller);
     }
 
     return 0;
