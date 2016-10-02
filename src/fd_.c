@@ -581,7 +581,7 @@ nullifyFd(int aFd)
         fd = -1;
     else
         ERROR_IF(
-            aFd != dup2(fd, aFd));
+            aFd != duplicateFd(fd, aFd));
 
     rc = 0;
 
