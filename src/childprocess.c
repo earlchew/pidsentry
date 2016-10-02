@@ -125,14 +125,14 @@ createChildProcess(struct ChildProcess *self)
      * end is marked non-blocking. */
 
     ERROR_IF(
-        createPipe(&self->mTetherPipe_, 0));
+        createPipe(&self->mTetherPipe_, O_CLOEXEC | O_NONBLOCK));
     self->mTetherPipe = &self->mTetherPipe_;
 
     ERROR_IF(
-        closeFileOnExec(self->mTetherPipe->mRdFile, O_CLOEXEC));
+        closeFileOnExec(self->mTetherPipe->mWrFile, 0));
 
     ERROR_IF(
-        nonBlockingFile(self->mTetherPipe->mRdFile, O_NONBLOCK));
+        nonBlockingFile(self->mTetherPipe->mWrFile, 0));
 
     rc = 0;
 
