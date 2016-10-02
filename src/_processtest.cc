@@ -164,6 +164,53 @@ TEST_F(ProcessTest, ProcessAppLock)
     EXPECT_FALSE(sigaction(SIGTERM, &prevAction, 0));
 }
 
+struct DaemonState
+{
+    int mErrno;
+    int mSigMask[NSIG];
+
+    struct BellSocketPair *mBellSocket;
+};
+
+static int
+daemonProcess_(struct DaemonState *self)
+{
+    sigset_t sigMask;
+
+    self->mErrno = 0;
+
+    if (pthread_sigmask(SIG_BLOCK, 0, &sigMask))
+        self->mErrno = errno;
+    else
+    {
+        for (unsigned sx = 0; NUMBEROF(self->mSigMask) > sx; ++sx)
+            self->mSigMask[sx] = sigismember(&sigMask, sx);
+    }
+
+    // Use a sanctioned Posix memory barrier to ensure that the updates
+    // to the shared memory region are visible before signalling to the
+    // parent process that the results are ready.
+
+    pthread_mutex_t  mutex_;
+    pthread_mutex_t *mutex = createMutex(&mutex_);
+
+    while (unlockMutex(lockMutex(mutex)))
+        break;
+
+    closeBellSocketPairParent(self->mBellSocket);
+    if (ringBellSocketPairChild(self->mBellSocket) ||
+        waitBellSocketPairChild(self->mBellSocket, 0))
+    {
+        execl("/bin/false", "false", (char *) 0);
+    }
+    else
+    {
+        execl("/bin/true", "true", (char *) 0);
+    }
+
+    _exit(EXIT_FAILURE);
+}
+
 TEST_F(ProcessTest, ProcessDaemon)
 {
     struct BellSocketPair  bellSocket_;
@@ -171,12 +218,6 @@ TEST_F(ProcessTest, ProcessDaemon)
 
     EXPECT_EQ(0, createBellSocketPair(&bellSocket_, 0));
     bellSocket = &bellSocket_;
-
-    struct DaemonState
-    {
-        int mErrno;
-        int mSigMask[NSIG];
-    };
 
     struct DaemonState *daemonState =
         reinterpret_cast<struct DaemonState *>(
@@ -187,37 +228,42 @@ TEST_F(ProcessTest, ProcessDaemon)
 
     EXPECT_NE(MAP_FAILED, (void *) daemonState);
 
-    daemonState->mErrno = ENOSYS;
+    daemonState->mErrno      = ENOSYS;
+    daemonState->mBellSocket = bellSocket;
 
-    struct Pid daemonPid = forkProcessDaemon(ForkProcessMethodNil());
+    struct Pid daemonPid = forkProcessDaemon(
+        PreForkProcessMethod(
+            bellSocket,
+            LAMBDA(
+                int, (struct BellSocketPair       *aBellSocket,
+                      const struct PreForkProcess *aPreFork),
+                {
+                    int rc_ = -1;
 
-    if ( ! daemonPid.mPid)
-    {
-        sigset_t sigMask;
+                    do
+                    {
+                        struct SocketPair *socketPair =
+                            aBellSocket->mSocketPair;
 
-        daemonState->mErrno = 0;
+                        if (insertFdSet(
+                                aPreFork->mWhitelistFds,
+                                socketPair->mParentSocket->mSocket->mFile->mFd))
+                            break;
 
-        if (pthread_sigmask(SIG_BLOCK, 0, &sigMask))
-            daemonState->mErrno = errno;
-        else
-        {
-            for (unsigned sx = 0; NUMBEROF(daemonState->mSigMask) > sx; ++sx)
-                daemonState->mSigMask[sx] = sigismember(&sigMask, sx);
-        }
+                        if (insertFdSet(
+                                aPreFork->mWhitelistFds,
+                                socketPair->mChildSocket->mSocket->mFile->mFd))
+                            break;
 
-        closeBellSocketPairParent(bellSocket);
-        if (ringBellSocketPairChild(bellSocket) ||
-            waitBellSocketPairChild(bellSocket, 0))
-        {
-            execl("/bin/false", "false", (char *) 0);
-        }
-        else
-        {
-            execl("/bin/true", "true", (char *) 0);
-        }
+                        rc_ = 0;
 
-        _exit(EXIT_FAILURE);
-    }
+                    } while (0);
+
+                    return rc_;
+                })),
+        PostForkChildProcessMethodNil(),
+        PostForkParentProcessMethodNil(),
+        ForkProcessMethod(daemonState, daemonProcess_));
 
     closeBellSocketPairChild(bellSocket);
 

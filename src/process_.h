@@ -379,7 +379,10 @@ forkProcessChild(enum ForkProcessOption   aOption,
                  struct ForkProcessMethod aMethod);
 
 CHECKED struct Pid
-forkProcessDaemon(struct ForkProcessMethod aMethod);
+forkProcessDaemon(struct PreForkProcessMethod        aPreForkMethod,
+                  struct PostForkChildProcessMethod  aPostForkChildMethod,
+                  struct PostForkParentProcessMethod aPostForkParentMethod,
+                  struct ForkProcessMethod           aMethod);
 
 CHECKED int
 reapProcessChild(struct Pid aPid, int *aStatus);

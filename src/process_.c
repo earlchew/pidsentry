@@ -2258,7 +2258,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
                   struct PreForkProcessMethod        aPreForkMethod,
                   struct PostForkChildProcessMethod  aPostForkChildMethod,
                   struct PostForkParentProcessMethod aPostForkParentMethod,
-                  struct ForkProcessMethod           aMethod)
+                  struct ForkProcessMethod           aForkMethod)
 {
     pid_t rc = -1;
 
@@ -2388,7 +2388,7 @@ forkProcessChildX(enum ForkProcessOption             aOption,
         forkChannel = closeForkProcessChannel_(forkChannel);
         forkLock    = releaseProcessForkChildLock_(forkLock);
 
-        callForkMethodX_(aMethod);
+        callForkMethodX_(aForkMethod);
 
         ensure(0);
         break;
@@ -2545,15 +2545,24 @@ Finally:
 /* -------------------------------------------------------------------------- */
 struct ForkProcessDaemon
 {
+    struct PreForkProcessMethod       mPreForkMethod;
+    struct PostForkChildProcessMethod mChildMethod;
+    struct ForkProcessMethod          mForkMethod;
+    struct SocketPair                *mSyncSocket;
+    struct ThreadSigMask             *mSigMask;
+};
+
+struct ForkProcessDaemonSigHandler
+{
     unsigned mHangUp;
 };
 
 static CHECKED int
 forkProcessDaemonSignalHandler_(
-    struct ForkProcessDaemon *self,
-    int                       aSigNum,
-    struct Pid                aPid,
-    struct Uid                aUid)
+    struct ForkProcessDaemonSigHandler *self,
+    int                                 aSigNum,
+    struct Pid                          aPid,
+    struct Uid                          aUid)
 {
     ++self->mHangUp;
 
@@ -2567,8 +2576,177 @@ forkProcessDaemonSignalHandler_(
     return 0;
 }
 
+static int
+forkProcessDaemonChild_(struct ForkProcessDaemon *self)
+{
+    int rc = -1;
+
+    struct Pid daemonPid = ownProcessId();
+
+    struct ForkProcessDaemonSigHandler sigHandler = { .mHangUp = 0 };
+
+    ERROR_IF(
+        watchProcessSignals(
+            WatchProcessSignalMethod(
+                &sigHandler, &forkProcessDaemonSignalHandler_)));
+
+    /* Once the signal handler is established to catch SIGHUP, allow
+     * the parent to stop and then make the daemon process an orphan. */
+
+    ERROR_IF(
+        waitThreadSigMask((const int []) { SIGHUP, 0 }));
+
+    self->mSigMask = popThreadSigMask(self->mSigMask);
+
+    debug(0, "daemon orphaned");
+
+    ERROR_UNLESS(
+        sizeof(daemonPid.mPid) == sendUnixSocket(
+            self->mSyncSocket->mChildSocket,
+            (void *) &daemonPid.mPid,
+            sizeof(daemonPid.mPid)));
+
+    char buf[1];
+    ERROR_UNLESS(
+        sizeof(buf) == recvUnixSocket(
+            self->mSyncSocket->mChildSocket, buf, sizeof(buf)));
+
+    self->mSyncSocket = closeSocketPair(self->mSyncSocket);
+
+    if ( ! ownForkProcessMethodNil(self->mForkMethod))
+        ERROR_IF(
+            callForkProcessMethod(self->mForkMethod));
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+forkProcessDaemonGuardian_(struct ForkProcessDaemon *self)
+{
+    int rc = -1;
+
+    closeSocketPairParent(self->mSyncSocket);
+
+    struct Pid daemonPid;
+    ERROR_IF(
+        (daemonPid = forkProcessChildX(
+            ForkProcessSetProcessGroup,
+            Pgid(0),
+            PreForkProcessMethod(
+                self,
+                LAMBDA(
+                    int, (struct ForkProcessDaemon    *self_,
+                          const struct PreForkProcess *aPreFork),
+                    {
+                        return fillFdSet(aPreFork->mWhitelistFds);
+                    })),
+            self->mChildMethod,
+            PostForkParentProcessMethodNil(),
+            ForkProcessMethod(
+                self, forkProcessDaemonChild_)),
+         -1 == daemonPid.mPid));
+
+    /* Terminate the server to make the child an orphan. The child
+     * will become the daemon, and when it is adopted by init(8).
+     *
+     * When a parent process terminates, Posix says:
+     *
+     *    o If the process is a controlling process, the SIGHUP signal
+     *      shall be sent to each process in the foreground process group
+     *      of the controlling terminal belonging to the calling process.
+     *
+     *    o If the exit of the process causes a process group to become
+     *      orphaned, and if any member of the newly-orphaned process
+     *      group is stopped, then a SIGHUP signal followed by a
+     *      SIGCONT signal shall be sent to each process in the
+     *      newly-orphaned process group.
+     *
+     * The server created here is not a controlling process since it is
+     * not a session leader (although it might have a controlling terminal).
+     * So no SIGHUP is sent for the first reason.
+     *
+     * To avoid ambiguity, the child is always placed into its own
+     * process group and stopped, so that when it is orphaned it is
+     * guaranteed to receive a SIGHUP signal. */
+
+    while (1)
+    {
+        ERROR_IF(
+            kill(daemonPid.mPid, SIGSTOP));
+
+        monotonicSleep(Duration(NSECS(MilliSeconds(100))));
+
+        struct ChildProcessState daemonStatus =
+            monitorProcessChild(daemonPid);
+        if (ChildProcessStateStopped == daemonStatus.mChildState)
+            break;
+
+        monotonicSleep(Duration(NSECS(Seconds(1))));
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
+static int
+forkProcessDaemonPreparation_(struct ForkProcessDaemon    *self,
+                              const struct PreForkProcess *aPreFork)
+{
+    int rc = -1;
+
+    if ( ! ownPreForkProcessMethodNil(self->mPreForkMethod))
+        ERROR_IF(
+            callPreForkProcessMethod(self->mPreForkMethod, aPreFork));
+
+    ERROR_IF(
+        removeFdSet(
+            aPreFork->mBlacklistFds,
+            self->mSyncSocket->mParentSocket->mSocket->mFile->mFd) &&
+        ENOENT != errno);
+
+    ERROR_IF(
+        insertFdSet(
+            aPreFork->mWhitelistFds,
+            self->mSyncSocket->mParentSocket->mSocket->mFile->mFd) &&
+        EEXIST != errno);
+
+    ERROR_IF(
+        removeFdSet(
+            aPreFork->mBlacklistFds,
+            self->mSyncSocket->mChildSocket->mSocket->mFile->mFd) &&
+        ENOENT != errno);
+
+    ERROR_IF(
+        insertFdSet(
+            aPreFork->mWhitelistFds,
+            self->mSyncSocket->mChildSocket->mSocket->mFile->mFd) &&
+        EEXIST != errno);
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc;
+}
+
 struct Pid
-forkProcessDaemon(struct ForkProcessMethod aForkMethod)
+forkProcessDaemon(struct PreForkProcessMethod        aPreForkMethod,
+                  struct PostForkChildProcessMethod  aPostForkChildMethod,
+                  struct PostForkParentProcessMethod aPostForkParentMethod,
+                  struct ForkProcessMethod           aForkMethod)
 {
     pid_t rc = -1;
 
@@ -2585,146 +2763,53 @@ forkProcessDaemon(struct ForkProcessMethod aForkMethod)
         createSocketPair(&syncSocket_, O_CLOEXEC));
     syncSocket = &syncSocket_;
 
+    struct ForkProcessDaemon daemonProcess =
+    {
+        .mSigMask       = sigMask,
+        .mPreForkMethod = aPreForkMethod,
+        .mChildMethod   = aPostForkChildMethod,
+        .mForkMethod    = aForkMethod,
+        .mSyncSocket    = syncSocket,
+    };
+
     struct Pid serverPid;
     ERROR_IF(
-        (serverPid = forkProcessChild(ForkProcessInheritProcessGroup,
-                                      Pgid(0),
-                                      ForkProcessMethodNil()),
+        (serverPid = forkProcessChildX(
+            ForkProcessInheritProcessGroup,
+            Pgid(0),
+            PreForkProcessMethod(
+                &daemonProcess, forkProcessDaemonPreparation_),
+            PostForkChildProcessMethod(
+                &daemonProcess, forkProcessDaemonGuardian_),
+            PostForkParentProcessMethod(
+                &daemonProcess,
+                LAMBDA(
+                    int, (struct ForkProcessDaemon *self_,
+                          struct Pid                aGuardianPid),
+                    {
+                        closeSocketPairChild(self_->mSyncSocket);
+                        return 0;
+                    })),
+            ForkProcessMethodNil()),
          -1 == serverPid.mPid));
 
+    int status;
+    ERROR_IF(
+        reapProcessChild(serverPid, &status));
+
+    ERROR_UNLESS(
+        WIFEXITED(status) && ! WEXITSTATUS(status));
+
     struct Pid daemonPid;
+    ERROR_UNLESS(
+        sizeof(daemonPid.mPid) == recvUnixSocket(syncSocket->mParentSocket,
+                                                 (void *) &daemonPid.mPid,
+                                                 sizeof(daemonPid.mPid)));
 
-    if (serverPid.mPid)
-    {
-        closeSocketPairChild(syncSocket);
-
-        int status;
-        ERROR_IF(
-            reapProcessChild(serverPid, &status));
-
-        ERROR_UNLESS(
-            WIFEXITED(status) && ! WEXITSTATUS(status));
-
-        ERROR_UNLESS(
-            sizeof(daemonPid.mPid) == recvUnixSocket(syncSocket->mParentSocket,
-                                                     (void *) &daemonPid.mPid,
-                                                     sizeof(daemonPid.mPid)));
-
-        char buf[1] = { 0 };
-        ERROR_UNLESS(
-            sizeof(buf) == sendUnixSocket(
-                syncSocket->mParentSocket, buf, sizeof(buf)));
-    }
-    else
-    {
-        closeSocketPairParent(syncSocket);
-
-        struct BellSocketPair  bellSocket_;
-        struct BellSocketPair *bellSocket = 0;
-
-        ABORT_IF(
-            createBellSocketPair(&bellSocket_, 0));
-        bellSocket = &bellSocket_;
-
-        ABORT_IF(
-            (daemonPid = forkProcessChild(ForkProcessSetProcessGroup,
-                                          Pgid(0),
-                                          ForkProcessMethodNil()),
-             -1 == daemonPid.mPid));
-
-        /* Terminate the server to make the child an orphan. The child
-         * will become the daemon, and when it is adopted by init(8).
-         *
-         * When a parent process terminates, Posix says:
-         *
-         *    o If the process is a controlling process, the SIGHUP signal
-         *      shall be sent to each process in the foreground process group
-         *      of the controlling terminal belonging to the calling process.
-         *
-         *    o If the exit of the process causes a process group to become
-         *      orphaned, and if any member of the newly-orphaned process
-         *      group is stopped, then a SIGHUP signal followed by a
-         *      SIGCONT signal shall be sent to each process in the
-         *      newly-orphaned process group.
-         *
-         * The server created here is not a controlling process since it is
-         * not a session leader (although it might have a controlling terminal).
-         * So no SIGHUP is sent for the first reason.
-         *
-         * To avoid ambiguity, the child is always placed into its own
-         * process group and stopped, so that when it is orphaned it is
-         * guaranteed to receive a SIGHUP signal. */
-
-        if (daemonPid.mPid)
-        {
-            closeBellSocketPairChild(bellSocket);
-            ABORT_IF(
-                waitBellSocketPairParent(bellSocket, 0));
-            bellSocket = closeBellSocketPair(bellSocket);
-
-            while (1)
-            {
-                ABORT_IF(
-                    kill(daemonPid.mPid, SIGSTOP));
-
-                monotonicSleep(Duration(NSECS(MilliSeconds(100))));
-
-                struct ChildProcessState daemonStatus =
-                    monitorProcessChild(daemonPid);
-                if (ChildProcessStateStopped == daemonStatus.mChildState)
-                    break;
-
-                monotonicSleep(Duration(NSECS(Seconds(1))));
-            }
-
-            /* When running with valgrind, use execl() to prevent
-             * valgrind performing a leak check on the intermediate
-             * process. */
-
-            if (RUNNING_ON_VALGRIND)
-                ABORT_IF(
-                    execl(
-                        "/bin/true", "true", (char *) 0) || (errno = 0, true));
-
-            exitProcess(EXIT_SUCCESS);
-        }
-
-        daemonPid = ownProcessId();
-
-        struct ForkProcessDaemon processDaemon = { .mHangUp = 0 };
-
-        ABORT_IF(
-            watchProcessSignals(
-                WatchProcessSignalMethod(
-                    &processDaemon, &forkProcessDaemonSignalHandler_)));
-
-        closeBellSocketPairParent(bellSocket);
-        ABORT_IF(
-            ringBellSocketPairChild(bellSocket));
-        bellSocket = closeBellSocketPair(bellSocket);
-
-        /* Once the signal handler is established to catch SIGHUP, allow
-         * the parent to stop and then make the daemon process an orphan. */
-
-        ABORT_IF(
-            waitThreadSigMask((const int []) { SIGHUP, 0 }));
-
-        debug(0, "daemon orphaned");
-
-        ABORT_UNLESS(
-            sizeof(daemonPid.mPid) == sendUnixSocket(syncSocket->mChildSocket,
-                                                     (void *) &daemonPid.mPid,
-                                                     sizeof(daemonPid.mPid)));
-
-        char buf[1];
-        ABORT_UNLESS(
-            sizeof(buf) == recvUnixSocket(
-                syncSocket->mChildSocket, buf, sizeof(buf)));
-
-        callForkMethod_(aForkMethod);
-
-        daemonPid = Pid(0);
-    }
+    char buf[1] = { 0 };
+    ERROR_UNLESS(
+        sizeof(buf) == sendUnixSocket(
+            syncSocket->mParentSocket, buf, sizeof(buf)));
 
     rc = daemonPid.mPid;
 
