@@ -374,11 +374,6 @@ forkProcessChildX(enum ForkProcessOption             aOption,
                   struct ForkProcessMethod           aMethod);
 
 CHECKED struct Pid
-forkProcessChild(enum ForkProcessOption   aOption,
-                 struct Pgid              aPgid,
-                 struct ForkProcessMethod aMethod);
-
-CHECKED struct Pid
 forkProcessDaemon(struct PreForkProcessMethod        aPreForkMethod,
                   struct PostForkChildProcessMethod  aPostForkChildMethod,
                   struct PostForkParentProcessMethod aPostForkParentMethod,
