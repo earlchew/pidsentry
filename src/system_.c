@@ -30,10 +30,8 @@
 #include "system_.h"
 #include "fd_.h"
 #include "error_.h"
-#include "macros_.h"
 
 #include <pthread.h>
-#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>

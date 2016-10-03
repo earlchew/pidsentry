@@ -28,14 +28,12 @@
 */
 
 #include "pathname_.h"
-#include "macros_.h"
 #include "error_.h"
 
 #include <string.h>
 #include <stdlib.h>
 #include <libgen.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <unistd.h>
 
 #include <sys/stat.h>

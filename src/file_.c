@@ -28,26 +28,18 @@
 */
 
 #include "file_.h"
-#include "macros_.h"
-#include "error_.h"
-#include "fd_.h"
 #include "fdset_.h"
 #include "process_.h"
-#include "test_.h"
 #include "thread_.h"
 #include "timekeeping_.h"
 #include "socketpair_.h"
-#include "eintr_.h"
 
 #include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
 
 #include <sys/stat.h>
 
-#include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
 #ifdef __linux__

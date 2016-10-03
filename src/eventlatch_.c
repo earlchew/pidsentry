@@ -29,10 +29,8 @@
 
 #include "eventlatch_.h"
 #include "eventpipe_.h"
-#include "thread_.h"
 #include "error_.h"
 
-#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 

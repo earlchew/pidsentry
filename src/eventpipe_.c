@@ -28,14 +28,8 @@
 */
 
 #include "eventpipe_.h"
-#include "eventlatch_.h"
-#include "macros_.h"
 #include "error_.h"
-#include "thread_.h"
-#include "timekeeping_.h"
-#include "eintr_.h"
 
-#include <errno.h>
 #include <unistd.h>
 
 /* -------------------------------------------------------------------------- */

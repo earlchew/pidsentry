@@ -28,23 +28,13 @@
 */
 
 #include "fd_.h"
-#include "macros_.h"
-#include "error_.h"
-#include "timekeeping_.h"
-#include "test_.h"
-#include "process_.h"
 #include "deadline_.h"
 #include "fdset_.h"
 #include "system_.h"
 #include "eintr_.h"
 
-#include <errno.h>
-#include <unistd.h>
 #include <stdlib.h>
 
-#include <sys/file.h>
-#include <sys/resource.h>
-#include <sys/poll.h>
 
 #include <valgrind/valgrind.h>
 

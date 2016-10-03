@@ -28,18 +28,11 @@
 */
 
 #include "pidfile_.h"
-#include "fd_.h"
-#include "macros_.h"
 #include "error_.h"
-#include "test_.h"
-#include "timekeeping_.h"
 #include "parse_.h"
 #include "pidsignature_.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <errno.h>
 
 #include <sys/file.h>
 #include <sys/un.h>

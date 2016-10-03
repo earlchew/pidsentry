@@ -28,14 +28,9 @@
 */
 
 #include "thread_.h"
-#include "error_.h"
 #include "timekeeping_.h"
-#include "macros_.h"
 #include "process_.h"
-#include "pid_.h"
-#include "eintr_.h"
 
-#include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>

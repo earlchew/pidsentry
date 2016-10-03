@@ -32,34 +32,12 @@
 #include "agent.h"
 #include "command.h"
 
-#include "env_.h"
-#include "macros_.h"
-#include "pipe_.h"
-#include "socketpair_.h"
-#include "bellsocketpair_.h"
-#include "unixsocket_.h"
-#include "stdfdfiller_.h"
-#include "pidfile_.h"
-#include "thread_.h"
-#include "error_.h"
 #include "pollfd_.h"
-#include "test_.h"
-#include "fd_.h"
-#include "dl_.h"
-#include "process_.h"
 #include "jobcontrol_.h"
-#include "eintr_.h"
 
-#include <ctype.h>
-#include <stdio.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h>
 
-#include <sys/poll.h>
-#include <sys/ioctl.h>
-#include <sys/un.h>
 
 /* TODO
  *

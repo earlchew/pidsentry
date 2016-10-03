@@ -28,16 +28,10 @@
 */
 
 #include "options_.h"
-#include "macros_.h"
-#include "error_.h"
 #include "parse_.h"
 #include "process_.h"
-#include "env_.h"
 
-#include <stdio.h>
 #include <string.h>
-#include <errno.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
 

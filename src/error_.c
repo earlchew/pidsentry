@@ -28,20 +28,12 @@
 */
 
 #include "error_.h"
-#include "macros_.h"
-#include "timekeeping_.h"
 #include "fd_.h"
-#include "test_.h"
 #include "thread_.h"
-#include "printf_.h"
 #include "process_.h"
 #include "queue_.h"
-#include "eintr_.h"
 
 #include <stdlib.h>
-#include <stdarg.h>
-#include <errno.h>
-#include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <execinfo.h>

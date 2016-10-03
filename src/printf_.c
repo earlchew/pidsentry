@@ -33,7 +33,6 @@
 #include "type_.h"
 
 #include <printf.h>
-#include <stdbool.h>
 #include <string.h>
 
 static unsigned moduleInit_;

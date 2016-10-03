@@ -29,10 +29,8 @@
 
 #include "pidsignature_.h"
 
-#include "error_.h"
 #include "process_.h"
 #include "system_.h"
-#include "fd_.h"
 #include "file_.h"
 
 #include <stdlib.h>

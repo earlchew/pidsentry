@@ -28,13 +28,10 @@
 */
 
 #include "socket_.h"
-#include "macros_.h"
-#include "error_.h"
 #include "process_.h"
 
 #include <fcntl.h>
 
-#include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
 struct Socket *

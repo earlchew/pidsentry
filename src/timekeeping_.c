@@ -30,11 +30,8 @@
 #include "timekeeping_.h"
 #include "fd_.h"
 #include "error_.h"
-#include "macros_.h"
-#include "eintr_.h"
 
 #include <time.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>

@@ -28,10 +28,8 @@
 */
 
 #include "error_.h"
-#include "options_.h"
 
 #include <stdlib.h>
-#include <unistd.h>
 
 int main(int argc, char **argv)
 {

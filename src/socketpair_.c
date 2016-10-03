@@ -28,12 +28,8 @@
 */
 
 #include "socketpair_.h"
-#include "fd_.h"
-#include "macros_.h"
 #include "error_.h"
 
-#include <errno.h>
-#include <fcntl.h>
 
 /* -------------------------------------------------------------------------- */
 int

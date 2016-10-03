@@ -31,21 +31,12 @@
 #include "childprocess.h"
 #include "pidserver.h"
 
-#include "error_.h"
-#include "fd_.h"
 #include "socketpair_.h"
-#include "pidfile_.h"
-#include "test_.h"
-#include "error_.h"
-#include "macros_.h"
 #include "process_.h"
 #include "fdset_.h"
-#include "eintr_.h"
 
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
-#include <pthread.h>
 #include <fcntl.h>
 
 /* -------------------------------------------------------------------------- */

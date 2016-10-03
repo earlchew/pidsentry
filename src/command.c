@@ -30,19 +30,14 @@
 #include "command.h"
 #include "shellcommand.h"
 
-#include "error_.h"
-#include "pipe_.h"
 #include "env_.h"
 #include "pidfile_.h"
 #include "pidsignature_.h"
-#include "timescale_.h"
 #include "process_.h"
 #include "fdset_.h"
 
-#include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <ctype.h>
 
 #include <sys/un.h>
 

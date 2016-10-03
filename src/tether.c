@@ -29,15 +29,10 @@
 
 #include "tether.h"
 
-#include "fd_.h"
 #include "pollfd_.h"
-#include "error_.h"
-#include "thread_.h"
 #include "process_.h"
-#include "eintr_.h"
 
 #include <unistd.h>
-#include <errno.h>
 #include <poll.h>
 #include <fcntl.h>
 

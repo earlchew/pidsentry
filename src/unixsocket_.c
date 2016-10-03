@@ -29,17 +29,9 @@
 
 #include "unixsocket_.h"
 #include "timekeeping_.h"
-#include "error_.h"
-#include "macros_.h"
-#include "fd_.h"
 #include "process_.h"
 
-#include <errno.h>
-#include <inttypes.h>
-#include <stdlib.h>
-#include <unistd.h>
 
-#include <sys/socket.h>
 #include <sys/file.h>
 #include <sys/un.h>
 

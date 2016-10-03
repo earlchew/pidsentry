@@ -28,15 +28,11 @@
 */
 
 #include "test_.h"
-#include "options_.h"
 #include "error_.h"
-#include "macros_.h"
 #include "timekeeping_.h"
 #include "env_.h"
 #include "random_.h"
 
-#include <stdlib.h>
-#include <unistd.h>
 
 #include <sys/mman.h>
 

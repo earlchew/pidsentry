@@ -31,15 +31,10 @@
 #include "eintr_.h"
 #include "dl_.h"
 #include "error_.h"
-#include "timekeeping_.h"
 #include "random_.h"
-#include "test_.h"
 
-#include <unistd.h>
 #include <stdlib.h>
-#include <stdarg.h>
 
-#include <sys/file.h>
 
 /* -------------------------------------------------------------------------- */
 #define EINTR_FUNCTION_DEFN_(                                           \

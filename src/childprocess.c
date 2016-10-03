@@ -30,30 +30,16 @@
 #include "childprocess.h"
 #include "umbilical.h"
 #include "tether.h"
-#include "shellcommand.h"
 
-#include "macros_.h"
-#include "test_.h"
-#include "socketpair_.h"
 #include "bellsocketpair_.h"
-#include "stdfdfiller_.h"
-#include "eventpipe_.h"
-#include "printf_.h"
-#include "error_.h"
 #include "process_.h"
 #include "fdset_.h"
-#include "eintr_.h"
 
 #include <ctype.h>
-#include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <signal.h>
-#include <errno.h>
 #include <fcntl.h>
 
-#include <sys/un.h>
 
 /* -------------------------------------------------------------------------- */
 enum PollFdChildKind

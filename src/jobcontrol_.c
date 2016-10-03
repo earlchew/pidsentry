@@ -29,11 +29,7 @@
 
 #include "jobcontrol_.h"
 
-#include "error_.h"
-#include "thread_.h"
-#include "process_.h"
 
-#include <sys/signal.h>
 
 /* -------------------------------------------------------------------------- */
 static CHECKED int

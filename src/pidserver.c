@@ -29,10 +29,7 @@
 
 #include "pidserver.h"
 
-#include "error_.h"
-#include "uid_.h"
 #include "deadline_.h"
-#include "method_.h"
 
 #include <unistd.h>
 #include <stdlib.h>

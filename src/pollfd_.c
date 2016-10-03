@@ -28,14 +28,9 @@
 */
 
 #include "pollfd_.h"
-#include "macros_.h"
 #include "error_.h"
-#include "test_.h"
-#include "eintr_.h"
 
-#include <errno.h>
 #include <string.h>
-#include <stdio.h>
 
 #include <sys/poll.h>
 

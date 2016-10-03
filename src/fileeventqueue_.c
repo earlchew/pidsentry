@@ -31,7 +31,6 @@
 #include "error_.h"
 #include "malloc_.h"
 #include "timescale_.h"
-#include "eintr_.h"
 
 #include <limits.h>
 #include <sys/epoll.h>

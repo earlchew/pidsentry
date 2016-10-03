@@ -28,11 +28,9 @@
 */
 
 #include "parse_.h"
-#include "macros_.h"
 #include "error_.h"
 
 #include <ctype.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>

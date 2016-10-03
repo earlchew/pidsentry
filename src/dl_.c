@@ -32,7 +32,6 @@
 #include "error_.h"
 
 #include <string.h>
-#include <errno.h>
 #include <link.h>
 
 /* -------------------------------------------------------------------------- */

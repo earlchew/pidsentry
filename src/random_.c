@@ -28,13 +28,9 @@
 */
 
 #include "random_.h"
-#include "lambda_.h"
 #include "process_.h"
 
-#include <stdlib.h>
-#include <inttypes.h>
 #include <unistd.h>
-#include <time.h>
 #include <pthread.h>
 
 /* -------------------------------------------------------------------------- */

@@ -28,32 +28,17 @@
 */
 
 #include "process_.h"
-#include "thread_.h"
-#include "macros_.h"
-#include "pathname_.h"
-#include "fd_.h"
 #include "pipe_.h"
 #include "stdfdfiller_.h"
-#include "socketpair_.h"
 #include "bellsocketpair_.h"
-#include "test_.h"
-#include "error_.h"
 #include "timekeeping_.h"
 #include "thread_.h"
-#include "system_.h"
-#include "lambda_.h"
 #include "fdset_.h"
 #include "random_.h"
-#include "eintr_.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <unistd.h>
 #include <string.h>
-#include <pthread.h>
-#include <ctype.h>
-#include <signal.h>
 
 #include <sys/file.h>
 #include <sys/wait.h>

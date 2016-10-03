@@ -28,12 +28,9 @@
 */
 
 #include "stdfdfiller_.h"
-#include "macros_.h"
-#include "fd_.h"
 #include "error_.h"
 
 #include <unistd.h>
-#include <errno.h>
 
 /* -------------------------------------------------------------------------- */
 int

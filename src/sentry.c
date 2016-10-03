@@ -28,19 +28,11 @@
 */
 
 #include "sentry.h"
-#include "pidserver.h"
-#include "umbilical.h"
 
-#include "pidfile_.h"
-#include "error_.h"
-#include "fd_.h"
-#include "process_.h"
 
 #include <fcntl.h>
 #include <unistd.h>
-#include <stdio.h>
 
-#include <sys/un.h>
 
 #include <valgrind/valgrind.h>
 
