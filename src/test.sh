@@ -205,7 +205,7 @@ runTests()
             read PARENT SENTRY UMBILICAL
             read CHILD
             eval kill -9 \$$SUPERVISOR
-            kill -9 $CHILD
+            # kill -9 $CHILD # Allow umbilical to kill the child
 
             eval waitwhile liveprocess '$'$SUPERVISOR
             waitwhile liveprocess $SENTRY
