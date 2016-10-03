@@ -45,6 +45,7 @@ for f in $SRC ; do
     N=$(grep '//@' $f | wc -l)
     X=0
     while [ $X -lt $N ] ; do
+        sleep 1 # Ensure that modifications change mtime
         : $(( ++X ))
         [ -z "${f##*.h}" -o $X -ne 1 ] && K=$? || K=$?
         F=$(grep -e "#include.*//@@ $X\$" $f | sed -e 's, //@@.*,,')
