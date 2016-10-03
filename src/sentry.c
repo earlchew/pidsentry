@@ -454,20 +454,6 @@ runSentry(struct Sentry   *self,
             aParentPid,
             aParentPipe));
 
-    /* If a pid file is in use, do not reap the child process until
-     * a lock on the pid file can be acquired, and the pid file invalidated.
-     *
-     * On the other side, readers would acquire a lock on the pid file
-     * before reading the pid file and connecting to the pid server. */
-
-    if (self->mPidFile)
-    {
-        ERROR_IF(
-            acquirePidFileWriteLock(self->mPidFile));
-
-        self->mPidFile = destroyPidFile(self->mPidFile);
-    }
-
     /* Attempt to stop the umbilical process cleanly so that the watchdog
      * can exit in an orderly fashion with the exit status of the child
      * process as the last line emitted. */
@@ -509,6 +495,26 @@ runSentry(struct Sentry   *self,
                 "stopped pid %" PRId_Pid " %s",
                 FMTd_Pid(childPid),
                 ownShellCommandName(self->mChildProcess->mShellCommand));
+
+    /* If a pid file is in use, do not reap the child process until
+     * a lock on the pid file can be acquired, and the pid file invalidated.
+     *
+     * Also do not acquire the pid file lock and destroy the pid file until
+     * after the umbilical has been stopped, to avoid triggering the
+     * umbilical should there be an extended lock acquisition time. Note
+     * that this is symmetric with what occurs when the pid file is
+     * locked and initialised before the umbilical process is started.
+     *
+     * On the other side, readers would acquire a lock on the pid file
+     * before reading the pid file and connecting to the pid server. */
+
+    if (self->mPidFile)
+    {
+        ERROR_IF(
+            acquirePidFileWriteLock(self->mPidFile));
+
+        self->mPidFile = destroyPidFile(self->mPidFile);
+    }
 
     /* The child process has terminated, and the umbilical process should
      * have terminated, so detach the signal watchers. After this point
