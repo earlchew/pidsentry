@@ -177,4 +177,7 @@ clean-local::
 	rm -rf scratch
 
 delete-orphaned-includes:
-	sh ./delete-orphaned-includes.sh $(MAKE) programs
+	unset MAKEFLAGS ; \
+	unset MFLAGS ;    \
+	unset MAKELEVEL ; \
+	exec sh ./delete-orphaned-includes.sh $(MAKE) programs
