@@ -714,6 +714,7 @@ runTests()
                 eval kill -9 \$$SUPERVISOR
                 eval waitwhile kill -0 \$$SUPERVISOR 2>&-
                 sleep 3
+                eval waitwhile kill -0 $UMBILICAL 2>&-
                 ! kill -0 $CHILD 2>&- || /bin/echo NOTOK
                 [ x"$RC" != x"0" ] || /bin/echo OK
             }
