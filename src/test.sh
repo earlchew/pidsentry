@@ -665,6 +665,7 @@ runTests()
                         /bin/echo NOTOK ; exit 1
                     }
                 else
+                    waituntil stoppedprocess \$$SUPERVISOR
                     randomsleep 10
                     eval kill -CONT \$$SUPERVISOR || {
                         /bin/echo NOTOK ; exit 1
@@ -689,6 +690,7 @@ runTests()
                         /bin/echo NOTOK ; exit 1
                     }
                 else
+                    waituntil stoppedprocess \$$SUPERVISOR
                     randomsleep 10
                     eval kill -CONT \$$SUPERVISOR || {
                         /bin/echo NOTOK ; exit 1
