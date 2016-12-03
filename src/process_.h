@@ -388,6 +388,9 @@ waitProcessChild(struct Pid aPid);
 CHECKED struct ChildProcessState
 monitorProcessChild(struct Pid aPid);
 
+CHECKED struct Pid
+waitProcessChildren(void);
+
 struct ExitCode
 extractProcessExitStatus(int aStatus, struct Pid aPid);
 

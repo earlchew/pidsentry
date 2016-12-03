@@ -1643,6 +1643,47 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
+struct Pid
+waitProcessChildren()
+{
+    int rc = -1;
+
+    struct Pid pid;
+
+    while (1)
+    {
+        siginfo_t siginfo;
+
+        siginfo.si_pid = 0;
+
+        pid_t waitErr;
+        ERROR_IF(
+            (waitErr = waitid(P_ALL, 0, &siginfo, WEXITED | WNOWAIT),
+             waitErr && EINTR != errno && ECHILD != errno));
+        if (waitErr && EINTR == errno)
+            continue;
+
+        if (waitErr)
+            pid = Pid(0);
+        else
+        {
+            ensure(siginfo.si_pid);
+            pid = Pid(siginfo.si_pid);
+        }
+
+        break;
+    }
+
+    rc = 0;
+
+Finally:
+
+    FINALLY({});
+
+    return rc ? Pid(-1) : pid;
+}
+
+/* -------------------------------------------------------------------------- */
 struct ForkProcessResult_
 {
     int mReturnCode;

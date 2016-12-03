@@ -110,9 +110,13 @@ TEST_F(ProcessTest, ProcessStatus)
     EXPECT_EQ(ChildProcessState::ChildProcessStateExited,
               monitorProcessChild(childpid).mChildState);
 
+    EXPECT_EQ(childpid.mPid, waitProcessChildren().mPid);
+
     int status;
     EXPECT_EQ(0, reapProcessChild(childpid, &status));
     EXPECT_EQ(0, status);
+
+    EXPECT_EQ(0, waitProcessChildren().mPid);
 }
 
 static int sigTermCount_;
