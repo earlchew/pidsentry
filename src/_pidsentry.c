@@ -218,7 +218,39 @@ Finally:
     timeKeepingModule = Timekeeping_exit(timeKeepingModule);
 
     if (testMode(TestLevelError))
+    {
+        /* Wait for all the outstanding children to ensure that stderr is
+         * not polluted for output as those processes are torn down. */
+
+        while (1)
+        {
+            struct Pid pid;
+            ABORT_IF(
+                (pid = waitProcessChildren(),
+                 -1 == pid.mPid),
+                {
+                    terminate(errno,
+                              "Failed to wait for child processes in test");
+                });
+
+            if ( ! pid.mPid)
+                break;
+
+            int status;
+            ABORT_IF(
+                reapProcessChild(pid, &status),
+                {
+                    terminate(
+                        errno,
+                        "Unable to reap child process %" PRId_Pid " in test",
+                        FMTd_Pid(pid));
+                });
+
+            (void) extractProcessExitStatus(status, pid);
+        }
+
         dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());
+    }
 
     testModule = Test_exit(testModule);
 
