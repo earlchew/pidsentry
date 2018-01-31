@@ -29,25 +29,26 @@
 
 #include "parentprocess.h"
 
-#include "timekeeping_.h"
+#include "ert/timekeeping.h"
 
 #include <stdlib.h>
 
 /* -------------------------------------------------------------------------- */
-static CHECKED int
+static ERT_CHECKED int
 monitorParent_(struct ParentProcess *self)
 {
     int rc = -1;
 
-    debug(0,
-          "watching parent pid %" PRId_Pid,
-          FMTd_Pid(self->mParentPid));
+    debug(
+        0,
+        "watching parent pid %" PRId_Ert_Pid,
+        FMTd_Ert_Pid(self->mParentPid));
 
     while (1)
     {
-        monotonicSleep(Duration(NSECS(Seconds(3))));
+        ert_monotonicSleep(Ert_Duration(ERT_NSECS(Ert_Seconds(3))));
 
-        struct Pid parentPid = ownProcessParentId();
+        struct Ert_Pid parentPid = ert_ownProcessParentId();
 
         if (1 == parentPid.mPid)
         {
@@ -57,13 +58,14 @@ monitorParent_(struct ParentProcess *self)
              * child process. */
 
             if (self->mParentPid.mPid)
-                warn(0,
-                     "Parent pid %" PRId_Pid " terminated",
-                     FMTd_Pid(self->mParentPid));
+                warn(
+                    0,
+                    "Parent pid %" PRId_Ert_Pid " terminated",
+                    FMTd_Ert_Pid(self->mParentPid));
             else
                 warn(0, "Parent terminated");
 
-            exitProcess(EXIT_FAILURE);
+            ert_exitProcess(EXIT_FAILURE);
         }
     }
 
@@ -86,12 +88,12 @@ createParentProcess(struct ParentProcess *self)
      * so its original parent might be lost. As a consequence, only treat
      * init(8) as an adoptive parent. */
 
-    self->mParentPid = ownProcessParentId();
+    self->mParentPid = ert_ownProcessParentId();
     if (1 == self->mParentPid.mPid)
-        self->mParentPid = Pid(0);
+        self->mParentPid = Ert_Pid(0);
 
-    self->mThread = createThread(&self->mThread_, "parentmonitor", 0,
-                                 ThreadMethod(self, monitorParent_));
+    self->mThread = ert_createThread(&self->mThread_, "parentmonitor", 0,
+                                     Ert_ThreadMethod(self, monitorParent_));
 
     rc = 0;
 
@@ -108,12 +110,12 @@ closeParentProcess(struct ParentProcess *self)
 {
     if (self)
     {
-        cancelThread(self->mThread);
+        ert_cancelThread(self->mThread);
 
         ABORT_UNLESS(
-            joinThread(self->mThread) && ECANCELED == errno);
+            ert_joinThread(self->mThread) && ECANCELED == errno);
 
-        self->mThread = closeThread(self->mThread);
+        self->mThread = ert_closeThread(self->mThread);
     }
 
     return 0;

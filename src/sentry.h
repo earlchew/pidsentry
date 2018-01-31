@@ -33,32 +33,33 @@
 #include "umbilical.h"
 #include "pidserver.h"
 
-#include "compiler_.h"
-#include "stdfdfiller_.h"
-#include "socketpair_.h"
-#include "jobcontrol_.h"
-#include "bellsocketpair_.h"
 #include "pidfile_.h"
 
-BEGIN_C_SCOPE;
+#include "ert/compiler.h"
+#include "ert/stdfdfiller.h"
+#include "ert/socketpair.h"
+#include "ert/jobcontrol.h"
+#include "ert/bellsocketpair.h"
 
-struct ExitCode;
-struct Pipe;
+ERT_BEGIN_C_SCOPE;
+
+struct Ert_ExitCode;
+struct Ert_Pipe;
 
 /* -------------------------------------------------------------------------- */
 struct Sentry
 {
-    struct SocketPair  mUmbilicalSocket_;
-    struct SocketPair *mUmbilicalSocket;
+    struct Ert_SocketPair  mUmbilicalSocket_;
+    struct Ert_SocketPair *mUmbilicalSocket;
 
     struct ChildProcess  mChildProcess_;
     struct ChildProcess *mChildProcess;
 
-    struct JobControl  mJobControl_;
-    struct JobControl *mJobControl;
+    struct Ert_JobControl  mJobControl_;
+    struct Ert_JobControl *mJobControl;
 
-    struct BellSocketPair  mSyncSocket_;
-    struct BellSocketPair *mSyncSocket;
+    struct Ert_BellSocketPair  mSyncSocket_;
+    struct Ert_BellSocketPair *mSyncSocket;
 
     struct PidFile  mPidFile_;
     struct PidFile *mPidFile;
@@ -71,27 +72,27 @@ struct Sentry
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 createSentry(struct Sentry      *self,
              const char * const *aCmd);
 
 struct Sentry *
 closeSentry(struct Sentry *self);
 
-struct Pid
+struct Ert_Pid
 announceSentryPidFile(struct Sentry *self);
 
-CHECKED int
-runSentry(struct Sentry   *self,
-          struct Pid       aParentPid,
-          struct Pipe     *aParentPipe,
-          struct ExitCode *aExitCode);
+ERT_CHECKED int
+runSentry(struct Sentry       *self,
+          struct Ert_Pid       aParentPid,
+          struct Ert_Pipe     *aParentPipe,
+          struct Ert_ExitCode *aExitCode);
 
 const char *
 ownSentryPidFileName(const struct Sentry *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* SENTRY_H */

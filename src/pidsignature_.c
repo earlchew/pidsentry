@@ -29,9 +29,9 @@
 
 #include "pidsignature_.h"
 
-#include "process_.h"
-#include "system_.h"
-#include "file_.h"
+#include "ert/process.h"
+#include "ert/system.h"
+#include "ert/file.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -47,8 +47,8 @@ struct MarshalledPidSignature
 };
 
 /* -------------------------------------------------------------------------- */
-static CHECKED int
-fetchProcessSignature_(struct Pid aPid, char **aSignature)
+static ERT_CHECKED int
+fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
 {
     int rc = -1;
     int fd = -1;
@@ -59,7 +59,7 @@ fetchProcessSignature_(struct Pid aPid, char **aSignature)
     const char *incarnation;
 
     ERROR_UNLESS(
-        (incarnation = fetchSystemIncarnation()));
+        (incarnation = ert_fetchSystemIncarnation()));
 
     /* Note that it is expected that forkProcess() will guarantee that
      * the pid of the child process combined with its signature results
@@ -69,10 +69,10 @@ fetchProcessSignature_(struct Pid aPid, char **aSignature)
 
     do
     {
-        struct ProcessDirName processDirName;
+        struct Ert_ProcessDirName processDirName;
 
         ERROR_IF(
-            initProcessDirName(&processDirName, aPid));
+            ert_initProcessDirName(&processDirName, aPid));
 
         static const char processStatFileNameFmt_[] = "%s/stat";
 
@@ -84,14 +84,14 @@ fetchProcessSignature_(struct Pid aPid, char **aSignature)
                        processStatFileNameFmt_, processDirName.mDirName));
 
         ERROR_IF(
-            (fd = openFd(processStatFileName, O_RDONLY, 0),
+            (fd = ert_openFd(processStatFileName, O_RDONLY, 0),
              -1 == fd));
 
     } while (0);
 
     ssize_t buflen;
     ERROR_IF(
-        (buflen = readFdFully(fd, &buf, 0),
+        (buflen = ert_readFdFully(fd, &buf, 0),
          -1 == buflen));
     ERROR_UNLESS(
         buflen,
@@ -154,7 +154,7 @@ Finally:
 
     FINALLY
     ({
-        fd = closeFd(fd);
+        fd = ert_closeFd(fd);
 
         free(buf);
         free(signature);
@@ -165,7 +165,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 struct PidSignature *
-createPidSignature(struct Pid aPid, const char *aSignature)
+createPidSignature(struct Ert_Pid aPid, const char *aSignature)
 {
     int rc = -1;
 
@@ -218,9 +218,9 @@ destroyPidSignature(struct PidSignature *self)
 
 /* -------------------------------------------------------------------------- */
 int
-sendPidSignature(struct File *aFile,
+sendPidSignature(struct Ert_File           *aFile,
                  const struct PidSignature *aPidSignature,
-                 struct Deadline           *aDeadline)
+                 struct Ert_Deadline       *aDeadline)
 {
     int rc = -1;
 
@@ -237,19 +237,19 @@ sendPidSignature(struct File *aFile,
         });
 
     ERROR_UNLESS(
-        sizeof(marshalled.mPid) == writeFileDeadline(
+        sizeof(marshalled.mPid) == ert_writeFileDeadline(
             aFile,
             (void *) &marshalled.mPid,
             sizeof(marshalled.mPid), aDeadline));
 
     ERROR_UNLESS(
-        sizeof(marshalled.mSignatureLen) == writeFileDeadline(
+        sizeof(marshalled.mSignatureLen) == ert_writeFileDeadline(
             aFile,
             (void *) &marshalled.mSignatureLen,
             sizeof(marshalled.mSignatureLen), aDeadline));
 
     ERROR_UNLESS(
-        marshalled.mSignatureLen == writeFileDeadline(
+        marshalled.mSignatureLen == ert_writeFileDeadline(
             aFile,
             aPidSignature->mSignature,
             marshalled.mSignatureLen, aDeadline));
@@ -269,8 +269,8 @@ printPidSignature(const struct PidSignature *self, FILE *aFile)
 {
     return fprintf(
         aFile,
-        "<%" PRId_Pid " %s>",
-        FMTd_Pid(self->mPid), self->mSignature);
+        "<%" PRId_Ert_Pid " %s>",
+        FMTd_Ert_Pid(self->mPid), self->mSignature);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -289,7 +289,7 @@ rankPidSignature(const struct PidSignature *self,
 
 /* -------------------------------------------------------------------------- */
 struct PidSignature *
-recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
+recvPidSignature(struct Ert_File *aFile, struct Ert_Deadline *aDeadline)
 {
     int rc = -1;
 
@@ -298,13 +298,13 @@ recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
     struct MarshalledPidSignature marshalled;
 
     ERROR_UNLESS(
-        sizeof(marshalled.mPid) == readFileDeadline(
+        sizeof(marshalled.mPid) == ert_readFileDeadline(
             aFile,
             (void *) &marshalled.mPid,
             sizeof(marshalled.mPid), aDeadline));
 
     ERROR_UNLESS(
-        sizeof(marshalled.mSignatureLen) == readFileDeadline(
+        sizeof(marshalled.mSignatureLen) == ert_readFileDeadline(
             aFile,
             (void *) &marshalled.mSignatureLen,
             sizeof(marshalled.mSignatureLen), aDeadline));
@@ -316,7 +316,7 @@ recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
         });
 
     ERROR_UNLESS(
-        marshalled.mSignatureLen == readFileDeadline(
+        marshalled.mSignatureLen == ert_readFileDeadline(
             aFile,
             marshalled.mSignature,
             marshalled.mSignatureLen, aDeadline));
@@ -331,7 +331,7 @@ recvPidSignature(struct File *aFile, struct Deadline *aDeadline)
 
     ERROR_UNLESS(
         pidSignature = createPidSignature(
-            Pid(marshalled.mPid),
+            Ert_Pid(marshalled.mPid),
             marshalled.mSignature));
 
     rc = 0;

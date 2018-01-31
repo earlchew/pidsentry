@@ -46,7 +46,7 @@ COMMON_CFLAGS     += -Wmissing-prototypes -Wmissing-declarations
 COMMON_CXXFLAGS    = $(COMMON_FLAGS) -std=gnu++0x
 COMMON_CXXFLAGS   += -Wno-variadic-macros -Wno-long-long
 COMMON_LINKFLAGS   = -Wl,--gc-sections
-TEST_LIBS          = libpidsentry_.la libgoogletest.la -ldl -lpthread -lrt
+TEST_LIBS          = libpidsentry_.la -lert libgoogletest.la -ldl -lpthread -lrt
 TEST_FLAGS         = -DUNITTEST -I ../googletest/include
 TEST_CFLAGS        = $(TEST_FLAGS) $(COMMON_CFLAGS)
 TEST_CXXFLAGS      = $(TEST_FLAGS) $(COMMON_CXXFLAGS)
@@ -55,28 +55,7 @@ TESTS              = $(check_PROGRAMS) $(check_SCRIPTS)
 pidsentrydir        = $(bindir)
 pidsentry_PROGRAMS  = pidsentry
 check_SCRIPTS       = test.sh
-check_PROGRAMS      = _splicetest
-check_PROGRAMS     += _isblockingtest
-check_PROGRAMS     += _deadlinetest
-check_PROGRAMS     += _ensuretest
-check_PROGRAMS     += _fdsettest
-check_PROGRAMS     += _systemtest
-check_PROGRAMS     += _timekeepingtest
-check_PROGRAMS     += _envtest
-check_PROGRAMS     += _errortest
-check_PROGRAMS     += _eventlatchtest
-check_PROGRAMS     += _eventpipetest
-check_PROGRAMS     += _fdtest
-check_PROGRAMS     += _fileeventqueuetest
-check_PROGRAMS     += _filetest
-check_PROGRAMS     += _lambdatest
-check_PROGRAMS     += _methodtest
-check_PROGRAMS     += _unixsockettest
-check_PROGRAMS     += _parsetest
-check_PROGRAMS     += _pidsignaturetest
-check_PROGRAMS     += _processtest
-check_PROGRAMS     += _printftest
-check_PROGRAMS     += _threadtest
+check_PROGRAMS      = _pidsignaturetest
 noinst_PROGRAMS     =
 noinst_SCRIPTS      = $(check_SCRIPTS)
 noinst_LTLIBRARIES  = libgoogletest.la libpidsentry_.la
@@ -84,7 +63,7 @@ lib_LTLIBRARIES     =
 
 pidsentry_CFLAGS    = $(COMMON_CFLAGS)
 pidsentry_LDFLAGS   = $(COMMON_LINKFLAGS) -Wl,-Map,pidsentry.map -Wl,-cref
-pidsentry_LDADD     = libpidsentry_.la -ldl -lrt -lpthread
+pidsentry_LDADD     = libpidsentry_.la -lert -ldl -lrt -lpthread
 pidsentry_SOURCES   = _pidsentry.c
 pidsentry_SOURCES  += agent.c
 pidsentry_SOURCES  += childprocess.c
@@ -96,70 +75,8 @@ pidsentry_SOURCES  += shellcommand.c
 pidsentry_SOURCES  += tether.c
 pidsentry_SOURCES  += umbilical.c
 
-_splicetest_SOURCES = _splicetest.c
-
-_timekeepingtest_SOURCES = _timekeepingtest.cc
-_timekeepingtest_LDADD   = $(TEST_LIBS)
-
-_deadlinetest_SOURCES = _deadlinetest.cc
-_deadlinetest_LDADD   = $(TEST_LIBS)
-
-_envtest_SOURCES = _envtest.cc
-_envtest_LDADD   = $(TEST_LIBS)
-
-_ensuretest_SOURCES = _ensuretest.c
-_ensuretest_LDADD   = $(TEST_LIBS)
-
-_errortest_SOURCES = _errortest.cc
-_errortest_LDADD   = $(TEST_LIBS)
-
-_eventlatchtest_SOURCES = _eventlatchtest.cc
-_eventlatchtest_LDADD   = $(TEST_LIBS)
-
-_eventpipetest_SOURCES = _eventpipetest.cc
-_eventpipetest_LDADD   = $(TEST_LIBS)
-
-_fdsettest_SOURCES = _fdsettest.cc
-_fdsettest_LDADD   = $(TEST_LIBS)
-
-_fdtest_SOURCES = _fdtest.cc
-_fdtest_LDADD   = $(TEST_LIBS)
-
-_fileeventqueuetest_SOURCES = _fileeventqueuetest.cc
-_fileeventqueuetest_LDADD   = $(TEST_LIBS)
-
-_filetest_SOURCES = _filetest.cc
-_filetest_LDADD   = $(TEST_LIBS)
-
-_lambdatest_SOURCES = _lambdatest.cc
-_lambdatest_LDADD   = $(TEST_LIBS)
-
-_methodtest_SOURCES = _methodtest.cc
-_methodtest_LDADD   = $(TEST_LIBS)
-
-_parsetest_SOURCES = _parsetest.cc
-_parsetest_LDADD   = $(TEST_LIBS)
-
 _pidsignaturetest_SOURCES = _pidsignaturetest.cc
 _pidsignaturetest_LDADD   = $(TEST_LIBS)
-
-_printftest_SOURCES = _printftest.cc
-_printftest_LDADD   = $(TEST_LIBS)
-
-_processtest_SOURCES = _processtest.cc
-_processtest_LDADD   = $(TEST_LIBS)
-
-_systemtest_SOURCES = _systemtest.cc
-_systemtest_LDADD   = $(TEST_LIBS)
-
-_threadtest_SOURCES = _threadtest.cc
-_threadtest_LDADD   = $(TEST_LIBS)
-
-_unixsockettest_SOURCES = _unixsockettest.cc
-_unixsockettest_LDADD   = $(TEST_LIBS)
-
-_isblockingtest_SOURCES = _isblockingtest.c
-_isblockingtest_LDADD   = $(TEST_LIBS)
 
 include libpidsentry__la.am
 $(call WILDCARD,libpidsentry__la,libpidsentry__la_SOURCES,[a-z]*_.[ch])

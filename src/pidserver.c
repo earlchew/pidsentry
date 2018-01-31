@@ -29,20 +29,20 @@
 
 #include "pidserver.h"
 
-#include "deadline_.h"
+#include "ert/deadline.h"
 
 #include <unistd.h>
 #include <stdlib.h>
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct PidServerClientActivity_ *
+static ERT_CHECKED struct PidServerClientActivity_ *
 closePidServerClientActivity_(struct PidServerClientActivity_ *self)
 {
     if (self)
     {
         ensure( ! self->mList);
 
-        self->mEvent = closeFileEventQueueActivity(self->mEvent);
+        self->mEvent = ert_closeFileEventQueueActivity(self->mEvent);
 
         free(self);
     }
@@ -50,10 +50,10 @@ closePidServerClientActivity_(struct PidServerClientActivity_ *self)
     return 0;
 }
 
-static CHECKED struct PidServerClientActivity_*
+static ERT_CHECKED struct PidServerClientActivity_*
 createPidServerClientActivity_(
     struct PidServerClient_               *aClient,
-    struct FileEventQueue                 *aQueue,
+    struct Ert_FileEventQueue             *aQueue,
     struct PidServerClientActivityMethod_  aMethod)
 {
     int rc = -1;
@@ -69,19 +69,19 @@ createPidServerClientActivity_(
     self->mMethod = aMethod;
 
     ERROR_IF(
-        createFileEventQueueActivity(
+        ert_createFileEventQueueActivity(
             &self->mEvent_,
             aQueue,
             aClient->mUnixSocket->mSocket->mFile));
     self->mEvent = &self->mEvent_;
 
     ERROR_IF(
-        armFileEventQueueActivity(
+        ert_armFileEventQueueActivity(
             self->mEvent,
-            EventQueuePollRead,
-            FileEventQueueActivityMethod(
+            Ert_FileEventQueuePollRead,
+            Ert_FileEventQueueActivityMethod(
                 self,
-                LAMBDA(
+                ERT_LAMBDA(
                     int, (struct PidServerClientActivity_ *self_),
                     {
                         return
@@ -103,24 +103,24 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-#define PRIs_ucred "s"                  \
-                   "uid %" PRId_Uid " " \
-                   "gid %" PRId_Gid " " \
-                   "pid %" PRId_Pid
+#define PRIs_ucred "s"                      \
+                   "uid %" PRId_Ert_Uid " " \
+                   "gid %" PRId_Ert_Gid " " \
+                   "pid %" PRId_Ert_Pid
 
-#define FMTs_ucred(Ucred)        \
-    "",                          \
-    FMTd_Uid(Uid((Ucred).uid)),  \
-    FMTd_Gid(Gid((Ucred).gid)),  \
-    FMTd_Pid(Pid((Ucred).pid))
+#define FMTs_ucred(Ucred)                \
+    "",                                  \
+    FMTd_Ert_Uid(Ert_Uid((Ucred).uid)),  \
+    FMTd_Ert_Gid(Ert_Gid((Ucred).gid)),  \
+    FMTd_Ert_Pid(Ert_Pid((Ucred).pid))
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct PidServerClient_ *
+static ERT_CHECKED struct PidServerClient_ *
 closePidServerClient_(struct PidServerClient_ *self)
 {
     if (self)
     {
-        self->mUnixSocket = closeUnixSocket(self->mUnixSocket);
+        self->mUnixSocket = ert_closeUnixSocket(self->mUnixSocket);
 
         free(self);
     }
@@ -129,8 +129,8 @@ closePidServerClient_(struct PidServerClient_ *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct PidServerClient_ *
-createPidServerClient_(struct UnixSocket *aSocket)
+static ERT_CHECKED struct PidServerClient_ *
+createPidServerClient_(struct Ert_UnixSocket *aSocket)
 {
     int rc = -1;
 
@@ -140,14 +140,14 @@ createPidServerClient_(struct UnixSocket *aSocket)
         (self = malloc(sizeof(*self))));
 
     ERROR_IF(
-        acceptUnixSocket(&self->mUnixSocket_, aSocket),
+        ert_acceptUnixSocket(&self->mUnixSocket_, aSocket),
         {
             warn(errno, "Unable to accept connection");
         });
     self->mUnixSocket = &self->mUnixSocket_;
 
     ERROR_IF(
-        ownUnixSocketPeerCred(self->mUnixSocket, &self->mCred));
+        ert_ownUnixSocketPeerCred(self->mUnixSocket, &self->mCred));
 
     rc = 0;
 
@@ -164,7 +164,7 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-createPidServer(struct PidServer *self, struct Pid aPid)
+createPidServer(struct PidServer *self, struct Ert_Pid aPid)
 {
     int rc = -1;
 
@@ -177,16 +177,17 @@ createPidServer(struct PidServer *self, struct Pid aPid)
     ERROR_UNLESS(
         self->mPidSignature = createPidSignature(aPid, 0));
 
-    debug(0,
-          "create pid server for %" PRIs_Method,
-          FMTs_Method(self->mPidSignature, printPidSignature));
+    debug(
+        0,
+        "create pid server for %" PRIs_Ert_Method,
+        FMTs_Ert_Method(self->mPidSignature, printPidSignature));
 
     ERROR_IF(
-        createUnixSocket(&self->mUnixSocket_, 0, 0, 0));
+        ert_createUnixSocket(&self->mUnixSocket_, 0, 0, 0));
     self->mUnixSocket = &self->mUnixSocket_;
 
     ERROR_IF(
-        ownUnixSocketName(self->mUnixSocket, &self->mSocketAddr));
+        ert_ownUnixSocketName(self->mUnixSocket, &self->mSocketAddr));
 
     ERROR_IF(
         self->mSocketAddr.sun_path[0]);
@@ -194,7 +195,7 @@ createPidServer(struct PidServer *self, struct Pid aPid)
     int numEvents = 16;
 
     ERROR_IF(
-        createFileEventQueue(&self->mEventQueue_, numEvents));
+        ert_createFileEventQueue(&self->mEventQueue_, numEvents));
     self->mEventQueue = &self->mEventQueue_;
 
     rc = 0;
@@ -211,7 +212,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED int
+static ERT_CHECKED int
 enqueuePidServerConnection_(struct PidServer                *self,
                             struct PidServerClientActivity_ *aActivity)
 {
@@ -219,9 +220,10 @@ enqueuePidServerConnection_(struct PidServer                *self,
 
     ensure( ! aActivity->mList);
 
-    debug(0,
-          "add reference from %" PRIs_ucred,
-          FMTs_ucred(aActivity->mClient->mCred));
+    debug(
+        0,
+        "add reference from %" PRIs_ucred,
+        FMTs_ucred(aActivity->mClient->mCred));
 
     TAILQ_INSERT_TAIL(
         &self->mClients, aActivity, mList_);
@@ -238,7 +240,7 @@ Finally:
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED struct PidServerClientActivity_ *
+static ERT_CHECKED struct PidServerClientActivity_ *
 discardPidServerConnection_(struct PidServer                *self,
                             struct PidServerClientActivity_ *aActivity)
 {
@@ -248,9 +250,10 @@ discardPidServerConnection_(struct PidServer                *self,
     {
         if (activity->mList)
         {
-            debug(0,
-                  "drop reference from %" PRIs_ucred,
-                  FMTs_ucred(activity->mClient->mCred));
+            debug(
+                0,
+                "drop reference from %" PRIs_ucred,
+                FMTs_ucred(activity->mClient->mCred));
 
             TAILQ_REMOVE(&self->mClients, activity, mList_);
             activity->mList = 0;
@@ -279,8 +282,8 @@ closePidServer(struct PidServer *self)
             activity = discardPidServerConnection_(self, activity);
         }
 
-        self->mEventQueue   = closeFileEventQueue(self->mEventQueue);
-        self->mUnixSocket   = closeUnixSocket(self->mUnixSocket);
+        self->mEventQueue   = ert_closeFileEventQueue(self->mEventQueue);
+        self->mUnixSocket   = ert_closeUnixSocket(self->mUnixSocket);
         self->mPidSignature = destroyPidSignature(self->mPidSignature);
    }
 
@@ -306,8 +309,8 @@ acceptPidServerConnection(struct PidServer *self)
     struct PidServerClientActivity_ *activity  = 0;
     struct PidSignature             *signature = 0;
 
-    struct Deadline  deadline_;
-    struct Deadline *deadline = 0;
+    struct Ert_Deadline  deadline_;
+    struct Ert_Deadline *deadline = 0;
 
     ERROR_UNLESS(
         (client = createPidServerClient_(self->mUnixSocket)));
@@ -315,15 +318,17 @@ acceptPidServerConnection(struct PidServer *self)
     ERROR_UNLESS(
         geteuid() == client->mCred.uid || ! client->mCred.uid,
         {
-            warn(0,
-                 "Discarding connection from %" PRIs_ucred,
-                 FMTs_ucred(client->mCred));
+            warn(
+                0,
+                "Discarding connection from %" PRIs_ucred,
+                FMTs_ucred(client->mCred));
         });
 
-    struct Duration pidSignatureTimeout = Duration(NSECS(Seconds(30)));
+    struct Ert_Duration pidSignatureTimeout =
+        Ert_Duration(ERT_NSECS(Ert_Seconds(30)));
 
     ERROR_IF(
-        createDeadline(&deadline_, &pidSignatureTimeout));
+        ert_createDeadline(&deadline_, &pidSignatureTimeout));
     deadline = &deadline_;
 
     ERROR_UNLESS(
@@ -333,9 +338,10 @@ acceptPidServerConnection(struct PidServer *self)
     ERROR_IF(
         rankPidSignature(self->mPidSignature, signature),
         {
-            warn(0,
-                 "Discarding connection for %" PRIs_Method,
-                 FMTs_Method(signature, printPidSignature));
+            warn(
+                0,
+                "Discarding connection for %" PRIs_Ert_Method,
+                FMTs_Ert_Method(signature, printPidSignature));
         });
 
     ERROR_UNLESS(
@@ -344,7 +350,7 @@ acceptPidServerConnection(struct PidServer *self)
             self->mEventQueue,
             PidServerClientActivityMethod_(
                 self,
-                LAMBDA(
+                ERT_LAMBDA(
                     int, (struct PidServer                *self_,
                           struct PidServerClientActivity_ *aActivity),
                     {
@@ -361,7 +367,7 @@ acceptPidServerConnection(struct PidServer *self)
 
     int wrBytes;
     ERROR_IF(
-        (wrBytes = writeSocket(
+        (wrBytes = ert_writeSocket(
             activity->mClient->mUnixSocket->mSocket, buf, sizeof(buf), 0),
          -1 == wrBytes || (errno = EIO, sizeof(buf) != wrBytes)));
 
@@ -377,7 +383,7 @@ Finally:
     ({
         signature = destroyPidSignature(signature);
         activity  = discardPidServerConnection_(self, activity);
-        deadline  = closeDeadline(deadline);
+        deadline  = ert_closeDeadline(deadline);
         client    = closePidServerClient_(client);
     });
 
@@ -395,7 +401,7 @@ cleanPidServer(struct PidServer *self)
      * that have expired. */
 
     ERROR_IF(
-        pollFileEventQueueActivity(self->mEventQueue, &ZeroDuration));
+        ert_pollFileEventQueueActivity(self->mEventQueue, &Ert_ZeroDuration));
 
     /* There is no further need to continue cleaning if there are no
      * more outstanding connections. The last remaining connection

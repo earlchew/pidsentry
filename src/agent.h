@@ -29,25 +29,25 @@
 #ifndef AGENT_H
 #define AGENT_H
 
-#include "compiler_.h"
-#include "pid_.h"
+#include "ert/compiler.h"
+#include "ert/pid.h"
 
 #include <stdio.h>
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
-struct ExitCode;
+struct Ert_ExitCode;
 
 /* -------------------------------------------------------------------------- */
 struct Agent
 {
     const char * const *mCmd;
 
-    struct Pid mAgentPid;
+    struct Ert_Pid mAgentPid;
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 createAgent(struct Agent       *self,
             const char * const *aCmd);
 
@@ -57,12 +57,12 @@ closeAgent(struct Agent *self);
 int
 printAgent(const struct Agent *self, FILE *aFile);
 
-CHECKED int
-runAgent(struct Agent    *self,
-         struct ExitCode *aExitCode);
+ERT_CHECKED int
+runAgent(struct Agent        *self,
+         struct Ert_ExitCode *aExitCode);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* AGENT_H */

@@ -29,13 +29,13 @@
 #ifndef COMMAND_H
 #define COMMAND_H
 
-#include "compiler_.h"
-#include "unixsocket_.h"
-#include "pid_.h"
+#include "ert/compiler.h"
+#include "ert/unixsocket.h"
+#include "ert/pid.h"
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
-struct ExitCode;
+struct Ert_ExitCode;
 
 enum CommandStatus
 {
@@ -51,11 +51,11 @@ enum CommandStatus
 /* -------------------------------------------------------------------------- */
 struct Command
 {
-    struct Pid mChildPid;
-    struct Pid mPid;
+    struct Ert_Pid mChildPid;
+    struct Ert_Pid mPid;
 
-    struct UnixSocket  mKeeperTether_;
-    struct UnixSocket *mKeeperTether;
+    struct Ert_UnixSocket  mKeeperTether_;
+    struct Ert_UnixSocket *mKeeperTether;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -63,19 +63,19 @@ enum CommandStatus
 createCommand(struct Command *self,
               const char     *aPidFileName);
 
-CHECKED int
+ERT_CHECKED int
 runCommand(struct Command     *self,
            const char * const *aCmd);
 
-CHECKED int
-reapCommand(struct Command  *self,
-            struct ExitCode *aExitCode);
+ERT_CHECKED int
+reapCommand(struct Command      *self,
+            struct Ert_ExitCode *aExitCode);
 
 struct Command *
 closeCommand(struct Command *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* COMMAND_H */

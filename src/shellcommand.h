@@ -29,25 +29,24 @@
 #ifndef SHELLCOMMAND_H
 #define SHELLCOMMAND_H
 
-#include "compiler_.h"
-
-#include "parse_.h"
+#include "ert/compiler.h"
+#include "ert/parse.h"
 
 #include <stdbool.h>
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
 struct ShellCommand
 {
-    struct ParseArgList  mArgList_;
-    struct ParseArgList *mArgList;
+    struct Ert_ParseArgList  mArgList_;
+    struct Ert_ParseArgList *mArgList;
 
     bool  mShell;
     char *mCmd;
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 createShellCommand(struct ShellCommand *self,
                    const char * const  *aCmd);
 
@@ -60,11 +59,11 @@ ownShellCommandText(const struct ShellCommand *self);
 const char *
 ownShellCommandName(const struct ShellCommand *self);
 
-CHECKED struct ShellCommand *
+ERT_CHECKED struct ShellCommand *
 closeShellCommand(struct ShellCommand *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* SHELLCOMMAND_H */

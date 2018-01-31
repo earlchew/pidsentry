@@ -29,16 +29,16 @@
 #ifndef PIDSENTRY_H
 #define PIDSENTRY_H
 
-#include "compiler_.h"
+#include "ert/compiler.h"
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 main(int, char **);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* PIDSENTRY_H */

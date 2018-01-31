@@ -29,19 +29,19 @@
 #ifndef OPTIONS_H
 #define OPTIONS_H
 
-#include "compiler_.h"
-#include "pid_.h"
+#include "ert/compiler.h"
+#include "ert/options.h"
+#include "ert/pid.h"
 
 #include <sys/types.h>
 #include <stdbool.h>
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 struct Options
 {
-    unsigned mDebug;
-    unsigned mTest;
+    struct Ert_Options mOptions;
 
     struct
     {
@@ -81,11 +81,11 @@ extern struct Options gOptions;
 void
 initOptions(void);
 
-CHECKED int
+ERT_CHECKED int
 processOptions(int argc, char **argv, const char * const **args);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* OPTIONS_H */

@@ -29,26 +29,26 @@
 
 #include "sentry.h"
 
+#include "options_.h"
 
 #include <fcntl.h>
 #include <unistd.h>
 
-
 #include <valgrind/valgrind.h>
 
 /* -------------------------------------------------------------------------- */
-static CHECKED int
+static ERT_CHECKED int
 reapSentry_(struct Sentry *self)
 {
-    struct Pid umbilicalPid =
-        self->mUmbilicalProcess ? self->mUmbilicalProcess->mPid : Pid(0);
+    struct Ert_Pid umbilicalPid =
+        self->mUmbilicalProcess ? self->mUmbilicalProcess->mPid : Ert_Pid(0);
 
     return superviseChildProcess(self->mChildProcess, umbilicalPid);
 }
 
-static CHECKED int
+static ERT_CHECKED int
 raiseSentrySignal_(
-    struct Sentry *self, int aSigNum, struct Pid aPid, struct Uid aUid)
+    struct Sentry *self, int aSigNum, struct Ert_Pid aPid, struct Ert_Uid aUid)
 {
     /* Propagate the signal to the child. Note that SIGQUIT might cause
      * the child to terminate and dump core. Dump core in sympathy if this
@@ -58,19 +58,19 @@ raiseSentrySignal_(
     return killChildProcess(self->mChildProcess, aSigNum);
 }
 
-static CHECKED int
+static ERT_CHECKED int
 raiseSentryStop_(struct Sentry *self)
 {
     return pauseChildProcessGroup(self->mChildProcess);
 }
 
-static CHECKED int
+static ERT_CHECKED int
 raiseSentryResume_(struct Sentry *self)
 {
     return resumeChildProcessGroup(self->mChildProcess);
 }
 
-static CHECKED int
+static ERT_CHECKED int
 raiseSentrySigCont_(struct Sentry *self)
 {
     return raiseChildProcessSigCont(self->mChildProcess);
@@ -92,7 +92,7 @@ createSentry(struct Sentry      *self,
     self->mUmbilicalProcess = 0;
 
     ERROR_IF(
-        createSocketPair(&self->mUmbilicalSocket_, O_NONBLOCK | O_CLOEXEC));
+        ert_createSocketPair(&self->mUmbilicalSocket_, O_NONBLOCK | O_CLOEXEC));
     self->mUmbilicalSocket = &self->mUmbilicalSocket_;
 
     ERROR_IF(
@@ -100,15 +100,16 @@ createSentry(struct Sentry      *self,
     self->mChildProcess = &self->mChildProcess_;
 
     ERROR_IF(
-        createJobControl(&self->mJobControl_));
+        ert_createJobControl(&self->mJobControl_));
     self->mJobControl = &self->mJobControl_;
 
     ERROR_IF(
-        watchJobControlDone(self->mJobControl,
-                            WatchProcessMethod(self, reapSentry_)));
+        ert_watchJobControlDone(
+            self->mJobControl,
+            Ert_WatchProcessMethod(self, reapSentry_)));
 
     ERROR_IF(
-        createBellSocketPair(&self->mSyncSocket_, O_CLOEXEC));
+        ert_createBellSocketPair(&self->mSyncSocket_, O_CLOEXEC));
     self->mSyncSocket = &self->mSyncSocket_;
 
     ERROR_IF(
@@ -122,18 +123,20 @@ createSentry(struct Sentry      *self,
      * notice via its synchronisation pipe. */
 
     ERROR_IF(
-        watchJobControlSignals(
+        ert_watchJobControlSignals(
             self->mJobControl,
-            WatchProcessSignalMethod(self, raiseSentrySignal_)));
+            Ert_WatchProcessSignalMethod(self, raiseSentrySignal_)));
 
     ERROR_IF(
-        watchJobControlStop(self->mJobControl,
-                            WatchProcessMethod(self, raiseSentryStop_),
-                            WatchProcessMethod(self, raiseSentryResume_)));
+        ert_watchJobControlStop(
+            self->mJobControl,
+            Ert_WatchProcessMethod(self, raiseSentryStop_),
+            Ert_WatchProcessMethod(self, raiseSentryResume_)));
 
     ERROR_IF(
-        watchJobControlContinue(self->mJobControl,
-                                WatchProcessMethod(self, raiseSentrySigCont_)));
+        ert_watchJobControlContinue(
+            self->mJobControl,
+            Ert_WatchProcessMethod(self, raiseSentrySigCont_)));
 
     /* If a pidfile is required, create it now so that it can
      * be anchored to its directory before changing the current
@@ -143,7 +146,7 @@ createSentry(struct Sentry      *self,
     if (gOptions.mServer.mPidFile)
     {
         ERROR_IF(
-            PathNameStatusOk != initPidFile(
+            Ert_PathNameStatusOk != initPidFile(
                 &self->mPidFile_, gOptions.mServer.mPidFile),
             {
                 warn(
@@ -164,7 +167,7 @@ createSentry(struct Sentry      *self,
      * do not change directories in case a core file needs to be
      * generated. */
 
-    if ( ! gOptions.mDebug)
+    if ( ! debuglevel(0))
     {
         static const char rootDir[] = "/";
 
@@ -183,7 +186,7 @@ createSentry(struct Sentry      *self,
      * original stdin file table entry. */
 
     ERROR_IF(
-        STDIN_FILENO != duplicateFd(
+        STDIN_FILENO != ert_duplicateFd(
             self->mChildProcess->mTetherPipe->mRdFile->mFd, STDIN_FILENO));
 
     /* Now that the tether has been duplicated onto stdin and stdout
@@ -195,7 +198,7 @@ createSentry(struct Sentry      *self,
         closeChildProcessTether(self->mChildProcess));
 
     ERROR_IF(
-        purgeProcessOrphanedFds());
+        ert_purgeProcessOrphanedFds());
 
     rc = 0;
 
@@ -218,17 +221,17 @@ closeSentry(struct Sentry *self)
     {
         self->mPidServer       = closePidServer(self->mPidServer);
         self->mPidFile         = destroyPidFile(self->mPidFile);
-        self->mSyncSocket      = closeBellSocketPair(self->mSyncSocket);
-        self->mJobControl      = closeJobControl(self->mJobControl);
+        self->mSyncSocket      = ert_closeBellSocketPair(self->mSyncSocket);
+        self->mJobControl      = ert_closeJobControl(self->mJobControl);
         self->mChildProcess    = closeChildProcess(self->mChildProcess);
-        self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
+        self->mUmbilicalSocket = ert_closeSocketPair(self->mUmbilicalSocket);
     }
 
     return 0;
 }
 
 /* -------------------------------------------------------------------------- */
-struct Pid
+struct Ert_Pid
 announceSentryPidFile(struct Sentry *self)
 {
     /* Attempt to create the pidfile, if required, before creating the
@@ -237,7 +240,7 @@ announceSentryPidFile(struct Sentry *self)
      * clean up the umbilical process. */
 
     return ! self->mPidFile
-        ? Pid(0)
+        ? Ert_Pid(0)
         : writePidFile(
             self->mPidFile,
             self->mChildProcess->mPid,
@@ -253,14 +256,14 @@ ownSentryPidFileName(const struct Sentry *self)
 
 /* -------------------------------------------------------------------------- */
 int
-runSentry(struct Sentry   *self,
-          struct Pid       aParentPid,
-          struct Pipe     *aParentPipe,
-          struct ExitCode *aExitCode)
+runSentry(struct Sentry       *self,
+          struct Ert_Pid       aParentPid,
+          struct Ert_Pipe     *aParentPipe,
+          struct Ert_ExitCode *aExitCode)
 {
     int rc = -1;
 
-    struct Pid childPid = self->mChildProcess->mPid;
+    struct Ert_Pid childPid = self->mChildProcess->mPid;
 
     /* Monitor the watchdog using another process so that a failure
      * of the watchdog can be detected independently. Only create the
@@ -305,25 +308,25 @@ runSentry(struct Sentry   *self,
         if (self->mPidFile)
             ensure(self->mPidFile->mFile);
 
-        TEST_RACE
+        ERT_TEST_RACE
         ({
             ERROR_IF(
                 -1 == dprintf(STDOUT_FILENO,
-                              "%" PRId_Pid " "
-                              "%" PRId_Pid " "
-                              "%" PRId_Pid "\n",
-                              FMTd_Pid(aParentPid),
-                              FMTd_Pid(ownProcessId()),
-                              FMTd_Pid(self->mUmbilicalProcess->mPid)),
+                              "%" PRId_Ert_Pid " "
+                              "%" PRId_Ert_Pid " "
+                              "%" PRId_Ert_Pid "\n",
+                              FMTd_Ert_Pid(aParentPid),
+                              FMTd_Ert_Pid(ert_ownProcessId()),
+                              FMTd_Ert_Pid(self->mUmbilicalProcess->mPid)),
                 {
                     terminate(
                         errno,
-                        "Unable to print parent %" PRId_Pid ", "
-                        "sentry pid %" PRId_Pid " and "
-                        "umbilical pid %" PRId_Pid,
-                        FMTd_Pid(aParentPid),
-                        FMTd_Pid(ownProcessId()),
-                        FMTd_Pid(self->mUmbilicalProcess->mPid));
+                        "Unable to print parent %" PRId_Ert_Pid ", "
+                        "sentry pid %" PRId_Ert_Pid " and "
+                        "umbilical pid %" PRId_Ert_Pid,
+                        FMTd_Ert_Pid(aParentPid),
+                        FMTd_Ert_Pid(ert_ownProcessId()),
+                        FMTd_Ert_Pid(self->mUmbilicalProcess->mPid));
                 });
         });
     }
@@ -331,9 +334,9 @@ runSentry(struct Sentry   *self,
     /* With the child process announced, and the umbilical monitor
      * prepared, allow the child process to run the target program. */
 
-    closeBellSocketPairChild(self->mSyncSocket);
+    ert_closeBellSocketPairChild(self->mSyncSocket);
 
-    TEST_RACE
+    ERT_TEST_RACE
     ({
         /* The child process is waiting so that the child program will
          * run only after the pidfile has been created.
@@ -343,13 +346,13 @@ runSentry(struct Sentry   *self,
          * the child to terminate. */
 
         ERROR_IF(
-            ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno);
+            ert_ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno);
 
         /* Now wait for the child to respond to know that it has
          * received the indication that it can start running. */
 
         ERROR_IF(
-            waitBellSocketPairParent(self->mSyncSocket, 0) &&
+            ert_waitBellSocketPairParent(self->mSyncSocket, 0) &&
             EPIPE != errno && ENOENT != errno);
     });
 
@@ -361,29 +364,29 @@ runSentry(struct Sentry   *self,
 
     if (gOptions.mServer.mIdentify)
     {
-        TEST_RACE
+        ERT_TEST_RACE
         ({
             ERROR_IF(
                 -1 == dprintf(STDOUT_FILENO,
-                              "%" PRId_Pid "\n",
-                              FMTd_Pid(childPid)));
+                              "%" PRId_Ert_Pid "\n",
+                              FMTd_Ert_Pid(childPid)));
         });
     }
 
     if (gOptions.mServer.mAnnounce)
         message(0,
-                "started pid %" PRId_Pid " %s",
-                FMTd_Pid(childPid),
+                "started pid %" PRId_Ert_Pid " %s",
+                FMTd_Ert_Pid(childPid),
                 ownShellCommandName(self->mChildProcess->mShellCommand));
 
-    TEST_RACE
+    ERT_TEST_RACE
     ({
         /* The child process is waiting to know that the child pid has
          * been announced. Indicate to the child process that this has
          * been done. */
 
         ERROR_IF(
-            ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno);
+            ert_ringBellSocketPairParent(self->mSyncSocket) && EPIPE != errno);
     });
 
     /* Avoid closing the original stdout file descriptor only if
@@ -400,7 +403,7 @@ runSentry(struct Sentry   *self,
     {
         int valid;
         ERROR_IF(
-            (valid = ownFdValid(STDOUT_FILENO),
+            (valid = ert_ownFdValid(STDOUT_FILENO),
              -1 == valid));
         if ( ! valid)
             discardStdout = true;
@@ -409,10 +412,10 @@ runSentry(struct Sentry   *self,
     if (discardStdout)
     {
         ERROR_IF(
-            nullifyFd(STDOUT_FILENO));
+            ert_nullifyFd(STDOUT_FILENO));
     }
 
-    TEST_RACE
+    ERT_TEST_RACE
     ({
         /* Wait until the child has started the target child program to
          * know that the child is no longer sharing any file descriptors
@@ -423,20 +426,20 @@ runSentry(struct Sentry   *self,
 
         int err;
         ERROR_IF(
-            (err = waitBellSocketPairParent(self->mSyncSocket, 0),
+            (err = ert_waitBellSocketPairParent(self->mSyncSocket, 0),
              err
              ? (ENOENT != errno && EPIPE != errno)
              : (errno = 0, true)));
     });
 
-    self->mSyncSocket = closeBellSocketPair(self->mSyncSocket);
+    self->mSyncSocket = ert_closeBellSocketPair(self->mSyncSocket);
 
     /* Now that the child is no longer sharing any file descriptors or file
      * locks, stop the watchdog if the test requires it. Note that this
      * will race with other threads that might be holding a file lock, etc so
      * the watchdog will be stopped with the resources held. */
 
-    if (testMode(TestLevelSync))
+    if (ert_testMode(Ert_TestLevelSync))
     {
         ERROR_IF(
             raise(SIGSTOP));
@@ -458,10 +461,11 @@ runSentry(struct Sentry   *self,
      * can exit in an orderly fashion with the exit status of the child
      * process as the last line emitted. */
 
-    struct Pid umbilicalPid = self->mUmbilicalProcess->mPid;
+    struct Ert_Pid umbilicalPid = self->mUmbilicalProcess->mPid;
 
-    debug(0,
-          "stopping umbilical pid %" PRId_Pid, FMTd_Pid(umbilicalPid));
+    debug(
+        0,
+        "stopping umbilical pid %" PRId_Ert_Pid, FMTd_Ert_Pid(umbilicalPid));
 
     int notStopped;
     ERROR_IF(
@@ -470,16 +474,17 @@ runSentry(struct Sentry   *self,
         {
             warn(
                 errno,
-                "Unable to stop umbilical process pid %" PRId_Pid,
-                FMTd_Pid(umbilicalPid));
+                "Unable to stop umbilical process pid %" PRId_Ert_Pid,
+                FMTd_Ert_Pid(umbilicalPid));
         });
 
     if (notStopped)
-        warn(0,
-             "Unable to stop umbilical process pid %" PRId_Pid" cleanly",
-             FMTd_Pid(umbilicalPid));
+        warn(
+            0,
+            "Unable to stop umbilical process pid %" PRId_Ert_Pid" cleanly",
+            FMTd_Ert_Pid(umbilicalPid));
 
-    self->mUmbilicalSocket = closeSocketPair(self->mUmbilicalSocket);
+    self->mUmbilicalSocket = ert_closeSocketPair(self->mUmbilicalSocket);
 
     /* The child process group is cleaned up from both the umbilical process
      * and the watchdog with the expectation that at least one of them
@@ -492,8 +497,8 @@ runSentry(struct Sentry   *self,
 
     if (gOptions.mServer.mAnnounce)
         message(0,
-                "stopped pid %" PRId_Pid " %s",
-                FMTd_Pid(childPid),
+                "stopped pid %" PRId_Ert_Pid " %s",
+                FMTd_Ert_Pid(childPid),
                 ownShellCommandName(self->mChildProcess->mShellCommand));
 
     /* If a pid file is in use, do not reap the child process until
@@ -523,22 +528,22 @@ runSentry(struct Sentry   *self,
      * the only action left from here is to reap the child process. */
 
     ERROR_IF(
-        unwatchJobControlContinue(self->mJobControl));
+        ert_unwatchJobControlContinue(self->mJobControl));
 
     ERROR_IF(
-        unwatchJobControlStop(self->mJobControl));
+        ert_unwatchJobControlStop(self->mJobControl));
 
     ERROR_IF(
-        unwatchJobControlSignals(self->mJobControl));
+        ert_unwatchJobControlSignals(self->mJobControl));
 
     ERROR_IF(
-        unwatchJobControlDone(self->mJobControl));
+        ert_unwatchJobControlDone(self->mJobControl));
 
     /* Reap the child only after the pid file is released. This ensures
      * that any competing reader that manages to sucessfully lock and
      * read the pid file will see the terminated process. */
 
-    debug(0, "reaping child pid %" PRId_Pid, FMTd_Pid(childPid));
+    debug(0, "reaping child pid %" PRId_Ert_Pid, FMTd_Ert_Pid(childPid));
 
     int childStatus;
     ERROR_IF(
@@ -546,12 +551,13 @@ runSentry(struct Sentry   *self,
 
     self->mChildProcess = closeChildProcess(self->mChildProcess);
 
-    debug(0,
-          "reaped child pid %" PRId_Pid " status %d",
-          FMTd_Pid(childPid),
-          childStatus);
+    debug(
+        0,
+        "reaped child pid %" PRId_Ert_Pid " status %d",
+        FMTd_Ert_Pid(childPid),
+        childStatus);
 
-    *aExitCode = extractProcessExitStatus(childStatus, childPid);
+    *aExitCode = ert_extractProcessExitStatus(childStatus, childPid);
 
     /* Normally allow the umbilical process to terminate asynchronously,
      * but if running under valgrind, combine the exit codes to be
@@ -562,15 +568,16 @@ runSentry(struct Sentry   *self,
     {
         int umbilicalStatus;
         ERROR_IF(
-            reapProcessChild(umbilicalPid, &umbilicalStatus));
+            ert_reapProcessChild(umbilicalPid, &umbilicalStatus));
 
-        debug(0,
-              "reaped umbilical pid %" PRId_Pid " status %d",
-              FMTd_Pid(umbilicalPid),
-              umbilicalStatus);
+        debug(
+            0,
+            "reaped umbilical pid %" PRId_Ert_Pid " status %d",
+            FMTd_Ert_Pid(umbilicalPid),
+            umbilicalStatus);
 
-        struct ExitCode umbilicalExitCode =
-            extractProcessExitStatus(umbilicalStatus, umbilicalPid);
+        struct Ert_ExitCode umbilicalExitCode =
+            ert_extractProcessExitStatus(umbilicalStatus, umbilicalPid);
 
         ERROR_IF(
             umbilicalExitCode.mStatus,
@@ -579,10 +586,10 @@ runSentry(struct Sentry   *self,
 
                 warn(
                     0,
-                    "Umbilical process pid %" PRId_Pid " "
-                    "exit code %" PRId_ExitCode,
-                    FMTd_Pid(umbilicalPid),
-                    FMTd_ExitCode(umbilicalExitCode));
+                    "Umbilical process pid %" PRId_Ert_Pid " "
+                    "exit code %" PRId_Ert_ExitCode,
+                    FMTd_Ert_Pid(umbilicalPid),
+                    FMTd_Ert_ExitCode(umbilicalExitCode));
             });
     }
 

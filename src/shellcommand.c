@@ -29,7 +29,7 @@
 
 #include "shellcommand.h"
 
-#include "process_.h"
+#include "ert/process.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -40,7 +40,7 @@ struct ShellCommand *
 closeShellCommand(struct ShellCommand *self)
 {
     if (self) {
-        self->mArgList = closeParseArgList(self->mArgList);
+        self->mArgList = ert_closeParseArgList(self->mArgList);
 
         free(self->mCmd);
     }
@@ -66,7 +66,7 @@ createShellCommand(struct ShellCommand *self,
         });
 
     ERROR_IF(
-        createParseArgListCopy(&self->mArgList_, aCmd));
+        ert_createParseArgListCopy(&self->mArgList_, aCmd));
     self->mArgList = &self->mArgList_;
 
     ensure(self->mArgList->mArgv && self->mArgList->mArgv[0]);
@@ -153,12 +153,12 @@ execShellCommand(struct ShellCommand *self)
 {
     if (self->mShell)
         ERROR_IF(
-            (execShell(self->mArgList->mArgv[0]), true));
+            (ert_execShell(self->mArgList->mArgv[0]), true));
 
-    const char * const *argv = ownParseArgListArgv(self->mArgList);
+    const char * const *argv = ert_ownParseArgListArgv(self->mArgList);
 
     ERROR_IF(
-        (execProcess(argv[0], argv), true));
+        (ert_execProcess(argv[0], argv), true));
 
 Finally:
 

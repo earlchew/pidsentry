@@ -32,8 +32,10 @@
 #include "agent.h"
 #include "command.h"
 
-#include "pollfd_.h"
-#include "jobcontrol_.h"
+#include "options_.h"
+
+#include "ert/pollfd.h"
+#include "ert/jobcontrol.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -47,13 +49,13 @@
 
 /* -------------------------------------------------------------------------- */
 static int
-cmdRunCommand(const char         *aPidFileName,
-              const char * const *aCmd,
-              struct ExitCode    *aExitCode)
+cmdRunCommand(const char          *aPidFileName,
+              const char * const  *aCmd,
+              struct Ert_ExitCode *aExitCode)
 {
     int rc = -1;
 
-    struct ExitCode exitCode = { EXIT_FAILURE };
+    struct Ert_ExitCode exitCode = { EXIT_FAILURE };
 
     struct Command  command_;
     struct Command *command = 0;
@@ -114,24 +116,25 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 static int
-cmdMonitorChild(const char * const *aCmd, struct ExitCode *aExitCode)
+cmdMonitorChild(const char * const *aCmd, struct Ert_ExitCode *aExitCode)
 {
     int rc = -1;
 
     struct Agent  agent_;
     struct Agent *agent = 0;
 
-    struct ExitCode exitCode = { EXIT_FAILURE };
+    struct Ert_ExitCode exitCode = { EXIT_FAILURE };
 
     ensure(aCmd);
 
-    debug(0,
-          "watchdog process pid %" PRId_Pid " pgid %" PRId_Pgid,
-          FMTd_Pid(ownProcessId()),
-          FMTd_Pgid(ownProcessGroupId()));
+    debug(
+        0,
+        "watchdog process pid %" PRId_Ert_Pid " pgid %" PRId_Ert_Pgid,
+        FMTd_Ert_Pid(ert_ownProcessId()),
+        FMTd_Ert_Pgid(ert_ownProcessGroupId()));
 
     ERROR_IF(
-        ignoreProcessSigPipe());
+        ert_ignoreProcessSigPipe());
 
     ERROR_IF(
         createAgent(&agent_, aCmd));
@@ -141,7 +144,7 @@ cmdMonitorChild(const char * const *aCmd, struct ExitCode *aExitCode)
         runAgent(agent, &exitCode));
 
     ERROR_IF(
-        resetProcessSigPipe());
+        ert_resetProcessSigPipe());
 
     *aExitCode = exitCode;
 
@@ -161,27 +164,27 @@ Finally:
 int
 main(int argc, char **argv)
 {
-    struct ExitCode exitCode = { EXIT_FAILURE };
+    struct Ert_ExitCode exitCode = { EXIT_FAILURE };
 
-    struct TestModule  testModule_;
-    struct TestModule *testModule = 0;
+    struct Ert_TestModule  testModule_;
+    struct Ert_TestModule *testModule = 0;
 
-    struct TimeKeepingModule  timeKeepingModule_;
-    struct TimeKeepingModule *timeKeepingModule = 0;
+    struct Ert_TimeKeepingModule  timeKeepingModule_;
+    struct Ert_TimeKeepingModule *timeKeepingModule = 0;
 
-    struct ProcessModule  processModule_;
-    struct ProcessModule *processModule = 0;
+    struct Ert_ProcessModule  processModule_;
+    struct Ert_ProcessModule *processModule = 0;
 
     ABORT_IF(
-        Test_init(&testModule_, "PIDSENTRY_TEST_ERROR"));
+        Ert_Test_init(&testModule_, "PIDSENTRY_TEST_ERROR"));
     testModule = &testModule_;
 
     ABORT_IF(
-        Timekeeping_init(&timeKeepingModule_));
+        Ert_Timekeeping_init(&timeKeepingModule_));
     timeKeepingModule = &timeKeepingModule_;
 
     ABORT_IF(
-        Process_init(&processModule_, argv[0]));
+        Ert_Process_init(&processModule_, argv[0]));
     processModule = &processModule_;
 
     const char * const *args;
@@ -214,19 +217,20 @@ main(int argc, char **argv)
 
 Finally:
 
-    processModule     = Process_exit(processModule);
-    timeKeepingModule = Timekeeping_exit(timeKeepingModule);
+    processModule     = Ert_Process_exit(processModule);
+    timeKeepingModule = Ert_Timekeeping_exit(timeKeepingModule);
 
-    if (testMode(TestLevelError))
+    if (ert_testMode(Ert_TestLevelError))
     {
         /* Wait for all the outstanding children to ensure that stderr is
          * not polluted for output as those processes are torn down. */
 
         while (1)
         {
-            struct Pid pid;
+            struct Ert_Pid pid;
+
             ABORT_IF(
-                (pid = waitProcessChildren(),
+                (pid = ert_waitProcessChildren(),
                  -1 == pid.mPid),
                 {
                     terminate(errno,
@@ -238,21 +242,22 @@ Finally:
 
             int status;
             ABORT_IF(
-                reapProcessChild(pid, &status),
+                ert_reapProcessChild(pid, &status),
                 {
                     terminate(
                         errno,
-                        "Unable to reap child process %" PRId_Pid " in test",
-                        FMTd_Pid(pid));
+                        "Unable to reap "
+                        "child process %" PRId_Ert_Pid " in test",
+                        FMTd_Ert_Pid(pid));
                 });
 
-            (void) extractProcessExitStatus(status, pid);
+            (void) ert_extractProcessExitStatus(status, pid);
         }
 
-        dprintf(STDERR_FILENO, "%" PRIu64 "\n", testErrorLevel());
+        dprintf(STDERR_FILENO, "%" PRIu64 "\n", ert_testErrorLevel());
     }
 
-    testModule = Test_exit(testModule);
+    testModule = Ert_Test_exit(testModule);
 
     return exitCode.mStatus;
 }

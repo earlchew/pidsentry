@@ -29,23 +29,23 @@
 #ifndef PARENT_H
 #define PARENT_H
 
-#include "compiler_.h"
-#include "process_.h"
-#include "thread_.h"
+#include "ert/compiler.h"
+#include "ert/process.h"
+#include "ert/thread.h"
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 struct ParentProcess
 {
-    struct Pid mParentPid;
+    struct Ert_Pid mParentPid;
 
-    struct Thread  mThread_;
-    struct Thread *mThread;
+    struct Ert_Thread  mThread_;
+    struct Ert_Thread *mThread;
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 createParentProcess(struct ParentProcess *self);
 
 struct ParentProcess *
@@ -53,6 +53,6 @@ closeParentProcess(struct ParentProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* PARENTPROCESS_H */

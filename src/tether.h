@@ -29,12 +29,12 @@
 #ifndef TETHER_H
 #define TETHER_H
 
-#include "compiler_.h"
-#include "pipe_.h"
-#include "timekeeping_.h"
-#include "thread_.h"
+#include "ert/compiler.h"
+#include "ert/pipe.h"
+#include "ert/timekeeping.h"
+#include "ert/thread.h"
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
 /* -------------------------------------------------------------------------- */
 enum TetherThreadState
@@ -46,19 +46,19 @@ enum TetherThreadState
 
 struct TetherThread
 {
-    struct Pipe  mControlPipe_;
-    struct Pipe *mControlPipe;
+    struct Ert_Pipe  mControlPipe_;
+    struct Ert_Pipe *mControlPipe;
 
-    struct Thread  mThread_;
-    struct Thread *mThread;
+    struct Ert_Thread  mThread_;
+    struct Ert_Thread *mThread;
 
-    struct Pipe *mNullPipe;
-    bool         mFlushed;
+    struct Ert_Pipe *mNullPipe;
+    bool             mFlushed;
 
     struct {
-        pthread_mutex_t        mMutex_;
-        pthread_mutex_t       *mMutex;
-        struct EventClockTime  mSince;
+        pthread_mutex_t            mMutex_;
+        pthread_mutex_t           *mMutex;
+        struct Ert_EventClockTime  mSince;
     } mActivity;
 
     struct {
@@ -71,13 +71,13 @@ struct TetherThread
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
-createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe);
+ERT_CHECKED int
+createTetherThread(struct TetherThread *self, struct Ert_Pipe *aNullPipe);
 
-CHECKED int
+ERT_CHECKED int
 pingTetherThread(struct TetherThread *self);
 
-CHECKED int
+ERT_CHECKED int
 flushTetherThread(struct TetherThread *self);
 
 struct TetherThread *
@@ -85,6 +85,6 @@ closeTetherThread(struct TetherThread *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* TETHER_H */

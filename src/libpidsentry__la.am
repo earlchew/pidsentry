@@ -1,82 +1,9 @@
-libpidsentry__la_SOURCES_CKSUM_1_ = 1571052239 854
+libpidsentry__la_SOURCES_CKSUM_1_ = 1339144690 76
 libpidsentry__la_SOURCES_CKSUM_2_ = $(shell find . -maxdepth 1 -name '[a-z]*_.[ch]' -printf '%f\n' | sort | cksum)
 libpidsentry__la_SOURCES = \
-  abort_.c \
-  bellsocketpair_.c \
-  bellsocketpair_.h \
-  compiler_.h \
-  deadline_.c \
-  deadline_.h \
-  dl_.c \
-  dl_.h \
-  eintr_.c \
-  eintr_.h \
-  env_.c \
-  env_.h \
-  error_.c \
-  error_.h \
-  eventlatch_.c \
-  eventlatch_.h \
-  eventpipe_.c \
-  eventpipe_.h \
-  fd_.c \
-  fd_.h \
-  fdset_.c \
-  fdset_.h \
-  file_.c \
-  fileeventqueue_.c \
-  fileeventqueue_.h \
-  file_.h \
-  jobcontrol_.c \
-  jobcontrol_.h \
-  lambda_.h \
-  macros_.h \
-  malloc_.c \
-  malloc_.h \
-  method_.c \
-  method_.h \
   options_.c \
   options_.h \
-  parse_.c \
-  parse_.h \
-  pathname_.c \
-  pathname_.h \
-  pid_.c \
   pidfile_.c \
   pidfile_.h \
-  pid_.h \
   pidsignature_.c \
-  pidsignature_.h \
-  pipe_.c \
-  pipe_.h \
-  pollfd_.c \
-  pollfd_.h \
-  printf_.c \
-  printf_.h \
-  process_.c \
-  process_.h \
-  queue_.h \
-  random_.c \
-  random_.h \
-  socket_.c \
-  socket_.h \
-  socketpair_.c \
-  socketpair_.h \
-  stdfdfiller_.c \
-  stdfdfiller_.h \
-  system_.c \
-  system_.h \
-  test_.c \
-  test_.h \
-  thread_.c \
-  thread_.h \
-  timekeeping_.c \
-  timekeeping_.h \
-  timescale_.c \
-  timescale_.h \
-  tree_.h \
-  type_.h \
-  uid_.c \
-  uid_.h \
-  unixsocket_.c \
-  unixsocket_.h
+  pidsignature_.h

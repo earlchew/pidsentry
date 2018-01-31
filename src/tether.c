@@ -29,8 +29,10 @@
 
 #include "tether.h"
 
-#include "pollfd_.h"
-#include "process_.h"
+#include "options_.h"
+
+#include "ert/pollfd.h"
+#include "ert/process.h"
 
 #include <unistd.h>
 #include <poll.h>
@@ -84,21 +86,22 @@ struct TetherPoll
     char                *mBufPtr;
     char                *mBufEnd;
 
-    struct pollfd            mPollFds[POLL_FD_TETHER_KINDS];
-    struct PollFdAction      mPollFdActions[POLL_FD_TETHER_KINDS];
-    struct PollFdTimerAction mPollFdTimerActions[POLL_FD_TETHER_TIMER_KINDS];
+    struct pollfd                mPollFds[POLL_FD_TETHER_KINDS];
+    struct Ert_PollFdAction      mPollFdActions[POLL_FD_TETHER_KINDS];
+    struct Ert_PollFdTimerAction mPollFdTimerActions[
+                                     POLL_FD_TETHER_TIMER_KINDS];
 };
 
-static CHECKED int
-pollFdControl_(struct TetherPoll           *self,
-               const struct EventClockTime *aPollTime)
+static ERT_CHECKED int
+pollFdControl_(struct TetherPoll               *self,
+               const struct Ert_EventClockTime *aPollTime)
 {
     int rc = -1;
 
     char buf[1];
 
     ERROR_IF(
-        -1 == readFd(
+        -1 == ert_readFd(
             self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf), 0));
 
     debug(0, "tether disconnection request received");
@@ -107,7 +110,8 @@ pollFdControl_(struct TetherPoll           *self,
      * that the no drain timeout is to be enforced. */
 
     self->mPollFdTimerActions[POLL_FD_TETHER_TIMER_DISCONNECT].mPeriod =
-        Duration(NSECS(Seconds(gOptions.mServer.mTimeout.mDrain_s)));
+        Ert_Duration(
+            ERT_NSECS(Ert_Seconds(gOptions.mServer.mTimeout.mDrain_s)));
 
     rc = 0;
 
@@ -118,9 +122,9 @@ Finally:
     return rc;
 }
 
-static CHECKED int
-pollFdDrainCopy_(struct TetherPoll           *self,
-                 const struct EventClockTime *aPollTime)
+static ERT_CHECKED int
+pollFdDrainCopy_(struct TetherPoll               *self,
+                 const struct Ert_EventClockTime *aPollTime)
 {
     int rc = -1;
 
@@ -133,7 +137,7 @@ pollFdDrainCopy_(struct TetherPoll           *self,
             int available;
 
             ERROR_IF(
-                ioctlFd(self->mSrcFd, FIONREAD, &available));
+                ert_ioctlFd(self->mSrcFd, FIONREAD, &available));
 
             if ( ! available)
             {
@@ -172,8 +176,8 @@ pollFdDrainCopy_(struct TetherPoll           *self,
 
                 struct pollfd *pollFds = self->mPollFds;
 
-                pollFds[POLL_FD_TETHER_INPUT].events  = POLL_DISCONNECTEVENT;
-                pollFds[POLL_FD_TETHER_OUTPUT].events = POLL_OUTPUTEVENTS;
+                pollFds[POLL_FD_TETHER_INPUT].events = ERT_POLL_DISCONNECTEVENT;
+                pollFds[POLL_FD_TETHER_OUTPUT].events= ERT_POLL_OUTPUTEVENTS;
             }
         }
         else
@@ -217,8 +221,10 @@ pollFdDrainCopy_(struct TetherPoll           *self,
                 {
                     struct pollfd *pollFds = self->mPollFds;
 
-                    pollFds[POLL_FD_TETHER_INPUT].events = POLL_INPUTEVENTS;
-                    pollFds[POLL_FD_TETHER_OUTPUT].events= POLL_DISCONNECTEVENT;
+                    pollFds[POLL_FD_TETHER_INPUT].events  =
+                        ERT_POLL_INPUTEVENTS;
+                    pollFds[POLL_FD_TETHER_OUTPUT].events =
+                        ERT_POLL_DISCONNECTEVENT;
                 }
             }
         }
@@ -241,9 +247,9 @@ Finally:
     return rc;
 }
 
-static CHECKED int
-pollFdDrainSplice_(struct TetherPoll           *self,
-                   const struct EventClockTime *aPollTime)
+static ERT_CHECKED int
+pollFdDrainSplice_(struct TetherPoll               *self,
+                   const struct Ert_EventClockTime *aPollTime)
 {
     int rc = -1;
 
@@ -269,7 +275,7 @@ pollFdDrainSplice_(struct TetherPoll           *self,
         int available;
 
         ERROR_IF(
-            ioctlFd(self->mSrcFd, FIONREAD, &available));
+            ert_ioctlFd(self->mSrcFd, FIONREAD, &available));
 
         if ( ! available)
         {
@@ -290,7 +296,7 @@ pollFdDrainSplice_(struct TetherPoll           *self,
         ssize_t splicedBytes;
 
         ERROR_IF(
-            (splicedBytes = spliceFd(
+            (splicedBytes = ert_spliceFd(
                 self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE),
              -1 == splicedBytes &&
              EPIPE       != errno &&
@@ -313,13 +319,15 @@ pollFdDrainSplice_(struct TetherPoll           *self,
         }
         else
         {
-            debug(1,
-                  "drained %zd bytes from fd %d to fd %d",
-                  splicedBytes, self->mSrcFd, self->mDstFd);
+            debug(
+                1,
+                "drained %zd bytes from fd %d to fd %d",
+                splicedBytes, self->mSrcFd, self->mDstFd);
 
             int srcFdReady = -1;
             ERROR_IF(
-                (srcFdReady = waitFdReadReady(self->mSrcFd, &ZeroDuration),
+                (srcFdReady = ert_waitFdReadReady(self->mSrcFd,
+                                                  &Ert_ZeroDuration),
                  -1 == srcFdReady));
 
             if (srcFdReady)
@@ -330,8 +338,10 @@ pollFdDrainSplice_(struct TetherPoll           *self,
 
                 struct pollfd *pollFds = self->mPollFds;
 
-                pollFds[POLL_FD_TETHER_INPUT].events  = POLL_DISCONNECTEVENT;
-                pollFds[POLL_FD_TETHER_OUTPUT].events = POLL_OUTPUTEVENTS;
+                pollFds[POLL_FD_TETHER_INPUT].events  =
+                    ERT_POLL_DISCONNECTEVENT;
+                pollFds[POLL_FD_TETHER_OUTPUT].events =
+                    ERT_POLL_OUTPUTEVENTS;
             }
             else
             {
@@ -341,8 +351,10 @@ pollFdDrainSplice_(struct TetherPoll           *self,
 
                 struct pollfd *pollFds = self->mPollFds;
 
-                pollFds[POLL_FD_TETHER_INPUT].events  = POLL_INPUTEVENTS;
-                pollFds[POLL_FD_TETHER_OUTPUT].events = POLL_DISCONNECTEVENT;
+                pollFds[POLL_FD_TETHER_INPUT].events  =
+                    ERT_POLL_INPUTEVENTS;
+                pollFds[POLL_FD_TETHER_OUTPUT].events =
+                    ERT_POLL_DISCONNECTEVENT;
             }
         }
 
@@ -360,18 +372,19 @@ Finally:
     return rc;
 }
 
-static CHECKED int
-pollFdDrain_(struct TetherPoll           *self,
-             const struct EventClockTime *aPollTime)
+static ERT_CHECKED int
+pollFdDrain_(struct TetherPoll               *self,
+             const struct Ert_EventClockTime *aPollTime)
 {
     int rc = -1;
 
     if (self->mPollFds[POLL_FD_TETHER_CONTROL].events)
     {
         {
-            pthread_mutex_t *lock = lockMutex(self->mThread->mActivity.mMutex);
-            self->mThread->mActivity.mSince = eventclockTime();
-            lock = unlockMutex(lock);
+            pthread_mutex_t *lock =
+                ert_lockMutex(self->mThread->mActivity.mMutex);
+            self->mThread->mActivity.mSince = ert_eventclockTime();
+            lock = ert_unlockMutex(lock);
         }
 
         int drained = -1;
@@ -398,9 +411,9 @@ Finally:
     return rc;
 }
 
-static CHECKED int
-pollFdTimerDisconnected_(struct TetherPoll           *self,
-                         const struct EventClockTime *aPollTime)
+static ERT_CHECKED int
+pollFdTimerDisconnected_(struct TetherPoll               *self,
+                         const struct Ert_EventClockTime *aPollTime)
 {
     int rc = -1;
 
@@ -408,7 +421,7 @@ pollFdTimerDisconnected_(struct TetherPoll           *self,
      * force completion of the tether thread. */
 
     self->mPollFdTimerActions[POLL_FD_TETHER_TIMER_DISCONNECT].mPeriod =
-        ZeroDuration;
+        Ert_ZeroDuration;
 
     self->mPollFds[POLL_FD_TETHER_CONTROL].events = 0;
 
@@ -427,19 +440,19 @@ pollFdCompletion_(struct TetherPoll *self)
     return ! self->mPollFds[POLL_FD_TETHER_CONTROL].events;
 }
 
-static CHECKED int
+static ERT_CHECKED int
 tetherThreadMain_(struct TetherThread *self)
 {
     int rc = -1;
 
-    struct PollFd *pollfd = 0;
+    struct Ert_PollFd *pollfd = 0;
 
-    struct ThreadSigMask *threadSigMask = 0;
+    struct Ert_ThreadSigMask *threadSigMask = 0;
 
     {
-        pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
+        pthread_mutex_t *lock = ert_lockMutex(self->mState.mMutex);
         self->mState.mValue = TETHER_THREAD_RUNNING;
-        lock = unlockMutexSignal(lock, self->mState.mCond);
+        lock = ert_unlockMutexSignal(lock, self->mState.mCond);
     }
 
     /* Do not open, or close files in this thread because it will race
@@ -455,7 +468,7 @@ tetherThreadMain_(struct TetherThread *self)
      * so it is known to be nonblocking. The file descriptor for stdout
      * is inherited, so it is likely blocking. */
 
-    ensure(0 < ownFdNonBlocking(srcFd));
+    ensure(0 < ert_ownFdNonBlocking(srcFd));
 
     /* The splice() call is not supported on Linux if stdout is configured
      * for O_APPEND. In this case, fall back to using the slower
@@ -471,14 +484,14 @@ tetherThreadMain_(struct TetherThread *self)
         int dstFlags = -1;
 
         ERROR_IF(
-            (dstFlags = ownFdFlags(dstFd),
+            (dstFlags = ert_ownFdFlags(dstFd),
              -1 == dstFlags));
 
         useReadWrite = !! (dstFlags & O_APPEND);
     }
 #endif
 
-    if (testAction(TestLevelRace))
+    if (ert_testAction(Ert_TestLevelRace))
         useReadWrite = ! useReadWrite;
 
     char readWriteBuffer[8 * 1024];
@@ -487,9 +500,10 @@ tetherThreadMain_(struct TetherThread *self)
      * these signals are not delivered until the thread is
      * flushed after the child process has terminated. */
 
-    struct ThreadSigMask threadSigMask_;
-    threadSigMask = pushThreadSigMask(
-        &threadSigMask_, ThreadSigMaskUnblock, (const int []) { SIGALRM, 0 });
+    struct Ert_ThreadSigMask threadSigMask_;
+    threadSigMask = ert_pushThreadSigMask(
+        &threadSigMask_, Ert_ThreadSigMaskUnblock,
+        (const int []) { SIGALRM, 0 });
 
     struct TetherPoll tetherpoll =
     {
@@ -504,48 +518,49 @@ tetherThreadMain_(struct TetherThread *self)
         .mPollFds =
         {
             [POLL_FD_TETHER_CONTROL]= {.fd     = controlFd,
-                                       .events = POLL_INPUTEVENTS },
+                                       .events = ERT_POLL_INPUTEVENTS },
             [POLL_FD_TETHER_INPUT]  = {.fd     = srcFd,
-                                       .events = POLL_INPUTEVENTS },
+                                       .events = ERT_POLL_INPUTEVENTS },
             [POLL_FD_TETHER_OUTPUT] = {.fd     = dstFd,
-                                       .events = POLL_DISCONNECTEVENT},
+                                       .events = ERT_POLL_DISCONNECTEVENT},
         },
 
         .mPollFdActions =
         {
             [POLL_FD_TETHER_CONTROL] = {
-                PollFdCallbackMethod(&tetherpoll, pollFdControl_) },
+                Ert_PollFdCallbackMethod(&tetherpoll, pollFdControl_) },
             [POLL_FD_TETHER_INPUT]   = {
-                PollFdCallbackMethod(&tetherpoll, pollFdDrain_) },
+                Ert_PollFdCallbackMethod(&tetherpoll, pollFdDrain_) },
             [POLL_FD_TETHER_OUTPUT]  = {
-                PollFdCallbackMethod(&tetherpoll, pollFdDrain_) },
+                Ert_PollFdCallbackMethod(&tetherpoll, pollFdDrain_) },
         },
 
         .mPollFdTimerActions =
         {
             [POLL_FD_TETHER_TIMER_DISCONNECT] = {
-                PollFdCallbackMethod(&tetherpoll, pollFdTimerDisconnected_) },
+                Ert_PollFdCallbackMethod(
+                    &tetherpoll, pollFdTimerDisconnected_) },
         },
     };
 
-    struct PollFd pollfd_;
+    struct Ert_PollFd pollfd_;
     ERROR_IF(
-        createPollFd(
+        ert_createPollFd(
             &pollfd_,
             tetherpoll.mPollFds,
             tetherpoll.mPollFdActions,
             pollFdNames_, POLL_FD_TETHER_KINDS,
             tetherpoll.mPollFdTimerActions,
             pollFdTimerNames_, POLL_FD_TETHER_TIMER_KINDS,
-            PollFdCompletionMethod(&tetherpoll, pollFdCompletion_)));
+            Ert_PollFdCompletionMethod(&tetherpoll, pollFdCompletion_)));
     pollfd = &pollfd_;
 
     ERROR_IF(
-        runPollFdLoop(pollfd));
+        ert_runPollFdLoop(pollfd));
 
-    pollfd = closePollFd(pollfd);
+    pollfd = ert_closePollFd(pollfd);
 
-    threadSigMask = popThreadSigMask(threadSigMask);
+    threadSigMask = ert_popThreadSigMask(threadSigMask);
 
     /* Close the input file descriptor so that there is a chance
      * to propagte SIGPIPE to the child process. */
@@ -564,12 +579,12 @@ tetherThreadMain_(struct TetherThread *self)
     debug(0, "tether emptied");
 
     {
-        pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
+        pthread_mutex_t *lock = ert_lockMutex(self->mState.mMutex);
 
         while (TETHER_THREAD_RUNNING == self->mState.mValue)
-            waitCond(self->mState.mCond, lock);
+            ert_waitCond(self->mState.mCond, lock);
 
-        lock = unlockMutex(lock);
+        lock = ert_unlockMutex(lock);
     }
 
     rc = 0;
@@ -578,9 +593,9 @@ Finally:
 
     FINALLY
     ({
-        pollfd = closePollFd(pollfd);
+        pollfd = ert_closePollFd(pollfd);
 
-        threadSigMask = popThreadSigMask(threadSigMask);
+        threadSigMask = ert_popThreadSigMask(threadSigMask);
     });
 
     return rc;
@@ -592,51 +607,52 @@ closeTetherThread_(struct TetherThread *self)
 {
     ensure( ! self->mThread);
 
-    self->mControlPipe = closePipe(self->mControlPipe);
+    self->mControlPipe = ert_closePipe(self->mControlPipe);
 
-    self->mState.mCond     = destroyCond(self->mState.mCond);
-    self->mState.mMutex    = destroyMutex(self->mState.mMutex);
-    self->mActivity.mMutex = destroyMutex(self->mActivity.mMutex);
+    self->mState.mCond     = ert_destroyCond(self->mState.mCond);
+    self->mState.mMutex    = ert_destroyMutex(self->mState.mMutex);
+    self->mActivity.mMutex = ert_destroyMutex(self->mActivity.mMutex);
 }
 
 /* -------------------------------------------------------------------------- */
 int
-createTetherThread(struct TetherThread *self, struct Pipe *aNullPipe)
+createTetherThread(struct TetherThread *self, struct Ert_Pipe *aNullPipe)
 {
     int rc = -1;
 
-    self->mActivity.mMutex = createMutex(&self->mActivity.mMutex_);
-    self->mState.mMutex    = createMutex(&self->mState.mMutex_);
-    self->mState.mCond     = createCond(&self->mState.mCond_);
+    self->mActivity.mMutex = ert_createMutex(&self->mActivity.mMutex_);
+    self->mState.mMutex    = ert_createMutex(&self->mState.mMutex_);
+    self->mState.mCond     = ert_createCond(&self->mState.mCond_);
 
     self->mControlPipe     = 0;
     self->mNullPipe        = aNullPipe;
-    self->mActivity.mSince = eventclockTime();
+    self->mActivity.mSince = ert_eventclockTime();
     self->mState.mValue    = TETHER_THREAD_STOPPED;
     self->mFlushed         = false;
 
     ERROR_IF(
-        createPipe(&self->mControlPipe_, O_CLOEXEC | O_NONBLOCK));
+        ert_createPipe(&self->mControlPipe_, O_CLOEXEC | O_NONBLOCK));
     self->mControlPipe = &self->mControlPipe_;
 
     {
-        struct ThreadSigMask  threadSigMask_;
-        struct ThreadSigMask *threadSigMask =
-            pushThreadSigMask(&threadSigMask_, ThreadSigMaskBlock, 0);
+        struct Ert_ThreadSigMask  threadSigMask_;
+        struct Ert_ThreadSigMask *threadSigMask =
+            ert_pushThreadSigMask(&threadSigMask_, Ert_ThreadSigMaskBlock, 0);
 
-        self->mThread = createThread(&self->mThread_, "childtether", 0,
-                                     ThreadMethod(self, tetherThreadMain_));
+        self->mThread = ert_createThread(
+            &self->mThread_, "childtether", 0,
+            Ert_ThreadMethod(self, tetherThreadMain_));
 
-        threadSigMask = popThreadSigMask(threadSigMask);
+        threadSigMask = ert_popThreadSigMask(threadSigMask);
     }
 
     {
-        pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
+        pthread_mutex_t *lock = ert_lockMutex(self->mState.mMutex);
 
         while (TETHER_THREAD_STOPPED == self->mState.mValue)
-            waitCond(self->mState.mCond, lock);
+            ert_waitCond(self->mState.mCond, lock);
 
-        lock = unlockMutex(lock);
+        lock = ert_unlockMutex(lock);
     }
 
     rc = 0;
@@ -661,7 +677,7 @@ pingTetherThread(struct TetherThread *self)
     debug(0, "ping tether thread");
 
     ERROR_IF(
-        killThread(self->mThread, SIGALRM));
+        ert_killThread(self->mThread, SIGALRM));
 
     rc = 0;
 
@@ -681,7 +697,7 @@ flushTetherThread(struct TetherThread *self)
     debug(0, "flushing tether thread");
 
     ERROR_IF(
-        watchProcessClock(WatchProcessMethodNil(), ZeroDuration));
+        ert_watchProcessClock(Ert_WatchProcessMethodNil(), Ert_ZeroDuration));
 
     /* This code will race the tether thread which might finished
      * because it already has detected that the child process has
@@ -691,7 +707,8 @@ flushTetherThread(struct TetherThread *self)
 
     ssize_t wrlen;
     ERROR_IF(
-        (wrlen = writeFile(self->mControlPipe->mWrFile, buf, sizeof(buf), 0),
+        (wrlen = ert_writeFile(self->mControlPipe->mWrFile,
+                               buf, sizeof(buf), 0),
          -1 == wrlen
          ? EPIPE != errno
          : (errno = 0, sizeof(buf) != wrlen)));
@@ -723,18 +740,18 @@ closeTetherThread(struct TetherThread *self)
         debug(0, "synchronising tether thread");
 
         {
-            pthread_mutex_t *lock = lockMutex(self->mState.mMutex);
+            pthread_mutex_t *lock = ert_lockMutex(self->mState.mMutex);
 
             ensure(TETHER_THREAD_RUNNING == self->mState.mValue);
             self->mState.mValue = TETHER_THREAD_STOPPING;
 
-            lock = unlockMutexSignal(lock, self->mState.mCond);
+            lock = ert_unlockMutexSignal(lock, self->mState.mCond);
         }
 
-        self->mThread = closeThread(self->mThread);
+        self->mThread = ert_closeThread(self->mThread);
 
         ABORT_IF(
-            unwatchProcessClock());
+            ert_unwatchProcessClock());
 
         closeTetherThread_(self);
     }

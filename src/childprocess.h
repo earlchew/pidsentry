@@ -31,84 +31,85 @@
 
 #include "shellcommand.h"
 
-#include "compiler_.h"
-#include "pid_.h"
-#include "pipe_.h"
-#include "thread_.h"
-#include "eventlatch_.h"
+#include "ert/compiler.h"
+#include "ert/pid.h"
+#include "ert/pipe.h"
+#include "ert/thread.h"
+#include "ert/eventlatch.h"
 
 #include <stdio.h>
 #include <sys/types.h>
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
-struct SocketPair;
-struct BellSocketPair;
+struct Ert_SocketPair;
+struct Ert_BellSocketPair;
+
 struct ChildMonitor;
 struct UmbilicalProcess;
 
 /* -------------------------------------------------------------------------- */
 struct ChildProcess
 {
-    struct Pid  mPid;
-    struct Pgid mPgid;
+    struct Ert_Pid  mPid;
+    struct Ert_Pgid mPgid;
 
     struct ShellCommand  mShellCommand_;
     struct ShellCommand *mShellCommand;
 
     struct
     {
-        struct EventLatch  mChild_;
-        struct EventLatch *mChild;
-        struct EventLatch  mUmbilical_;
-        struct EventLatch *mUmbilical;
+        struct Ert_EventLatch  mChild_;
+        struct Ert_EventLatch *mChild;
+        struct Ert_EventLatch  mUmbilical_;
+        struct Ert_EventLatch *mUmbilical;
     } mLatch;
 
-    struct Pipe  mTetherPipe_;
-    struct Pipe *mTetherPipe;
+    struct Ert_Pipe  mTetherPipe_;
+    struct Ert_Pipe *mTetherPipe;
 
     struct
     {
-        struct ThreadSigMutex  mMutex_;
-        struct ThreadSigMutex *mMutex;
-        struct ChildMonitor   *mMonitor;
+        struct Ert_ThreadSigMutex  mMutex_;
+        struct Ert_ThreadSigMutex *mMutex;
+        struct ChildMonitor       *mMonitor;
     } mChildMonitor;
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 createChildProcess(struct ChildProcess *self);
 
 int
 printChildProcessMonitor(const struct ChildMonitor *self, FILE *aFile);
 
-CHECKED int
-superviseChildProcess(struct ChildProcess *self, struct Pid aUmbilicalPid);
+ERT_CHECKED int
+superviseChildProcess(struct ChildProcess *self, struct Ert_Pid aUmbilicalPid);
 
-CHECKED int
+ERT_CHECKED int
 forkChildProcess(
-    struct ChildProcess   *self,
-    const char * const    *aCmd,
-    struct BellSocketPair *aSyncSocket,
-    struct SocketPair     *aUmbilicalSocket);
+    struct ChildProcess       *self,
+    const char * const        *aCmd,
+    struct Ert_BellSocketPair *aSyncSocket,
+    struct Ert_SocketPair     *aUmbilicalSocket);
 
-CHECKED int
+ERT_CHECKED int
 killChildProcess(struct ChildProcess *self, int aSigNum);
 
-CHECKED int
+ERT_CHECKED int
 closeChildProcessTether(struct ChildProcess *self);
 
-CHECKED int
+ERT_CHECKED int
 monitorChildProcess(struct ChildProcess     *self,
                     struct UmbilicalProcess *aUmbilicalProcess,
-                    struct File             *aUmbilicalFile,
-                    struct Pid               aParentPid,
-                    struct Pipe             *aParentPipe);
+                    struct Ert_File         *aUmbilicalFile,
+                    struct Ert_Pid           aParentPid,
+                    struct Ert_Pipe         *aParentPipe);
 
-CHECKED int
+ERT_CHECKED int
 raiseChildProcessSigCont(struct ChildProcess *self);
 
-CHECKED int
+ERT_CHECKED int
 reapChildProcess(struct ChildProcess *self, int *aStatus);
 
 struct ChildProcess *
@@ -118,17 +119,17 @@ int
 printChildProcess(const struct ChildProcess *self, FILE *aFile);
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 killChildProcessGroup(struct ChildProcess *self);
 
-CHECKED int
+ERT_CHECKED int
 pauseChildProcessGroup(struct ChildProcess *self);
 
-CHECKED int
+ERT_CHECKED int
 resumeChildProcessGroup(struct ChildProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* CHILDPROCESS_H */

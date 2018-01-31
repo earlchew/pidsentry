@@ -29,29 +29,28 @@
 #ifndef PIDSIGNATURE_H
 #define PIDSIGNATURE_H
 
-#include "compiler_.h"
-
-#include "pid_.h"
+#include "ert/compiler.h"
+#include "ert/pid.h"
 
 #include <stdio.h>
 
 /* -------------------------------------------------------------------------- */
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
-struct File;
-struct Deadline;
+struct Ert_File;
+struct Ert_Deadline;
 
 struct PidSignature
 {
-    struct Pid mPid;
-    char      *mSignature;
+    struct Ert_Pid mPid;
+    char          *mSignature;
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED struct PidSignature *
-createPidSignature(struct Pid aPid, const char *aSignature);
+ERT_CHECKED struct PidSignature *
+createPidSignature(struct Ert_Pid aPid, const char *aSignature);
 
-CHECKED struct PidSignature *
+ERT_CHECKED struct PidSignature *
 destroyPidSignature(struct PidSignature *self);
 
 int
@@ -62,16 +61,16 @@ rankPidSignature(const struct PidSignature *self,
                  const struct PidSignature *other);
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
-sendPidSignature(struct File *aFile,
+ERT_CHECKED int
+sendPidSignature(struct Ert_File           *aFile,
                  const struct PidSignature *aPidSignature,
-                 struct Deadline           *aDeadline);
+                 struct Ert_Deadline       *aDeadline);
 
-CHECKED struct PidSignature *
-recvPidSignature(struct File *aFile, struct Deadline *aDeadline);
+ERT_CHECKED struct PidSignature *
+recvPidSignature(struct Ert_File *aFile, struct Ert_Deadline *aDeadline);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* PIDSIGNATURE_H */

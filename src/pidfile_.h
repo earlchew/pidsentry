@@ -29,13 +29,13 @@
 #ifndef PIDFILE_H
 #define PIDFILE_H
 
-#include "compiler_.h"
-#include "pathname_.h"
-#include "pid_.h"
+#include "ert/compiler.h"
+#include "ert/pathname.h"
+#include "ert/pid.h"
 
 #include <stdio.h>
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
 struct sockaddr_un;
 
@@ -43,42 +43,42 @@ struct PidSignature;
 
 struct PidFile
 {
-    struct PathName        mPathName_;
-    struct PathName       *mPathName;
-    struct File            mFile_;
-    struct File           *mFile;
-    const struct LockType *mLock;
+    struct Ert_PathName        mPathName_;
+    struct Ert_PathName       *mPathName;
+    struct Ert_File            mFile_;
+    struct Ert_File           *mFile;
+    const struct Ert_LockType *mLock;
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED enum PathNameStatus
+ERT_CHECKED enum Ert_PathNameStatus
 initPidFile(struct PidFile *self, const char *aFileName);
 
 int
 printPidFile(const struct PidFile *self, FILE *aFile);
 
-CHECKED struct PidFile *
+ERT_CHECKED struct PidFile *
 destroyPidFile(struct PidFile *self);
 
 /* -------------------------------------------------------------------------- */
-CHECKED struct Pid
+ERT_CHECKED struct Ert_Pid
 openPidFile(struct PidFile *self, unsigned aFlags);
 
-CHECKED int
+ERT_CHECKED int
 closePidFile(struct PidFile *self);
 
-CHECKED struct PidSignature *
+ERT_CHECKED struct PidSignature *
 readPidFile(const struct PidFile *self, struct sockaddr_un *aPidServerAddr);
 
-CHECKED int
+ERT_CHECKED int
 acquirePidFileWriteLock(struct PidFile *self);
 
-CHECKED int
+ERT_CHECKED int
 acquirePidFileReadLock(struct PidFile *self);
 
-CHECKED struct Pid
+ERT_CHECKED struct Ert_Pid
 writePidFile(struct PidFile           *self,
-             struct Pid                aPid,
+             struct Ert_Pid            aPid,
              const struct sockaddr_un *aPidServerAddr);
 
 const char *
@@ -86,6 +86,6 @@ ownPidFileName(const struct PidFile *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* PIDFILE_H */

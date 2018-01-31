@@ -29,21 +29,22 @@
 #ifndef PIDSERVER_H
 #define PIDSERVER_H
 
-#include "compiler_.h"
-#include "unixsocket_.h"
-#include "fileeventqueue_.h"
 #include "pidsignature_.h"
-#include "queue_.h"
+
+#include "ert/compiler.h"
+#include "ert/unixsocket.h"
+#include "ert/fileeventqueue.h"
+#include "ert/queue.h"
 
 #include <sys/un.h>
 #include <sys/socket.h>
 
 /* -------------------------------------------------------------------------- */
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 struct PidServerClientActivity_;
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
-#define METHOD_DEFINITION
+#define ERT_METHOD_DEFINITION
 #define METHOD_RETURN_PidServerClientActivityMethod    int
 #define METHOD_CONST_PidServerClientActivityMethod
 #define METHOD_ARG_LIST_PidServerClientActivityMethod  \
@@ -51,15 +52,15 @@ END_C_SCOPE;
 #define METHOD_CALL_LIST_PidServerClientActivityMethod \
     (aActivity_)
 
-#define METHOD_NAME      PidServerClientActivityMethod_
-#define METHOD_RETURN    METHOD_RETURN_PidServerClientActivityMethod
-#define METHOD_CONST     METHOD_CONST_PidServerClientActivityMethod
-#define METHOD_ARG_LIST  METHOD_ARG_LIST_PidServerClientActivityMethod
-#define METHOD_CALL_LIST METHOD_CALL_LIST_PidServerClientActivityMethod
-#include "method_.h"
+#define ERT_METHOD_NAME      PidServerClientActivityMethod_
+#define ERT_METHOD_RETURN    METHOD_RETURN_PidServerClientActivityMethod
+#define ERT_METHOD_CONST     METHOD_CONST_PidServerClientActivityMethod
+#define ERT_METHOD_ARG_LIST  METHOD_ARG_LIST_PidServerClientActivityMethod
+#define ERT_METHOD_CALL_LIST METHOD_CALL_LIST_PidServerClientActivityMethod
+#include "ert/method.h"
 
 #define PidServerClientActivityMethod_(Object_, Method_)        \
-    METHOD_TRAMPOLINE(                                          \
+    ERT_METHOD_TRAMPOLINE(                                      \
         Object_, Method_,                                       \
         PidServerClientActivityMethod__,                        \
         METHOD_RETURN_PidServerClientActivityMethod,            \
@@ -68,7 +69,7 @@ END_C_SCOPE;
         METHOD_CALL_LIST_PidServerClientActivityMethod)
 
 /* -------------------------------------------------------------------------- */
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
 struct PidServer;
 
@@ -77,8 +78,8 @@ struct PidServerClient_
 {
     struct ucred mCred;
 
-    struct UnixSocket  mUnixSocket_;
-    struct UnixSocket *mUnixSocket;
+    struct Ert_UnixSocket  mUnixSocket_;
+    struct Ert_UnixSocket *mUnixSocket;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -90,8 +91,8 @@ struct PidServerClientActivity_
     PidServerClientActivityListEntryT  mList_;
     PidServerClientActivityListEntryT *mList;
 
-    struct FileEventQueueActivity  mEvent_;
-    struct FileEventQueueActivity *mEvent;
+    struct Ert_FileEventQueueActivity  mEvent_;
+    struct Ert_FileEventQueueActivity *mEvent;
 
     struct PidServerClient_              *mClient;
     struct PidServerClientActivityMethod_ mMethod;
@@ -103,12 +104,12 @@ typedef TAILQ_HEAD(PidServerClientActivityList_,
 /* -------------------------------------------------------------------------- */
 struct PidServer
 {
-    struct UnixSocket  mUnixSocket_;
-    struct UnixSocket *mUnixSocket;
+    struct Ert_UnixSocket  mUnixSocket_;
+    struct Ert_UnixSocket *mUnixSocket;
     struct sockaddr_un mSocketAddr;
 
-    struct FileEventQueue  mEventQueue_;
-    struct FileEventQueue *mEventQueue;
+    struct Ert_FileEventQueue  mEventQueue_;
+    struct Ert_FileEventQueue *mEventQueue;
 
     struct PidSignature *mPidSignature;
 
@@ -116,20 +117,20 @@ struct PidServer
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
-createPidServer(struct PidServer *self, struct Pid aPid);
+ERT_CHECKED int
+createPidServer(struct PidServer *self, struct Ert_Pid aPid);
 
 struct PidServer *
 closePidServer(struct PidServer *self);
 
-CHECKED int
+ERT_CHECKED int
 acceptPidServerConnection(struct PidServer *self);
 
-CHECKED int
+ERT_CHECKED int
 cleanPidServer(struct PidServer *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* PIDSERVER_H */

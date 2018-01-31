@@ -31,37 +31,39 @@
 #include "sentry.h"
 #include "parentprocess.h"
 
-#include "fdset_.h"
+#include "options_.h"
+
+#include "ert/fdset.h"
 
 #include <stdlib.h>
 #include <fcntl.h>
 
 /* -------------------------------------------------------------------------- */
-static CHECKED int
+static ERT_CHECKED int
 raiseAgentSignal_(
-    struct Agent *self, int aSigNum, struct Pid aPid, struct Uid aUid)
+    struct Agent *self, int aSigNum, struct Ert_Pid aPid, struct Ert_Uid aUid)
 {
-    struct Pid agentPid = self->mAgentPid;
+    struct Ert_Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
 
     return kill(agentPid.mPid, aSigNum);
 }
 
-static CHECKED int
+static ERT_CHECKED int
 raiseAgentStop_(struct Agent *self)
 {
-    struct Pid agentPid = self->mAgentPid;
+    struct Ert_Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
 
     return kill(agentPid.mPid, SIGTSTP);
 }
 
-static CHECKED int
+static ERT_CHECKED int
 raiseAgentResume_(struct Agent *self)
 {
-    struct Pid agentPid = self->mAgentPid;
+    struct Ert_Pid agentPid = self->mAgentPid;
 
     ensure(agentPid.mPid);
 
@@ -76,7 +78,7 @@ createAgent(struct Agent       *self,
     int rc = -1;
 
     self->mCmd      = aCmd;
-    self->mAgentPid = Pid(0);
+    self->mAgentPid = Ert_Pid(0);
 
     rc = 0;
 
@@ -106,15 +108,15 @@ closeAgent(struct Agent *self)
 }
 
 /* -------------------------------------------------------------------------- */
-static CHECKED int
-runAgentSentry_(struct Agent    *self,
-                struct Pid       aParentPid,
-                struct Pipe     *aParentPipe,
-                struct ExitCode *aExitCode)
+static ERT_CHECKED int
+runAgentSentry_(struct Agent        *self,
+                struct Ert_Pid       aParentPid,
+                struct Ert_Pipe     *aParentPipe,
+                struct Ert_ExitCode *aExitCode)
 {
     int rc = -1;
 
-    struct ExitCode exitCode = { EXIT_FAILURE };
+    struct Ert_ExitCode exitCode = { EXIT_FAILURE };
 
     struct Sentry  sentry_;
     struct Sentry *sentry = 0;
@@ -125,16 +127,17 @@ runAgentSentry_(struct Agent    *self,
             createSentry(&sentry_, self->mCmd));
         sentry = &sentry_;
 
-        struct Pid announcePid;
+        struct Ert_Pid announcePid;
         ERROR_IF(
             (announcePid = announceSentryPidFile(sentry),
              -1 == announcePid.mPid));
 
         if (announcePid.mPid)
         {
-            warn(0,
-                 "Pidfile '%s' names active pid %" PRId_Pid,
-                 ownSentryPidFileName(sentry), FMTd_Pid(announcePid));
+            warn(
+                0,
+                "Pidfile '%s' names active pid %" PRId_Ert_Pid,
+                ownSentryPidFileName(sentry), FMTd_Ert_Pid(announcePid));
 
             break;
         }
@@ -163,31 +166,31 @@ Finally:
 /* -------------------------------------------------------------------------- */
 struct RunAgentProcess_
 {
-    struct Agent *mAgent;
-    struct Pid    mParentPid;
-    struct Pipe   mParentPipe_;
-    struct Pipe  *mParentPipe;
+    struct Agent    *mAgent;
+    struct Ert_Pid   mParentPid;
+    struct Ert_Pipe  mParentPipe_;
+    struct Ert_Pipe *mParentPipe;
 };
 
-static CHECKED struct RunAgentProcess_ *
+static ERT_CHECKED struct RunAgentProcess_ *
 closeAgentChildProcess_(struct RunAgentProcess_ *self)
 {
     if (self)
     {
-        self->mParentPipe = closePipe(self->mParentPipe);
+        self->mParentPipe = ert_closePipe(self->mParentPipe);
     }
 
     return 0;
 }
 
-static CHECKED int
+static ERT_CHECKED int
 createAgentChildProcess_(struct RunAgentProcess_ *self,
                          struct Agent            *aAgent)
 {
     int rc = -1;
 
     self->mAgent      = aAgent;
-    self->mParentPid  = ownProcessId();
+    self->mParentPid  = ert_ownProcessId();
     self->mParentPipe = 0;
 
     rc = 0;
@@ -199,25 +202,27 @@ Finally:
     return rc;
 }
 
-static CHECKED int
-prepareAgentChildProcessFork_(struct RunAgentProcess_     *self,
-                              const struct PreForkProcess *aPreFork)
+static ERT_CHECKED int
+prepareAgentChildProcessFork_(struct RunAgentProcess_         *self,
+                              const struct Ert_PreForkProcess *aPreFork)
 {
     int rc = -1;
 
     ERROR_IF(
-        createPipe(&self->mParentPipe_, O_CLOEXEC | O_NONBLOCK));
+        ert_createPipe(&self->mParentPipe_, O_CLOEXEC | O_NONBLOCK));
     self->mParentPipe = &self->mParentPipe_;
 
     ERROR_IF(
-        fillFdSet(aPreFork->mWhitelistFds));
+        ert_fillFdSet(aPreFork->mWhitelistFds));
 
     ERROR_IF(
-        fillFdSet(aPreFork->mBlacklistFds));
+        ert_fillFdSet(aPreFork->mBlacklistFds));
     ERROR_IF(
-        removeFdSetFile(aPreFork->mBlacklistFds, self->mParentPipe->mWrFile));
+        ert_removeFdSetFile(
+            aPreFork->mBlacklistFds, self->mParentPipe->mWrFile));
     ERROR_IF(
-        removeFdSetFile(aPreFork->mBlacklistFds, self->mParentPipe->mRdFile));
+        ert_removeFdSetFile(
+            aPreFork->mBlacklistFds, self->mParentPipe->mRdFile));
 
     rc = 0;
 
@@ -228,25 +233,29 @@ Finally:
     return rc;
 }
 
-static CHECKED int
+static ERT_CHECKED int
 runAgentChildProcess_(struct RunAgentProcess_ *self)
 {
     int rc = -1;
 
     debug(
         0,
-        "running agent pid %" PRId_Pid " in pgid %" PRId_Pgid,
-        FMTd_Pid(ownProcessId()), FMTd_Pgid(ownProcessGroupId()));
+        "running agent pid %" PRId_Ert_Pid " in pgid %" PRId_Ert_Pgid,
+        FMTd_Ert_Pid(ert_ownProcessId()),
+        FMTd_Ert_Pgid(ert_ownProcessGroupId()));
 
-    ensure(ownProcessId().mPid == ownProcessGroupId().mPgid);
+    ensure(ert_ownProcessId().mPid == ert_ownProcessGroupId().mPgid);
 
-    struct ExitCode exitCode = { EXIT_FAILURE };
+    struct Ert_ExitCode exitCode = { EXIT_FAILURE };
 
     ERROR_IF(
         runAgentSentry_(
             self->mAgent, self->mParentPid, self->mParentPipe, &exitCode));
 
-    debug(0, "exit agent status %" PRId_ExitCode, FMTd_ExitCode(exitCode));
+    debug(
+        0,
+        "exit agent status %" PRId_Ert_ExitCode,
+        FMTd_Ert_ExitCode(exitCode));
 
     rc = exitCode.mStatus;
 
@@ -257,13 +266,13 @@ Finally:
     return rc;
 }
 
-static CHECKED int
-runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
+static ERT_CHECKED int
+runAgentProcess_(struct Agent *self, struct Ert_ExitCode *aExitCode)
 {
     int rc = -1;
 
-    struct JobControl  jobControl_;
-    struct JobControl *jobControl = 0;
+    struct Ert_JobControl  jobControl_;
+    struct Ert_JobControl *jobControl = 0;
 
     struct ParentProcess  parentProcess_;
     struct ParentProcess *parentProcess = 0;
@@ -272,7 +281,7 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
     struct RunAgentProcess_ *agentChild = 0;
 
     ERROR_IF(
-        createJobControl(&jobControl_));
+        ert_createJobControl(&jobControl_));
     jobControl = &jobControl_;
 
     if (gOptions.mServer.mOrphaned)
@@ -286,33 +295,33 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
         createAgentChildProcess_(&agentChild_, self));
     agentChild = &agentChild_;
 
-    struct Pid agentPid;
+    struct Ert_Pid agentPid;
     ERROR_IF(
-        (agentPid = forkProcessChild(
-            ForkProcessSetProcessGroup,
-            Pgid(0),
-            PreForkProcessMethod(
+        (agentPid = ert_forkProcessChild(
+            Ert_ForkProcessSetProcessGroup,
+            Ert_Pgid(0),
+            Ert_PreForkProcessMethod(
                 agentChild, prepareAgentChildProcessFork_),
-            PostForkChildProcessMethod(
+            Ert_PostForkChildProcessMethod(
                 agentChild,
-                LAMBDA(
+                ERT_LAMBDA(
                     int, (struct RunAgentProcess_ *self_),
                     {
-                        closePipeWriter(self_->mParentPipe);
+                        ert_closePipeWriter(self_->mParentPipe);
 
                         return 0;
                     })),
-            PostForkParentProcessMethod(
+            Ert_PostForkParentProcessMethod(
                 agentChild,
-                LAMBDA(
+                ERT_LAMBDA(
                     int, (struct RunAgentProcess_ *self_,
-                          struct Pid               aChildPid),
+                          struct Ert_Pid           aChildPid),
                     {
-                        closePipeReader(self_->mParentPipe);
+                        ert_closePipeReader(self_->mParentPipe);
 
                         return 0;
                     })),
-            ForkProcessMethod(agentChild, runAgentChildProcess_)),
+            Ert_ForkProcessMethod(agentChild, runAgentChildProcess_)),
          -1 == agentPid.mPid));
 
     self->mAgentPid = agentPid;
@@ -323,56 +332,58 @@ runAgentProcess_(struct Agent *self, struct ExitCode *aExitCode)
      * notice via its synchronisation pipe. */
 
     ERROR_IF(
-        watchJobControlSignals(
+        ert_watchJobControlSignals(
             jobControl,
-            WatchProcessSignalMethod(self, raiseAgentSignal_)));
+            Ert_WatchProcessSignalMethod(self, raiseAgentSignal_)));
 
     ERROR_IF(
-        watchJobControlStop(jobControl,
-                            WatchProcessMethod(self, raiseAgentStop_),
-                            WatchProcessMethod(self, raiseAgentResume_)));
+        ert_watchJobControlStop(
+            jobControl,
+            Ert_WatchProcessMethod(self, raiseAgentStop_),
+            Ert_WatchProcessMethod(self, raiseAgentResume_)));
 
     {
-        struct ChildProcessState agentState;
+        struct Ert_ChildProcessState agentState;
         ERROR_IF(
-            (agentState = waitProcessChild(self->mAgentPid),
-             ChildProcessStateError == agentState.mChildState));
+            (agentState = ert_waitProcessChild(self->mAgentPid),
+             Ert_ChildProcessStateError == agentState.mChildState));
 
         /* If the agent process has been killed by SIGQUIT and dumped core,
          * then dump core in sympathy. */
 
-        if (ChildProcessStateDumped == agentState.mChildState &&
+        if (Ert_ChildProcessStateDumped == agentState.mChildState &&
             SIGQUIT == agentState.mChildStatus)
         {
-            quitProcess();
+            ert_quitProcess();
         }
     }
 
     {
         ERROR_IF(
-            unwatchJobControlStop(jobControl));
+            ert_unwatchJobControlStop(jobControl));
 
         ERROR_IF(
-            unwatchJobControlSignals(jobControl));
+            ert_unwatchJobControlSignals(jobControl));
 
         /* Capture the pid of the agent process, then reset the data member
          * so that any signal races can be caught. */
 
         agentPid = self->mAgentPid;
 
-        self->mAgentPid = Pid(0);
+        self->mAgentPid = Ert_Pid(0);
 
         int agentStatus;
         ERROR_IF(
-            reapProcessChild(agentPid, &agentStatus));
+            ert_reapProcessChild(agentPid, &agentStatus));
 
-        debug(0,
-              "reaped agent pid %" PRId_Pid " status %d",
-              FMTd_Pid(agentPid),
-              agentStatus);
+        debug(
+            0,
+            "reaped agent pid %" PRId_Ert_Pid " status %d",
+            FMTd_Ert_Pid(agentPid),
+            agentStatus);
 
         *aExitCode =
-            extractProcessExitStatus(agentStatus, agentPid);
+            ert_extractProcessExitStatus(agentStatus, agentPid);
     }
 
     rc = 0;
@@ -385,7 +396,7 @@ Finally:
 
         agentChild    = closeAgentChildProcess_(agentChild);
         parentProcess = closeParentProcess(parentProcess);
-        jobControl    = closeJobControl(jobControl);
+        jobControl    = ert_closeJobControl(jobControl);
     });
 
     return rc;
@@ -393,13 +404,13 @@ Finally:
 
 /* -------------------------------------------------------------------------- */
 int
-runAgent(struct Agent    *self,
-         struct ExitCode *aExitCode)
+runAgent(struct Agent        *self,
+         struct Ert_ExitCode *aExitCode)
 {
     int rc = -1;
 
-    if (testAction(TestLevelRace) ||
-        ownProcessId().mPid != ownProcessGroupId().mPgid)
+    if (ert_testAction(Ert_TestLevelRace) ||
+        ert_ownProcessId().mPid != ert_ownProcessGroupId().mPgid)
     {
         ERROR_IF(
             runAgentProcess_(self, aExitCode));
@@ -407,7 +418,7 @@ runAgent(struct Agent    *self,
     else
     {
         ERROR_IF(
-            runAgentSentry_(self, ownProcessId(), 0, aExitCode));
+            runAgentSentry_(self, ert_ownProcessId(), 0, aExitCode));
     }
 
     rc = 0;

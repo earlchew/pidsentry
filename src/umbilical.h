@@ -29,11 +29,11 @@
 #ifndef UMBILICAL_H
 #define UMBILICAL_H
 
-#include "compiler_.h"
-#include "pollfd_.h"
-#include "pid_.h"
-#include "eventpipe_.h"
-#include "eventlatch_.h"
+#include "ert/compiler.h"
+#include "ert/pollfd.h"
+#include "ert/pid.h"
+#include "ert/eventpipe.h"
+#include "ert/eventlatch.h"
 
 #include <poll.h>
 #include <stdbool.h>
@@ -41,9 +41,10 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
-BEGIN_C_SCOPE;
+ERT_BEGIN_C_SCOPE;
 
-struct SocketPair;
+struct Ert_SocketPair;
+
 struct PidFile;
 struct ChildProcess;
 struct PidServer;
@@ -51,14 +52,14 @@ struct PidServer;
 /* -------------------------------------------------------------------------- */
 struct UmbilicalProcess
 {
-    struct Pid           mPid;
-    struct Pid           mChildAnchor;
-    struct Pid           mSentryAnchor;
-    struct Pid           mSentryPid;
-    struct Pgid          mSentryPgid;
-    struct ChildProcess *mChildProcess;
-    struct SocketPair   *mSocket;
-    struct PidServer    *mPidServer;
+    struct Ert_Pid         mPid;
+    struct Ert_Pid         mChildAnchor;
+    struct Ert_Pid         mSentryAnchor;
+    struct Ert_Pid         mSentryPid;
+    struct Ert_Pgid        mSentryPgid;
+    struct ChildProcess   *mChildProcess;
+    struct Ert_SocketPair *mSocket;
+    struct PidServer      *mPidServer;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -81,64 +82,65 @@ struct UmbilicalMonitor
 {
     struct
     {
-        struct File *mFile;
-        unsigned     mCycleCount;
-        unsigned     mCycleLimit;
-        struct Pid   mParentPid;
-        bool         mClosed;
+        struct Ert_File *mFile;
+        unsigned         mCycleCount;
+        unsigned         mCycleLimit;
+        struct Ert_Pid   mParentPid;
+        bool             mClosed;
     } mUmbilical;
 
     struct PidServer *mPidServer;
 
     struct
     {
-        struct EventLatch  mEchoRequest_;
-        struct EventLatch *mEchoRequest;
+        struct Ert_EventLatch  mEchoRequest_;
+        struct Ert_EventLatch *mEchoRequest;
     } mLatch;
 
-    struct EventPipe  mEventPipe_;
-    struct EventPipe *mEventPipe;
+    struct Ert_EventPipe  mEventPipe_;
+    struct Ert_EventPipe *mEventPipe;
 
     struct
     {
-        struct pollfd            mFds[POLL_FD_MONITOR_KINDS];
-        struct PollFdAction      mFdActions[POLL_FD_MONITOR_KINDS];
-        struct PollFdTimerAction mFdTimerActions[POLL_FD_MONITOR_TIMER_KINDS];
+        struct pollfd                mFds[POLL_FD_MONITOR_KINDS];
+        struct Ert_PollFdAction      mFdActions[POLL_FD_MONITOR_KINDS];
+        struct Ert_PollFdTimerAction mFdTimerActions[
+                                        POLL_FD_MONITOR_TIMER_KINDS];
     } mPoll;
 };
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 createUmbilicalMonitor(
     struct UmbilicalMonitor *self,
     int                      aStdinFd,
-    struct Pid               aParentPid,
+    struct Ert_Pid          aParentPid,
     struct PidServer        *aPidServer);
 
-CHECKED struct UmbilicalMonitor *
+ERT_CHECKED struct UmbilicalMonitor *
 closeUmbilicalMonitor(struct UmbilicalMonitor *self);
 
-CHECKED int
+ERT_CHECKED int
 synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self);
 
-CHECKED int
+ERT_CHECKED int
 runUmbilicalMonitor(struct UmbilicalMonitor *self);
 
 bool
 ownUmbilicalMonitorClosedOrderly(const struct UmbilicalMonitor *self);
 
 /* -------------------------------------------------------------------------- */
-CHECKED int
+ERT_CHECKED int
 createUmbilicalProcess(struct UmbilicalProcess *self,
                        struct ChildProcess     *aChildProcess,
-                       struct SocketPair       *aUmbilicalSocket,
+                       struct Ert_SocketPair   *aUmbilicalSocket,
                        struct PidServer        *aPidServer);
 
-CHECKED int
+ERT_CHECKED int
 stopUmbilicalProcess(struct UmbilicalProcess *self);
 
 /* -------------------------------------------------------------------------- */
 
-END_C_SCOPE;
+ERT_END_C_SCOPE;
 
 #endif /* UMBILICAL_H */
