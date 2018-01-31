@@ -29,7 +29,6 @@
 
 #include "options_.h"
 
-#include "ert/compiler.h"
 #include "ert/parse.h"
 #include "ert/process.h"
 

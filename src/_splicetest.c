@@ -23,13 +23,7 @@
 #define _GNU_SOURCE
 #endif
 #include <fcntl.h>
-#include <errno.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
 
-#include <valgrind/valgrind.h>
 
 static struct {
     const char *const name;
