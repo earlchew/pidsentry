@@ -67,6 +67,7 @@ RANGE=$(
     VALGRINDOPT="--log-file=scratch/errortestpreview.log"
     pidsentrytest 2> "scratch/errortesterr.log" > "scratch/errortestout.log"
     tail -1 < "scratch/errortesterr.log" )
+[[ RANGE =~ '^[1-9][0-9]*$' ]]
 RANGE=$(( (RANGE + 999) / 500 * 500 ))
 
 if [ x"$TRIGGER" = x"once" ] ; then
