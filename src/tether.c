@@ -494,7 +494,7 @@ tetherThreadMain_(struct TetherThread *self)
     if (ert_testAction(Ert_TestLevelRace))
         useReadWrite = ! useReadWrite;
 
-    char readWriteBuffer[8 * 1024];
+    char readWriteBuffer[16 * 1024];
 
     /* The tether thread is configured to receive SIGALRM, but
      * these signals are not delivered until the thread is
