@@ -66,22 +66,22 @@ lockPidFile_(
 {
     int rc = -1;
 
-    debug(
+    ert_debug(
         0,
         "locking %s %" PRIs_Ert_Method,
         aLockName,
         FMTs_Ert_Method(self, printPidFile));
 
-    ensure(aLockType);
-    ensure( ! self->mLock);
+    ert_ensure(aLockType);
+    ert_ensure( ! self->mLock);
 
     ERT_TEST_RACE
     ({
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_lockFile(self->mFile, *aLockType));
     });
 
-    debug(
+    ert_debug(
         0,
         "locked %s %" PRIs_Ert_Method,
         aLockName,
@@ -91,9 +91,9 @@ lockPidFile_(
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -144,7 +144,7 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
         if ( ! parsedPid.mPid)
             break;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             pidKeeperAddrLen + 2 > sizeof(aPidKeeperAddr->sun_path),
             {
                 errno = EADDRNOTAVAIL;
@@ -156,9 +156,9 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
                0,
                sizeof(aPidKeeperAddr->sun_path) - pidKeeperAddrLen - 1);
 
-        debug(0, "pidfile address %s", &aPidKeeperAddr->sun_path[1]);
+        ert_debug(0, "pidfile address %s", &aPidKeeperAddr->sun_path[1]);
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (signature = createPidSignature(parsedPid, 0),
              ! signature && ENOENT != errno));
 
@@ -166,11 +166,11 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
         {
             if ( ! strcmp(pidSignature, signature->mSignature))
             {
-                debug(0, "pidfile signature %s", pidSignature);
+                ert_debug(0, "pidfile signature %s", pidSignature);
                 break;
             }
 
-            debug(
+            ert_debug(
                 0,
                 "pidfile signature %s vs %s",
                 pidSignature,
@@ -183,7 +183,7 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
 
         signature = destroyPidSignature(signature);
 
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             signature = createPidSignature(Ert_Pid(0), 0));
 
     } while (0);
@@ -192,14 +192,14 @@ readPidFile_(char *aBuf, struct sockaddr_un *aPidKeeperAddr)
      * otherwise interpreting the pid. */
 
     if ( ! signature)
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             signature = createPidSignature(Ert_Pid(-1), 0));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             signature = destroyPidSignature(signature);
@@ -218,14 +218,14 @@ readPidFile(const struct PidFile *self,
 
     char *bufcpy = 0;
 
-    ensure(self->mLock);
+    ert_ensure(self->mLock);
 
     do
     {
         char buf[PIDFILE_SIZE_+1];
 
         ssize_t buflen;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (buflen = ert_readFile(self->mFile, buf, sizeof(buf), 0),
              -1 == buflen));
 
@@ -235,14 +235,14 @@ readPidFile(const struct PidFile *self,
              * the entire content of the file has been scanned. */
 
             ssize_t lastlen;
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (lastlen = ert_readFile(self->mFile, buf + buflen, 1, 0),
                  -1 == lastlen));
 
             if ( ! lastlen)
             {
                 buf[buflen] = 0;
-                ERROR_UNLESS(
+                ERT_ERROR_UNLESS(
                     signature = readPidFile_(buf, aPidKeeperAddr));
                 break;
             }
@@ -251,22 +251,22 @@ readPidFile(const struct PidFile *self,
         /* Since the size of the pidfile seems to be larger than expected
          * treat it as a problem parsing the pid. */
 
-        ensure( ! signature);
+        ert_ensure( ! signature);
 
         char emptyPid[] = "";
 
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             signature = readPidFile_(emptyPid, 0));
 
     } while (0);
 
-    ensure(signature);
+    ert_ensure(signature);
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         free(bufcpy);
 
@@ -283,23 +283,23 @@ releasePidFileLock_(struct PidFile *self)
 {
     int rc = -1;
 
-    ensure(self->mLock);
+    ert_ensure(self->mLock);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_unlockFile(self->mFile));
 
     self->mLock = 0;
 
-    debug(
+    ert_debug(
         0,
         "unlocked %" PRIs_Ert_Method,
         FMTs_Ert_Method(self, printPidFile));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         ERT_TEST_RACE({});
     });
@@ -320,21 +320,21 @@ acquirePidFileWriteLock(struct PidFile *self)
     int rc = -1;
 
     int flags;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (flags = ert_fcntlFileGetFlags(self->mFile),
          -1 == flags));
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         O_RDONLY != (flags & O_ACCMODE));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         acquirePidFileWriteLock_(self));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -363,7 +363,7 @@ detectPidFileZombie_(const struct PidFile *self)
     struct stat fileStatus;
 
     int err;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (err = ert_fstatPathName(
             self->mPathName, &fileStatus, AT_SYMLINK_NOFOLLOW),
          err && ENOENT != errno));
@@ -376,7 +376,7 @@ detectPidFileZombie_(const struct PidFile *self)
     {
         struct stat fdStatus;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_fstatFile(self->mFile, &fdStatus));
 
         zombie = ( fdStatus.st_dev != fileStatus.st_dev ||
@@ -385,9 +385,9 @@ detectPidFileZombie_(const struct PidFile *self)
 
     rc = zombie;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -398,7 +398,7 @@ unlinkPidFile_(struct PidFile *self)
 {
     int rc = -1;
 
-    ensure(lockTypeWrite_ == self->mLock);
+    ert_ensure(lockTypeWrite_ == self->mLock);
 
     /* The pidfile might already have been unlinked from its enclosing
      * directory by another process, but this code enforces the precondition
@@ -408,7 +408,7 @@ unlinkPidFile_(struct PidFile *self)
     int deleted = 0;
 
     int zombie;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (zombie = detectPidFileZombie_(self),
          0 > zombie));
 
@@ -418,7 +418,7 @@ unlinkPidFile_(struct PidFile *self)
 
     if ( ! zombie)
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_unlinkPathName(self->mPathName, 0) && ENOENT != errno);
 
         deleted = 1;
@@ -426,9 +426,9 @@ unlinkPidFile_(struct PidFile *self)
 
     rc = deleted;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -443,8 +443,8 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
 
     struct Ert_Pid pid = Ert_Pid(-1);
 
-    ensure( ! (aFlags & ~ O_CLOEXEC));
-    ensure( ! self->mFile);
+    ert_ensure( ! (aFlags & ~ O_CLOEXEC));
+    ert_ensure( ! self->mFile);
 
     int err;
 
@@ -460,7 +460,7 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
          * pre-existing pidfile in the directory with the same name
          * must be removed, if possible. */
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (err = ert_createFile(
                 &self->mFile_,
                 ert_openPathName(self->mPathName,
@@ -471,7 +471,7 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
         {
             self->mFile = &self->mFile_;
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 acquirePidFileWriteLock_(self));
 
             /* If the pre-existing pidfile names a valid process then give
@@ -480,10 +480,10 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
              * that non longer exists, and so can be deleted. */
 
             struct sockaddr_un pidKeeperAddr;
-            ERROR_UNLESS(
+            ERT_ERROR_UNLESS(
                 pidSignature = readPidFile(self, &pidKeeperAddr));
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 pidSignature->mPid.mPid && -1 != pidSignature->mPid.mPid,
                 {
                     errno = EEXIST;
@@ -491,17 +491,17 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
                 });
 
             int unlinked;
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (unlinked = unlinkPidFile_(self),
                  -1 == unlinked));
 
             if (unlinked)
-                debug(
+                ert_debug(
                     0,
                     "removing existing file %" PRIs_Ert_Method,
                     FMTs_Ert_Method(self, printPidFile));
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 releasePidFileLock_(self));
 
             self->mFile = ert_closeFile(self->mFile);
@@ -519,10 +519,10 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
          * readonly permissions dissuades other processes from modifying
          * the content. */
 
-        ensure( ! self->mFile);
+        ert_ensure( ! self->mFile);
         ERT_TEST_RACE
         ({
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (err = ert_createFile(
                     &self->mFile_,
                     ert_openPathName(
@@ -538,9 +538,9 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             self->mFile = ert_closeFile(self->mFile);
@@ -560,7 +560,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
 
     int already = -1;
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             self->mFile || self->mLock,
             {
                 errno = EALREADY;
@@ -569,7 +569,7 @@ openPidFile(struct PidFile *self, unsigned aFlags)
     }
     already = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         aFlags & ~ (O_CLOEXEC | O_CREAT),
         {
             errno = EINVAL;
@@ -578,12 +578,12 @@ openPidFile(struct PidFile *self, unsigned aFlags)
     unsigned openFlags = aFlags & O_CLOEXEC;
 
     if (aFlags & O_CREAT)
-        ERROR_IF(
+        ERT_ERROR_IF(
             (pid = createPidFile_(self, openFlags),
              pid.mPid));
     else
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_createFile(
                 &self->mFile_,
                 ert_openPathName(self->mPathName,
@@ -591,13 +591,13 @@ openPidFile(struct PidFile *self, unsigned aFlags)
         self->mFile = &self->mFile_;
     }
 
-    ensure(self->mFile == &self->mFile_);
+    ert_ensure(self->mFile == &self->mFile_);
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
         {
@@ -628,7 +628,7 @@ closePidFile(struct PidFile *self)
              * remove the pidfile so that no other process will be
              * able to find the file. */
 
-            ABORT_IF(
+            ERT_ABORT_IF(
                 ert_ftruncateFile(self->mFile, 0));
 
             /* In theory, ENOENT should not occur since the pidfile
@@ -638,7 +638,7 @@ closePidFile(struct PidFile *self)
              * line. */
 
             int unlinked;
-            ABORT_IF(
+            ERT_ABORT_IF(
                 (unlinked = unlinkPidFile_(self),
                  -1 == unlinked || (errno = 0, ! unlinked)));
         }
@@ -649,9 +649,9 @@ closePidFile(struct PidFile *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -668,16 +668,16 @@ initPidFile(struct PidFile *self, const char *aFileName)
     self->mLock     = 0;
     self->mPathName = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         (status = ert_createPathName(&self->mPathName_, aFileName),
          Ert_PathNameStatusOk != status));
     self->mPathName = &self->mPathName_;
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             self = destroyPidFile(self);
@@ -692,7 +692,7 @@ destroyPidFile(struct PidFile *self)
 {
     if (self)
     {
-        ABORT_IF(
+        ERT_ABORT_IF(
             closePidFile(self));
 
         self->mPathName = ert_closePathName(self->mPathName);
@@ -711,14 +711,14 @@ writePidFile_(struct PidFile           *self,
 
     struct PidSignature *signature = 0;
 
-    ensure(0 < aPid.mPid);
+    ert_ensure(0 < aPid.mPid);
 
-    ensure( ! aPidServerAddr->sun_path[0]);
-    ensure( 1 < sizeof(aPidServerAddr->sun_path));
-    ensure( ! aPidServerAddr->sun_path[sizeof(aPidServerAddr->sun_path)-1]);
-    ensure( aPidServerAddr->sun_path[1]);
+    ert_ensure( ! aPidServerAddr->sun_path[0]);
+    ert_ensure( 1 < sizeof(aPidServerAddr->sun_path));
+    ert_ensure( ! aPidServerAddr->sun_path[sizeof(aPidServerAddr->sun_path)-1]);
+    ert_ensure( aPidServerAddr->sun_path[1]);
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         signature = createPidSignature(aPid, 0));
 
     char buf[PIDFILE_SIZE_+1];
@@ -743,13 +743,13 @@ writePidFile_(struct PidFile           *self,
             signature->mSignature,
             &aPidServerAddr->sun_path[1]);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         0 > buflen,
         {
             errno = EIO;
         });
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ! buflen || sizeof(buf) <= buflen,
         {
             errno = ERANGE;
@@ -759,7 +759,7 @@ writePidFile_(struct PidFile           *self,
      * so that it is possible to determine if there is a formatting
      * error, or an IO error. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_writeFile(self->mFile, buf, buflen, 0) != buflen,
         {
             errno = EIO;
@@ -767,9 +767,9 @@ writePidFile_(struct PidFile           *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         signature = destroyPidSignature(signature);
     });
@@ -787,7 +787,7 @@ writePidFile(struct PidFile           *self,
 
     struct Ert_Pid pid = Ert_Pid(-1);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         self->mFile || self->mLock,
         {
             errno = EALREADY;
@@ -802,20 +802,20 @@ writePidFile(struct PidFile           *self,
              * rely on the correct deletion semantics to be used when
              * a new attempt is made to open the pidfile. */
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 releasePidFileLock_(self));
 
-            debug(
+            ert_debug(
                 0,
                 "disregarding zombie %" PRIs_Ert_Method,
                 FMTs_Ert_Method(self, printPidFile));
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 closePidFile(self));
         }
 
         struct Ert_Pid openedPid = Ert_Pid(-1);
-        ERROR_IF(
+        ERT_ERROR_IF(
             (openedPid = openPidFile(self, O_CLOEXEC | O_CREAT),
              openedPid.mPid),
             {
@@ -830,10 +830,10 @@ writePidFile(struct PidFile           *self,
          * another process might have removed it and replaced it with
          * another, turning the pidfile held by this process into a zombie. */
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             acquirePidFileWriteLock(self));
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (zombie = detectPidFileZombie_(self),
              0 > zombie));
     }
@@ -842,12 +842,12 @@ writePidFile(struct PidFile           *self,
      * pidfile. The pidfile cannot be deleted because a write lock must
      * be held for deletion to occur. */
 
-    debug(
+    ert_debug(
         0,
         "initialised %" PRIs_Ert_Method,
         FMTs_Ert_Method(self, printPidFile));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         writePidFile_(self, aPid, aPidServerAddr));
 
     /* The pidfile was locked on creation, and now that it is completely
@@ -855,16 +855,16 @@ writePidFile(struct PidFile           *self,
      * check and see that the pidfile refers to a live process, and refrain
      * from deleting it. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         releasePidFileLock_(self));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printPidFile);
+        ert_finally_warn_if(rc, self, printPidFile);
     });
 
     return rc ? pid : Ert_Pid(0);;

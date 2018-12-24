@@ -74,7 +74,7 @@ createCommand(struct Command *self,
     do
     {
         enum Ert_PathNameStatus pathNameStatus;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (pathNameStatus = initPidFile(&pidFile_, aPidFileName),
              Ert_PathNameStatusError == pathNameStatus));
 
@@ -86,7 +86,7 @@ createCommand(struct Command *self,
         pidFile = &pidFile_;
 
         struct Ert_Pid pid;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (pid = openPidFile(pidFile, O_CLOEXEC),
              pid.mPid && ENOENT != errno && EACCES != errno));
 
@@ -95,7 +95,7 @@ createCommand(struct Command *self,
             switch (errno)
             {
             default:
-                ensure(false);
+                ert_ensure(false);
 
             case ENOENT:
                 status = CommandStatusNonexistentPidFile;
@@ -108,11 +108,11 @@ createCommand(struct Command *self,
             break;
         }
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             acquirePidFileReadLock(pidFile));
 
         struct sockaddr_un pidKeeperAddr;
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             pidSignature = readPidFile(pidFile, &pidKeeperAddr));
 
         if ( ! pidSignature->mPid.mPid)
@@ -142,14 +142,14 @@ createCommand(struct Command *self,
          * program servicing the same connection address. */
 
         int err;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (err = ert_connectUnixSocket(&self->mKeeperTether_,
                                          pidKeeperAddr.sun_path,
                                          sizeof(pidKeeperAddr.sun_path)),
              -1 == err && EINPROGRESS != errno));
         self->mKeeperTether = &self->mKeeperTether_;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (err = ert_waitUnixSocketWriteReady(self->mKeeperTether, 0),
              -1 == err || (errno = 0, ! err)));
 
@@ -157,16 +157,16 @@ createCommand(struct Command *self,
          * to allow the pid server to verify that it is serving a valid
          * client. */
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             sendPidSignature(
                 self->mKeeperTether->mSocket->mFile, pidSignature, 0));
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (err = ert_waitUnixSocketReadReady(self->mKeeperTether, 0),
              -1 == err));
 
         char buf[1];
-        ERROR_IF(
+        ERT_ERROR_IF(
             (err = ert_readSocket(
                 self->mKeeperTether->mSocket, buf, sizeof(buf), 0),
              -1 == err || (errno = 0, 1 != err)));
@@ -191,9 +191,9 @@ createCommand(struct Command *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             status = CommandStatusError;
@@ -243,15 +243,15 @@ createCommandProcess_(struct CommandProcess_ *self,
     self->mCommand      = aCommand;
     self->mShellCommand = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         createShellCommand(&self->mShellCommand_, aCmd));
     self->mShellCommand = &self->mShellCommand_;
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             self = closeCommandProcess_(self);
@@ -267,14 +267,14 @@ runCommandProcess_(struct CommandProcess_ *self)
 
     execShellCommand(self->mShellCommand);
 
-    warn(errno,
+    ert_warn(errno,
          "Unable to execute '%s'", ownShellCommandText(self->mShellCommand));
 
     rc = EXIT_FAILURE;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -286,23 +286,23 @@ prepareCommandProcess_(struct CommandProcess_          *self,
 {
     int rc = -1;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_fillFdSet(aPreFork->mWhitelistFds));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_fillFdSet(aPreFork->mBlacklistFds));
 
     if (self->mCommand->mKeeperTether)
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_removeFdSetFile(
                 aPreFork->mBlacklistFds,
                 self->mCommand->mKeeperTether->mSocket->mFile));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -321,7 +321,7 @@ postCommandProcessChild_(struct CommandProcess_ *self)
     self->mCommand->mKeeperTether = ert_closeUnixSocket(
         self->mCommand->mKeeperTether);
 
-    debug(
+    ert_debug(
         0,
         "starting command process pid %" PRId_Ert_Pid,
         FMTd_Ert_Pid(self->mCommand->mPid));
@@ -332,23 +332,23 @@ postCommandProcessChild_(struct CommandProcess_ *self)
     const char *pidSentryPidEnv = "PIDSENTRY_PID";
 
     if ( ! self->mCommand->mChildPid.mPid)
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_deleteEnv(pidSentryPidEnv) && ENOENT != errno);
     else
     {
         const char *watchdogChildPid;
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             (watchdogChildPid = ert_setEnvPid(
                 pidSentryPidEnv, self->mCommand->mChildPid)));
 
-        debug(0, "%s=%s", pidSentryPidEnv, watchdogChildPid);
+        ert_debug(0, "%s=%s", pidSentryPidEnv, watchdogChildPid);
     }
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -362,16 +362,16 @@ postCommandProcessParent_(struct CommandProcess_ *self,
 
     self->mCommand->mPid = aPid;
 
-    debug(
+    ert_debug(
         0,
         "running command pid %" PRId_Ert_Pid,
         FMTd_Ert_Pid(self->mCommand->mPid));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -387,12 +387,12 @@ runCommand(struct Command     *self,
     struct CommandProcess_  commandProcess_;
     struct CommandProcess_ *commandProcess = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         createCommandProcess_(&commandProcess_, self, aCmd));
     commandProcess = &commandProcess_;
 
     struct Ert_Pid pid;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (pid = ert_forkProcessChild(
             Ert_ForkProcessInheritProcessGroup,
             Ert_Pgid(0),
@@ -408,9 +408,9 @@ runCommand(struct Command     *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         commandProcess = closeCommandProcess_(commandProcess);
     });
@@ -426,7 +426,7 @@ reapCommand(struct Command      *self,
     int rc = -1;
 
     int status;
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_reapProcessChild(self->mPid, &status));
 
     struct Ert_ExitCode exitCode =
@@ -440,7 +440,7 @@ reapCommand(struct Command      *self,
         if (self->mKeeperTether)
         {
             int rdReady;
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (rdReady = ert_waitSocketReadReady(
                     self->mKeeperTether->mSocket, &Ert_ZeroDuration),
                  -1 == rdReady));
@@ -454,9 +454,9 @@ reapCommand(struct Command      *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }

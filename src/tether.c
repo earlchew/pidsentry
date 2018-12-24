@@ -100,11 +100,11 @@ pollFdControl_(struct TetherPoll               *self,
 
     char buf[1];
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         -1 == ert_readFd(
             self->mPollFds[POLL_FD_TETHER_CONTROL].fd, buf, sizeof(buf), 0));
 
-    debug(0, "tether disconnection request received");
+    ert_debug(0, "tether disconnection request received");
 
     /* Note that gOptions.mServer.mTimeout.mDrain_s might be zero to indicate
      * that the no drain timeout is to be enforced. */
@@ -115,9 +115,9 @@ pollFdControl_(struct TetherPoll               *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -136,12 +136,12 @@ pollFdDrainCopy_(struct TetherPoll               *self,
         {
             int available;
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 ert_ioctlFd(self->mSrcFd, FIONREAD, &available));
 
             if ( ! available)
             {
-                debug(0, "tether drain input empty");
+                ert_debug(0, "tether drain input empty");
                 break;
             }
 
@@ -151,7 +151,7 @@ pollFdDrainCopy_(struct TetherPoll               *self,
 
             ssize_t rdSize = -1;
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (rdSize = read(self->mSrcFd, self->mBuf, self->mBufLen),
                  -1 == rdSize && EINTR != errno && EWOULDBLOCK != errno));
 
@@ -161,15 +161,15 @@ pollFdDrainCopy_(struct TetherPoll               *self,
 
             if ( ! rdSize)
             {
-                debug(0, "tether drain input closed");
+                ert_debug(0, "tether drain input closed");
                 break;
             }
 
             if (-1 != rdSize)
             {
-                debug(1, "read %zd bytes from fd %d", rdSize, self->mSrcFd);
+                ert_debug(1, "read %zd bytes from fd %d", rdSize, self->mSrcFd);
 
-                ensure(rdSize <= self->mBufLen);
+                ert_ensure(rdSize <= self->mBufLen);
 
                 self->mBufPtr = self->mBuf;
                 self->mBufEnd = self->mBufPtr + rdSize;
@@ -188,7 +188,7 @@ pollFdDrainCopy_(struct TetherPoll               *self,
 
             ssize_t wrSize = -1;
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (wrSize = write(self->mDstFd,
                                 self->mBufPtr,
                                 self->mBufEnd - self->mBufPtr),
@@ -197,7 +197,7 @@ pollFdDrainCopy_(struct TetherPoll               *self,
                                   EINTR       != errno)));
             if ( ! wrSize)
             {
-                debug(0, "tether drain output closed");
+                ert_debug(0, "tether drain output closed");
                 break;
             }
 
@@ -205,15 +205,15 @@ pollFdDrainCopy_(struct TetherPoll               *self,
             {
                 if (EPIPE == errno)
                 {
-                    debug(0, "tether drain output broken");
+                    ert_debug(0, "tether drain output broken");
                     break;
                 }
             }
             else
             {
-                debug(1, "wrote %zd bytes to fd %d", wrSize, self->mDstFd);
+                ert_debug(1, "wrote %zd bytes to fd %d", wrSize, self->mDstFd);
 
-                ensure(wrSize <= self->mBufEnd - self->mBufPtr);
+                ert_ensure(wrSize <= self->mBufEnd - self->mBufPtr);
 
                 self->mBufPtr += wrSize;
 
@@ -240,9 +240,9 @@ pollFdDrainCopy_(struct TetherPoll               *self,
 
     rc = drained;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -274,12 +274,12 @@ pollFdDrainSplice_(struct TetherPoll               *self,
 
         int available;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_ioctlFd(self->mSrcFd, FIONREAD, &available));
 
         if ( ! available)
         {
-            debug(0, "tether drain input empty");
+            ert_debug(0, "tether drain input empty");
             break;
         }
 
@@ -295,7 +295,7 @@ pollFdDrainSplice_(struct TetherPoll               *self,
 
         ssize_t splicedBytes;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (splicedBytes = ert_spliceFd(
                 self->mSrcFd, self->mDstFd, available, SPLICE_F_MOVE),
              -1 == splicedBytes &&
@@ -305,7 +305,7 @@ pollFdDrainSplice_(struct TetherPoll               *self,
 
         if ( ! splicedBytes)
         {
-            debug(0, "tether drain output closed");
+            ert_debug(0, "tether drain output closed");
             break;
         }
 
@@ -313,19 +313,19 @@ pollFdDrainSplice_(struct TetherPoll               *self,
         {
             if (EPIPE == errno)
             {
-                debug(0, "tether drain output broken");
+                ert_debug(0, "tether drain output broken");
                 break;
             }
         }
         else
         {
-            debug(
+            ert_debug(
                 1,
                 "drained %zd bytes from fd %d to fd %d",
                 splicedBytes, self->mSrcFd, self->mDstFd);
 
             int srcFdReady = -1;
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (srcFdReady = ert_waitFdReadReady(self->mSrcFd,
                                                   &Ert_ZeroDuration),
                  -1 == srcFdReady));
@@ -364,9 +364,9 @@ pollFdDrainSplice_(struct TetherPoll               *self,
 
     rc = drained;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 #endif
 
     return rc;
@@ -390,11 +390,11 @@ pollFdDrain_(struct TetherPoll               *self,
         int drained = -1;
 
         if (self->mBuf)
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (drained = pollFdDrainCopy_(self, aPollTime),
                  -1 == drained));
         else
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (drained = pollFdDrainSplice_(self, aPollTime),
                  -1 == drained));
 
@@ -404,9 +404,9 @@ pollFdDrain_(struct TetherPoll               *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -427,9 +427,9 @@ pollFdTimerDisconnected_(struct TetherPoll               *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -468,7 +468,7 @@ tetherThreadMain_(struct TetherThread *self)
      * so it is known to be nonblocking. The file descriptor for stdout
      * is inherited, so it is likely blocking. */
 
-    ensure(0 < ert_ownFdNonBlocking(srcFd));
+    ert_ensure(0 < ert_ownFdNonBlocking(srcFd));
 
     /* The splice() call is not supported on Linux if stdout is configured
      * for O_APPEND. In this case, fall back to using the slower
@@ -483,7 +483,7 @@ tetherThreadMain_(struct TetherThread *self)
     {
         int dstFlags = -1;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (dstFlags = ert_ownFdFlags(dstFd),
              -1 == dstFlags));
 
@@ -544,7 +544,7 @@ tetherThreadMain_(struct TetherThread *self)
     };
 
     struct Ert_PollFd pollfd_;
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createPollFd(
             &pollfd_,
             tetherpoll.mPollFds,
@@ -555,7 +555,7 @@ tetherThreadMain_(struct TetherThread *self)
             Ert_PollFdCompletionMethod(&tetherpoll, pollFdCompletion_)));
     pollfd = &pollfd_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_runPollFdLoop(pollfd));
 
     pollfd = ert_closePollFd(pollfd);
@@ -565,7 +565,7 @@ tetherThreadMain_(struct TetherThread *self)
     /* Close the input file descriptor so that there is a chance
      * to propagte SIGPIPE to the child process. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         dup2(self->mNullPipe->mRdFile->mFd, srcFd) != srcFd);
 
     /* Shut down the end of the control pipe controlled by this thread,
@@ -573,10 +573,10 @@ tetherThreadMain_(struct TetherThread *self)
      * monitoring loop is waiting for the control pipe to close before
      * exiting the event loop. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         dup2(self->mNullPipe->mRdFile->mFd, controlFd) != controlFd);
 
-    debug(0, "tether emptied");
+    ert_debug(0, "tether emptied");
 
     {
         pthread_mutex_t *lock = ert_lockMutex(self->mState.mMutex);
@@ -589,9 +589,9 @@ tetherThreadMain_(struct TetherThread *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         pollfd = ert_closePollFd(pollfd);
 
@@ -605,7 +605,7 @@ Finally:
 static void
 closeTetherThread_(struct TetherThread *self)
 {
-    ensure( ! self->mThread);
+    ert_ensure( ! self->mThread);
 
     self->mControlPipe = ert_closePipe(self->mControlPipe);
 
@@ -630,7 +630,7 @@ createTetherThread(struct TetherThread *self, struct Ert_Pipe *aNullPipe)
     self->mState.mValue    = TETHER_THREAD_STOPPED;
     self->mFlushed         = false;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createPipe(&self->mControlPipe_, O_CLOEXEC | O_NONBLOCK));
     self->mControlPipe = &self->mControlPipe_;
 
@@ -657,9 +657,9 @@ createTetherThread(struct TetherThread *self, struct Ert_Pipe *aNullPipe)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             closeTetherThread_(self);
@@ -674,16 +674,16 @@ pingTetherThread(struct TetherThread *self)
 {
     int rc = -1;
 
-    debug(0, "ping tether thread");
+    ert_debug(0, "ping tether thread");
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_killThread(self->mThread, SIGALRM));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -694,9 +694,9 @@ flushTetherThread(struct TetherThread *self)
 {
     int rc = -1;
 
-    debug(0, "flushing tether thread");
+    ert_debug(0, "flushing tether thread");
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_watchProcessClock(Ert_WatchProcessMethodNil(), Ert_ZeroDuration));
 
     /* This code will race the tether thread which might finished
@@ -706,7 +706,7 @@ flushTetherThread(struct TetherThread *self)
     char buf[1] = { 0 };
 
     ssize_t wrlen;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (wrlen = ert_writeFile(self->mControlPipe->mWrFile,
                                buf, sizeof(buf), 0),
          -1 == wrlen
@@ -717,9 +717,9 @@ flushTetherThread(struct TetherThread *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -730,19 +730,19 @@ closeTetherThread(struct TetherThread *self)
 {
     if (self)
     {
-        ensure(self->mFlushed);
+        ert_ensure(self->mFlushed);
 
         /* This method is not called until the tether thread has closed
          * its end of the control pipe to indicate that it has completed.
          * At that point the thread is waiting for the thread state
          * to change so that it can exit. */
 
-        debug(0, "synchronising tether thread");
+        ert_debug(0, "synchronising tether thread");
 
         {
             pthread_mutex_t *lock = ert_lockMutex(self->mState.mMutex);
 
-            ensure(TETHER_THREAD_RUNNING == self->mState.mValue);
+            ert_ensure(TETHER_THREAD_RUNNING == self->mState.mValue);
             self->mState.mValue = TETHER_THREAD_STOPPING;
 
             lock = ert_unlockMutexSignal(lock, self->mState.mCond);
@@ -750,7 +750,7 @@ closeTetherThread(struct TetherThread *self)
 
         self->mThread = ert_closeThread(self->mThread);
 
-        ABORT_IF(
+        ERT_ABORT_IF(
             ert_unwatchProcessClock());
 
         closeTetherThread_(self);

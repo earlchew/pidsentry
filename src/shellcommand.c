@@ -59,17 +59,17 @@ createShellCommand(struct ShellCommand *self,
     self->mShell   = false;
     self->mCmd     = 0;
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         aCmd && aCmd[0] && aCmd[0][0],
         {
             errno = EINVAL;
         });
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createParseArgListCopy(&self->mArgList_, aCmd));
     self->mArgList = &self->mArgList_;
 
-    ensure(self->mArgList->mArgv && self->mArgList->mArgv[0]);
+    ert_ensure(self->mArgList->mArgv && self->mArgList->mArgv[0]);
 
     if ( ! self->mArgList->mArgv[1])
     {
@@ -84,7 +84,7 @@ createShellCommand(struct ShellCommand *self,
     }
 
     if (self->mShell)
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             self->mCmd = strdup(self->mArgList->mArgv[0]));
     else
     {
@@ -113,7 +113,7 @@ createShellCommand(struct ShellCommand *self,
 
         size_t cmdLen = lastSlash - lastWord;
 
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             self->mCmd = malloc(cmdLen + 1));
 
         memcpy(self->mCmd, lastWord, cmdLen);
@@ -122,9 +122,9 @@ createShellCommand(struct ShellCommand *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             self = closeShellCommand(self);
@@ -152,17 +152,17 @@ void
 execShellCommand(struct ShellCommand *self)
 {
     if (self->mShell)
-        ERROR_IF(
+        ERT_ERROR_IF(
             (ert_execShell(self->mArgList->mArgv[0]), true));
 
     const char * const *argv = ert_ownParseArgListArgv(self->mArgList);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         (ert_execProcess(argv[0], argv), true));
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 }
 
 /* -------------------------------------------------------------------------- */

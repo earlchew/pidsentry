@@ -39,7 +39,7 @@ monitorParent_(struct ParentProcess *self)
 {
     int rc = -1;
 
-    debug(
+    ert_debug(
         0,
         "watching parent pid %" PRId_Ert_Pid,
         FMTd_Ert_Pid(self->mParentPid));
@@ -58,12 +58,12 @@ monitorParent_(struct ParentProcess *self)
              * child process. */
 
             if (self->mParentPid.mPid)
-                warn(
+                ert_warn(
                     0,
                     "Parent pid %" PRId_Ert_Pid " terminated",
                     FMTd_Ert_Pid(self->mParentPid));
             else
-                warn(0, "Parent terminated");
+                ert_warn(0, "Parent terminated");
 
             ert_exitProcess(EXIT_FAILURE);
         }
@@ -71,9 +71,9 @@ monitorParent_(struct ParentProcess *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -97,9 +97,9 @@ createParentProcess(struct ParentProcess *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -112,7 +112,7 @@ closeParentProcess(struct ParentProcess *self)
     {
         ert_cancelThread(self->mThread);
 
-        ABORT_UNLESS(
+        ERT_ABORT_UNLESS(
             ert_joinThread(self->mThread) && ECANCELED == errno);
 
         self->mThread = ert_closeThread(self->mThread);

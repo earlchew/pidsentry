@@ -96,11 +96,11 @@ createChildProcess(struct ChildProcess *self)
     self->mChildMonitor.mMutex   = 0;
     self->mChildMonitor.mMonitor = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createEventLatch(&self->mLatch.mChild_, "child"));
     self->mLatch.mChild = &self->mLatch.mChild_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createEventLatch(&self->mLatch.mUmbilical_, "umbilical"));
     self->mLatch.mUmbilical = &self->mLatch.mUmbilical_;
 
@@ -112,21 +112,21 @@ createChildProcess(struct ChildProcess *self)
      * by any subsequent process that it forks), so only the reading
      * end is marked non-blocking. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createPipe(&self->mTetherPipe_, O_CLOEXEC | O_NONBLOCK));
     self->mTetherPipe = &self->mTetherPipe_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_closeFileOnExec(self->mTetherPipe->mWrFile, 0));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_nonBlockingFile(self->mTetherPipe->mWrFile, 0));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
         {
@@ -175,25 +175,25 @@ superviseChildProcess_(const struct ChildProcess *self,
      * The new shell inherits the earlier sleep as a child even
      * though it did not create it. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         (processState = ert_monitorProcessChild(aPid),
          Ert_ChildProcessStateError == processState.mChildState));
 
     if (Ert_ChildProcessStateRunning == processState.mChildState)
     {
-        debug(
+        ert_debug(
             1,
             "%s pid %" PRId_Ert_Pid " running",
             aRole,
             FMTd_Ert_Pid(aPid));
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             Ert_EventLatchSettingError == ert_setEventLatch(aLatch));
     }
     else if (Ert_ChildProcessStateStopped == processState.mChildState ||
              Ert_ChildProcessStateTrapped == processState.mChildState)
     {
-        debug(
+        ert_debug(
             1,
             "%s pid %" PRId_Ert_Pid " state %" PRIs_Ert_ChildProcessState,
             aRole,
@@ -207,7 +207,7 @@ superviseChildProcess_(const struct ChildProcess *self,
         switch (processState.mChildState)
         {
         default:
-            debug(
+            ert_debug(
                 1,
                 "%s " "pid %" PRId_Ert_Pid
                 " state %" PRIs_Ert_ChildProcessState,
@@ -217,7 +217,7 @@ superviseChildProcess_(const struct ChildProcess *self,
             break;
 
         case Ert_ChildProcessStateExited:
-            debug(
+            ert_debug(
                 1,
                 "%s "
                 "pid %" PRId_Ert_Pid " "
@@ -230,7 +230,7 @@ superviseChildProcess_(const struct ChildProcess *self,
             break;
 
         case Ert_ChildProcessStateKilled:
-            debug(
+            ert_debug(
                 1,
                 "%s "
                 "pid %" PRId_Ert_Pid " "
@@ -244,17 +244,17 @@ superviseChildProcess_(const struct ChildProcess *self,
             break;
         }
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             Ert_EventLatchSettingError == ert_disableEventLatch(aLatch));
     }
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc,
+        ert_finally_warn_if(rc,
                         self, printChildProcess,
                         "role %s pid %" PRId_Ert_Pid,
                         aRole, FMTd_Ert_Pid(aPid));
@@ -274,12 +274,12 @@ superviseChildProcess(struct ChildProcess *self, struct Ert_Pid aUmbilicalPid)
     struct Ert_ChildProcessState processState;
 
     if (aUmbilicalPid.mPid)
-        ERROR_IF(
+        ERT_ERROR_IF(
             (processState = superviseChildProcess_(
                 self, "umbilical", aUmbilicalPid, self->mLatch.mUmbilical),
              Ert_ChildProcessStateError == processState.mChildStatus));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         (processState = superviseChildProcess_(
             self, "child", self->mPid, self->mLatch.mChild),
          Ert_ChildProcessStateError == processState.mChildStatus));
@@ -295,11 +295,11 @@ superviseChildProcess(struct ChildProcess *self, struct Ert_Pid aUmbilicalPid)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcess);
+        ert_finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -313,24 +313,24 @@ killChildProcess(struct ChildProcess *self, int aSigNum)
 
     struct Ert_ProcessSignalName sigName;
 
-    ensure(self->mPid.mPid);
+    ert_ensure(self->mPid.mPid);
 
-    debug(
+    ert_debug(
         0,
         "sending %s to child pid %" PRId_Ert_Pid,
         ert_formatProcessSignalName(&sigName, aSigNum),
         FMTd_Ert_Pid(self->mPid));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         kill(self->mPid.mPid, aSigNum));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcess,
+        ert_finally_warn_if(rc, self, printChildProcess,
                         "signal %s",
                         ert_formatProcessSignalName(&sigName, aSigNum));
     });
@@ -344,16 +344,16 @@ killChildProcessGroup(struct ChildProcess *self)
 {
     int rc = -1;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_signalProcessGroup(self->mPgid, SIGKILL));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc,
+        ert_finally_warn_if(rc,
                         self, printChildProcess,
                         "child pgid %" PRId_Ert_Pgid,
                         FMTd_Ert_Pgid(self->mPgid));
@@ -368,18 +368,18 @@ pauseChildProcessGroup(struct ChildProcess *self)
 {
     int rc = -1;
 
-    ensure(self->mPgid.mPgid);
+    ert_ensure(self->mPgid.mPgid);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         killpg(self->mPgid.mPgid, SIGSTOP));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc,
+        ert_finally_warn_if(rc,
                         self, printChildProcess,
                         "child pgid %" PRId_Ert_Pgid,
                         FMTd_Ert_Pgid(self->mPgid));
@@ -394,18 +394,18 @@ resumeChildProcessGroup(struct ChildProcess *self)
 {
     int rc = -1;
 
-    ensure(self->mPgid.mPgid);
+    ert_ensure(self->mPgid.mPgid);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         killpg(self->mPgid.mPgid, SIGCONT));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc,
+        ert_finally_warn_if(rc,
                         self, printChildProcess,
                         "child pgid %" PRId_Ert_Pgid,
                         FMTd_Ert_Pgid(self->mPgid));
@@ -431,7 +431,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
     struct ShellCommand  shellCommand_;
     struct ShellCommand *shellCommand = 0;
 
-    debug(
+    ert_debug(
         0,
         "starting child process pid %" PRId_Ert_Pid,
         FMTd_Ert_Pid(ert_ownProcessId()));
@@ -461,7 +461,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
          * is really associated with the process possessing
          * the specified pid. */
 
-        debug(0, "synchronising child process");
+        ert_debug(0, "synchronising child process");
 
         ert_closeBellSocketPairParent(self->mSyncSocket);
 
@@ -469,12 +469,12 @@ runChildProcess_(struct ForkChildProcess_ *self)
         ERT_TEST_RACE
         ({
             if ( ! err)
-                ERROR_IF(
+                ERT_ERROR_IF(
                     (err = ert_waitBellSocketPairChild(self->mSyncSocket, 0),
                      err && EPIPE != errno && ENOENT != errno));
 
             if ( ! err)
-                ERROR_IF(
+                ERT_ERROR_IF(
                     (err = ert_ringBellSocketPairChild(self->mSyncSocket),
                      err && EPIPE != errno));
         });
@@ -498,7 +498,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
                 char tetherArg[sizeof(int) * CHAR_BIT + 1];
 
-                ERROR_IF(
+                ERT_ERROR_IF(
                     0 > sprintf(tetherArg, "%d", tetherFd));
 
                 if (gOptions.mServer.mName)
@@ -518,7 +518,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
                     if (useEnv)
                     {
-                        ERROR_IF(
+                        ERT_ERROR_IF(
                             setenv(gOptions.mServer.mName, tetherArg, 1));
                     }
                     else
@@ -541,13 +541,13 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
                                 int matchLen = matchArg - cmd[ix];
 
-                                ERROR_UNLESS(
+                                ERT_ERROR_UNLESS(
                                     cmd[ix] + matchLen == matchArg,
                                     {
                                         errno = ERANGE;
                                     });
 
-                                ERROR_IF(
+                                ERT_ERROR_IF(
                                   0 > sprintf(
                                     replacedArg,
                                     "%.*s%s%s",
@@ -557,10 +557,10 @@ runChildProcess_(struct ForkChildProcess_ *self)
                                     matchArg + strlen(gOptions.mServer.mName)));
 
                                 char *dupArg = 0;
-                                ERROR_UNLESS(
+                                ERT_ERROR_UNLESS(
                                     dupArg = strdup(replacedArg),
                                     {
-                                        terminate(
+                                        ert_terminate(
                                             errno,
                                             "Unable to duplicate '%s'",
                                             replacedArg);
@@ -572,10 +572,10 @@ runChildProcess_(struct ForkChildProcess_ *self)
                             }
                         }
 
-                        ERROR_UNLESS(
+                        ERT_ERROR_UNLESS(
                             matchArg,
                             {
-                                terminate(
+                                ert_terminate(
                                     0,
                                     "Unable to find matching argument '%s'",
                                     gOptions.mServer.mName);
@@ -586,7 +586,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
                 if (tetherFd == self->mChildProcess->mTetherPipe->mWrFile->mFd)
                     break;
 
-                ERROR_IF(
+                ERT_ERROR_IF(
                     ert_duplicateFd(
                         self->mChildProcess->mTetherPipe->mWrFile->mFd,
                          tetherFd) != tetherFd);
@@ -597,7 +597,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
         } while (0);
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             createShellCommand(&shellCommand_, cmd));
         shellCommand = &shellCommand_;
 
@@ -608,7 +608,7 @@ runChildProcess_(struct ForkChildProcess_ *self)
 
         ERT_TEST_RACE
         ({
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (err = ert_waitBellSocketPairChild(self->mSyncSocket, 0),
                  err && EPIPE != errno && ENOENT != errno));
         });
@@ -620,27 +620,27 @@ runChildProcess_(struct ForkChildProcess_ *self)
          * to know that the child will no longer share any file descriptors
          * and locks with the parent. */
 
-        ensure(
+        ert_ensure(
             ert_ownFileCloseOnExec(
                 self->mSyncSocket->mSocketPair->mChildSocket->mSocket->mFile));
 
-        debug(0, "child process synchronised");
+        ert_debug(0, "child process synchronised");
 
         /* The child process does not close the process lock because it
          * might need to emit a diagnostic if execProcess() fails. Rely on
          * O_CLOEXEC to close the underlying file descriptors. */
 
         execShellCommand(shellCommand);
-        message(errno,
+        ert_message(errno,
                 "Unable to execute '%s'", ownShellCommandText(shellCommand));
 
     } while (0);
 
     rc = EXIT_FAILURE;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         shellCommand = closeShellCommand(shellCommand);
     });
@@ -658,11 +658,11 @@ forkChildProcess(
 {
     int rc = -1;
 
-    ensure( ! self->mPid.mPid);
-    ensure( ! self->mPgid.mPgid);
-    ensure( ! self->mShellCommand);
+    ert_ensure( ! self->mPid.mPid);
+    ert_ensure( ! self->mPgid.mPgid);
+    ert_ensure( ! self->mShellCommand);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         createShellCommand(&self->mShellCommand_, aCmd));
     self->mShellCommand = &self->mShellCommand_;
 
@@ -682,7 +682,7 @@ forkChildProcess(
     };
 
     struct Ert_Pid childPid;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (childPid = ert_forkProcessChild(
             Ert_ForkProcessSetProcessGroup,
             Ert_Pgid(0),
@@ -718,29 +718,29 @@ forkChildProcess(
     self->mPid  = childPid;
     self->mPgid = ert_fetchProcessGroupId(self->mPid);
 
-    debug(
+    ert_debug(
         0,
         "running child pid %" PRId_Ert_Pid " in pgid %" PRId_Ert_Pgid,
         FMTd_Ert_Pid(self->mPid),
         FMTd_Ert_Pgid(self->mPgid));
 
-    ensure(self->mPid.mPid == self->mPgid.mPgid);
+    ert_ensure(self->mPid.mPid == self->mPgid.mPgid);
 
     /* Beware of the inherent race here between the child starting and
      * terminating, and the recording of the child pid. To cover the
      * case that the child might have terminated before the child pid
      * is recorded, force a supervision run after the pid is recorded. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         superviseChildProcess(self, Ert_Pid(0)));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcess);
+        ert_finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -752,17 +752,17 @@ closeChildProcessTether(struct ChildProcess *self)
 {
     int rc = -1;
 
-    ensure(self->mTetherPipe);
+    ert_ensure(self->mTetherPipe);
 
     self->mTetherPipe = ert_closePipe(self->mTetherPipe);
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcess);
+        ert_finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -781,7 +781,7 @@ reapChildProcess(struct ChildProcess *self, int *aStatus)
 {
     int rc = -1;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_reapProcessChild(self->mPid, aStatus));
 
     /* Once the child process is reaped, the process no longer exists, so
@@ -791,11 +791,11 @@ reapChildProcess(struct ChildProcess *self, int *aStatus)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcess);
+        ert_finally_warn_if(rc, self, printChildProcess);
     });
 
     return rc;
@@ -809,15 +809,15 @@ closeChildProcess(struct ChildProcess *self)
     {
         if (self->mPid.mPid)
         {
-            ABORT_IF(
+            ERT_ABORT_IF(
                 killChildProcess(self, SIGKILL));
 
             int status;
-            ABORT_IF(
+            ERT_ABORT_IF(
                 reapChildProcess(self, &status));
         }
 
-        ensure( ! self->mChildMonitor.mMonitor);
+        ert_ensure( ! self->mChildMonitor.mMonitor);
         self->mChildMonitor.mMutex =
             ert_destroyThreadSigMutex(self->mChildMonitor.mMutex);
 
@@ -936,9 +936,9 @@ activateFdTimerTermination_(struct ChildMonitor             *self,
 
     if ( ! terminationTimer->mPeriod.duration.ns)
     {
-        debug(1, "activating termination timer");
+        ert_debug(1, "activating termination timer");
 
-        ensure( ! self->mTermination.mSignalPlan);
+        ert_ensure( ! self->mTermination.mSignalPlan);
 
         self->mTermination.mSignalPlan =
             self->mTermination.mSignalPlans[aAction];
@@ -970,22 +970,22 @@ pollFdTimerTermination_(struct ChildMonitor             *self,
 
     struct Ert_ProcessSignalName sigName;
 
-    warn(
+    ert_warn(
         0,
         "Killing child pid %" PRId_Ert_Pid " with %s",
         FMTd_Ert_Pid(pidNum),
         ert_formatProcessSignalName(&sigName, sigNum));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         kill(pidNum.mPid, sigNum));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1003,7 +1003,7 @@ pollFdParent_(struct ChildMonitor             *self,
 {
     int rc = -1;
 
-    warn(
+    ert_warn(
         0,
         "Parent pid %" PRId_Ert_Pid " has terminated",
         FMTd_Ert_Pid(self->mParent.mPid));
@@ -1015,11 +1015,11 @@ pollFdParent_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1040,7 +1040,7 @@ restartFdTimerUmbilical_(struct ChildMonitor             *self,
 {
     if (self->mUmbilical.mCycleCount != self->mUmbilical.mCycleLimit)
     {
-        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+        ert_ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
 
         self->mUmbilical.mCycleCount = 0;
 
@@ -1077,7 +1077,7 @@ pollFdUmbilical_(struct ChildMonitor             *self,
     struct Ert_PollFdTimerAction *umbilicalTimer =
         &self->mPollFdTimerActions[POLL_FD_CHILD_TIMER_UMBILICAL];
 
-    ensure(self->mPollFds[POLL_FD_CHILD_UMBILICAL].events);
+    ert_ensure(self->mPollFds[POLL_FD_CHILD_UMBILICAL].events);
 
     char buf[1];
 
@@ -1087,7 +1087,7 @@ pollFdUmbilical_(struct ChildMonitor             *self,
      * is equivalent to encountering the end of file. */
 
     ssize_t rdlen;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (rdlen = read(
             self->mPollFds[POLL_FD_CHILD_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
@@ -1109,22 +1109,22 @@ pollFdUmbilical_(struct ChildMonitor             *self,
         if (ECONNRESET == errno)
         {
             if (umbilicalClosed)
-                debug(0, "umbilical connection closed");
+                ert_debug(0, "umbilical connection closed");
             else
-                warn(0, "Umbilical connection broken");
+                ert_warn(0, "Umbilical connection broken");
 
             pollFdCloseUmbilical_(self, aPollTime);
         }
     }
     else
     {
-        debug(1, "received umbilical connection echo %zd", rdlen);
+        ert_debug(1, "received umbilical connection echo %zd", rdlen);
 
         /* When the echo is received on the umbilical connection
          * schedule the next umbilical ping. The next ping is
          * scheduled immediately if the timer has been preempted. */
 
-        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+        ert_ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
 
         self->mUmbilical.mCycleCount = self->mUmbilical.mCycleLimit;
 
@@ -1141,11 +1141,11 @@ pollFdUmbilical_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1156,17 +1156,17 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
 {
     int rc = -1;
 
-    ensure(self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit);
+    ert_ensure(self->mUmbilical.mCycleCount == self->mUmbilical.mCycleLimit);
 
     char buf[1] = { '.' };
 
     ssize_t wrlen;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (wrlen = write(
             self->mUmbilical.mFile->mFd, buf, sizeof(buf)),
          -1 == wrlen || (errno = EIO, sizeof(buf) != wrlen)));
 
-    debug(0, "sent umbilical ping");
+    ert_debug(0, "sent umbilical ping");
 
     /* Once a message is written on the umbilical connection, expect
      * an echo to be returned from the umbilical monitor. */
@@ -1175,9 +1175,9 @@ pollFdWriteUmbilical_(struct ChildMonitor *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -1195,7 +1195,7 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor             *self,
          * some time. Restart the tether timeout so that the stoppage
          * is not mistaken for a failure. */
 
-        debug(
+        ert_debug(
             0,
             "umbilical pid %" PRId_Ert_Pid " is running",
             FMTd_Ert_Pid(self->mUmbilical.mPid));
@@ -1207,7 +1207,7 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor             *self,
         /* The umbilical process has terminated, so there is no longer
          * any need to monitor for SIGCHLD. */
 
-        debug(
+        ert_debug(
             0,
             "umbilical pid %" PRId_Ert_Pid " has terminated",
             FMTd_Ert_Pid(self->mUmbilical.mPid));
@@ -1217,9 +1217,9 @@ pollFdReapUmbilicalEvent_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -1262,9 +1262,9 @@ pollFdContUmbilical_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -1277,14 +1277,14 @@ pollFdTimerUmbilical_(struct ChildMonitor             *self,
 
     if (self->mUmbilical.mCycleCount != self->mUmbilical.mCycleLimit)
     {
-        ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
+        ert_ensure(self->mUmbilical.mCycleCount < self->mUmbilical.mCycleLimit);
 
         /* If waiting on a response from the umbilical monitor, apply
          * a timeout, and if the timeout is exceeded terminate the
          * child process. */
 
         struct Ert_ChildProcessState umbilicalState;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (umbilicalState = ert_monitorProcessChild(self->mUmbilical.mPid),
              Ert_ChildProcessStateError == umbilicalState.mChildState &&
              ECHILD != errno));
@@ -1298,7 +1298,7 @@ pollFdTimerUmbilical_(struct ChildMonitor             *self,
             if (Ert_ChildProcessStateTrapped == umbilicalState.mChildState ||
                 Ert_ChildProcessStateStopped == umbilicalState.mChildState)
             {
-                debug(
+                ert_debug(
                     0,
                     "deferred timeout umbilical status %"
                     PRIs_Ert_ChildProcessState,
@@ -1311,7 +1311,7 @@ pollFdTimerUmbilical_(struct ChildMonitor             *self,
                 if (++self->mUmbilical.mCycleCount ==
                     self->mUmbilical.mCycleLimit)
                 {
-                    warn(0, "Umbilical connection timed out");
+                    ert_warn(0, "Umbilical connection timed out");
 
                     pollFdCloseUmbilical_(self, aPollTime);
                 }
@@ -1321,7 +1321,7 @@ pollFdTimerUmbilical_(struct ChildMonitor             *self,
     else
     {
         int wrErr;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (wrErr = pollFdWriteUmbilical_(self),
              -1 == wrErr && (EPIPE       != errno &&
                              EINTR       != errno &&
@@ -1338,14 +1338,14 @@ pollFdTimerUmbilical_(struct ChildMonitor             *self,
                 break;
 
             case EWOULDBLOCK:
-                debug(1, "blocked write to umbilical");
+                ert_debug(1, "blocked write to umbilical");
                 break;
 
             case EPIPE:
                 /* The umbilical monitor is no longer running and has
                  * closed the umbilical connection. */
 
-                warn(0, "Umbilical connection closed");
+                ert_warn(0, "Umbilical connection closed");
 
                 pollFdCloseUmbilical_(self, aPollTime);
                 break;
@@ -1356,7 +1356,7 @@ pollFdTimerUmbilical_(struct ChildMonitor             *self,
                  * non-blocking. Instead, mark the timer as expired
                  * for force the monitoring loop to retry immediately. */
 
-                debug(1, "interrupted write to umbilical");
+                ert_debug(1, "interrupted write to umbilical");
 
                 ert_lapTimeTrigger(&umbilicalTimer->mSince,
                                    umbilicalTimer->mPeriod, aPollTime);
@@ -1367,11 +1367,11 @@ pollFdTimerUmbilical_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1391,18 +1391,18 @@ pollFdContEvent_(struct ChildMonitor             *self,
 {
     int rc = -1;
 
-    ensure(aEnabled);
+    ert_ensure(aEnabled);
 
-    debug(0, "detected continuation after stoppage");
+    ert_debug(0, "detected continuation after stoppage");
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         pollFdContUmbilical_(self, aPollTime));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -1412,16 +1412,16 @@ raiseFdContEvent_(struct ChildMonitor *self)
 {
     int rc = -1;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         Ert_EventLatchSettingError == ert_setEventLatch(self->mContLatch));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1439,7 +1439,7 @@ Finally:
 static void
 disconnectPollFdTether_(struct ChildMonitor *self)
 {
-    debug(0, "disconnect tether control");
+    ert_debug(0, "disconnect tether control");
 
     self->mPollFds[POLL_FD_CHILD_TETHER].fd     = -1;
     self->mPollFds[POLL_FD_CHILD_TETHER].events = 0;
@@ -1458,11 +1458,11 @@ pollFdTether_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1504,7 +1504,7 @@ pollFdTimerTether_(struct ChildMonitor             *self,
 
         struct Ert_ChildProcessState childState;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (childState = ert_monitorProcessChild(self->mChildPid),
              Ert_ChildProcessStateError == childState.mChildState &&
              ECHILD != errno));
@@ -1517,7 +1517,7 @@ pollFdTimerTether_(struct ChildMonitor             *self,
             if (Ert_ChildProcessStateTrapped == childState.mChildState ||
                 Ert_ChildProcessStateStopped == childState.mChildState)
             {
-                debug(
+                ert_debug(
                     0,
                     "deferred timeout child status %"
                     PRIs_Ert_ChildProcessState,
@@ -1560,7 +1560,7 @@ pollFdTimerTether_(struct ChildMonitor             *self,
         /* Once the timeout has expired, the timer can be cancelled because
          * there is no further need to run this state machine. */
 
-        debug(0, "timeout after %ds", gOptions.mServer.mTimeout.mTether_s);
+        ert_debug(0, "timeout after %ds", gOptions.mServer.mTimeout.mTether_s);
 
         activateFdTimerTermination_(
             self, ChildTermination_Abort, aPollTime);
@@ -1569,11 +1569,11 @@ pollFdTimerTether_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1613,7 +1613,7 @@ pollFdReapChildEvent_(struct ChildMonitor             *self,
          * some time. Restart the tether timeout so that the stoppage
          * is not mistaken for a failure. */
 
-        debug(
+        ert_debug(
             0,
             "child pid %" PRId_Ert_Pid " is running",
             FMTd_Ert_Pid(self->mChildPid));
@@ -1625,7 +1625,7 @@ pollFdReapChildEvent_(struct ChildMonitor             *self,
         /* The child process has terminated, so there is no longer
          * any need to monitor for SIGCHLD. */
 
-        debug(
+        ert_debug(
             0,
             "child pid %" PRId_Ert_Pid " has terminated",
             FMTd_Ert_Pid(self->mChildPid));
@@ -1637,7 +1637,7 @@ pollFdReapChildEvent_(struct ChildMonitor             *self,
          * child terminated, no further input can be produced so indicate
          * to the tether thread that it should start flushing data now. */
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             flushTetherThread(self->mTetherThread));
 
         /* Once the child process has terminated, start the disconnection
@@ -1651,9 +1651,9 @@ pollFdReapChildEvent_(struct ChildMonitor             *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -1664,18 +1664,18 @@ pollFdTimerChild_(struct ChildMonitor             *self,
 {
     int rc = -1;
 
-    debug(0, "disconnecting tether thread");
+    ert_debug(0, "disconnecting tether thread");
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         pingTetherThread(self->mTetherThread));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1707,20 +1707,20 @@ pollFdEventPipe_(struct ChildMonitor             *self,
 
     if ( ! ert_testSleep(Ert_TestLevelRace))
     {
-        debug(0, "checking event pipe");
+        ert_debug(0, "checking event pipe");
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             -1 == ert_pollEventPipe(
                 self->mEventPipe, aPollTime) && EINTR != errno);
     }
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcessMonitor);
+        ert_finally_warn_if(rc, self, printChildProcessMonitor);
     });
 
     return rc;
@@ -1749,16 +1749,16 @@ raiseChildProcessSigCont(struct ChildProcess *self)
     lock = ert_lockThreadSigMutex(self->mChildMonitor.mMutex);
 
     if (self->mChildMonitor.mMonitor)
-        ERROR_IF(
+        ERT_ERROR_IF(
             raiseFdContEvent_(self->mChildMonitor.mMonitor));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcess);
+        ert_finally_warn_if(rc, self, printChildProcess);
 
         lock = ert_unlockThreadSigMutex(lock);
     });
@@ -1776,7 +1776,7 @@ monitorChildProcess(struct ChildProcess     *self,
 {
     int rc = -1;
 
-    debug(0, "start monitoring child");
+    ert_debug(0, "start monitoring child");
 
     struct Ert_Pipe  nullPipe_;
     struct Ert_Pipe *nullPipe = 0;
@@ -1795,7 +1795,7 @@ monitorChildProcess(struct ChildProcess     *self,
 
     struct ChildMonitor *childMonitor = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createPipe(&nullPipe_, O_CLOEXEC | O_NONBLOCK));
     nullPipe = &nullPipe_;
 
@@ -1809,15 +1809,15 @@ monitorChildProcess(struct ChildProcess     *self,
      * the main monitoring thread deals exclusively with non-blocking
      * file descriptors. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         createTetherThread(&tetherThread_, nullPipe));
     tetherThread = &tetherThread_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createEventPipe(&eventPipe_, O_CLOEXEC | O_NONBLOCK));
     eventPipe = &eventPipe_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createEventLatch(&contLatch_, "continue"));
     contLatch = &contLatch_;
 
@@ -1996,19 +1996,19 @@ monitorChildProcess(struct ChildProcess     *self,
     };
     childMonitor = &childMonitor_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         Ert_EventLatchSettingError == ert_bindEventLatchPipe(
             self->mLatch.mChild, eventPipe,
             Ert_EventLatchMethod(
                 childMonitor, pollFdReapChildEvent_)));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         Ert_EventLatchSettingError == ert_bindEventLatchPipe(
             self->mLatch.mUmbilical, eventPipe,
             Ert_EventLatchMethod(
                 childMonitor, pollFdReapUmbilicalEvent_)));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         Ert_EventLatchSettingError == ert_bindEventLatchPipe(
             contLatch, eventPipe,
             Ert_EventLatchMethod(
@@ -2033,10 +2033,10 @@ monitorChildProcess(struct ChildProcess     *self,
 
     for (size_t ix = 0; ERT_NUMBEROF(childMonitor->mPollFds) > ix; ++ix)
     {
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             ert_ownFdNonBlocking(childMonitor->mPollFds[ix].fd),
             {
-                warn(
+                ert_warn(
                     0,
                     "Expected %s fd %d to be non-blocking",
                     pollFdNames_[ix],
@@ -2044,7 +2044,7 @@ monitorChildProcess(struct ChildProcess     *self,
             });
     }
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createPollFd(
             &pollfd_,
 
@@ -2060,26 +2060,26 @@ monitorChildProcess(struct ChildProcess     *self,
 
     updateChildProcessMonitor_(self, childMonitor);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_runPollFdLoop(pollfd));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
-        finally_warn_if(rc, self, printChildProcess);
+        ert_finally_warn_if(rc, self, printChildProcess);
 
         updateChildProcessMonitor_(self, 0);
 
         pollfd = ert_closePollFd(pollfd);
 
-        ABORT_IF(
+        ERT_ABORT_IF(
             Ert_EventLatchSettingError == ert_unbindEventLatchPipe(
                 self->mLatch.mUmbilical));
 
-        ABORT_IF(
+        ERT_ABORT_IF(
             Ert_EventLatchSettingError == ert_unbindEventLatchPipe(
                 self->mLatch.mChild));
 
@@ -2091,7 +2091,7 @@ Finally:
         nullPipe = ert_closePipe(nullPipe);
     });
 
-    debug(0, "stop monitoring child");
+    ert_debug(0, "stop monitoring child");
 
     return rc;
 }

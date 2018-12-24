@@ -58,7 +58,7 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
 
     const char *incarnation;
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         (incarnation = ert_fetchSystemIncarnation()));
 
     /* Note that it is expected that forkProcess() will guarantee that
@@ -71,7 +71,7 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
     {
         struct Ert_ProcessDirName processDirName;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_initProcessDirName(&processDirName, aPid));
 
         static const char processStatFileNameFmt_[] = "%s/stat";
@@ -79,21 +79,21 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
         char processStatFileName[strlen(processDirName.mDirName) +
                                  sizeof(processStatFileNameFmt_)];
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             0> sprintf(processStatFileName,
                        processStatFileNameFmt_, processDirName.mDirName));
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             (fd = ert_openFd(processStatFileName, O_RDONLY, 0),
              -1 == fd));
 
     } while (0);
 
     ssize_t buflen;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (buflen = ert_readFdFully(fd, &buf, 0),
          -1 == buflen));
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         buflen,
         {
             errno = ERANGE;
@@ -101,7 +101,7 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
 
     char *bufend = buf + buflen;
     char *word;
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         (word = memrchr(buf, ')', buflen)),
         {
             errno = ERANGE;
@@ -112,7 +112,7 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
         while (word != bufend && ! isspace((unsigned char) *word))
             ++word;
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             word == bufend,
             {
                 errno = ERANGE;
@@ -137,10 +137,10 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
         size_t signatureLen =
             strlen(incarnation) + sizeof(timestamp) + sizeof(signatureFmt);
 
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             (signature = malloc(signatureLen)));
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             0 > sprintf(signature, signatureFmt, incarnation, timestamp));
 
     } while (0);
@@ -150,9 +150,9 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         fd = ert_closeFd(fd);
 
@@ -172,17 +172,17 @@ createPidSignature(struct Ert_Pid aPid, const char *aSignature)
     char *signature = 0;
 
     struct PidSignature *self = 0;
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         self = malloc(sizeof(*self)));
 
     self->mPid       = aPid;
     self->mSignature = 0;
 
     if (aSignature)
-        ERROR_UNLESS(
+        ERT_ERROR_UNLESS(
             signature = strdup(aSignature));
     else if (self->mPid.mPid && -1 != self->mPid.mPid)
-        ERROR_IF(
+        ERT_ERROR_IF(
             fetchProcessSignature_(aPid, &signature));
 
     self->mSignature = signature;
@@ -190,9 +190,9 @@ createPidSignature(struct Ert_Pid aPid, const char *aSignature)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             self = destroyPidSignature(self);
@@ -230,25 +230,25 @@ sendPidSignature(struct Ert_File           *aFile,
         .mSignatureLen = strlen(aPidSignature->mSignature),
     };
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         sizeof(marshalled.mSignature) <= marshalled.mSignatureLen,
         {
             errno = EINVAL;
         });
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         sizeof(marshalled.mPid) == ert_writeFileDeadline(
             aFile,
             (void *) &marshalled.mPid,
             sizeof(marshalled.mPid), aDeadline));
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         sizeof(marshalled.mSignatureLen) == ert_writeFileDeadline(
             aFile,
             (void *) &marshalled.mSignatureLen,
             sizeof(marshalled.mSignatureLen), aDeadline));
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         marshalled.mSignatureLen == ert_writeFileDeadline(
             aFile,
             aPidSignature->mSignature,
@@ -256,9 +256,9 @@ sendPidSignature(struct Ert_File           *aFile,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -297,25 +297,25 @@ recvPidSignature(struct Ert_File *aFile, struct Ert_Deadline *aDeadline)
 
     struct MarshalledPidSignature marshalled;
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         sizeof(marshalled.mPid) == ert_readFileDeadline(
             aFile,
             (void *) &marshalled.mPid,
             sizeof(marshalled.mPid), aDeadline));
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         sizeof(marshalled.mSignatureLen) == ert_readFileDeadline(
             aFile,
             (void *) &marshalled.mSignatureLen,
             sizeof(marshalled.mSignatureLen), aDeadline));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         sizeof(marshalled.mSignature) <= marshalled.mSignatureLen,
         {
             errno = EINVAL;
         });
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         marshalled.mSignatureLen == ert_readFileDeadline(
             aFile,
             marshalled.mSignature,
@@ -323,22 +323,22 @@ recvPidSignature(struct Ert_File *aFile, struct Ert_Deadline *aDeadline)
 
     marshalled.mSignature[marshalled.mSignatureLen] = 0;
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         strlen(marshalled.mSignature) == marshalled.mSignatureLen,
         {
             errno = ERANGE;
         });
 
-    ERROR_UNLESS(
+    ERT_ERROR_UNLESS(
         pidSignature = createPidSignature(
             Ert_Pid(marshalled.mPid),
             marshalled.mSignature));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             pidSignature = destroyPidSignature(pidSignature);

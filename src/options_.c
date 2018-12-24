@@ -171,9 +171,9 @@ setOptionMode(enum OptionMode  self,
         else
         {
             if (aLongOpt)
-                message(0, "Incompatible option --%s", aLongOpt);
+                ert_message(0, "Incompatible option --%s", aLongOpt);
             else
-                message(0, "Incompatible option -%c", aShortOpt);
+                ert_message(0, "Incompatible option -%c", aShortOpt);
         }
     }
 
@@ -211,32 +211,32 @@ processTimeoutOption(const char *aArg)
     struct Ert_ParseArgList *argList = 0;
 
     struct Ert_ParseArgList argList_;
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createParseArgListCSV(&argList_, aArg));
     argList = &argList_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         1 > argList->mArgc || 4 < argList->mArgc,
         {
             errno = EINVAL;
         });
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_parseUInt(argList->mArgv[0], &gOptions.mServer.mTimeout.mTether_s));
 
     if (1 < argList->mArgc && *argList->mArgv[1])
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_parseUInt(
                 argList->mArgv[1], &gOptions.mServer.mTimeout.mUmbilical_s));
     }
 
     if (2 < argList->mArgc && *argList->mArgv[2])
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_parseUInt(
                 argList->mArgv[2], &gOptions.mServer.mTimeout.mSignal_s));
-        ERROR_IF(
+        ERT_ERROR_IF(
             0 >= gOptions.mServer.mTimeout.mSignal_s,
             {
                 errno = EINVAL;
@@ -244,15 +244,15 @@ processTimeoutOption(const char *aArg)
     }
 
     if (3 < argList->mArgc && *argList->mArgv[3])
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_parseUInt(
                 argList->mArgv[3], &gOptions.mServer.mTimeout.mDrain_s));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (argList)
             argList = ert_closeParseArgList(argList);
@@ -275,7 +275,7 @@ processOptions(int argc, char **argv, const char * const **args)
 
     while (1)
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             OptionModeError == mode,
             {
                 errno = EINVAL;
@@ -284,7 +284,7 @@ processOptions(int argc, char **argv, const char * const **args)
         int longOptIndex = ERT_NUMBEROF(longOptions_) - 1;
 
         int opt;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (opt = getopt_long(
                 argc, argv, shortOptions_, longOptions_, &longOptIndex),
              '?' == opt),
@@ -301,11 +301,11 @@ processOptions(int argc, char **argv, const char * const **args)
         switch (opt)
         {
         default:
-            ERROR_IF(
+            ERT_ERROR_IF(
                 true,
                 {
                     errno = EINVAL;
-                    message(0, "Unrecognised option %d ('%c')", opt, opt);
+                    ert_message(0, "Unrecognised option %d ('%c')", opt, opt);
                 });
             break;
 
@@ -335,14 +335,14 @@ processOptions(int argc, char **argv, const char * const **args)
             }
             else
             {
-                ERROR_IF(
+                ERT_ERROR_IF(
                     ert_parseInt(
                         optarg,
                         &gOptions.mServer.mTetherFd) ||
                     0 > gOptions.mServer.mTetherFd,
                     {
                         errno = EINVAL;
-                        message(0, "Badly formed fd - '%s'", optarg);
+                        ert_message(0, "Badly formed fd - '%s'", optarg);
                     });
             }
             break;
@@ -362,11 +362,11 @@ processOptions(int argc, char **argv, const char * const **args)
         case 'n':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            ERROR_UNLESS(
+            ERT_ERROR_UNLESS(
                 optarg[0],
                 {
                     errno = EINVAL;
-                    message(0, "Empty environment or argument name");
+                    ert_message(0, "Empty environment or argument name");
                 });
             gOptions.mServer.mName = optarg;
             break;
@@ -374,11 +374,11 @@ processOptions(int argc, char **argv, const char * const **args)
         case 'p':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            ERROR_UNLESS(
+            ERT_ERROR_UNLESS(
                 optarg[0],
                 {
                     errno = EINVAL;
-                    message(0, "Empty pid file name");
+                    ert_message(0, "Empty pid file name");
                 });
             gOptions.mServer.mPidFile = optarg;
             break;
@@ -402,28 +402,28 @@ processOptions(int argc, char **argv, const char * const **args)
             break;
 
         case OptionTest:
-            ERROR_IF(
+            ERT_ERROR_IF(
                 ert_parseUInt(optarg, &options.mTest),
                 {
                     errno = EINVAL;
-                    message(0, "Badly formed test level - '%s'", optarg);
+                    ert_message(0, "Badly formed test level - '%s'", optarg);
                 });
-            ERROR_UNLESS(
+            ERT_ERROR_UNLESS(
                 options.mTest,
                 {
                     errno = EINVAL;
-                    message(0, "Test level must be non-zero");
+                    ert_message(0, "Test level must be non-zero");
                 });
             break;
 
         case 't':
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
-            ERROR_IF(
+            ERT_ERROR_IF(
                 processTimeoutOption(optarg),
                 {
                     errno = EINVAL;
-                    message(0, "Badly formed timeout - '%s'", optarg);
+                    ert_message(0, "Badly formed timeout - '%s'", optarg);
                 });
             break;
 
@@ -437,52 +437,52 @@ processOptions(int argc, char **argv, const char * const **args)
 
     ert_initOptions(&options);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         OptionModeUnknown == mode,
         {
             errno = EINVAL;
-            message(0, "Unspecified mode of operation");
+            ert_message(0, "Unspecified mode of operation");
         });
 
     switch (mode)
     {
     default:
-        ensure(false);
+        ert_ensure(false);
         break;
 
     case OptionModeRunCommand:
-        ensure(   gOptions.mClient.mActive);
-        ensure( ! gOptions.mServer.mActive);
-        ERROR_IF(
+        ert_ensure(   gOptions.mClient.mActive);
+        ert_ensure( ! gOptions.mServer.mActive);
+        ERT_ERROR_IF(
             optind >= argc,
             {
                 errno = EINVAL;
-                message(0, "Missing pid file for command");
+                ert_message(0, "Missing pid file for command");
             });
 
         gOptions.mClient.mPidFile = argv[optind++];
         break;
 
     case OptionModeMonitorChild:
-        ensure(   gOptions.mServer.mActive);
-        ensure( ! gOptions.mClient.mActive);
+        ert_ensure(   gOptions.mServer.mActive);
+        ert_ensure( ! gOptions.mClient.mActive);
         break;
     }
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         optind >= argc,
         {
             errno = EINVAL;
-            message(0, "Missing command for execution");
+            ert_message(0, "Missing command for execution");
         });
 
     *args = (const char * const *) (optind < argc ? argv + optind : 0);
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }

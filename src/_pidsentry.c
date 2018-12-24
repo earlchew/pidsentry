@@ -61,42 +61,42 @@ cmdRunCommand(const char          *aPidFileName,
     struct Command *command = 0;
 
     enum CommandStatus status;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (status = createCommand(&command_, aPidFileName),
          CommandStatusError == status));
 
     switch (status)
     {
     default:
-        ensure(0);
+        ert_ensure(0);
 
     case CommandStatusOk:
         command = &command_;
-        ERROR_IF(
+        ERT_ERROR_IF(
             runCommand(command, aCmd));
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             reapCommand(command, &exitCode));
         break;
 
     case CommandStatusUnreachablePidFile:
-        message(0, "Unable to reach pidfile '%s'", aPidFileName);
+        ert_message(0, "Unable to reach pidfile '%s'", aPidFileName);
         break;
 
     case CommandStatusNonexistentPidFile:
-        message(0, "Unable to find pidfile '%s'", aPidFileName);
+        ert_message(0, "Unable to find pidfile '%s'", aPidFileName);
         break;
 
     case CommandStatusMalformedPidFile:
-        message(0, "Malformed pidfile '%s'", aPidFileName);
+        ert_message(0, "Malformed pidfile '%s'", aPidFileName);
         break;
 
     case CommandStatusInaccessiblePidFile:
-        message(0, "Unable to access pidfile '%s'", aPidFileName);
+        ert_message(0, "Unable to access pidfile '%s'", aPidFileName);
         break;
 
     case CommandStatusZombiePidFile:
-        message(0, "Dead process named in pidfile '%s'", aPidFileName);
+        ert_message(0, "Dead process named in pidfile '%s'", aPidFileName);
         break;
     }
 
@@ -104,9 +104,9 @@ cmdRunCommand(const char          *aPidFileName,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         command = closeCommand(command);
     });
@@ -125,34 +125,34 @@ cmdMonitorChild(const char * const *aCmd, struct Ert_ExitCode *aExitCode)
 
     struct Ert_ExitCode exitCode = { EXIT_FAILURE };
 
-    ensure(aCmd);
+    ert_ensure(aCmd);
 
-    debug(
+    ert_debug(
         0,
         "watchdog process pid %" PRId_Ert_Pid " pgid %" PRId_Ert_Pgid,
         FMTd_Ert_Pid(ert_ownProcessId()),
         FMTd_Ert_Pgid(ert_ownProcessGroupId()));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_ignoreProcessSigPipe());
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         createAgent(&agent_, aCmd));
     agent = &agent_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         runAgent(agent, &exitCode));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_resetProcessSigPipe());
 
     *aExitCode = exitCode;
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         agent = closeAgent(agent);
     });
@@ -175,47 +175,49 @@ main(int argc, char **argv)
     struct Ert_ProcessModule  processModule_;
     struct Ert_ProcessModule *processModule = 0;
 
-    ABORT_IF(
+    ERT_ABORT_IF(
         Ert_Test_init(&testModule_, "PIDSENTRY_TEST_ERROR"));
     testModule = &testModule_;
 
-    ABORT_IF(
+    ERT_ABORT_IF(
         Ert_Timekeeping_init(&timeKeepingModule_));
     timeKeepingModule = &timeKeepingModule_;
 
-    ABORT_IF(
+    ERT_ABORT_IF(
         Ert_Process_init(&processModule_, argv[0]));
     processModule = &processModule_;
 
     const char * const *args;
-    ERROR_IF(
+    ERT_ERROR_IF(
         processOptions(argc, argv, &args),
         {
             if (EINVAL != errno)
-                message(errno,
+                ert_message(errno,
                         "Unable to parse command line");
         });
 
-    ensure(
+    ert_ensure(
         ( ! gOptions.mClient.mActive &&   gOptions.mServer.mActive ) ||
         (   gOptions.mClient.mActive && ! gOptions.mServer.mActive ) );
 
     if (gOptions.mClient.mActive)
-        ABORT_IF(
+        ERT_ABORT_IF(
             cmdRunCommand(gOptions.mClient.mPidFile, args, &exitCode),
             {
-                terminate(errno,
+                ert_terminate(errno,
                           "Failed to run command: %s", args[0]);
             });
     else
-        ABORT_IF(
+        ERT_ABORT_IF(
             cmdMonitorChild(args, &exitCode),
             {
-                terminate(errno,
+                ert_terminate(errno,
                           "Failed to supervise program: %s", args[0]);
             });
 
-Finally:
+Ert_Finally:
+
+    ERT_FINALLY({});
 
     processModule     = Ert_Process_exit(processModule);
     timeKeepingModule = Ert_Timekeeping_exit(timeKeepingModule);
@@ -229,11 +231,11 @@ Finally:
         {
             struct Ert_Pid pid;
 
-            ABORT_IF(
+            ERT_ABORT_IF(
                 (pid = ert_waitProcessChildren(),
                  -1 == pid.mPid),
                 {
-                    terminate(errno,
+                    ert_terminate(errno,
                               "Failed to wait for child processes in test");
                 });
 
@@ -241,10 +243,10 @@ Finally:
                 break;
 
             int status;
-            ABORT_IF(
+            ERT_ABORT_IF(
                 ert_reapProcessChild(pid, &status),
                 {
-                    terminate(
+                    ert_terminate(
                         errno,
                         "Unable to reap "
                         "child process %" PRId_Ert_Pid " in test",

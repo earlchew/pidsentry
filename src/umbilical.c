@@ -71,7 +71,7 @@ pollFdPidServer_(struct UmbilicalMonitor         *self,
 {
     int rc = -1;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         acceptPidServerConnection(self->mPidServer));
 
     struct pollfd *pollFd = &self->mPoll.mFds[POLL_FD_MONITOR_PIDCLIENT];
@@ -84,9 +84,9 @@ pollFdPidServer_(struct UmbilicalMonitor         *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -108,9 +108,9 @@ pollFdPidClient_(struct UmbilicalMonitor         *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -119,7 +119,7 @@ Finally:
 static void
 closeFdUmbilical_(struct UmbilicalMonitor *self)
 {
-    ABORT_IF(
+    ERT_ABORT_IF(
         shutdown(
             self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd,
             SHUT_WR));
@@ -146,7 +146,7 @@ pollFdUmbilical_(struct UmbilicalMonitor         *self,
     char buf[1];
 
     ssize_t rdlen;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (rdlen = read(
             self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd, buf, sizeof(buf)),
          -1 == rdlen
@@ -169,33 +169,33 @@ pollFdUmbilical_(struct UmbilicalMonitor         *self,
         if (ECONNRESET == errno)
         {
             if (self->mUmbilical.mClosed)
-                debug(0, "umbilical connection closed");
+                ert_debug(0, "umbilical connection closed");
             else
-                warn(0, "Umbilical connection broken");
+                ert_warn(0, "Umbilical connection broken");
 
             closeFdUmbilical_(self);
         }
     }
     else
     {
-        debug(1, "received umbilical connection ping %zd", rdlen);
+        ert_debug(1, "received umbilical connection ping %zd", rdlen);
 
-        ensure( ! self->mUmbilical.mClosed);
+        ert_ensure( ! self->mUmbilical.mClosed);
 
         if ( ! buf[0])
         {
-            debug(1, "umbilical connection close request");
+            ert_debug(1, "umbilical connection close request");
 
             self->mUmbilical.mClosed = true;
         }
         else
         {
-            debug(1, "umbilical connection echo request");
+            ert_debug(1, "umbilical connection echo request");
 
             /* Requests for echoes are posted so that they can
              * be retried on EINTR. */
 
-            ERROR_IF(
+            ERT_ERROR_IF(
                 Ert_EventLatchSettingError == ert_setEventLatch(
                     self->mLatch.mEchoRequest));
         }
@@ -222,9 +222,9 @@ pollFdUmbilical_(struct UmbilicalMonitor         *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -245,7 +245,7 @@ pollFdTimerUmbilical_(
 
     if (Ert_ProcessStateStopped == parentState.mState)
     {
-        debug(
+        ert_debug(
             0,
             "umbilical timeout deferred due to "
             "parent status %" PRIs_Ert_ProcessState,
@@ -254,16 +254,16 @@ pollFdTimerUmbilical_(
     }
     else if (++self->mUmbilical.mCycleCount >= self->mUmbilical.mCycleLimit)
     {
-        warn(0, "Umbilical connection timed out");
+        ert_warn(0, "Umbilical connection timed out");
 
         closeFdUmbilical_(self);
     }
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -276,13 +276,13 @@ pollFdSendEcho_(struct UmbilicalMonitor         *self,
 {
     int rc = -1;
 
-    ensure(aEnabled);
+    ert_ensure(aEnabled);
 
     /* The umbilical connection might have been closed by the time
      * this code runs. */
 
     if (-1 == self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd)
-        debug(0, "skipping umbilical echo");
+        ert_debug(0, "skipping umbilical echo");
     else
     {
         /* Receiving EPIPE means that the umbilical connection
@@ -292,7 +292,7 @@ pollFdSendEcho_(struct UmbilicalMonitor         *self,
         char buf[1] = { '.' };
 
         ssize_t wrlen;
-        ERROR_IF(
+        ERT_ERROR_IF(
             (wrlen = ert_writeFd(
                 self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd,
                 buf, sizeof(buf), 0),
@@ -300,14 +300,14 @@ pollFdSendEcho_(struct UmbilicalMonitor         *self,
              ? EPIPE != errno
              : (errno = 0, sizeof(buf) != wrlen)));
 
-        debug(0, "sent umbilical echo");
+        ert_debug(0, "sent umbilical echo");
     }
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -324,18 +324,18 @@ pollFdEventPipe_(struct UmbilicalMonitor         *self,
 
     if ( ! ert_testSleep(Ert_TestLevelRace))
     {
-        debug(0, "checking event pipe");
+        ert_debug(0, "checking event pipe");
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             -1 == ert_pollEventPipe(
                 self->mEventPipe, aPollTime) && EINTR != errno);
     }
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -369,15 +369,15 @@ createUmbilicalMonitor(
     self->mPidServer = aPidServer;
     self->mEventPipe = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createEventLatch(&self->mLatch.mEchoRequest_, "echo request"));
     self->mLatch.mEchoRequest = &self->mLatch.mEchoRequest_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createEventPipe(&self->mEventPipe_, O_CLOEXEC | O_NONBLOCK));
     self->mEventPipe = &self->mEventPipe_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         Ert_EventLatchSettingError == ert_bindEventLatchPipe(
             self->mLatch.mEchoRequest, self->mEventPipe,
             Ert_EventLatchMethod(
@@ -451,9 +451,9 @@ createUmbilicalMonitor(
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         if (rc)
             self = closeUmbilicalMonitor(self);
@@ -468,7 +468,7 @@ closeUmbilicalMonitor(struct UmbilicalMonitor *self)
 {
     if (self)
     {
-        ABORT_IF(
+        ERT_ABORT_IF(
             Ert_EventLatchSettingError == ert_unbindEventLatchPipe(
                 self->mLatch.mEchoRequest));
 
@@ -489,18 +489,18 @@ synchroniseUmbilicalMonitor(struct UmbilicalMonitor *self)
     /* Use a blocking read to wait for the sentry to signal that the
      * umbilical monitor should proceed. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         -1 == ert_waitFdReadReady(
             self->mPoll.mFds[POLL_FD_MONITOR_UMBILICAL].fd, 0));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         pollFdUmbilical_(self, 0));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -514,7 +514,7 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
     struct Ert_PollFd  pollfd_;
     struct Ert_PollFd *pollfd = 0;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_createPollFd(
             &pollfd_,
             self->mPoll.mFds,
@@ -525,14 +525,14 @@ runUmbilicalMonitor(struct UmbilicalMonitor *self)
             Ert_PollFdCompletionMethod(self, pollFdCompletion_)));
     pollfd = &pollfd_;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_runPollFdLoop(pollfd));
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         pollfd = ert_closePollFd(pollfd);
     });
@@ -554,24 +554,24 @@ prepareUmbilicalProcess_(struct UmbilicalProcess         *self,
 {
     int rc = -1;
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_insertFdSetFile(
             aPreFork->mWhitelistFds,
             self->mSocket->mParentSocket->mSocket->mFile));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         ert_insertFdSetFile(
             aPreFork->mWhitelistFds,
             self->mSocket->mChildSocket->mSocket->mFile));
 
     if (self->mPidServer)
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_insertFdSetFile(
                 aPreFork->mWhitelistFds,
                 self->mPidServer->mUnixSocket->mSocket->mFile));
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_insertFdSetFile(
                 aPreFork->mWhitelistFds,
                 self->mPidServer->mEventQueue->mFile));
@@ -579,9 +579,9 @@ prepareUmbilicalProcess_(struct UmbilicalProcess         *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -599,7 +599,7 @@ postUmbilicalProcessChild_(struct UmbilicalProcess *self)
      * the pids will uniquely identify those process groups while
      * the umbilical exists. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         (self->mChildAnchor = ert_forkProcessChild(
             Ert_ForkProcessSetProcessGroup,
             self->mChildProcess->mPgid,
@@ -615,7 +615,7 @@ postUmbilicalProcessChild_(struct UmbilicalProcess *self)
                     }))),
          -1 == self->mChildAnchor.mPid));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         (self->mSentryAnchor = ert_forkProcessChild(
             Ert_ForkProcessSetProcessGroup,
             self->mSentryPgid,
@@ -631,7 +631,7 @@ postUmbilicalProcessChild_(struct UmbilicalProcess *self)
                     }))),
          -1 == self->mSentryAnchor.mPid));
 
-    debug(
+    ert_debug(
         0,
         "umbilical process pid %" PRId_Ert_Pid " pgid %" PRId_Ert_Pgid,
         FMTd_Ert_Pid(ert_ownProcessId()),
@@ -643,11 +643,11 @@ postUmbilicalProcessChild_(struct UmbilicalProcess *self)
 
     ert_closeSocketPairParent(self->mSocket);
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         STDIN_FILENO !=
         dup2(self->mSocket->mChildSocket->mSocket->mFile->mFd, STDIN_FILENO));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         STDOUT_FILENO != dup2(
             self->mSocket->mChildSocket->mSocket->mFile->mFd, STDOUT_FILENO));
 
@@ -655,9 +655,9 @@ postUmbilicalProcessChild_(struct UmbilicalProcess *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -673,9 +673,9 @@ postUmbilicalProcessParent_(struct UmbilicalProcess *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
@@ -691,7 +691,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
 
     if (ert_testMode(Ert_TestLevelSync))
     {
-        ERROR_IF(
+        ERT_ERROR_IF(
             raise(SIGSTOP));
     }
 
@@ -702,7 +702,7 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
      * process group as the child process and use the process group as
      * a means of controlling the cild process. */
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         createUmbilicalMonitor(
             &umbilicalMonitor_,
             STDIN_FILENO, self->mSentryPid, self->mPidServer));
@@ -711,14 +711,14 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
     /* Synchronise with the sentry to avoid timing races. The sentry
      * writes to the umbilical when it is ready to start timing. */
 
-    debug(0, "synchronising umbilical");
+    ert_debug(0, "synchronising umbilical");
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         synchroniseUmbilicalMonitor(umbilicalMonitor));
 
-    debug(0, "synchronised umbilical");
+    ert_debug(0, "synchronised umbilical");
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         runUmbilicalMonitor(umbilicalMonitor));
 
     /* The umbilical monitor returns when the connection to the sentry
@@ -726,28 +726,28 @@ runUmbilicalProcessChild_(struct UmbilicalProcess *self)
      * the shutdown was not orderly. */
 
     if ( ! ownUmbilicalMonitorClosedOrderly(umbilicalMonitor))
-        warn(
+        ert_warn(
             0,
             "Killing child pgid %" PRId_Ert_Pgid " from umbilical",
             FMTd_Ert_Pgid(self->mChildProcess->mPgid));
 
-    ERROR_IF(
+    ERT_ERROR_IF(
         killChildProcessGroup(self->mChildProcess));
 
     /* If the shutdown was not orderly, assume the worst and attempt to
      * clean up the sentry process group. */
 
     if ( ! ownUmbilicalMonitorClosedOrderly(umbilicalMonitor))
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_signalProcessGroup(self->mSentryPgid, SIGKILL));
 
-    debug(0, "exit umbilical");
+    ert_debug(0, "exit umbilical");
 
     rc = EXIT_SUCCESS;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         umbilicalMonitor = closeUmbilicalMonitor(umbilicalMonitor);
     });
@@ -788,7 +788,7 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
         &sigMask_, Ert_ThreadSigMaskBlock, (const int []) { SIGHUP, 0 });
 
     struct Ert_Pid umbilicalPid;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (umbilicalPid = ert_forkProcessChild(
             Ert_ForkProcessSetProcessGroup,
             Ert_Pgid(0),
@@ -805,9 +805,9 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY
+    ERT_FINALLY
     ({
         sigMask = ert_popThreadSigMask(sigMask);
 
@@ -815,11 +815,11 @@ Finally:
         {
             if (self->mPid.mPid)
             {
-                ABORT_IF(
+                ERT_ABORT_IF(
                     ert_signalProcessGroup(Ert_Pgid(self->mPid.mPid), SIGKILL));
 
                 int status;
-                ABORT_IF(
+                ERT_ABORT_IF(
                     ert_reapProcessChild(self->mPid, &status));
             }
         }
@@ -840,7 +840,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
     char buf[1] = { 0 };
 
     ssize_t wrlen;
-    ERROR_IF(
+    ERT_ERROR_IF(
         (wrlen = ert_sendUnixSocket(self->mSocket->mParentSocket,
                                     buf, sizeof(buf)),
          -1 == wrlen && EPIPE != errno));
@@ -851,7 +851,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
          * prepared to wait a short time to obtain an orderly shut down,
          * but do not stall here indefinitely. */
 
-        ERROR_IF(
+        ERT_ERROR_IF(
             ert_shutdownUnixSocketWriter(self->mSocket->mParentSocket));
 
         struct Ert_Duration umbilicalTimeout =
@@ -875,7 +875,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
             struct Ert_Duration remaining;
 
             int expired;
-            ERROR_IF(
+            ERT_ERROR_IF(
                 (expired = ert_deadlineTimeExpired(
                     &since, umbilicalTimeout, &remaining, 0),
                  expired && ! ert_checkProcessSigContTracker(&sigContTracker)),
@@ -896,7 +896,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
                  * connection to get a clean shutdown. */
 
                 int ready = 0;
-                ERROR_IF(
+                ERT_ERROR_IF(
                     (ready = ert_waitUnixSocketReadReady(
                         self->mSocket->mParentSocket, &remaining),
                      -1 == ready));
@@ -904,7 +904,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
                 if (ready)
                 {
                     ssize_t rdlen = 0;
-                    ERROR_IF(
+                    ERT_ERROR_IF(
                         (rdlen = ert_recvUnixSocket(
                             self->mSocket->mParentSocket, buf, 1),
                          -1 == rdlen && ECONNRESET != errno));
@@ -919,7 +919,7 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
             {
                 struct Ert_ChildProcessState processState;
 
-                ERROR_IF(
+                ERT_ERROR_IF(
                     (processState = ert_waitProcessChild(self->mPid),
                      Ert_ChildProcessStateError == processState.mChildState));
 
@@ -940,9 +940,9 @@ stopUmbilicalProcess(struct UmbilicalProcess *self)
 
     rc = 0;
 
-Finally:
+Ert_Finally:
 
-    FINALLY({});
+    ERT_FINALLY({});
 
     return rc;
 }
