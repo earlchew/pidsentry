@@ -757,10 +757,12 @@ runTests()
                     trapexit()
                     {
                         [ -z "${CHILD++}" ] || kill -9 "$CHILD" || :
-                        set -- 255
+                        set -- "$1" 255
                         while read REPLY ; do
-                            set -- "$REPLY"
+                            : REPLY $REPLY
+                            set -- "$1" "$REPLY"
                         done
+                        [ x"$1" != x0 ] || shift
                         /bin/echo "$1"
                         exit "$1"
                     }
@@ -786,12 +788,26 @@ runTests()
 
                     randomsleep 1
 
-                    pidsentry -c -- $PIDFILE 'echo $PIDSENTRY_PID' | {
+                    pidsentry -c -- $PIDFILE 'echo "'$'\n''$PIDSENTRY_PID"' | {
+
+                        # Also verify that the output can contain embedded
+                        # newlines without loss.
+
+                        read EMPTY_CHILD_PID || {
+                            /bin/echo "Unable to read from $TASK_PID" >&2
+                            exit 1
+                        }
+                        : EMPTY_CHILD_PID $EMPTY_CHILD_PID
+                        [ -z "$EMPTY_CHILD_PID" ] || {
+                            /bin/echo "Non-empty line from $TASK_PID" >&2
+                            exit 1
+                        }
 
                         read CHILD_PID || {
                             /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
                             exit 1
                         }
+                        : CHILD_PID $CHILD_PID
                         [ x"$CHILD" = x"$CHILD_PID" ] || {
                             /bin/echo "Mismatched pidfile from $TASK_PID" >&2
                             exit 1
@@ -807,6 +823,7 @@ runTests()
                             /bin/echo "Inaccessible pidfile from $TASK_PID" >&2
                             exit 1
                         }
+                        : CHILD_PID $CHILD_PID
                         [ x"$CHILD" = x"$CHILD_PID" ] || {
                             /bin/echo "Mismatched pidfile from $TASK_PID" >&2
                             exit 1
