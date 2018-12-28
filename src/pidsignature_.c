@@ -32,6 +32,7 @@
 #include "ert/process.h"
 #include "ert/system.h"
 #include "ert/file.h"
+#include "ert/mode.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -84,7 +85,7 @@ fetchProcessSignature_(struct Ert_Pid aPid, char **aSignature)
                        processStatFileNameFmt_, processDirName.mDirName));
 
         ERT_ERROR_IF(
-            (fd = ert_openFd(processStatFileName, O_RDONLY, 0),
+            (fd = ert_openFd(processStatFileName, O_RDONLY, Ert_Mode(0)),
              -1 == fd));
 
     } while (0);
