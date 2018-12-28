@@ -170,6 +170,22 @@ runTests()
     [ ! -f $PIDFILE ]
     testCaseEnd
 
+    testCaseBegin 'Valid -p option value with default mode'
+    set -- 'set -x ; [ 400 = $(stat -c %a '"'$PIDFILE'"') ]'
+    testExit 0 pidsentry -s -d -p $PIDFILE -- "$@"
+    [ ! -f $PIDFILE ]
+
+    testCaseBegin 'Valid -p option value with mode 440'
+    set -- 'set -x ; [ 440 = $(stat -c %a '"'$PIDFILE'"') ]'
+    testExit 0 pidsentry -s -d -p $PIDFILE -m 440 -- "$@"
+    [ ! -f $PIDFILE ]
+
+    testCaseBegin 'Valid -p option value with mode a=r'
+    set -- 'set -x ; [ 444 = $(stat -c %a '"'$PIDFILE'"') ]'
+    testExit 0 pidsentry -s -d -p $PIDFILE -m a=r -- "$@"
+    [ ! -f $PIDFILE ]
+
+    testCaseEnd
     testCaseBegin 'Missing command'
     testExit 1 pidsentry
     testCaseEnd
