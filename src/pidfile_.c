@@ -32,6 +32,7 @@
 
 #include "ert/error.h"
 #include "ert/parse.h"
+#include "ert/mode.h"
 
 #include <stdlib.h>
 
@@ -464,7 +465,7 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
             (err = ert_createFile(
                 &self->mFile_,
                 ert_openPathName(self->mPathName,
-                                 O_RDONLY | O_NOFOLLOW | aFlags, 0)),
+                                 O_RDONLY | O_NOFOLLOW | aFlags, Ert_Mode(0))),
              err && ENOENT != errno));
 
         if ( ! err)
@@ -528,7 +529,7 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
                     ert_openPathName(
                         self->mPathName,
                         O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | aFlags,
-                        S_IRUSR)),
+                        Ert_Mode(S_IRUSR))),
                  err && EEXIST != errno));
         });
 
@@ -587,7 +588,8 @@ openPidFile(struct PidFile *self, unsigned aFlags)
             ert_createFile(
                 &self->mFile_,
                 ert_openPathName(self->mPathName,
-                                 O_RDONLY | O_NOFOLLOW | openFlags, 0)));
+                                 O_RDONLY | O_NOFOLLOW | openFlags,
+                                 Ert_Mode(0))));
         self->mFile = &self->mFile_;
     }
 
