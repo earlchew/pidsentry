@@ -244,7 +244,8 @@ announceSentryPidFile(struct Sentry *self)
         : writePidFile(
             self->mPidFile,
             self->mChildProcess->mPid,
-            &self->mPidServer->mSocketAddr);
+            &self->mPidServer->mSocketAddr,
+            gOptions.mServer.mPidFileMode);
 }
 
 /* -------------------------------------------------------------------------- */
