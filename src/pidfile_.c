@@ -436,7 +436,7 @@ Ert_Finally:
 
 /* -------------------------------------------------------------------------- */
 static ERT_CHECKED struct Ert_Pid
-createPidFile_(struct PidFile *self, unsigned aFlags)
+createPidFile_(struct PidFile *self, unsigned aFlags, struct Ert_Mode aMode)
 {
     int rc = -1;
 
@@ -444,6 +444,7 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
 
     struct Ert_Pid pid = Ert_Pid(-1);
 
+    ert_ensure(aMode.mMode & S_IRUSR);
     ert_ensure( ! (aFlags & ~ O_CLOEXEC));
     ert_ensure( ! self->mFile);
 
@@ -529,7 +530,7 @@ createPidFile_(struct PidFile *self, unsigned aFlags)
                     ert_openPathName(
                         self->mPathName,
                         O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | aFlags,
-                        Ert_Mode(S_IRUSR))),
+                        aMode)),
                  err && EEXIST != errno));
         });
 
@@ -552,8 +553,8 @@ Ert_Finally:
     return rc ? pid : Ert_Pid(0);
 }
 
-struct Ert_Pid
-openPidFile(struct PidFile *self, unsigned aFlags)
+static ERT_CHECKED struct Ert_Pid
+openPidFile_(struct PidFile *self, unsigned aFlags, struct Ert_Mode aMode)
 {
     int rc = -1;
 
@@ -579,11 +580,23 @@ openPidFile(struct PidFile *self, unsigned aFlags)
     unsigned openFlags = aFlags & O_CLOEXEC;
 
     if (aFlags & O_CREAT)
+    {
+        ERT_ERROR_UNLESS(
+            aMode.mMode & S_IRUSR,
+            {
+                errno = EINVAL;
+            });
         ERT_ERROR_IF(
-            (pid = createPidFile_(self, openFlags),
+            (pid = createPidFile_(self, openFlags, aMode),
              pid.mPid));
+    }
     else
     {
+        ERT_ERROR_IF(
+            aMode.mMode,
+            {
+                errno = EINVAL;
+            });
         ERT_ERROR_IF(
             ert_createFile(
                 &self->mFile_,
@@ -612,6 +625,12 @@ Ert_Finally:
     });
 
     return rc ? pid : Ert_Pid(0);
+}
+
+struct Ert_Pid
+openPidFile(struct PidFile *self, unsigned aFlags)
+{
+    return openPidFile_(self, aFlags, Ert_Mode(0));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -783,7 +802,8 @@ Ert_Finally:
 struct Ert_Pid
 writePidFile(struct PidFile           *self,
              struct Ert_Pid            aPid,
-             const struct sockaddr_un *aPidServerAddr)
+             const struct sockaddr_un *aPidServerAddr,
+             struct Ert_Mode           aMode)
 {
     int rc = -1;
 
@@ -818,7 +838,7 @@ writePidFile(struct PidFile           *self,
 
         struct Ert_Pid openedPid = Ert_Pid(-1);
         ERT_ERROR_IF(
-            (openedPid = openPidFile(self, O_CLOEXEC | O_CREAT),
+            (openedPid = openPidFile_(self, O_CLOEXEC | O_CREAT, aMode),
              openedPid.mPid),
             {
                 if (EEXIST == errno)
@@ -846,8 +866,9 @@ writePidFile(struct PidFile           *self,
 
     ert_debug(
         0,
-        "initialised %" PRIs_Ert_Method,
-        FMTs_Ert_Method(self, printPidFile));
+        "initialised %" PRIs_Ert_Method " mode %" PRIs_Ert_Mode,
+        FMTs_Ert_Method(self, printPidFile),
+        FMTs_Ert_Mode(aMode));
 
     ERT_ERROR_IF(
         writePidFile_(self, aPid, aPidServerAddr));
