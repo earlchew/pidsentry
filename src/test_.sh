@@ -62,6 +62,7 @@ pidsentryexec()
 pidsentryorphans()
 {
     ps -awwo user=,ppid=,pid=,pgid=,command= |
+    awk '$1 == ENVIRON["USER"]' |
     {
         while read REPLY ; do
             [ -n "$REPLY" ] || continue
