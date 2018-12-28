@@ -127,7 +127,7 @@ static const char programUsage_[] =
 "";
 
 static const char shortOptions_[] =
-    "+acD:df:iL::m:n:op:qRsTt:u";
+    "+acD:df:im:n:op:qRsTt:u";
 
 enum OptionKind
 {
