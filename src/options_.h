@@ -32,6 +32,7 @@
 #include "ert/compiler.h"
 #include "ert/options.h"
 #include "ert/pid.h"
+#include "ert/mode.h"
 
 #include <sys/types.h>
 #include <stdbool.h>
@@ -53,15 +54,16 @@ struct Options
 
     struct
     {
-        bool        mActive;
-        const char *mName;
-        const char *mPidFile;
-        int         mTetherFd;
-        const int  *mTether;
-        bool        mIdentify;
-        bool        mQuiet;
-        bool        mOrphaned;
-        bool        mAnnounce;
+        bool            mActive;
+        const char     *mName;
+        const char     *mPidFile;
+        struct Ert_Mode mPidFileMode;
+        int             mTetherFd;
+        const int      *mTether;
+        bool            mIdentify;
+        bool            mQuiet;
+        bool            mOrphaned;
+        bool            mAnnounce;
 
         struct
         {

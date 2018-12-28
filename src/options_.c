@@ -36,12 +36,15 @@
 #include <unistd.h>
 #include <getopt.h>
 
+#include <sys/stat.h>
+
 struct Options gOptions;
 
 #define DEFAULT_TETHER_TIMEOUT_S    30
 #define DEFAULT_UMBILICAL_TIMEOUT_S 30
 #define DEFAULT_SIGNAL_PERIOD_S     30
 #define DEFAULT_DRAIN_TIMEOUT_S     30
+#define DEFAULT_PIDFILE_MODE        "u=r"
 
 /* -------------------------------------------------------------------------- */
 static const char programUsage_[] =
@@ -97,6 +100,10 @@ static const char programUsage_[] =
 "  --pidfile file | -p file\n"
 "      The pid of the child is stored in the specified file, and the files\n"
 "      is removed when the child terminates. [Default: No pidfile]\n"
+"  --pidfilemode mode | -m mode\n"
+"      Override the file mode for permissions for the pidfile. The\n"
+"      permissions can be specified in octal or symbolic form. [Default: "
+    ERT_STRINGIFY(DEFAULT_PIDFILE_MODE) "]\n"
 "  --quiet | -q\n"
 "      Do not copy received data from tether to stdout. This is an\n"
 "      alternative to closing stdout. [Default: Copy data from tether]\n"
@@ -120,7 +127,7 @@ static const char programUsage_[] =
 "";
 
 static const char shortOptions_[] =
-    "+acD:df:iL::n:op:qRsTt:u";
+    "+acD:df:iL::m:n:op:qRsTt:u";
 
 enum OptionKind
 {
@@ -135,6 +142,7 @@ static struct option longOptions_[] =
     { "fd",         required_argument, 0, 'f' },
     { "relaxed",    no_argument,       0, 'R' },
     { "identify",   no_argument,       0, 'i' },
+    { "pidfilemode",required_argument, 0, 'm' },
     { "name",       required_argument, 0, 'n' },
     { "orphaned",   no_argument,       0, 'o' },
     { "pidfile",    required_argument, 0, 'p' },
@@ -197,6 +205,11 @@ initOptions()
     gOptions.mServer.mTimeout.mSignal_s    = DEFAULT_SIGNAL_PERIOD_S;
     gOptions.mServer.mTimeout.mUmbilical_s = DEFAULT_UMBILICAL_TIMEOUT_S;
     gOptions.mServer.mTimeout.mDrain_s     = DEFAULT_DRAIN_TIMEOUT_S;
+
+    ert_ensure(
+        ! ert_parseMode(
+            Ert_Mode(0), Ert_Umask(0),
+            DEFAULT_PIDFILE_MODE, &gOptions.mServer.mPidFileMode));
 
     gOptions.mServer.mTetherFd = STDOUT_FILENO;
     gOptions.mServer.mTether   = &gOptions.mServer.mTetherFd;
@@ -266,6 +279,16 @@ int
 processOptions(int argc, char **argv, const char * const **args)
 {
     int rc = -1;
+
+    struct Ert_Mode defaultPidFileMode;
+    ert_ensure(
+        ! ert_parseMode(
+            Ert_Mode(0), Ert_Umask(0),
+            DEFAULT_PIDFILE_MODE, &defaultPidFileMode));
+
+    struct Ert_Umask processUmask;
+    ert_ensure(
+        ! ert_fetchProcessUmask(&processUmask));
 
     struct Ert_Options options = { };
 
@@ -357,6 +380,19 @@ processOptions(int argc, char **argv, const char * const **args)
             mode = setOptionMode(
                 mode, OptionModeMonitorChild, longOptName, opt);
             gOptions.mServer.mOrphaned = true;
+            break;
+
+        case 'm':
+            mode = setOptionMode(
+                mode, OptionModeMonitorChild, longOptName, opt);
+            ERT_ERROR_IF(
+                ert_parseMode(
+                    defaultPidFileMode, processUmask,
+                    optarg, &gOptions.mServer.mPidFileMode));
+            ERT_ERROR_IF(
+                gOptions.mServer.mPidFileMode.mMode &
+                    (S_ISUID | S_ISGID | S_ISVTX |
+                     S_IXUSR | S_IXGRP | S_IXOTH));
             break;
 
         case 'n':
