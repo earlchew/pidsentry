@@ -20,6 +20,12 @@ that signals sent to the child process, or other communication with the child
 process, will not be aliased to some other process which happens to reuse the same
 pid, even if the host reboots.
 
+Correctly associating a pid with a process is complicated by the fact that although
+every running process has a unique pid, the values used for pids are recycled
+as they become available at the end of the lifecycle of a process. This means
+that simply using a value retrieve from a pid file might result in the termination
+of an unrelated process.
+
 #### Supported Platforms
 
 * Linux 32 bit
@@ -103,3 +109,21 @@ The Umbilical provides a PidServer that can be used to ensure that the pid named
 The PidSentry Command uses the PidServer to ensure that the pid named in the Pid File is active and is not re-used
 while the Command is running. When the Command terminates, the PidSentry Command terminates and releases its
 reference to the PidServer.
+
+The use of process groups in the implementation leverages the relationship between the numerical
+values used for process group IDs and the values used for process IDs:
+
+http://pubs.opengroup.org/onlinepubs/009604599/basedefs/xbd_chap04.html
+> A process group ID shall not be reused by the system until the process group lifetime ends.
+>
+> A process ID shall not be reused by the system until the process lifetime ends. In addition, if there
+> exists a process group whose process group ID is equal to that process ID, the process ID shall not be
+> reused by the system until the process group lifetime ends. A process that is not a system process
+> shall not have a process ID of 1.
+
+Although the parent of the Sentry can synchronise with the lifetime of the Sentry process, the peers
+and children of the Sentry perform their actions asynchronously and might outlive the lifetime of the
+Sentry process. To ensure that these peers can send signals to the intended targets, anchors are used to
+ensure that the process group of the Sentry and the process group of the Child have lifetimes as long as
+necessary. In combination, this is the means by which the Pid Sentry ensures that the recorded pid names the
+target process.
