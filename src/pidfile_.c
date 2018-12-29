@@ -436,7 +436,7 @@ Ert_Finally:
 
 /* -------------------------------------------------------------------------- */
 static ERT_CHECKED struct Ert_Pid
-createPidFile_(struct PidFile *self, unsigned aFlags, struct Ert_Mode aMode)
+generatePidFile_(struct PidFile *self, unsigned aFlags, struct Ert_Mode aMode)
 {
     int rc = -1;
 
@@ -587,7 +587,7 @@ openPidFile_(struct PidFile *self, unsigned aFlags, struct Ert_Mode aMode)
                 errno = EINVAL;
             });
         ERT_ERROR_IF(
-            (pid = createPidFile_(self, openFlags, aMode),
+            (pid = generatePidFile_(self, openFlags, aMode),
              pid.mPid));
     }
     else
@@ -724,9 +724,9 @@ destroyPidFile(struct PidFile *self)
 
 /* -------------------------------------------------------------------------- */
 static ERT_CHECKED int
-writePidFile_(struct PidFile           *self,
-              struct Ert_Pid            aPid,
-              const struct sockaddr_un *aPidServerAddr)
+createPidFile_(struct PidFile           *self,
+               struct Ert_Pid            aPid,
+               const struct sockaddr_un *aPidServerAddr)
 {
     int rc = -1;
 
@@ -800,10 +800,10 @@ Ert_Finally:
 
 /* -------------------------------------------------------------------------- */
 struct Ert_Pid
-writePidFile(struct PidFile           *self,
-             struct Ert_Pid            aPid,
-             const struct sockaddr_un *aPidServerAddr,
-             struct Ert_Mode           aMode)
+createPidFile(struct PidFile           *self,
+              struct Ert_Pid            aPid,
+              const struct sockaddr_un *aPidServerAddr,
+              struct Ert_Mode           aMode)
 {
     int rc = -1;
 
@@ -871,7 +871,7 @@ writePidFile(struct PidFile           *self,
         FMTs_Ert_Mode(aMode));
 
     ERT_ERROR_IF(
-        writePidFile_(self, aPid, aPidServerAddr));
+        createPidFile_(self, aPid, aPidServerAddr));
 
     /* The pidfile was locked on creation, and now that it is completely
      * initialised, it is ok to release the flock. Any other process will

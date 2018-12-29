@@ -78,10 +78,10 @@ ERT_CHECKED int
 acquirePidFileReadLock(struct PidFile *self);
 
 ERT_CHECKED struct Ert_Pid
-writePidFile(struct PidFile           *self,
-             struct Ert_Pid            aPid,
-             const struct sockaddr_un *aPidServerAddr,
-             struct Ert_Mode           aMode);
+createPidFile(struct PidFile           *self,
+              struct Ert_Pid            aPid,
+              const struct sockaddr_un *aPidServerAddr,
+              struct Ert_Mode           aMode);
 
 const char *
 ownPidFileName(const struct PidFile *self);
