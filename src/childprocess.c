@@ -681,6 +681,11 @@ forkChildProcess(
         .mUmbilicalSocket = aUmbilicalSocket,
     };
 
+    /* Create the child in its own process group so that the umbilical
+     * can create an anchor with the same pgid. This allows the umbilical
+     * to kill the child, if required, without the pid or pgid of
+     * the child being repurposed during the lifetime of the pidsentry. */
+
     struct Ert_Pid childPid;
     ERT_ERROR_IF(
         (childPid = ert_forkProcessChild(
