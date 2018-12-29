@@ -241,7 +241,7 @@ announceSentryPidFile(struct Sentry *self)
 
     return ! self->mPidFile
         ? Ert_Pid(0)
-        : writePidFile(
+        : createPidFile(
             self->mPidFile,
             self->mChildProcess->mPid,
             &self->mPidServer->mSocketAddr,
