@@ -787,6 +787,15 @@ createUmbilicalProcess(struct UmbilicalProcess *self,
     sigMask = ert_pushThreadSigMask(
         &sigMask_, Ert_ThreadSigMaskBlock, (const int []) { SIGHUP, 0 });
 
+    /* Create the umbilical process in its own process group to dissociate
+     * it from the process group of the sentry:
+     *
+     *  a. Killing the process group of the sentry will not terminate
+     *     the umbilical process.
+     *
+     *  b. The umbilical can kill the process group of the sentry without
+     *     committing suicide. */
+
     struct Ert_Pid umbilicalPid;
     ERT_ERROR_IF(
         (umbilicalPid = ert_forkProcessChild(
