@@ -409,6 +409,13 @@ runAgent(struct Agent        *self,
 {
     int rc = -1;
 
+    /* Only a process group leader can house the agent that owns the sentry.
+     * The child process that runs the umbilical uses an anchor fixed
+     * to the process group of the agent. This ensures that the pgid of the
+     * anchor will not be repurposed for the lifetime of the pidsentry,
+     * and the umbilical can kill the process group of the sentry even
+     * if the sentry process itself has terminated. */
+
     if (ert_testAction(Ert_TestLevelRace) ||
         ert_ownProcessId().mPid != ert_ownProcessGroupId().mPgid)
     {
